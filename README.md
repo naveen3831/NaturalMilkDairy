@@ -58,9 +58,9 @@ Built using the exact color palette and motifs from the official **Natural Milk 
 
 - **Frontend**: React 18, Vite, Lucide Icons, Pure CSS Design System tokens (responsive desktop & mobile layouts)
 - **Backend**: Node.js, Express.js REST API, Morgan logging, CORS
-- **Database / Data Layer**: Dual-mode persistence:
-  - **MongoDB / Mongoose**: Connects seamlessly when `MONGODB_URI` is provided.
-  - **Embedded JSON Persistence Engine (`server/storage/store.js`)**: Auto-activates out-of-the-box so the app runs immediately with rich demo data (Rajesh Sharma, Amit Patel, Priya Singh, etc.) without requiring local MongoDB setup.
+- **Database / Data Layer**:
+  - **MongoDB Atlas / Mongoose**: Cloud database storing all live collections (Users, Products, Delivery Partners, Customers, Deliveries, Payments, and Audit Logs).
+  - **Cloudinary**: Cloud image asset storage for product photography.
 
 ---
 

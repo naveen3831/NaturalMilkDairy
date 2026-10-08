@@ -9,11 +9,11 @@ import {
   MapPin,
   Calendar,
   Search,
-  Filter,
   CreditCard,
   Check,
   AlertCircle,
   BookOpen,
+  Filter,
 } from 'lucide-react';
 
 export default function TodayDeliveries({ onSelectCustomerLedger }) {
@@ -103,139 +103,190 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Top Banner (PRD Section 7) */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0d5c3a 0%, #16467a 100%)',
-        color: '#ffffff',
-        borderRadius: '18px',
-        padding: '24px',
-        boxShadow: '0 6px 20px rgba(13, 92, 58, 0.15)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      {/* 1. Header & Summary Statistics Strip */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '18px 24px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
           <div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f5a623' }}>
-              TODAY'S DELIVERY SCHEDULE
-            </div>
-            <h2 style={{ color: '#ffffff', fontSize: '1.8rem', marginTop: '2px' }}>
-              Route & Dispatch Operations
-            </h2>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              Today's Route Deliveries
+            </h1>
+            <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>
+              Real-time fulfillment tracking for daily automated morning door deliveries
+            </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.85rem', color: '#d1fae5', fontWeight: 600 }}>Delivery Date:</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#f8fafc',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+            }}
+          >
+            <Calendar size={14} color="#059669" />
+            <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>Operational Date:</span>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
               style={{
-                padding: '8px 12px',
-                borderRadius: '10px',
-                background: '#ffffff',
-                color: '#0c2340',
+                border: 'none',
+                background: 'transparent',
+                color: '#0f172a',
                 fontWeight: 700,
-                border: '2px solid #f5a623',
+                fontSize: '0.84rem',
+                outline: 'none',
+                cursor: 'pointer',
+                padding: 0,
               }}
             />
           </div>
         </div>
 
-        {/* Status Counters matching PRD Section 7 */}
-        <div style={{
-          marginTop: '20px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: '12px',
-          background: 'rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(8px)',
-          borderRadius: '14px',
-          padding: '14px',
-        }}>
+        {/* Status Counters Strip */}
+        <div
+          style={{
+            marginTop: '16px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: '12px',
+            paddingTop: '16px',
+            borderTop: '1px solid #f1f5f9',
+          }}
+        >
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600 }}>TOTAL SCHEDULED</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#ffffff' }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>TOTAL PLANNED</div>
+            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
               {deliverySummary.total}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#86efac', fontWeight: 600 }}>✓ DELIVERED</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#86efac' }}>
+            <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, textTransform: 'uppercase' }}>DELIVERED</div>
+            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
               {deliverySummary.delivered}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#fde047', fontWeight: 600 }}>○ PENDING</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#fde047' }}>
+            <div style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600, textTransform: 'uppercase' }}>PENDING</div>
+            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
               {deliverySummary.pending}
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#fca5a5', fontWeight: 600 }}>✕ NOT DELIVERED</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#fca5a5' }}>
+            <div style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 600, textTransform: 'uppercase' }}>NOT DELIVERED</div>
+            <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#dc2626', marginTop: '2px' }}>
               {deliverySummary.notDelivered}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="dairy-card" style={{ padding: '16px 20px' }}>
-        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ position: 'relative', flex: '1', minWidth: '240px' }}>
-            <Search size={16} color="#899e90" style={{ position: 'absolute', left: '12px', top: '13px' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search customer, address, or phone..."
-              style={{ paddingLeft: '36px' }}
-            />
-          </div>
+      {/* 2. Filter & Search Toolbar */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '12px 18px',
+          display: 'flex',
+          gap: '12px',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ position: 'relative', flex: '1', minWidth: '240px' }}>
+          <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '11px' }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by customer, phone, or address..."
+            style={{
+              paddingLeft: '34px',
+              paddingTop: '7px',
+              paddingBottom: '7px',
+              fontSize: '0.84rem',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+            }}
+          />
+        </div>
 
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Status Pills */}
-            {['all', 'pending', 'delivered', 'not_delivered'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setStatusFilter(st)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  textTransform: 'capitalize',
-                  background: statusFilter === st ? '#0d5c3a' : '#f0f5f1',
-                  color: statusFilter === st ? '#ffffff' : '#597361',
-                }}
-              >
-                {st === 'all' ? 'All Deliveries' : st.replace('_', ' ')}
-              </button>
-            ))}
-
-            {/* Delivery Boy Selector */}
-            <select
-              value={boyFilter}
-              onChange={(e) => setBoyFilter(e.target.value)}
-              style={{ width: 'auto', padding: '6px 12px', fontSize: '0.85rem', fontWeight: 600 }}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {['all', 'pending', 'delivered', 'not_delivered'].map((st) => (
+            <button
+              key={st}
+              onClick={() => setStatusFilter(st)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                textTransform: 'capitalize',
+                border: '1px solid',
+                borderColor: statusFilter === st ? '#059669' : '#e2e8f0',
+                background: statusFilter === st ? '#ecfdf5' : '#ffffff',
+                color: statusFilter === st ? '#065f46' : '#475569',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
             >
-              <option value="all">All Delivery Boys</option>
-              {deliveryBoys.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} ({b.assignedArea})
-                </option>
-              ))}
-            </select>
-          </div>
+              {st === 'all' ? 'All Deliveries' : st.replace('_', ' ')}
+            </button>
+          ))}
+
+          <select
+            value={boyFilter}
+            onChange={(e) => setBoyFilter(e.target.value)}
+            style={{
+              width: 'auto',
+              padding: '6px 12px',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+              color: '#334155',
+            }}
+          >
+            <option value="all">All Delivery Partners</option>
+            {deliveryBoys.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} ({b.assignedArea})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {/* Deliveries List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* 3. Delivery Schedule Cards List */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {filteredDeliveries.length === 0 ? (
-          <div className="dairy-card" style={{ textAlign: 'center', padding: '40px' }}>
-            <Truck size={40} color="#899e90" style={{ margin: '0 auto 12px auto' }} />
-            <h4 style={{ color: '#0c2340', fontSize: '1.2rem' }}>No deliveries match current filter</h4>
-            <p style={{ color: '#597361', fontSize: '0.85rem' }}>
-              Try changing the status or selected operational date.
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '14px',
+              textAlign: 'center',
+              padding: '48px 20px',
+            }}
+          >
+            <Truck size={36} color="#94a3b8" style={{ margin: '0 auto 10px auto' }} />
+            <h4 style={{ color: '#0f172a', fontSize: '1.05rem', margin: 0 }}>No deliveries matching current filter</h4>
+            <p style={{ color: '#64748b', fontSize: '0.82rem', marginTop: '4px' }}>
+              Try selecting a different filter or checking another operational date.
             </p>
           </div>
         ) : (
@@ -247,56 +298,70 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
             return (
               <div
                 key={item.id}
-                className="dairy-card"
                 style={{
-                  borderLeft: isDone ? '5px solid #16a34a' : isMissed ? '5px solid #dc2626' : '5px solid #f5a623',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   flexWrap: 'wrap',
-                  gap: '16px',
-                  padding: '18px 22px',
+                  gap: '14px',
+                  padding: '16px 20px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.015)',
+                  transition: 'all 0.15s ease',
                 }}
               >
                 <div style={{ flex: '1', minWidth: '260px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#597361' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
                       #{idx + 1}
                     </span>
-                    <h3 style={{ fontSize: '1.15rem', color: '#0c2340' }}>
+                    <h3 style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
                       {item.customerName}
                     </h3>
-                    <span className={`badge ${isDone ? 'badge-delivered' : isMissed ? 'badge-pending' : 'badge-waiting'}`}>
-                      {isDone ? '✓ Delivered' : isMissed ? '✕ Not Delivered' : '○ Pending'}
+
+                    {/* Status Pill */}
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: isDone ? '#dcfce7' : isMissed ? '#fee2e2' : '#fef3c7',
+                        color: isDone ? '#166534' : isMissed ? '#991b1b' : '#92400e',
+                      }}
+                    >
+                      {isDone ? '✓ Delivered' : isMissed ? '✕ Missed' : '○ Pending'}
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '0.92rem', fontWeight: 700, color: '#0d5c3a', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '0.86rem', fontWeight: 600, color: '#047857', marginBottom: '4px' }}>
                     <span>🥛 Milk: {isDone ? item.actualMilk : item.plannedMilk} L</span>
                     {(isDone ? item.actualCurd : item.plannedCurd) > 0 && (
                       <span>🥣 Curd: {isDone ? item.actualCurd : item.plannedCurd} g</span>
                     )}
-                    <span style={{ color: '#0c2340', fontWeight: 800 }}>
+                    <span style={{ color: '#0f172a', fontWeight: 700 }}>
                       ₹{item.totalAmount}
                     </span>
-                    <span style={{ fontSize: '0.78rem', color: '#597361', fontWeight: 600 }}>
+                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500, alignSelf: 'center' }}>
                       ({item.paymentMethod?.toUpperCase()})
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: '#597361' }}>
-                    <MapPin size={14} color="#0d5c3a" />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#64748b' }}>
+                    <MapPin size={13} color="#059669" />
                     <span>{item.customerAddress || 'Address on file'}</span>
                   </div>
 
                   {item.notes && (
-                    <div style={{ fontSize: '0.78rem', color: '#854d0e', background: '#fef9c3', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block' }}>
-                      📝 Note: {item.notes}
+                    <div style={{ fontSize: '0.74rem', color: '#854d0e', background: '#fef9c3', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
+                      Note: {item.notes}
                     </div>
                   )}
 
                   {isMissed && item.notDeliveredReason && (
-                    <div style={{ fontSize: '0.78rem', color: '#991b1b', background: '#fee2e2', padding: '4px 8px', borderRadius: '6px', marginTop: '6px', display: 'inline-block' }}>
+                    <div style={{ fontSize: '0.74rem', color: '#991b1b', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
                       Reason: {item.notDeliveredReason}
                     </div>
                   )}
@@ -308,36 +373,40 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     <a
                       href={`tel:${item.customerPhone}`}
                       style={{
-                        padding: '8px 12px',
-                        background: '#f0f5f1',
-                        borderRadius: '8px',
-                        color: '#0d5c3a',
-                        fontWeight: 700,
-                        fontSize: '0.85rem',
+                        padding: '6px 10px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        color: '#334155',
+                        fontWeight: 600,
+                        fontSize: '0.78rem',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
+                        gap: '5px',
+                        textDecoration: 'none',
                       }}
                     >
-                      <Phone size={14} /> Call
+                      <Phone size={13} /> Call
                     </a>
                   )}
 
                   <button
                     onClick={() => onSelectCustomerLedger && onSelectCustomerLedger(item.customerId)}
                     style={{
-                      padding: '8px 12px',
-                      background: '#edf4fc',
-                      borderRadius: '8px',
-                      color: '#16467a',
-                      fontWeight: 700,
-                      fontSize: '0.85rem',
+                      padding: '6px 10px',
+                      background: '#eff6ff',
+                      border: '1px solid #dbeafe',
+                      borderRadius: '6px',
+                      color: '#1d4ed8',
+                      fontWeight: 600,
+                      fontSize: '0.78rem',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '5px',
+                      cursor: 'pointer',
                     }}
                   >
-                    <BookOpen size={14} /> Ledger
+                    <BookOpen size={13} /> Ledger
                   </button>
 
                   {isPending && (
@@ -345,37 +414,39 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                       <button
                         onClick={() => openDeliveredModal(item)}
                         style={{
-                          background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                          background: '#059669',
+                          border: 'none',
                           color: '#ffffff',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          padding: '8px 16px',
-                          borderRadius: '8px',
+                          fontWeight: 600,
+                          fontSize: '0.78rem',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          boxShadow: '0 2px 8px rgba(13, 92, 58, 0.3)',
+                          gap: '5px',
+                          cursor: 'pointer',
                         }}
                       >
-                        <Check size={16} /> Delivered
+                        <Check size={14} /> Delivered
                       </button>
 
                       <button
                         onClick={() => openNotDeliveredModal(item)}
                         style={{
                           background: '#ffffff',
-                          border: '1.5px solid #dc2626',
+                          border: '1px solid #fecaca',
                           color: '#dc2626',
-                          fontWeight: 700,
-                          fontSize: '0.85rem',
-                          padding: '7px 14px',
-                          borderRadius: '8px',
+                          fontWeight: 600,
+                          fontSize: '0.78rem',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '6px',
+                          gap: '5px',
+                          cursor: 'pointer',
                         }}
                       >
-                        <XCircle size={16} /> Not Delivered
+                        <XCircle size={14} /> Missed
                       </button>
                     </>
                   )}
@@ -386,206 +457,209 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         )}
       </div>
 
-      {/* Delivered Confirmation Modal (PRD Section 7 & 8) */}
+      {/* Delivered Confirmation Modal */}
       {deliveringItem && (
         <div className="modal-overlay" onClick={() => setDeliveringItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
-                <h3 style={{ fontSize: '1.3rem', color: '#0c2340' }}>✓ Confirm Delivery</h3>
-                <p style={{ fontSize: '0.85rem', color: '#597361' }}>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Confirm Delivery</h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
                   {deliveringItem.customerName} • {deliveringItem.customerAddress}
                 </p>
               </div>
-              <button onClick={() => setDeliveringItem(null)} style={{ fontSize: '1.2rem', color: '#899e90' }}>✕</button>
+              <button onClick={() => setDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '4px' }}>
-                  🥛 Milk Quantity Actually Delivered (Litres)
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Milk Quantity Delivered (Litres)
                 </label>
                 <input
                   type="number"
                   step="0.5"
                   value={actualMilk}
                   onChange={(e) => setActualMilk(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
                   required
                 />
               </div>
 
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '4px' }}>
-                  🥣 Curd Quantity Actually Delivered (Grams)
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Curd Quantity Delivered (Grams)
                 </label>
                 <input
                   type="number"
                   step="250"
                   value={actualCurd}
                   onChange={(e) => setActualCurd(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
                 />
               </div>
 
-              {/* Amount Display */}
-              <div style={{
-                background: '#eaf5ee',
-                padding: '12px 16px',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}>
-                <span style={{ fontWeight: 700, color: '#0d5c3a' }}>Total Delivery Amount:</span>
-                <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#0d5c3a' }}>
-                  ₹{Number(actualMilk) * 60 + (Number(actualCurd) / 500) * 30}
-                </span>
-              </div>
-
-              {/* Payment Mode Selection (PRD Section 7) */}
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '6px' }}>
-                  Payment Method:
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Payment Method
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                  {[
-                    { id: 'credit', label: '○ Credit (Add to Bill)' },
-                    { id: 'cash', label: '💵 Cash Paid' },
-                    { id: 'upi', label: '📱 UPI Paid' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setPaymentMode(m.id)}
-                      style={{
-                        padding: '10px 8px',
-                        borderRadius: '8px',
-                        fontWeight: 700,
-                        fontSize: '0.82rem',
-                        border: paymentMode === m.id ? '2px solid #0d5c3a' : '1.5px solid #e2ece3',
-                        background: paymentMode === m.id ? '#eaf5ee' : '#ffffff',
-                        color: paymentMode === m.id ? '#0d5c3a' : '#597361',
-                      }}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
+                >
+                  <option value="credit">Monthly Credit Account (Bill to Ledger)</option>
+                  <option value="cash">Cash on Delivery</option>
+                  <option value="upi">UPI / Instant QR</option>
+                </select>
               </div>
 
               {(paymentMode === 'cash' || paymentMode === 'upi') && (
                 <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '4px' }}>
-                    Amount Collected Now (₹)
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                    Amount Collected (₹)
                   </label>
                   <input
                     type="number"
                     value={collectedAmount}
                     onChange={(e) => setCollectedAmount(e.target.value)}
+                    style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
+                    required
                   />
                 </div>
               )}
 
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '4px' }}>
-                  Delivery Note (Optional)
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Delivery Notes (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Left on wooden tray, bell rung"
                   value={deliveryNotes}
                   onChange={(e) => setDeliveryNotes(e.target.value)}
+                  placeholder="e.g. Left at doorstep / bottle returned"
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={handleConfirmDelivered}
-                className="btn-primary"
-                style={{ padding: '13px', marginTop: '10px', fontSize: '1rem' }}
-              >
-                ✓ CONFIRM DELIVERY
-              </button>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setDeliveringItem(null)}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelivered}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#059669',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm Delivered
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Not Delivered Modal (PRD Section 9) */}
+      {/* Not Delivered Modal */}
       {notDeliveringItem && (
         <div className="modal-overlay" onClick={() => setNotDeliveringItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
-                <h3 style={{ fontSize: '1.3rem', color: '#dc2626' }}>✕ Mark Not Delivered</h3>
-                <p style={{ fontSize: '0.85rem', color: '#597361' }}>
-                  {notDeliveringItem.customerName} (Rule 2: No charge applied)
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>Mark Not Delivered</h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {notDeliveringItem.customerName} • {notDeliveringItem.customerAddress}
                 </p>
               </div>
-              <button onClick={() => setNotDeliveringItem(null)} style={{ fontSize: '1.2rem', color: '#899e90' }}>✕</button>
+              <button onClick={() => setNotDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '6px' }}>
-                  Reason (PRD Section 9):
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Reason for Non-Delivery
                 </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {[
-                    'Customer Not Home',
-                    'Customer Cancelled',
-                    'Customer Requested Pause',
-                    'Product Unavailable',
-                    'Address Issue',
-                    'Other',
-                  ].map((r) => (
-                    <label
-                      key={r}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        background: notDeliveredReason === r ? '#fee2e2' : '#f8faf8',
-                        border: notDeliveredReason === r ? '1.5px solid #dc2626' : '1px solid #e2ece3',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontSize: '0.88rem',
-                        color: notDeliveredReason === r ? '#991b1b' : '#14241a',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="not_delivered_reason"
-                        checked={notDeliveredReason === r}
-                        onChange={() => setNotDeliveredReason(r)}
-                      />
-                      <span>{r}</span>
-                    </label>
-                  ))}
-                </div>
+                <select
+                  value={notDeliveredReason}
+                  onChange={(e) => setNotDeliveredReason(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
+                >
+                  <option value="Customer Not Home">Customer Not Home / Door Locked</option>
+                  <option value="Customer Requested Skip">Customer Requested Skip / Holiday</option>
+                  <option value="Delivery Boy Shortage">Out of Stock / Route Delay</option>
+                  <option value="Severe Weather">Inclement Weather / Road Block</option>
+                  <option value="Other">Other Specific Reason</option>
+                </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#14241a', display: 'block', marginBottom: '4px' }}>
-                  Optional Note:
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Additional Notes
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Door was locked, phone unreachable"
+                <textarea
+                  rows="3"
                   value={notDeliveredNotes}
                   onChange={(e) => setNotDeliveredNotes(e.target.value)}
+                  placeholder="Explain why delivery was not completed..."
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={handleConfirmNotDelivered}
-                className="btn-danger"
-                style={{ padding: '13px', marginTop: '10px', justifyContent: 'center', fontSize: '1rem' }}
-              >
-                [SAVE NOT DELIVERED]
-              </button>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setNotDeliveringItem(null)}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmNotDelivered}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm Not Delivered
+                </button>
+              </div>
             </div>
           </div>
         </div>

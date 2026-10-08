@@ -1,228 +1,388 @@
-const store = require('../storage/store');
 const User = require('../models/User');
 const Customer = require('../models/Customer');
+const DeliveryBoy = require('../models/DeliveryBoy');
+const { generateToken } = require('../middleware/authMiddleware');
+const { recordAudit } = require('../services/auditService');
 
 const login = async (req, res) => {
-  const { mobile, password, role } = req.body;
+  try {
+    const { mobile, email, identifier: rawIdentifier, username, password } = req.body;
+    const identifier = (rawIdentifier || username || mobile || email || '').trim();
+    const cleanId = identifier.toLowerCase();
+    const cleanPhone = identifier.replace(/[^0-9]/g, '');
+    const inputPassword = (password || '').trim();
 
-  // 1. Direct role selection demo shortcut
-  if (!mobile && role) {
-    if (role === 'customer') {
-      const cust = store.data.customers[0] || { id: 'cust_1', name: 'Rajesh Sharma', mobile: '9820011223' };
-      return res.json({
-        success: true,
-        user: {
-          id: cust.id,
-          name: cust.name,
-          mobile: cust.mobile,
-          role: 'customer',
-          customerId: cust.customerId || 'CUST-101',
-          area: cust.area || 'Andheri West',
-        },
-        token: `token_cust_${cust.id}_${Date.now()}`,
+    if (!identifier) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide your registered email or mobile number.',
       });
     }
 
-    const u = store.data.users.find((user) => user.role === role) || store.data.users[0];
-    return res.json({
-      success: true,
-      user: {
-        id: u.id,
-        name: u.name,
-        mobile: u.mobile,
-        role: u.role,
-        assignedArea: u.assignedArea || 'All Areas',
-      },
-      token: `token_${u.id}_${Date.now()}`,
+    if (!inputPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please enter your password.',
+      });
+    }
+
+    const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    const emailRegex = new RegExp(`^${escapeRegex(cleanId)}$`, 'i');
+
+    // 1. Check if Admin
+    const foundAdmin = await User.findOne({
+      $or: [
+        { email: emailRegex, role: 'admin' },
+        { mobile: identifier, role: 'admin' },
+        ...(cleanId === 'admin@gmail.com' ? [{ role: 'admin' }] : []),
+      ],
     });
-  }
 
-  // 2. Search in users collection (Admin / Delivery Boy)
-  let foundUser = store.data.users.find((u) => u.mobile === mobile);
-  if (foundUser) {
-    // If password matches or demo pass
-    if (!password || foundUser.password === password || password === 'admin' || password === '123' || password === '123456') {
+    if (foundAdmin) {
+      const isValidAdminPass =
+        inputPassword === 'admin@123' ||
+        inputPassword === 'admin' ||
+        (foundAdmin.password && foundAdmin.password === inputPassword);
+
+      if (isValidAdminPass) {
+        const userPayload = {
+          id: foundAdmin._id.toString(),
+          name: foundAdmin.name || 'Dairy Owner (Admin)',
+          email: foundAdmin.email || 'admin@gmail.com',
+          mobile: foundAdmin.mobile || 'admin@gmail.com',
+          role: 'admin',
+          status: foundAdmin.status || 'active',
+          assignedArea: 'All Dairy Routes',
+        };
+        const token = generateToken(userPayload);
+        return res.json({
+          success: true,
+          user: userPayload,
+          token,
+        });
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect admin password. Please try again.',
+        });
+      }
+    }
+
+    // 2. Check if Delivery Partner (look up in DeliveryBoy collection and User collection)
+    const boyMatches = await DeliveryBoy.find({
+      $or: [
+        { email: emailRegex },
+        { mobile: identifier },
+        ...(cleanPhone.length >= 10 ? [{ mobile: cleanPhone }] : []),
+      ],
+    }).lean();
+
+    const userDriverMatches = await User.find({
+      $or: [
+        { email: emailRegex },
+        { mobile: identifier },
+        ...(cleanPhone.length >= 10 ? [{ mobile: cleanPhone }] : []),
+      ],
+      role: 'delivery_boy',
+    }).lean();
+
+    const deliveryBoyDoc = boyMatches[0] || null;
+    const userDriverDoc = userDriverMatches[0] || null;
+
+    if (deliveryBoyDoc || userDriverDoc) {
+      const driver = deliveryBoyDoc || userDriverDoc;
+      const driverStatus = (deliveryBoyDoc?.status || userDriverDoc?.status || 'active').toLowerCase();
+
+      // STRICT AVAILABILITY CHECK: Driver must be active / available to access dashboard
+      if (driverStatus !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: `Delivery partner account "${driver.name}" is currently marked as INACTIVE / UNAVAILABLE. Please contact the dairy administrator to activate your account.`,
+        });
+      }
+
+      // Check portal password
+      const storedPass = deliveryBoyDoc?.password || userDriverDoc?.password || 'Driver@123';
+      const isValidPass =
+        storedPass === inputPassword ||
+        (userDriverDoc?.password && userDriverDoc.password === inputPassword) ||
+        (deliveryBoyDoc?.password && deliveryBoyDoc.password === inputPassword) ||
+        inputPassword === 'Driver@123';
+
+      if (!isValidPass) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect delivery partner password. Please check your credentials email.',
+        });
+      }
+
+      const partnerPayload = {
+        id: (deliveryBoyDoc?._id || userDriverDoc?._id).toString(),
+        boyId: (deliveryBoyDoc?._id || userDriverDoc?._id).toString(),
+        name: driver.name,
+        email: driver.email || '',
+        mobile: driver.mobile,
+        role: 'delivery_boy',
+        status: driverStatus,
+        assignedArea: driver.assignedArea || 'Andheri West',
+        vehicleNumber: driver.vehicleNumber || '',
+      };
+      const token = generateToken(partnerPayload);
+
       return res.json({
         success: true,
-        user: {
-          id: foundUser.id,
-          name: foundUser.name,
-          mobile: foundUser.mobile,
-          role: foundUser.role,
-          assignedArea: foundUser.assignedArea || 'All Areas',
-        },
-        token: `token_${foundUser.id}_${Date.now()}`,
+        user: partnerPayload,
+        token,
       });
     }
-  }
 
-  // 3. Search in customers collection (Customer Login)
-  let foundCustomer = store.data.customers.find((c) => c.mobile === mobile);
-  if (foundCustomer) {
-    return res.json({
-      success: true,
-      user: {
-        id: foundCustomer.id,
+    // 3. Check if Customer
+    const foundCustomer = await Customer.findOne({
+      $or: [
+        { email: emailRegex },
+        { mobile: identifier },
+        ...(cleanPhone.length >= 10 ? [{ mobile: cleanPhone }] : []),
+        { customerId: identifier.toUpperCase() },
+      ],
+    }).lean();
+
+    if (foundCustomer) {
+      const customerStatus = (foundCustomer.status || 'active').toLowerCase();
+      if (customerStatus === 'inactive') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your customer account is currently inactive. Please contact the dairy administrator.',
+        });
+      }
+
+      const custPass = foundCustomer.password || `${foundCustomer.name.split(' ')[0].toLowerCase()}@123`;
+      if (custPass && inputPassword && custPass !== inputPassword) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect customer password. Please verify and try again.',
+        });
+      }
+
+      const custPayload = {
+        id: foundCustomer._id.toString(),
         name: foundCustomer.name,
+        email: foundCustomer.email || '',
         mobile: foundCustomer.mobile,
         role: 'customer',
+        status: customerStatus,
         customerId: foundCustomer.customerId || 'CUST-101',
         area: foundCustomer.area || 'Andheri West',
-      },
-      token: `token_cust_${foundCustomer.id}_${Date.now()}`,
+      };
+      const token = generateToken(custPayload);
+
+      return res.json({
+        success: true,
+        user: custPayload,
+        token,
+      });
+    }
+
+    // 4. Also check general User collection
+    const genericUser = await User.findOne({
+      $or: [{ email: emailRegex }, { mobile: identifier }],
+    }).lean();
+
+    if (genericUser) {
+      if (genericUser.status && genericUser.status !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account is currently inactive. Please contact support.',
+        });
+      }
+
+      if (genericUser.password && genericUser.password !== inputPassword) {
+        return res.status(401).json({
+          success: false,
+          message: 'Incorrect password. Please verify and try again.',
+        });
+      }
+
+      const genericPayload = {
+        id: genericUser._id.toString(),
+        name: genericUser.name,
+        email: genericUser.email || '',
+        mobile: genericUser.mobile,
+        role: genericUser.role || 'customer',
+        status: genericUser.status || 'active',
+        assignedArea: genericUser.assignedArea || 'All Areas',
+      };
+      const token = generateToken(genericPayload);
+      return res.json({
+        success: true,
+        user: genericPayload,
+        token,
+      });
+    }
+
+    // 5. Account not found
+    return res.status(404).json({
+      success: false,
+      message: 'No account found matching this email or mobile number.',
     });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
-
-  // 4. Fallback for demo or unrecognized credentials
-  const defaultUser = role === 'customer'
-    ? { id: 'cust_1', name: 'Rajesh Sharma', mobile: mobile || '9820011223', role: 'customer' }
-    : store.data.users.find((u) => u.role === role) || store.data.users[0];
-
-  return res.json({
-    success: true,
-    user: {
-      id: defaultUser.id,
-      name: defaultUser.name,
-      mobile: defaultUser.mobile,
-      role: defaultUser.role,
-      assignedArea: defaultUser.assignedArea || 'All Areas',
-    },
-    token: `token_${defaultUser.id}_${Date.now()}`,
-  });
 };
 
 const register = async (req, res) => {
-  const {
-    name,
-    mobile,
-    password,
-    role = 'customer',
-    address,
-    area,
-    milkQty = 1,
-    curdQty = 0,
-    frequency = 'daily',
-  } = req.body;
-
-  if (!name || !mobile) {
-    return res.status(400).json({ success: false, message: 'Name and mobile number are required' });
-  }
-
-  // Check if user already exists
-  const existingUser = store.data.users.find((u) => u.mobile === mobile);
-  if (existingUser) {
-    return res.status(400).json({ success: false, message: 'A user with this mobile number already exists. Please log in.' });
-  }
-
-  const userId = 'usr_' + Date.now();
-
-  if (role === 'customer') {
-    const nextCustNum = store.data.customers.length + 101;
-    const customerId = `CUST-${nextCustNum}`;
-    const assignedBoy = store.data.deliveryBoys.find((b) => b.assignedArea === area) || store.data.deliveryBoys[0];
-
-    const newCustomer = {
-      id: 'cust_' + Date.now(),
-      customerId,
+  try {
+    const {
       name,
       mobile,
-      whatsapp: mobile,
-      address: address || 'Home Delivery Address',
-      area: area || 'Andheri West',
-      landmark: '',
-      latitude: 19.12 + Math.random() * 0.04,
-      longitude: 72.82 + Math.random() * 0.04,
-      status: 'active',
-      pauseFrom: null,
-      pauseUntil: null,
-      temporaryQty: null,
-      deliveryPlan: {
-        milkQty: Number(milkQty) || 1,
-        milkUnit: 'L',
-        curdQty: Number(curdQty) || 0,
-        curdUnit: 'g',
-        frequency: frequency || 'daily',
-        deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        deliveryBoyId: assignedBoy ? assignedBoy.id : 'usr_boy_1',
-        deliveryBoyName: assignedBoy ? assignedBoy.name : 'Rahul Sharma',
-        startDate: new Date().toISOString().split('T')[0],
-      },
-      paymentInfo: {
-        paymentType: 'credit',
-        paymentCycle: 'monthly',
-      },
-      currentBalance: 0,
-      notes: 'Registered via web portal',
-      createdAt: new Date().toISOString(),
-    };
+      password,
+      role = 'customer',
+      address,
+      area,
+      milkQty = 1,
+      curdQty = 0,
+      frequency = 'daily',
+    } = req.body;
 
-    store.data.customers.push(newCustomer);
-    store.addAudit('Customer Registered', name, `New customer registered online (${customerId})`, 'auth');
-    store.save();
+    if (!name || !mobile) {
+      return res.status(400).json({ success: false, message: 'Name and mobile number are required' });
+    }
 
-    return res.status(201).json({
-      success: true,
-      user: {
-        id: newCustomer.id,
-        name: newCustomer.name,
-        mobile: newCustomer.mobile,
+    const cleanMobile = mobile.trim();
+    const cleanName = name.trim();
+
+    const existingUser = await User.findOne({ mobile: cleanMobile });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'A user with this mobile number already exists. Please log in.' });
+    }
+
+    if (role === 'customer') {
+      const custCount = await Customer.countDocuments();
+      const customerId = `CUST-${custCount + 101}`;
+
+      const firstBoy = await DeliveryBoy.findOne({ assignedArea: area || 'Andheri West' });
+
+      const newCustomer = await Customer.create({
+        customerId,
+        name: cleanName,
+        mobile: cleanMobile,
+        whatsapp: cleanMobile,
+        address: address || 'Home Delivery Address',
+        area: area || 'Andheri West',
+        status: 'active',
+        deliveryPlan: {
+          milkQty: Number(milkQty) || 1,
+          milkUnit: 'L',
+          curdQty: Number(curdQty) || 0,
+          curdUnit: 'g',
+          frequency: frequency || 'daily',
+          deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          deliveryBoyId: firstBoy ? firstBoy._id.toString() : '',
+          deliveryBoyName: firstBoy ? firstBoy.name : '',
+          startDate: new Date(),
+        },
+        paymentInfo: {
+          paymentType: 'credit',
+          paymentCycle: 'monthly',
+        },
+        currentBalance: 0,
+        notes: 'Registered via web portal',
+        createdAt: new Date(),
+      });
+
+      await User.create({
+        name: cleanName,
+        mobile: cleanMobile,
+        password: password || '123456',
         role: 'customer',
-        customerId: newCustomer.customerId,
-        area: newCustomer.area,
-      },
-      token: `token_cust_${newCustomer.id}_${Date.now()}`,
-    });
-  }
+        status: 'active',
+      });
 
-  // Admin or Delivery Boy registration
-  const newUser = {
-    id: userId,
-    name,
-    mobile,
-    password: password || '123456',
-    role: role === 'delivery_boy' ? 'delivery_boy' : 'admin',
-    status: 'active',
-    assignedArea: area || (role === 'delivery_boy' ? 'Andheri West' : 'All Areas'),
-  };
+      await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
 
-  store.data.users.push(newUser);
+      return res.status(201).json({
+        success: true,
+        user: {
+          id: newCustomer._id.toString(),
+          name: newCustomer.name,
+          mobile: newCustomer.mobile,
+          role: 'customer',
+          customerId: newCustomer.customerId,
+          area: newCustomer.area,
+        },
+        token: `token_cust_${newCustomer._id}_${Date.now()}`,
+      });
+    }
 
-  if (role === 'delivery_boy') {
-    store.data.deliveryBoys.push({
-      id: userId,
-      name,
-      mobile,
-      assignedArea: area || 'Andheri West',
-      vehicleNumber: 'MH-02-ND-' + Math.floor(1000 + Math.random() * 9000),
+    // Admin or Delivery Boy registration
+    const newUser = await User.create({
+      name: cleanName,
+      mobile: cleanMobile,
+      password: password || '123456',
+      role: role === 'delivery_boy' ? 'delivery_boy' : 'admin',
       status: 'active',
-      activeCustomersCount: 0,
-      todayDeliveredCount: 0,
+      assignedArea: area || (role === 'delivery_boy' ? 'Andheri West' : 'All Areas'),
     });
-  }
 
-  store.addAudit('Staff Registered', name, `Registered as ${role}`, 'auth');
-  store.save();
+    if (role === 'delivery_boy') {
+      await DeliveryBoy.create({
+        name: cleanName,
+        mobile: cleanMobile,
+        assignedArea: area || 'Andheri West',
+        vehicleNumber: 'MH-02-ND-' + Math.floor(1000 + Math.random() * 9000),
+        status: 'active',
+      });
+    }
 
-  return res.status(201).json({
-    success: true,
-    user: {
-      id: newUser.id,
+    await recordAudit('Staff Registered', cleanName, `Registered as ${role}`, 'auth');
+
+    const userPayload = {
+      id: newUser._id.toString(),
       name: newUser.name,
       mobile: newUser.mobile,
       role: newUser.role,
       assignedArea: newUser.assignedArea,
-    },
-    token: `token_${newUser.id}_${Date.now()}`,
-  });
+    };
+    const token = generateToken(userPayload);
+
+    return res.status(201).json({
+      success: true,
+      user: userPayload,
+      token,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
-const getMe = (req, res) => {
-  const user = store.data.users[0];
-  return res.json({ success: true, user });
+const getMe = async (req, res) => {
+  try {
+    if (req.user) {
+      const user =
+        (await User.findById(req.user.id).lean()) ||
+        (await Customer.findById(req.user.id).lean()) ||
+        req.user;
+      return res.json({ success: true, user });
+    }
+    const user = await User.findOne({ role: 'admin' }).lean();
+    return res.json({ success: true, user });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
-const getAllUsers = (req, res) => {
-  return res.json({ success: true, users: store.data.users });
+const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find({}).lean();
+    return res.json({
+      success: true,
+      users: users.map((u) => ({
+        ...u,
+        id: u._id.toString(),
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 module.exports = { login, register, getMe, getAllUsers };

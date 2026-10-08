@@ -17,10 +17,11 @@ import {
   Wallet,
   Sparkles,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
 
-export default function DeliveryBoyApp() {
-  const { user } = useAuth();
+export default function DeliveryBoyApp({ setActiveTab }) {
+  const { user, logout } = useAuth();
   const {
     deliveries,
     deliverySummary,
@@ -163,7 +164,7 @@ export default function DeliveryBoyApp() {
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
             <span style={{
               background: 'rgba(255, 255, 255, 0.15)',
               padding: '4px 10px',
@@ -177,6 +178,31 @@ export default function DeliveryBoyApp() {
               {isOnline ? <Wifi size={14} color="#86efac" /> : <WifiOff size={14} color="#fca5a5" />}
               {isOnline ? 'Online' : 'Offline'}
             </span>
+
+            <button
+              type="button"
+              onClick={() => {
+                logout();
+                if (setActiveTab) setActiveTab('login');
+              }}
+              style={{
+                background: 'rgba(239, 68, 68, 0.25)',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#fee2e2',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontSize: '0.74rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <LogOut size={12} />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
 

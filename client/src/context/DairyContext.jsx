@@ -252,10 +252,11 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
-        return data;
       }
+      return data;
     } catch (err) {
       console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
     }
   };
 
@@ -270,10 +271,11 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
-        return data;
       }
+      return data;
     } catch (err) {
       console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
     }
   };
 
@@ -353,9 +355,13 @@ export const DairyProvider = ({ children }) => {
   // Add Product
   const addProduct = async (payload) => {
     try {
+      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch('/api/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -365,6 +371,73 @@ export const DairyProvider = ({ children }) => {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Update Product (all fields including image, status, etc.)
+  const updateProduct = async (id, payload) => {
+    try {
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch(`/api/products/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchProducts();
+        return data;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Delete Product
+  const deleteProduct = async (id, actor = 'Admin') => {
+    try {
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch(`/api/products/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchProducts();
+        fetchAuditLogs();
+        return data;
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Upload image to Cloudinary
+  const uploadImage = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('folder', 'natural-milk-dairy');
+
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+      return await res.json();
+    } catch (err) {
+      console.error('Image upload error:', err);
+      return { success: false, message: err.message };
     }
   };
 
@@ -379,10 +452,51 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         fetchDeliveryBoys();
-        return data;
       }
+      return data;
     } catch (err) {
       console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
+    }
+  };
+
+  // Update Delivery Boy
+  const updateDeliveryBoy = async (boyId, payload) => {
+    try {
+      const res = await fetch(`/api/delivery-boys/${boyId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchDeliveryBoys();
+        fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
+    }
+  };
+
+  // Delete Delivery Boy
+  const deleteDeliveryBoy = async (boyId, actor = 'Admin') => {
+    try {
+      const res = await fetch(`/api/delivery-boys/${boyId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchDeliveryBoys();
+        fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
     }
   };
 
@@ -426,6 +540,44 @@ export const DairyProvider = ({ children }) => {
     }
   };
 
+  // Send Delivery Boy Credentials Email
+  const sendDeliveryBoyCredentials = async (boyId, actor = 'Admin') => {
+    try {
+      const res = await fetch(`/api/delivery-boys/${boyId}/send-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Send Customer Credentials Email
+  const sendCustomerCredentials = async (customerId, actor = 'Admin') => {
+    try {
+      const res = await fetch(`/api/customers/${customerId}/send-credentials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
   return (
     <DairyContext.Provider
       value={{
@@ -461,8 +613,15 @@ export const DairyProvider = ({ children }) => {
         setTemporaryQty,
         updateProductPrice,
         addProduct,
+        updateProduct,
+        deleteProduct,
+        uploadImage,
         addDeliveryBoy,
+        updateDeliveryBoy,
+        deleteDeliveryBoy,
         reconcileCash,
+        sendDeliveryBoyCredentials,
+        sendCustomerCredentials,
         getCustomerLedger,
         getCustomerStatement,
       }}

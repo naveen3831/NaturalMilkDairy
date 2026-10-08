@@ -20,6 +20,7 @@ import {
   User,
   ShieldCheck,
 } from 'lucide-react';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const { user, logout, switchUser, DEMO_USERS } = useAuth();
@@ -34,19 +35,21 @@ export default function Navbar({ activeTab, setActiveTab }) {
     return (
       <header
         style={{
-          background: '#ffffff',
+          background: 'rgba(255, 255, 255, 0.98)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
           borderBottom: '1px solid #e5e7eb',
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)',
+          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
         }}
       >
         <div
           style={{
-            maxWidth: '1360px',
+            maxWidth: '1440px',
             margin: '0 auto',
-            padding: '12px 24px',
+            padding: '14px 32px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -79,8 +82,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
               }}
             >
               <img
-                src="/logo.png"
+                src={CLOUDINARY_MEDIA.logo}
                 alt="Natural Milk Dairy"
+                onError={(e) => { e.currentTarget.src = '/logo.png'; }}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>

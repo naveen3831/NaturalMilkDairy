@@ -35,119 +35,157 @@ export default function OutstandingReport({ onSelectCustomerLedger, onOpenPaymen
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Top Banner (PRD Section 24) */}
-      <div style={{
-        background: 'linear-gradient(135deg, #991b1b 0%, #b91c1c 100%)',
-        color: '#ffffff',
-        padding: '24px',
-        borderRadius: '18px',
-        boxShadow: '0 8px 24px rgba(185, 28, 28, 0.25)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px',
-      }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 1. Executive Summary Banner */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #fee2e2',
+          borderRadius: '14px',
+          padding: '20px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}
+      >
         <div>
-          <div style={{
-            fontSize: '0.8rem',
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.1em',
-            color: '#fecaca',
-            marginBottom: '4px',
-          }}>
-            REVENUE RECOVERY & CREDIT MANAGEMENT
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: '#dc2626',
+                background: '#fef2f2',
+                padding: '2px 8px',
+                borderRadius: '6px',
+              }}
+            >
+              Revenue Recovery
+            </span>
+            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              • {filtered.length} customers with pending monthly balance
+            </span>
           </div>
-          <h2 style={{ fontSize: '1.9rem', color: '#ffffff' }}>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
             Pending Credit & Outstanding Report
-          </h2>
-          <p style={{ color: '#fee2e2', fontSize: '0.9rem', marginTop: '4px' }}>
-            Instant customer balance visibility and 1-tap WhatsApp payment reminders
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '2px 0 0 0' }}>
+            Track overdue customer accounts and send 1-tap WhatsApp payment reminders
           </p>
         </div>
 
-        <div style={{
-          background: 'rgba(255, 255, 255, 0.15)',
-          backdropFilter: 'blur(8px)',
-          borderRadius: '16px',
-          padding: '16px 24px',
-          textAlign: 'right',
-          border: '1px solid rgba(255, 255, 255, 0.2)',
-        }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', color: '#fecaca' }}>
+        <div
+          style={{
+            background: '#fef2f2',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            border: '1px solid #fecaca',
+            textAlign: 'right',
+          }}
+        >
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', color: '#dc2626' }}>
             TOTAL PENDING COLLECTION
           </div>
-          <div style={{ fontSize: '2.2rem', fontWeight: 900, color: '#ffffff', marginTop: '2px' }}>
+          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#b91c1c', lineHeight: 1.1, marginTop: '2px' }}>
             ₹{pendingCredit.totalOutstanding?.toLocaleString() || 0}
           </div>
-          <div style={{ fontSize: '0.78rem', color: '#fee2e2', fontWeight: 600 }}>
-            Across {filtered.length} customers
-          </div>
         </div>
       </div>
 
-      {/* Sorting & Search Controls (PRD Section 24) */}
-      <div className="dairy-card" style={{ padding: '16px 20px' }}>
-        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ position: 'relative', flex: '1', minWidth: '260px' }}>
-            <Search size={16} color="#899e90" style={{ position: 'absolute', left: '12px', top: '13px' }} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search debtor by name, phone, area..."
-              style={{ paddingLeft: '36px' }}
-            />
-          </div>
+      {/* 2. Sorting & Search Controls */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '12px 18px',
+          display: 'flex',
+          gap: '12px',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ position: 'relative', flex: '1', minWidth: '240px' }}>
+          <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '11px' }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search debtor by name, phone, or route area..."
+            style={{
+              paddingLeft: '34px',
+              paddingTop: '7px',
+              paddingBottom: '7px',
+              fontSize: '0.84rem',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+            }}
+          />
+        </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>Sort By:</span>
-            {[
-              { id: 'highest', label: 'Highest Outstanding' },
-              { id: 'oldest', label: 'Oldest Pending' },
-              { id: 'name', label: 'Customer Name (A-Z)' },
-            ].map((btn) => (
-              <button
-                key={btn.id}
-                onClick={() => setSortBy(btn.id)}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: '20px',
-                  fontSize: '0.82rem',
-                  fontWeight: 700,
-                  background: sortBy === btn.id ? '#991b1b' : '#f0f5f1',
-                  color: sortBy === btn.id ? '#ffffff' : '#597361',
-                }}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#64748b' }}>Sort By:</span>
+          {[
+            { id: 'highest', label: 'Highest Due' },
+            { id: 'oldest', label: 'Oldest' },
+            { id: 'name', label: 'Name (A-Z)' },
+          ].map((btn) => (
+            <button
+              key={btn.id}
+              onClick={() => setSortBy(btn.id)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                border: '1px solid',
+                borderColor: sortBy === btn.id ? '#dc2626' : '#e2e8f0',
+                background: sortBy === btn.id ? '#fef2f2' : '#ffffff',
+                color: sortBy === btn.id ? '#dc2626' : '#475569',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Pending Credit Table (PRD Section 24) */}
-      <div className="dairy-card" style={{ padding: '0', overflow: 'hidden' }}>
-        <div className="table-responsive">
-          <table className="dairy-table">
+      {/* 3. Pending Credit Table */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.84rem' }}>
             <thead>
-              <tr>
-                <th>Customer ID</th>
-                <th>Customer Name</th>
-                <th>Phone / WhatsApp</th>
-                <th>Area / Address</th>
-                <th>Outstanding Balance</th>
-                <th style={{ textAlign: 'right' }}>Actions & Reminders</th>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <th style={{ padding: '12px 18px' }}>Customer ID</th>
+                <th style={{ padding: '12px 18px' }}>Customer Name</th>
+                <th style={{ padding: '12px 18px' }}>Phone</th>
+                <th style={{ padding: '12px 18px' }}>Area / Address</th>
+                <th style={{ padding: '12px 18px' }}>Outstanding Due</th>
+                <th style={{ padding: '12px 18px', textAlign: 'right' }}>Actions & Reminders</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '36px', color: '#899e90' }}>
-                    <CheckCircle size={32} color="#16a34a" style={{ margin: '0 auto 8px auto' }} />
-                    <div>All customers have cleared their credit balances!</div>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                    <CheckCircle size={32} color="#059669" style={{ margin: '0 auto 8px auto' }} />
+                    <div style={{ fontWeight: 600, color: '#0f172a' }}>All customers are settled!</div>
+                    <div style={{ fontSize: '0.78rem' }}>No pending collections at this moment.</div>
                   </td>
                 </tr>
               ) : (
@@ -158,34 +196,52 @@ export default function OutstandingReport({ onSelectCustomerLedger, onOpenPaymen
                   const waUrl = `https://wa.me/91${c.mobile.replace(/\D/g, '')}?text=${reminderMsg}`;
 
                   return (
-                    <tr key={c.id}>
-                      <td style={{ fontWeight: 800, color: '#0d5c3a', whiteSpace: 'nowrap' }}>
+                    <tr
+                      key={c.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        transition: 'background 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+                    >
+                      <td style={{ padding: '12px 18px', fontWeight: 700, color: '#059669' }}>
                         {c.customerId}
                       </td>
-                      <td>
-                        <div style={{ fontWeight: 700, color: '#0c2340', fontSize: '1rem' }}>
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a' }}>
                           {c.name}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#597361' }}>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
                           Plan: {c.lastDeliveryPlan?.milkQty}L Milk • {c.lastDeliveryPlan?.frequency}
                         </div>
                       </td>
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        <a href={`tel:${c.mobile}`} style={{ color: '#0d5c3a', fontWeight: 600 }}>
+                      <td style={{ padding: '12px 18px', whiteSpace: 'nowrap' }}>
+                        <a href={`tel:${c.mobile}`} style={{ color: '#059669', fontWeight: 600, textDecoration: 'none' }}>
                           {c.mobile}
                         </a>
                       </td>
-                      <td style={{ fontSize: '0.85rem', color: '#597361' }}>
+                      <td style={{ padding: '12px 18px', color: '#475569', fontSize: '0.8rem' }}>
                         <strong>{c.area}</strong> — {c.address}
                       </td>
-                      <td>
-                        <span className="badge badge-pending" style={{ fontSize: '0.92rem', padding: '6px 12px' }}>
-                          🔴 ₹{c.outstanding.toLocaleString()}
+                      <td style={{ padding: '12px 18px' }}>
+                        <span
+                          style={{
+                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            padding: '3px 9px',
+                            borderRadius: '6px',
+                            background: '#fef2f2',
+                            color: '#dc2626',
+                            border: '1px solid #fecaca',
+                          }}
+                        >
+                          ₹{c.outstanding.toLocaleString()} Due
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-flex', gap: '8px', alignItems: 'center' }}>
-                          {/* 1-Click WhatsApp Reminder (PRD Section 25) */}
+                      <td style={{ padding: '12px 18px', textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+                          {/* 1-Click WhatsApp Reminder */}
                           <a
                             href={waUrl}
                             target="_blank"
@@ -193,26 +249,38 @@ export default function OutstandingReport({ onSelectCustomerLedger, onOpenPaymen
                             style={{
                               background: '#25d366',
                               color: '#ffffff',
-                              fontWeight: 700,
-                              fontSize: '0.78rem',
-                              padding: '6px 12px',
-                              borderRadius: '8px',
+                              fontWeight: 600,
+                              fontSize: '0.74rem',
+                              padding: '5px 10px',
+                              borderRadius: '6px',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '6px',
+                              gap: '5px',
+                              textDecoration: 'none',
                             }}
                           >
-                            <Send size={13} />
+                            <Send size={12} />
                             <span>WhatsApp</span>
                           </a>
 
                           {/* Quick Payment Button */}
                           <button
                             onClick={() => onOpenPaymentModal && onOpenPaymentModal(c)}
-                            className="btn-gold"
-                            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                            style={{
+                              background: '#fffbeb',
+                              border: '1px solid #fde68a',
+                              color: '#b45309',
+                              fontWeight: 600,
+                              fontSize: '0.74rem',
+                              padding: '5px 10px',
+                              borderRadius: '6px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              cursor: 'pointer',
+                            }}
                           >
-                            <DollarSign size={13} />
+                            <DollarSign size={12} />
                             <span>Collect</span>
                           </button>
 
@@ -220,18 +288,20 @@ export default function OutstandingReport({ onSelectCustomerLedger, onOpenPaymen
                           <button
                             onClick={() => onSelectCustomerLedger && onSelectCustomerLedger(c.id)}
                             style={{
-                              padding: '6px 10px',
-                              background: '#edf4fc',
-                              color: '#16467a',
-                              borderRadius: '8px',
-                              fontWeight: 700,
-                              fontSize: '0.78rem',
+                              padding: '5px 9px',
+                              background: '#eff6ff',
+                              border: '1px solid #dbeafe',
+                              color: '#1d4ed8',
+                              borderRadius: '6px',
+                              fontWeight: 600,
+                              fontSize: '0.74rem',
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '4px',
+                              cursor: 'pointer',
                             }}
                           >
-                            <BookOpen size={13} />
+                            <BookOpen size={12} />
                             <span>Ledger</span>
                           </button>
                         </div>

@@ -12,12 +12,14 @@ import {
   AlertCircle,
   ArrowRight,
   TrendingUp,
-  Activity,
   Plus,
+  ShieldCheck,
+  UserCheck,
+  Activity,
 } from 'lucide-react';
 
 export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpenPaymentModal }) {
-  const { dashboardSummary, selectedDate, setSelectedDate, deliveryBoys, auditLogs } = useDairy();
+  const { dashboardSummary, deliveryBoys, auditLogs } = useDairy();
 
   const summary = dashboardSummary || {
     totalCustomers: 7,
@@ -34,371 +36,673 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
     todayCurdKg: '2.50',
   };
 
-  const deliveryProgress = summary.deliveriesCount > 0 
-    ? Math.round((summary.completed / summary.deliveriesCount) * 100) 
+  const deliveryProgress = summary.deliveriesCount > 0
+    ? Math.round((summary.completed / summary.deliveriesCount) * 100)
     : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-      {/* Top Header & Greeting (PRD Section 22) */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '16px',
-        padding: '24px',
-        background: 'linear-gradient(135deg, #0d5c3a 0%, #16467a 100%)',
-        borderRadius: '20px',
-        color: '#ffffff',
-        boxShadow: '0 8px 30px rgba(13, 92, 58, 0.2)',
-      }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+      {/* 1. Executive Welcome Banner */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
+          border: '1px solid #d1fae5',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}
+      >
         <div>
-          <div style={{
-            fontSize: '0.8rem',
-            fontWeight: 800,
-            textTransform: 'uppercase',
-            letterSpacing: '0.12em',
-            color: '#f5a623',
-            marginBottom: '4px',
-          }}>
-            🥛 Natural Milk Dairy — Operational Center
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#065f46',
+                background: '#dcfce7',
+                padding: '3px 9px',
+                borderRadius: '12px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+              Live Operations
+            </span>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>• Morning automated routes active</span>
           </div>
-          <h1 style={{ color: '#ffffff', fontSize: '1.9rem', fontWeight: 800 }}>
-            Good Morning, Dairy Owner!
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
+            Welcome back, Dairy Admin 👋
           </h1>
-          <p style={{ color: '#d1fae5', fontSize: '0.92rem', marginTop: '4px' }}>
-            Daily automated home delivery routes, payments & credit ledger replacement.
+          <p style={{ color: '#475569', fontSize: '0.86rem', marginTop: '4px', margin: 0 }}>
+            Here is your daily overview of farm milk subscriptions, delivery fulfillment, and customer accounts.
           </p>
         </div>
 
-        {/* Date Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '0.85rem', color: '#e2ece3', fontWeight: 600 }}>Operational Date:</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+          <button
+            onClick={() => setActiveTab('deliveries')}
             style={{
-              padding: '8px 14px',
-              borderRadius: '10px',
+              background: '#059669',
+              color: '#ffffff',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#047857')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#059669')}
+          >
+            <Truck size={15} />
+            <span>Today's Routes</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('outstanding')}
+            style={{
               background: '#ffffff',
-              color: '#0c2340',
-              fontWeight: 700,
-              fontSize: '0.9rem',
-              border: '2px solid #f5a623',
+              color: '#dc2626',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid #fecaca',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+          >
+            <AlertCircle size={15} />
+            <span>Pending Credit</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Sleek KPI Metrics Cards Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '16px',
+        }}
+      >
+        {/* Card 1: Total Customers */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Customers
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Users size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>
+            {summary.totalCustomers}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+            {summary.activeCustomers} Active Subscriptions
+          </div>
+        </div>
+
+        {/* Card 2: Today's Deliveries */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Today's Deliveries
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Truck size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>
+            {summary.deliveriesCount}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 600, marginTop: '8px' }}>
+            <span style={{ color: '#059669' }}>{summary.completed} Done</span>
+            <span style={{ color: '#94a3b8' }}>•</span>
+            <span style={{ color: '#d97706' }}>{summary.pending} Pending</span>
+            <span style={{ color: '#94a3b8' }}>•</span>
+            <span style={{ color: '#dc2626' }}>{summary.notDelivered} Missed</span>
+          </div>
+        </div>
+
+        {/* Card 3: Today's Sales */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Today's Sales
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <IndianRupee size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>
+            ₹{summary.todaySales.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '8px' }}>
+            🥛 {summary.todayMilkLitres} L Milk • 🥣 {summary.todayCurdKg} Kg Curd
+          </div>
+        </div>
+
+        {/* Card 4: Credit Added */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Credit Added
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f3e8ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CreditCard size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>
+            ₹{summary.creditAdded.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '8px' }}>
+            Billed to monthly customer ledgers
+          </div>
+        </div>
+
+        {/* Card 5: Payments Collected */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Collections
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ccfbf1', color: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Wallet size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f766e', marginTop: '6px', lineHeight: 1.1 }}>
+            ₹{summary.paymentsCollected.toLocaleString()}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '8px' }}>
+            Cash & UPI received today
+          </div>
+        </div>
+
+        {/* Card 6: Total Outstanding */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #fee2e2',
+            borderRadius: '14px',
+            padding: '18px 20px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Total Outstanding
+            </span>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef2f2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <AlertCircle size={16} />
+            </div>
+          </div>
+          <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#dc2626', marginTop: '6px', lineHeight: 1.1 }}>
+            ₹{summary.totalOutstanding.toLocaleString()}
+          </div>
+          <div
+            onClick={() => setActiveTab('outstanding')}
+            style={{
+              fontSize: '0.75rem',
+              color: '#dc2626',
+              fontWeight: 600,
+              marginTop: '8px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              cursor: 'pointer',
+            }}
+          >
+            <span>View Pending Report</span>
+            <ArrowRight size={13} />
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Delivery Progress Bar */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '20px 24px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+          <div>
+            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
+              Today's Delivery Fulfillment
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+              {summary.completed} of {summary.deliveriesCount} morning deliveries fulfilled
+            </div>
+          </div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
+            {deliveryProgress}%
+          </div>
+        </div>
+
+        <div
+          style={{
+            width: '100%',
+            height: '8px',
+            background: '#f1f5f9',
+            borderRadius: '999px',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              width: `${deliveryProgress}%`,
+              height: '100%',
+              background: '#059669',
+              borderRadius: '999px',
+              transition: 'width 0.4s ease',
             }}
           />
         </div>
       </div>
 
-      {/* Primary KPI Grid (PRD Section 22) */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
-        gap: '18px',
-      }}>
-        {/* Total Customers */}
-        <div className="dairy-card" style={{ borderLeft: '5px solid #0d5c3a' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>CUSTOMERS</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#eaf5ee' }}>
-              <Users size={18} color="#0d5c3a" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#0c2340' }}>
-            {summary.totalCustomers}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 600, marginTop: '4px' }}>
-            ● {summary.activeCustomers} Active Delivery Plans
-          </div>
-        </div>
-
-        {/* Today's Deliveries */}
-        <div className="dairy-card" style={{ borderLeft: '5px solid #16467a' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>TODAY'S DELIVERIES</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#edf4fc' }}>
-              <Truck size={18} color="#16467a" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#0c2340' }}>
-            {summary.deliveriesCount}
-          </div>
-          <div style={{ display: 'flex', gap: '8px', fontSize: '0.78rem', fontWeight: 600, marginTop: '4px' }}>
-            <span style={{ color: '#16a34a' }}>✓ {summary.completed} Done</span>
-            <span style={{ color: '#d97706' }}>○ {summary.pending} Pending</span>
-            <span style={{ color: '#dc2626' }}>✕ {summary.notDelivered} Missed</span>
-          </div>
-        </div>
-
-        {/* Today's Total Sales */}
-        <div className="dairy-card" style={{ borderLeft: '5px solid #f5a623' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>TODAY'S SALES</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#fef8eb' }}>
-              <IndianRupee size={18} color="#d98a0d" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#0c2340' }}>
-            ₹{summary.todaySales.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#597361', marginTop: '4px' }}>
-            🥛 {summary.todayMilkLitres} L Milk • 🥣 {summary.todayCurdKg} Kg Curd
-          </div>
-        </div>
-
-        {/* Credit Added */}
-        <div className="dairy-card" style={{ borderLeft: '5px solid #8b5cf6' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>CREDIT ADDED</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#f5f3ff' }}>
-              <CreditCard size={18} color="#8b5cf6" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#0c2340' }}>
-            ₹{summary.creditAdded.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '4px' }}>
-            Delivered to monthly credit accounts
-          </div>
-        </div>
-
-        {/* Payments Collected */}
-        <div className="dairy-card" style={{ borderLeft: '5px solid #10b981' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#597361' }}>PAYMENTS COLLECTED</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#ecfdf5' }}>
-              <Wallet size={18} color="#10b981" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#10b981' }}>
-            ₹{summary.paymentsCollected.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '0.78rem', color: '#597361', marginTop: '4px' }}>
-            Cash & UPI collected today
-          </div>
-        </div>
-
-        {/* Total Outstanding (PRD Section 22) */}
-        <div className="dairy-card" style={{
-          borderLeft: '5px solid #dc2626',
-          background: 'linear-gradient(180deg, #ffffff 0%, #fff5f5 100%)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#991b1b' }}>TOTAL OUTSTANDING</span>
-            <div style={{ padding: '6px', borderRadius: '8px', background: '#fee2e2' }}>
-              <AlertCircle size={18} color="#dc2626" />
-            </div>
-          </div>
-          <div style={{ fontSize: '2.1rem', fontWeight: 900, color: '#dc2626' }}>
-            ₹{summary.totalOutstanding.toLocaleString()}
-          </div>
-          <div style={{
-            fontSize: '0.78rem',
-            color: '#b91c1c',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            marginTop: '4px',
-          }}
-          onClick={() => setActiveTab('outstanding')}
-          >
-            <span>View Pending Credit Report</span>
-            <ArrowRight size={14} />
-          </div>
-        </div>
-      </div>
-
-      {/* Delivery Progress Bar */}
-      <div className="dairy-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div>
-            <h3 style={{ fontSize: '1.1rem', color: '#0c2340' }}>Today's Delivery Progress</h3>
-            <p style={{ fontSize: '0.82rem', color: '#597361' }}>
-              {summary.completed} of {summary.deliveriesCount} customers served
-            </p>
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0d5c3a' }}>
-            {deliveryProgress}%
-          </div>
-        </div>
-        <div style={{
-          width: '100%',
-          height: '12px',
-          background: '#e2ece3',
-          borderRadius: '10px',
-          overflow: 'hidden',
-          display: 'flex',
-        }}>
-          <div style={{
-            width: `${deliveryProgress}%`,
-            background: 'linear-gradient(90deg, #0d5c3a, #16945a)',
-            borderRadius: '10px',
-            transition: 'width 0.5s ease-out',
-          }} />
-        </div>
-      </div>
-
-      {/* Quick Action Hub */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '14px',
-      }}>
+      {/* 4. Quick Action Hub */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '12px',
+        }}
+      >
         <button
           onClick={() => setActiveTab('deliveries')}
-          className="btn-primary"
-          style={{ padding: '14px', borderRadius: '14px', fontSize: '0.95rem' }}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#0f172a',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }}
         >
-          <Truck size={20} />
-          <span>Monitor Today's Deliveries</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Truck size={16} />
+          </div>
+          <span>Today's Deliveries</span>
         </button>
 
         <button
           onClick={() => onOpenAddCustomer && onOpenAddCustomer()}
-          className="btn-secondary"
-          style={{ padding: '14px', borderRadius: '14px', fontSize: '0.95rem' }}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#0f172a',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }}
         >
-          <Plus size={20} />
-          <span>Add New Customer</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Plus size={16} />
+          </div>
+          <span>Add Customer</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('delivery-boys')}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#0f172a',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }}
+        >
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f0fdf4', color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <UserCheck size={16} />
+          </div>
+          <span>Delivery Partners</span>
         </button>
 
         <button
           onClick={() => onOpenPaymentModal && onOpenPaymentModal()}
-          className="btn-gold"
-          style={{ padding: '14px', borderRadius: '14px', fontSize: '0.95rem' }}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#0f172a',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }}
         >
-          <Wallet size={20} />
-          <span>Record Customer Payment</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Wallet size={16} />
+          </div>
+          <span>Record Payment</span>
         </button>
 
         <button
-          onClick={() => setActiveTab('outstanding')}
+          onClick={() => setActiveTab('pricing')}
           style={{
             background: '#ffffff',
-            border: '1.5px solid #dc2626',
-            color: '#dc2626',
-            fontWeight: 700,
-            padding: '14px',
-            borderRadius: '14px',
-            display: 'inline-flex',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#0f172a',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f8fafc';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
-          <AlertCircle size={20} />
-          <span>Pending Credit Report</span>
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#f5f3ff', color: '#6d28d9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <TrendingUp size={16} />
+          </div>
+          <span>Product Rates</span>
         </button>
       </div>
 
-      {/* Delivery Boys Performance (PRD Section 27 & 28) */}
-      <div className="dairy-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+      {/* 5. Delivery Partner Performance */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '22px 24px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
           <div>
-            <h3 style={{ fontSize: '1.25rem', color: '#0c2340' }}>Delivery Boy Daily Performance</h3>
-            <p style={{ fontSize: '0.85rem', color: '#597361' }}>
-              Real-time route completion and cash collection tracking
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+              Partner Route Performance
+            </h2>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+              Live driver fulfillment and cash reconciliation tracking
             </p>
           </div>
           <button
             onClick={() => setActiveTab('delivery-boys')}
             style={{
-              color: '#0d5c3a',
-              fontWeight: 700,
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
+              color: '#059669',
+              fontWeight: 600,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
             }}
           >
-            <span>Manage All Delivery Boys</span>
-            <ArrowRight size={16} />
+            <span>Manage Partners</span>
+            <ArrowRight size={14} />
           </button>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-          gap: '16px',
-        }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '14px',
+          }}
+        >
           {deliveryBoys.map((boy) => (
             <div
               key={boy.id}
               style={{
-                background: '#f8faf8',
-                border: '1px solid #e2ece3',
-                borderRadius: '14px',
-                padding: '18px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '16px',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h4 style={{ fontSize: '1.1rem', color: '#0c2340' }}>{boy.name}</h4>
-                  <span style={{ fontSize: '0.8rem', color: '#597361', fontWeight: 600 }}>
-                    Area: {boy.assignedArea} • {boy.vehicleNumber || 'Bike Route'}
-                  </span>
+                  <div style={{ fontSize: '0.94rem', fontWeight: 700, color: '#0f172a' }}>
+                    {boy.name}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                    Route: {boy.assignedArea} • {boy.vehicleNumber || 'Bike Route'}
+                  </div>
                 </div>
-                <span className="badge badge-delivered">Active</span>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '999px',
+                    background: '#dcfce7',
+                    color: '#166534',
+                  }}
+                >
+                  Active
+                </span>
               </div>
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '8px',
-                background: '#ffffff',
-                padding: '12px',
-                borderRadius: '10px',
-                border: '1px solid #edf3ee',
-                textAlign: 'center',
-              }}>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: '6px',
+                  background: '#ffffff',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #f1f5f9',
+                  textAlign: 'center',
+                  marginTop: '12px',
+                }}
+              >
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#597361', fontWeight: 700 }}>COMPLETED</div>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#16a34a' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>DONE</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
                     {boy.todayStats?.completed ?? 2}
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#597361', fontWeight: 700 }}>PENDING</div>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#d97706' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>PENDING</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d97706' }}>
                     {boy.todayStats?.pending ?? 1}
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.72rem', color: '#597361', fontWeight: 700 }}>MISSED</div>
-                  <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#dc2626' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>MISSED</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#dc2626' }}>
                     {boy.todayStats?.notDelivered ?? 0}
                   </div>
                 </div>
               </div>
 
-              <div style={{
-                marginTop: '12px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '0.85rem',
-                color: '#14241a',
-              }}>
-                <span>Cash in hand: <strong>₹{boy.todayCashCollected || 0}</strong></span>
-                <span>UPI Collected: <strong>₹{boy.todayUpiCollected || 0}</strong></span>
+              <div
+                style={{
+                  marginTop: '10px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  fontSize: '0.78rem',
+                  color: '#475569',
+                }}
+              >
+                <span>Cash: <strong>₹{boy.todayCashCollected || 0}</strong></span>
+                <span>UPI: <strong>₹{boy.todayUpiCollected || 0}</strong></span>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Recent Audit Log Stream (PRD Section 33) */}
-      <div className="dairy-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h3 style={{ fontSize: '1.15rem', color: '#0c2340' }}>Recent Operational Actions (Audit Trail)</h3>
-          <span style={{ fontSize: '0.78rem', color: '#597361', fontWeight: 600 }}>Rule 33 Audit Guarantee</span>
+      {/* 6. Recent Audit Activity Trail */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '20px 24px',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+              Recent Operational Log
+            </h2>
+            <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+              Immutable system record of customer deliveries and cash transactions
+            </p>
+          </div>
+          <button
+            onClick={() => setActiveTab('audit-logs')}
+            style={{
+              fontSize: '0.8rem',
+              color: '#059669',
+              fontWeight: 600,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span>Full Audit Trail</span>
+            <ArrowRight size={14} />
+          </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {auditLogs.slice(0, 5).map((log) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {auditLogs.slice(0, 4).map((log) => (
             <div
               key={log.id}
               style={{
@@ -406,22 +710,31 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '10px 14px',
-                background: '#f8faf8',
-                borderRadius: '10px',
-                border: '1px solid #edf3ee',
-                fontSize: '0.85rem',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                border: '1px solid #f1f5f9',
+                fontSize: '0.82rem',
               }}
             >
-              <div>
-                <span style={{ fontWeight: 700, color: '#0d5c3a', marginRight: '8px' }}>
-                  {log.action}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    padding: '2px 7px',
+                    borderRadius: '4px',
+                    background: '#e2e8f0',
+                    color: '#334155',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  {log.category}
                 </span>
-                <span style={{ color: '#14241a' }}>{log.details}</span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>{log.action}:</span>
+                <span style={{ color: '#475569' }}>{log.details}</span>
               </div>
-              <div style={{ textAlign: 'right', whiteSpace: 'nowrap', marginLeft: '16px' }}>
-                <span style={{ fontSize: '0.75rem', color: '#597361', fontWeight: 600 }}>
-                  By: {log.actor}
-                </span>
+              <div style={{ fontSize: '0.74rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                by {log.actor}
               </div>
             </div>
           ))}

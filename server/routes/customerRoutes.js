@@ -9,6 +9,7 @@ const {
   resumeDelivery,
   setTemporaryQty,
   getCustomerLedger,
+  sendCustomerCredentials,
 } = require('../controllers/customerController');
 
 router.get('/', getCustomers);
@@ -19,5 +20,6 @@ router.post('/:id/pause', pauseDelivery);
 router.post('/:id/resume', resumeDelivery);
 router.post('/:id/temp-qty', setTemporaryQty);
 router.get('/:id/ledger', getCustomerLedger);
+router.post('/:id/send-credentials', sendCustomerCredentials);
 
 module.exports = router;

@@ -1,113 +1,143 @@
 import React, { useState } from 'react';
 import { Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake } from 'lucide-react';
+import { useDairy } from '../context/DairyContext';
+import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
 import Footer from '../components/Footer';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+
+const DEFAULT_CATALOG = [
+  {
+    id: 'p1',
+    name: 'Farm Fresh Cow Milk 1L',
+    category: 'milk',
+    desc: 'Pure, sweet cow milk freshly drawn and chilled within 30 minutes of milking in sterilized glass bottles.',
+    price: '₹60',
+    unit: 'per 1 Litre',
+    badge: 'Bestseller',
+    tagColor: '#0d5c3a',
+    tagBg: '#eaf5ee',
+    fat: '4.2% Fat • 8.5% SNF',
+    image: CLOUDINARY_MEDIA.cowMilk,
+    features: ['100% Unadulterated', 'Chilled to 4°C', 'Eco Glass Bottle'],
+  },
+  {
+    id: 'p2',
+    name: 'Farm Fresh Cow Milk 500ml',
+    category: 'milk',
+    desc: 'Convenient daily half-litre pack, perfect for morning tea, filter coffee, and young children.',
+    price: '₹30',
+    unit: 'per 500 ml',
+    badge: 'Daily Pack',
+    tagColor: '#0c2340',
+    tagBg: '#edf4fc',
+    fat: '4.2% Fat • 8.5% SNF',
+    image: CLOUDINARY_MEDIA.cowMilk,
+    features: ['Fresh Every Dawn', 'Sealed Bottle', 'Easy Morning Drop'],
+  },
+  {
+    id: 'p3',
+    name: 'Pure Buffalo Milk 1L',
+    category: 'milk',
+    desc: 'Thick, creamy high-fat buffalo milk. Yields golden yellow malai, ideal for rich kheer, homemade ghee and paneer.',
+    price: '₹75',
+    unit: 'per 1 Litre',
+    badge: 'High Cream',
+    tagColor: '#d98a0d',
+    tagBg: '#fef8eb',
+    fat: '7.5% Fat • 9.0% SNF',
+    image: CLOUDINARY_MEDIA.buffaloMilk,
+    features: ['Extra Thick Malai', 'Natural Cream', 'Wholesome Taste'],
+  },
+  {
+    id: 'p4',
+    name: 'Traditional Farm Curd 500g',
+    category: 'curd',
+    desc: 'Natural probiotic curd set in traditional earthen clay pots. Thick, velvety texture without unpleasant sourness.',
+    price: '₹35',
+    unit: 'per 500 g',
+    badge: 'Probiotic',
+    tagColor: '#0d5c3a',
+    tagBg: '#eaf5ee',
+    fat: 'Clay-Pot Set',
+    image: CLOUDINARY_MEDIA.curd,
+    features: ['Live Gut Cultures', 'Zero Gelatin / Starch', 'Cool & Refreshing'],
+  },
+  {
+    id: 'p5',
+    name: 'Traditional Farm Curd 1kg',
+    category: 'curd',
+    desc: 'Family saver pack. Rich in gut-friendly bacteria and natural dairy calcium for healthy daily meals.',
+    price: '₹65',
+    unit: 'per 1 Kg',
+    badge: 'Family Saver',
+    tagColor: '#0c2340',
+    tagBg: '#edf4fc',
+    fat: 'Zero Preservatives',
+    image: CLOUDINARY_MEDIA.curd,
+    features: ['High Calcium', 'Perfect for Raita & Chaas', 'Naturally Set'],
+  },
+  {
+    id: 'p6',
+    name: 'A2 Vedic Desi Ghee 500ml',
+    category: 'ghee',
+    desc: 'Traditional bilona churned pure desi cow ghee with granular golden texture and divine authentic aroma.',
+    price: '₹480',
+    unit: 'per 500 ml',
+    badge: 'Traditional A2',
+    tagColor: '#b45309',
+    tagBg: '#fef3c7',
+    fat: '100% Bilona Churned',
+    image: CLOUDINARY_MEDIA.ghee,
+    features: ['Hand Churned (Bilona)', 'Rich Golden Grain', 'Immunity Booster'],
+  },
+  {
+    id: 'p7',
+    name: 'Fresh Malai Paneer 250g',
+    category: 'curd',
+    desc: 'Melt-in-mouth artisanal cottage cheese made from fresh morning whole milk. Soft, spongey and protein-rich.',
+    price: '₹95',
+    unit: 'per 250 g',
+    badge: 'Fresh Daily',
+    tagColor: '#0d5c3a',
+    tagBg: '#eaf5ee',
+    fat: 'High Protein',
+    image: CLOUDINARY_MEDIA.paneer,
+    features: ['No Artificial Starch', 'Soft & Creamy', 'Made Daily'],
+  },
+];
 
 export default function ProductsPage({ setActiveTab }) {
+  const { products: dbProducts } = useDairy();
   const [activeCategory, setActiveCategory] = useState('all');
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  const catalogProducts = [
-    {
-      id: 'p1',
-      name: 'Farm Fresh Cow Milk 1L',
-      category: 'milk',
-      desc: 'Pure, sweet cow milk freshly drawn and chilled within 30 minutes of milking in sterilized glass bottles.',
-      price: '₹60',
-      unit: 'per 1 Litre',
-      badge: 'Bestseller',
-      tagColor: '#0d5c3a',
-      tagBg: '#eaf5ee',
-      fat: '4.2% Fat • 8.5% SNF',
-      image: '/product-cow-milk.jpg',
-      features: ['100% Unadulterated', 'Chilled to 4°C', 'Eco Glass Bottle'],
-    },
-    {
-      id: 'p2',
-      name: 'Farm Fresh Cow Milk 500ml',
-      category: 'milk',
-      desc: 'Convenient daily half-litre pack, perfect for morning tea, filter coffee, and young children.',
-      price: '₹30',
-      unit: 'per 500 ml',
-      badge: 'Daily Pack',
-      tagColor: '#0c2340',
-      tagBg: '#edf4fc',
-      fat: '4.2% Fat • 8.5% SNF',
-      image: '/product-cow-milk.jpg',
-      features: ['Fresh Every Dawn', 'Sealed Bottle', 'Easy Morning Drop'],
-    },
-    {
-      id: 'p3',
-      name: 'Pure Buffalo Milk 1L',
-      category: 'milk',
-      desc: 'Thick, creamy high-fat buffalo milk. Yields golden yellow malai, ideal for rich kheer, homemade ghee and paneer.',
-      price: '₹75',
-      unit: 'per 1 Litre',
-      badge: 'High Cream',
-      tagColor: '#d98a0d',
-      tagBg: '#fef8eb',
-      fat: '7.5% Fat • 9.0% SNF',
-      image: '/product-buffalo-milk.jpg',
-      features: ['Extra Thick Malai', 'Natural Cream', 'Wholesome Taste'],
-    },
-    {
-      id: 'p4',
-      name: 'Traditional Farm Curd 500g',
-      category: 'curd',
-      desc: 'Natural probiotic curd set in traditional earthen clay pots. Thick, velvety texture without unpleasant sourness.',
-      price: '₹35',
-      unit: 'per 500 g',
-      badge: 'Probiotic',
-      tagColor: '#0d5c3a',
-      tagBg: '#eaf5ee',
-      fat: 'Clay-Pot Set',
-      image: '/product-curd.jpg',
-      features: ['Live Gut Cultures', 'Zero Gelatin / Starch', 'Cool & Refreshing'],
-    },
-    {
-      id: 'p5',
-      name: 'Traditional Farm Curd 1kg',
-      category: 'curd',
-      desc: 'Family saver pack. Rich in gut-friendly bacteria and natural dairy calcium for healthy daily meals.',
-      price: '₹65',
-      unit: 'per 1 Kg',
-      badge: 'Family Saver',
-      tagColor: '#0c2340',
-      tagBg: '#edf4fc',
-      fat: 'Zero Preservatives',
-      image: '/product-curd.jpg',
-      features: ['High Calcium', 'Perfect for Raita & Chaas', 'Naturally Set'],
-    },
-    {
-      id: 'p6',
-      name: 'A2 Vedic Desi Ghee 500ml',
-      category: 'ghee',
-      desc: 'Traditional bilona churned pure desi cow ghee with granular golden texture and divine authentic aroma.',
-      price: '₹480',
-      unit: 'per 500 ml',
-      badge: 'Traditional A2',
-      tagColor: '#b45309',
-      tagBg: '#fef3c7',
-      fat: '100% Bilona Churned',
-      image: '/product-ghee.jpg',
-      features: ['Hand Churned (Bilona)', 'Rich Golden Grain', 'Immunity Booster'],
-    },
-    {
-      id: 'p7',
-      name: 'Fresh Malai Paneer 250g',
-      category: 'curd',
-      desc: 'Melt-in-mouth artisanal cottage cheese made from fresh morning whole milk. Soft, spongey and protein-rich.',
-      price: '₹95',
-      unit: 'per 250 g',
-      badge: 'Fresh Daily',
-      tagColor: '#0d5c3a',
-      tagBg: '#eaf5ee',
-      fat: 'High Protein',
-      image: '/product-paneer.jpg',
-      features: ['No Artificial Starch', 'Soft & Creamy', 'Made Daily'],
-    },
-  ];
+  // Live dynamic catalog from MongoDB Atlas & local database
+  const catalogProducts = (dbProducts && dbProducts.length > 0)
+    ? dbProducts
+        .filter((p) => p.status !== 'inactive')
+        .map((p) => {
+          const fallback = DEFAULT_CATALOG.find(
+            (def) => def.id === p.id || def.name.toLowerCase() === (p.name || '').toLowerCase()
+          );
+          return {
+            id: p.id,
+            name: p.name,
+            category: p.category || fallback?.category || 'milk',
+            desc: p.description || fallback?.desc || 'Pure unadulterated farm dairy produce delivered fresh every morning.',
+            price: `₹${p.price}`,
+            numericPrice: Number(p.price),
+            unit: p.unit?.startsWith('per') ? p.unit : `per ${p.unit || '1 Litre'}`,
+            badge: fallback?.badge || (p.category === 'milk' ? 'Farm Fresh' : 'Pure Dairy'),
+            tagColor: fallback?.tagColor || '#0d5c3a',
+            tagBg: fallback?.tagBg || '#eaf5ee',
+            fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
+            image: p.image || getProductImage(p),
+            features: fallback?.features || ['100% Unadulterated', 'Chilled to 4°C', 'Food-Grade Sealed'],
+          };
+        })
+    : DEFAULT_CATALOG;
 
   const filteredProducts =
     activeCategory === 'all'
@@ -121,16 +151,29 @@ export default function ProductsPage({ setActiveTab }) {
 
   return (
     <div style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Page Header */}
+      {/* Page Header with Real Glass Bottles Background Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0d5c3a 0%, #0c2340 100%)',
+          position: 'relative',
+          backgroundImage: `url(${CLOUDINARY_MEDIA.glassBottles})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 45%',
           color: '#ffffff',
-          padding: '60px 24px 50px 24px',
+          padding: '80px 24px 60px 24px',
           textAlign: 'center',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(7, 31, 19, 0.75) 0%, rgba(7, 31, 19, 0.88) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -241,7 +284,7 @@ export default function ProductsPage({ setActiveTab }) {
                   alt={p.name}
                   className="product-img"
                   onError={(e) => {
-                    e.currentTarget.src = '/hero-dairy.jpg';
+                    e.currentTarget.src = CLOUDINARY_MEDIA.heroDairy;
                   }}
                   style={{
                     width: '100%',
@@ -350,6 +393,61 @@ export default function ProductsPage({ setActiveTab }) {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Pasture Cows & Single-Source Heritage Banner */}
+        <div
+          style={{
+            marginTop: '80px',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.08)',
+            position: 'relative',
+            height: '340px',
+          }}
+        >
+          <img
+            src={CLOUDINARY_MEDIA.cowsPasture}
+            alt="Healthy Desi Cows in Green Pasture"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(90deg, rgba(7, 31, 19, 0.88) 0%, rgba(7, 31, 19, 0.5) 60%, transparent 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 40px',
+            }}
+          >
+            <div style={{ maxWidth: '560px', color: '#ffffff' }}>
+              <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Single-Source Heritage
+              </span>
+              <h3 style={{ fontSize: '2.1rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
+                100% Grass-Fed Cows. Sweeter, Creamier Milk.
+              </h3>
+              <p style={{ color: '#e2fdf0', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '20px' }}>
+                Our milk is never blended from multiple anonymous dairies. Every single drop comes from our own healthy, stress-free herd grazing naturally under open skies.
+              </p>
+              <button
+                onClick={() => setActiveTab('story')}
+                style={{
+                  background: '#E5B842',
+                  color: '#071629',
+                  padding: '10px 22px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  border: 'none',
+                }}
+              >
+                Learn More About Our Farm
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Quality Assurance Badges */}

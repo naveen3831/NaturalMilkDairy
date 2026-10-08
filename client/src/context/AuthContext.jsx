@@ -6,24 +6,10 @@ export const DEMO_USERS = [
   {
     id: 'usr_admin_1',
     name: 'Dairy Owner (Admin)',
-    mobile: '9876543210',
+    email: 'admin@gmail.com',
+    mobile: 'admin@gmail.com',
     role: 'admin',
     assignedArea: 'All Dairy Routes',
-  },
-  {
-    id: 'usr_boy_1',
-    name: 'Rahul Sharma (Partner)',
-    mobile: '9811122233',
-    role: 'delivery_boy',
-    assignedArea: 'Andheri West',
-  },
-  {
-    id: 'cust_1',
-    name: 'Rajesh Sharma (Customer)',
-    mobile: '9820011223',
-    role: 'customer',
-    customerId: 'CUST-101',
-    assignedArea: 'Andheri West',
   },
 ];
 
@@ -37,8 +23,10 @@ export const AuthProvider = ({ children }) => {
         return null;
       }
     }
-    return null; // Start as public guest user by default
+    return null;
   });
+
+  const [token, setToken] = useState(() => localStorage.getItem('nmd_jwt_token') || '');
 
   useEffect(() => {
     if (user) {
@@ -47,6 +35,14 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('nmd_user');
     }
   }, [user]);
+
+  useEffect(() => {
+    if (token) {
+      localStorage.setItem('nmd_jwt_token', token);
+    } else {
+      localStorage.removeItem('nmd_jwt_token');
+    }
+  }, [token]);
 
   const switchUser = (roleOrId) => {
     const found = DEMO_USERS.find((u) => u.id === roleOrId || u.role === roleOrId);
@@ -57,25 +53,46 @@ export const AuthProvider = ({ children }) => {
     return null;
   };
 
-  const login = async (mobile, password, role) => {
+  const getAuthHeaders = () => {
+    const currentToken = token || localStorage.getItem('nmd_jwt_token');
+    return currentToken ? { Authorization: `Bearer ${currentToken}` } : {};
+  };
+
+  const login = async (identifier, password) => {
+    const trimmed = (identifier || '').trim();
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile, password, role }),
+        body: JSON.stringify({ mobile: trimmed, email: trimmed, password }),
       });
       const data = await res.json();
       if (data.success && data.user) {
         setUser(data.user);
-        return { success: true, user: data.user };
+        if (data.token) {
+          setToken(data.token);
+          localStorage.setItem('nmd_jwt_token', data.token);
+        }
+        return { success: true, user: data.user, token: data.token };
+      } else {
+        return { success: false, message: data.message || 'Invalid credentials' };
       }
     } catch (err) {
       console.warn('API login error, using local fallback:', err);
     }
-    // Fallback
-    const found = DEMO_USERS.find((u) => u.mobile === mobile || u.role === role) || DEMO_USERS[0];
-    setUser(found);
-    return { success: true, user: found };
+    // Strict fallback for seeded admin only
+    if (
+      (trimmed.toLowerCase() === 'admin@gmail.com' || trimmed === '9876543210') &&
+      password === 'admin@123'
+    ) {
+      const adminUser = DEMO_USERS[0];
+      setUser(adminUser);
+      return { success: true, user: adminUser };
+    }
+    return {
+      success: false,
+      message: 'Invalid credentials. Only seeded admin (admin@gmail.com / admin@123) can sign in.',
+    };
   };
 
   const register = async (formData) => {
@@ -88,7 +105,11 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       if (data.success && data.user) {
         setUser(data.user);
-        return { success: true, user: data.user };
+        if (data.token) {
+          setToken(data.token);
+          localStorage.setItem('nmd_jwt_token', data.token);
+        }
+        return { success: true, user: data.user, token: data.token };
       } else {
         return { success: false, message: data.message || 'Registration failed' };
       }
@@ -98,6 +119,7 @@ export const AuthProvider = ({ children }) => {
         id: 'usr_' + Date.now(),
         name: formData.name,
         mobile: formData.mobile,
+        email: formData.email,
         role: formData.role || 'customer',
         assignedArea: formData.area || 'Andheri West',
       };
@@ -108,10 +130,14 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     setUser(null);
+    setToken('');
+    localStorage.removeItem('nmd_user');
+    localStorage.removeItem('nmd_jwt_token');
+    localStorage.removeItem('nmd_admin_tab');
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, switchUser, login, register, logout, DEMO_USERS }}>
+    <AuthContext.Provider value={{ user, setUser, token, getAuthHeaders, switchUser, login, register, logout, DEMO_USERS }}>
       {children}
     </AuthContext.Provider>
   );

@@ -17,10 +17,9 @@ import {
 } from 'lucide-react';
 
 export default function LedgerView({ customerId, onBack, onOpenPaymentModal }) {
-  const { getCustomerLedger, getCustomerStatement } = useDairy();
+  const { getCustomerLedger } = useDairy();
   const [ledgerData, setLedgerData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState('2026-10');
 
   useEffect(() => {
     let isMounted = true;
@@ -41,19 +40,31 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal }) {
 
   if (loading) {
     return (
-      <div className="dairy-card" style={{ textAlign: 'center', padding: '60px' }}>
-        <BookOpen size={40} color="#0d5c3a" className="spin" style={{ margin: '0 auto 16px auto' }} />
-        <h3 style={{ color: '#0c2340' }}>Loading Customer Ledger...</h3>
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', textAlign: 'center', padding: '60px 20px' }}>
+        <BookOpen size={36} color="#059669" style={{ margin: '0 auto 12px auto' }} />
+        <h3 style={{ color: '#0f172a', fontSize: '1.05rem', margin: 0 }}>Loading Customer Ledger...</h3>
       </div>
     );
   }
 
   if (!ledgerData || !ledgerData.customer) {
     return (
-      <div className="dairy-card" style={{ textAlign: 'center', padding: '40px' }}>
-        <p>Customer ledger not found.</p>
-        <button onClick={onBack} className="btn-secondary" style={{ marginTop: '14px' }}>
-          Back to Customers
+      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', textAlign: 'center', padding: '40px 20px' }}>
+        <p style={{ color: '#64748b', fontSize: '0.9rem' }}>Customer ledger record not found.</p>
+        <button
+          onClick={onBack}
+          style={{
+            marginTop: '12px',
+            padding: '8px 16px',
+            background: '#059669',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '8px',
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Back to Directory
         </button>
       </div>
     );
@@ -68,25 +79,28 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      {/* Back button & Title */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 1. Back button & Actions Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <button
           onClick={onBack}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '8px',
-            color: '#0d5c3a',
+            gap: '6px',
+            color: '#059669',
             fontWeight: 700,
-            fontSize: '0.92rem',
+            fontSize: '0.86rem',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
           }}
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={16} />
           <span>Back to Customers</span>
         </button>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <a
             href={whatsappUrl}
             target="_blank"
@@ -94,168 +108,202 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal }) {
             style={{
               background: '#25d366',
               color: '#ffffff',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              padding: '9px 16px',
-              borderRadius: '10px',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              padding: '7px 14px',
+              borderRadius: '8px',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 2px 8px rgba(37, 211, 102, 0.3)',
+              gap: '6px',
+              textDecoration: 'none',
             }}
           >
-            <Send size={16} />
-            <span>WhatsApp Reminder</span>
+            <Send size={14} />
+            <span>Send Statement</span>
           </a>
 
           <button
             onClick={handlePrint}
             style={{
               background: '#ffffff',
-              border: '1.5px solid #0c2340',
-              color: '#0c2340',
-              fontWeight: 700,
-              fontSize: '0.85rem',
-              padding: '9px 16px',
-              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              color: '#334155',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              padding: '7px 14px',
+              borderRadius: '8px',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
+              cursor: 'pointer',
             }}
           >
-            <Printer size={16} />
-            <span>Print Statement</span>
+            <Printer size={14} />
+            <span>Print Invoice</span>
           </button>
 
           <button
             onClick={() => onOpenPaymentModal && onOpenPaymentModal(customer)}
-            className="btn-gold"
-            style={{ padding: '9px 16px', fontSize: '0.85rem' }}
+            style={{
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              color: '#b45309',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              padding: '7px 14px',
+              borderRadius: '8px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+            }}
           >
-            <DollarSign size={16} />
+            <DollarSign size={14} />
             <span>Record Payment</span>
           </button>
         </div>
       </div>
 
-      {/* Customer Profile Banner */}
-      <div className="dairy-card" style={{
-        background: 'linear-gradient(135deg, #ffffff 0%, #f4f8f5 100%)',
-        borderLeft: isPending ? '6px solid #dc2626' : isAdvance ? '6px solid #2563eb' : '6px solid #16a34a',
-        padding: '24px',
-      }}>
+      {/* 2. Customer Profile & Balance Snapshot */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          padding: '22px 24px',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0d5c3a', background: '#eaf5ee', padding: '3px 8px', borderRadius: '4px' }}>
-              {customer.customerId}
-            </span>
-            <h2 style={{ fontSize: '1.8rem', color: '#0c2340', marginTop: '4px' }}>
-              {customer.name} — Customer Ledger
-            </h2>
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '6px', fontSize: '0.85rem', color: '#597361' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                {customer.customerId}
+              </span>
+              <span style={{ fontSize: '0.76rem', color: '#64748b' }}>• Customer Passbook</span>
+            </div>
+            <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              {customer.name}
+            </h1>
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '6px', fontSize: '0.8rem', color: '#64748b' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Phone size={14} color="#0d5c3a" /> {customer.mobile}
+                <Phone size={13} color="#059669" /> {customer.mobile}
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <MapPin size={14} color="#0d5c3a" /> {customer.address} ({customer.area})
+                <MapPin size={13} color="#059669" /> {customer.address} ({customer.area})
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Calendar size={14} color="#0d5c3a" /> Plan: {customer.deliveryPlan?.milkQty}L Milk • {customer.deliveryPlan?.frequency}
+                <Calendar size={13} color="#059669" /> Plan: {customer.deliveryPlan?.milkQty}L Milk • {customer.deliveryPlan?.frequency}
               </span>
             </div>
           </div>
 
-          {/* Prominent Balance Display (PRD Section 14) */}
-          <div style={{
-            background: isPending ? '#fee2e2' : isAdvance ? '#e0f2fe' : '#dcfce7',
-            padding: '16px 24px',
-            borderRadius: '16px',
-            border: `1.5px solid ${isPending ? '#fca5a5' : isAdvance ? '#bae6fd' : '#bbf7d0'}`,
-            textAlign: 'right',
-          }}>
-            <div style={{
-              fontSize: '0.75rem',
-              fontWeight: 800,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: isPending ? '#991b1b' : isAdvance ? '#075985' : '#166534',
-            }}>
-              Current Account Status
+          {/* Account Balance Box */}
+          <div
+            style={{
+              background: isPending ? '#fef2f2' : isAdvance ? '#eff6ff' : '#ecfdf5',
+              padding: '12px 20px',
+              borderRadius: '12px',
+              border: `1px solid ${isPending ? '#fecaca' : isAdvance ? '#bfdbfe' : '#bbf7d0'}`,
+              textAlign: 'right',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '0.7rem',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                color: isPending ? '#dc2626' : isAdvance ? '#1d4ed8' : '#059669',
+              }}
+            >
+              Current Ledger Status
             </div>
-            <div style={{
-              fontSize: '2rem',
-              fontWeight: 900,
-              color: isPending ? '#991b1b' : isAdvance ? '#075985' : '#166534',
-              lineHeight: 1.1,
-              marginTop: '4px',
-            }}>
-              {isPending && `🔴 ₹${outstanding.toLocaleString()} Pending`}
-              {isAdvance && `🔵 ₹${Math.abs(outstanding).toLocaleString()} Advance`}
-              {!isPending && !isAdvance && `🟢 No Outstanding`}
+            <div
+              style={{
+                fontSize: '1.6rem',
+                fontWeight: 800,
+                color: isPending ? '#b91c1c' : isAdvance ? '#1e40af' : '#047857',
+                marginTop: '2px',
+                lineHeight: 1.1,
+              }}
+            >
+              {isPending && `₹${outstanding.toLocaleString()} Due`}
+              {isAdvance && `₹${Math.abs(outstanding).toLocaleString()} Advance`}
+              {!isPending && !isAdvance && `₹0 Settled`}
             </div>
           </div>
         </div>
 
         {/* Ledger Month Totals */}
-        <div style={{
-          marginTop: '20px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: '12px',
-          paddingTop: '16px',
-          borderTop: '1px solid #e2ece3',
-        }}>
+        <div
+          style={{
+            marginTop: '18px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            gap: '12px',
+            paddingTop: '16px',
+            borderTop: '1px solid #f1f5f9',
+          }}
+        >
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#597361', fontWeight: 600 }}>TOTAL MILK DELIVERED</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0d5c3a' }}>{totalMilkDelivered}</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>TOTAL MILK DELIVERED</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#047857', marginTop: '2px' }}>{totalMilkDelivered}</div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#597361', fontWeight: 600 }}>TOTAL CURD DELIVERED</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0d5c3a' }}>{totalCurdDelivered}</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>TOTAL CURD DELIVERED</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#047857', marginTop: '2px' }}>{totalCurdDelivered}</div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#597361', fontWeight: 600 }}>GROSS DELIVERIES BILL</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0c2340' }}>₹{grossBill.toLocaleString()}</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>GROSS DELIVERIES BILL</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>₹{grossBill.toLocaleString()}</div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#597361', fontWeight: 600 }}>TOTAL PAYMENTS RECEIVED</div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>₹{totalPaid.toLocaleString()}</div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>TOTAL PAYMENTS RECEIVED</div>
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>₹{totalPaid.toLocaleString()}</div>
           </div>
         </div>
       </div>
 
-      {/* Ledger Chronological Table (PRD Section 10) */}
-      <div className="dairy-card" style={{ padding: '0', overflow: 'hidden' }}>
-        <div style={{ padding: '18px 20px', borderBottom: '1px solid #e2ece3', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {/* 3. Chronological Transactions Table */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '14px',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h3 style={{ fontSize: '1.2rem', color: '#0c2340' }}>Chronological Account Transactions</h3>
-            <p style={{ fontSize: '0.8rem', color: '#597361' }}>
-              Formula: Outstanding = Total Credit Sales − Total Payments (Rule 10)
+            <h2 style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+              Chronological Transaction Records
+            </h2>
+            <p style={{ fontSize: '0.76rem', color: '#64748b', margin: '2px 0 0 0' }}>
+              Formula: Outstanding = Total Credit Deliveries − Total Collections
             </p>
           </div>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0d5c3a', background: '#eaf5ee', padding: '4px 10px', borderRadius: '12px' }}>
-            {ledgerEntries.length} Transactions Recorded
+          <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#047857', background: '#ecfdf5', padding: '3px 8px', borderRadius: '6px' }}>
+            {ledgerEntries.length} Transactions
           </span>
         </div>
 
-        <div className="table-responsive">
-          <table className="dairy-table">
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
             <thead>
-              <tr>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Milk</th>
-                <th>Curd</th>
-                <th>Amount (₹)</th>
-                <th>Method / Status</th>
-                <th>Delivered By / Recorded By</th>
-                <th style={{ textAlign: 'right' }}>Running Balance</th>
+              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                <th style={{ padding: '12px 18px' }}>Date</th>
+                <th style={{ padding: '12px 18px' }}>Type</th>
+                <th style={{ padding: '12px 18px' }}>Milk</th>
+                <th style={{ padding: '12px 18px' }}>Curd</th>
+                <th style={{ padding: '12px 18px' }}>Amount (₹)</th>
+                <th style={{ padding: '12px 18px' }}>Payment Method / Notes</th>
+                <th style={{ padding: '12px 18px' }}>Fulfilled By</th>
+                <th style={{ padding: '12px 18px', textAlign: 'right' }}>Running Balance</th>
               </tr>
             </thead>
             <tbody>
               {ledgerEntries.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '30px', color: '#899e90' }}>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
                     No ledger entries found for this customer yet.
                   </td>
                 </tr>
@@ -265,44 +313,63 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal }) {
                   const isMissed = entry.status === 'not_delivered';
 
                   return (
-                    <tr key={entry.id} style={{ background: isPay ? '#f0fdf4' : isMissed ? '#fff1f2' : 'inherit' }}>
-                      <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    <tr
+                      key={entry.id}
+                      style={{
+                        borderBottom: '1px solid #f1f5f9',
+                        background: isPay ? '#f0fdf4' : isMissed ? '#fff1f2' : '#ffffff',
+                      }}
+                    >
+                      <td style={{ padding: '12px 18px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
                         {entry.date}
                       </td>
-                      <td>
+                      <td style={{ padding: '12px 18px' }}>
                         {isPay ? (
-                          <span className="badge badge-delivered">💵 Payment</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#dcfce7', color: '#166534' }}>
+                            Payment
+                          </span>
                         ) : isMissed ? (
-                          <span className="badge badge-pending">✕ Missed</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#fee2e2', color: '#991b1b' }}>
+                            Missed
+                          </span>
                         ) : (
-                          <span className="badge badge-advance">🥛 Delivery</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#eff6ff', color: '#1e40af' }}>
+                            Delivery
+                          </span>
                         )}
                       </td>
-                      <td>{entry.milk}</td>
-                      <td>{entry.curd}</td>
-                      <td style={{
-                        fontWeight: 800,
-                        color: isPay ? '#16a34a' : isMissed ? '#991b1b' : '#0c2340',
-                      }}>
+                      <td style={{ padding: '12px 18px' }}>{entry.milk}</td>
+                      <td style={{ padding: '12px 18px' }}>{entry.curd}</td>
+                      <td
+                        style={{
+                          padding: '12px 18px',
+                          fontWeight: 700,
+                          color: isPay ? '#059669' : isMissed ? '#dc2626' : '#0f172a',
+                        }}
+                      >
                         {isPay ? `- ₹${entry.paidAmount}` : isMissed ? '₹0' : `+ ₹${entry.amount}`}
                       </td>
-                      <td>
-                        <div style={{ fontWeight: 600, fontSize: '0.82rem' }}>
+                      <td style={{ padding: '12px 18px' }}>
+                        <div style={{ fontWeight: 600, color: '#334155' }}>
                           {entry.paymentMethod}
                         </div>
-                        <div style={{ fontSize: '0.72rem', color: '#597361' }}>
-                          {entry.notes}
-                        </div>
+                        {entry.notes && (
+                          <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {entry.notes}
+                          </div>
+                        )}
                       </td>
-                      <td style={{ fontSize: '0.85rem', color: '#597361' }}>
+                      <td style={{ padding: '12px 18px', color: '#64748b' }}>
                         {entry.deliveryBoyName || 'Admin'}
                       </td>
-                      <td style={{
-                        textAlign: 'right',
-                        fontWeight: 800,
-                        fontSize: '0.95rem',
-                        color: entry.balance > 0 ? '#dc2626' : entry.balance < 0 ? '#2563eb' : '#16a34a',
-                      }}>
+                      <td
+                        style={{
+                          padding: '12px 18px',
+                          textAlign: 'right',
+                          fontWeight: 800,
+                          color: entry.balance > 0 ? '#dc2626' : entry.balance < 0 ? '#2563eb' : '#059669',
+                        }}
+                      >
                         {entry.balance > 0 && `₹${entry.balance}`}
                         {entry.balance < 0 && `₹${Math.abs(entry.balance)} Adv`}
                         {entry.balance === 0 && `₹0`}

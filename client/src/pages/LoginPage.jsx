@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Lock, Phone, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage({ setActiveTab }) {
   const { login } = useAuth();
-  const [mobile, setMobile] = useState('');
+  const urlParams = new URLSearchParams(window.location.search);
+  const isDeliveryPortal = urlParams.get('portal') === 'delivery';
+
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -14,26 +17,30 @@ export default function LoginPage({ setActiveTab }) {
     e.preventDefault();
     setError('');
 
-    if (!mobile.trim()) {
-      setError('Please enter your registered mobile number');
+    if (!identifier.trim()) {
+      setError('Please enter your registered email or mobile number');
       return;
     }
 
     setIsLoading(true);
-    const res = await login(mobile.trim(), password);
+    const res = await login(identifier.trim(), password);
     setIsLoading(false);
 
     if (res.success && res.user) {
-      // Role-based automatic redirect without user having to select role
-      if (res.user.role === 'admin') {
-        setActiveTab('dashboard');
-      } else if (res.user.role === 'delivery_boy') {
+      // Role-based dashboard navigation
+      if (res.user.role === 'delivery_boy') {
+        localStorage.setItem('nmd_current_tab', 'delivery-boy-app');
         setActiveTab('delivery-boy-app');
+      } else if (res.user.role === 'admin') {
+        localStorage.setItem('nmd_admin_tab', 'dashboard');
+        localStorage.setItem('nmd_current_tab', 'dashboard');
+        setActiveTab('dashboard');
       } else {
+        localStorage.setItem('nmd_current_tab', 'customer-portal');
         setActiveTab('customer-portal');
       }
     } else {
-      setError('Invalid mobile number or password. Please verify and try again.');
+      setError(res.message || 'Invalid email/mobile or password. Please verify and try again.');
     }
   };
 
@@ -51,27 +58,49 @@ export default function LoginPage({ setActiveTab }) {
       <div
         className="dairy-fade-in-up"
         style={{
-          maxWidth: '360px',
+          maxWidth: '380px',
           width: '100%',
           background: '#ffffff',
           borderRadius: '20px',
-          padding: '28px 22px',
+          padding: '28px 24px',
           boxShadow: '0 12px 36px rgba(13, 92, 58, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
           border: '1.5px solid #e2ece3',
         }}
       >
+        {/* Delivery Partner Portal Dedicated Banner */}
+        {isDeliveryPortal && (
+          <div
+            style={{
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              borderRadius: '12px',
+              padding: '10px 14px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#1e40af',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+            }}
+          >
+            <span style={{ fontSize: '1.1rem' }}>🚚</span>
+            <span>Delivery Partner Portal — Sign in with the credentials received in your dispatch email.</span>
+          </div>
+        )}
+
         {/* Brand Header */}
         <div style={{ textAlign: 'center', marginBottom: '22px' }}>
           <div
             onClick={() => setActiveTab('home')}
             style={{
-              width: '54px',
-              height: '54px',
+              width: '64px',
+              height: '64px',
               borderRadius: '50%',
               overflow: 'hidden',
               margin: '0 auto 12px auto',
               background: '#ffffff',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
               border: '2px solid #0d5c3a',
               cursor: 'pointer',
               display: 'flex',
@@ -82,45 +111,48 @@ export default function LoginPage({ setActiveTab }) {
             <img src="/logo.png" alt="Natural Milk Dairy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
 
-          <h2 style={{ fontSize: '1.5rem', color: '#0c2340', fontWeight: 900, margin: 0, lineHeight: 1.2 }}>
-            Sign In
+          <h2 style={{ fontSize: '1.45rem', color: '#0c2340', fontWeight: 900, margin: 0, lineHeight: 1.2 }}>
+            {isDeliveryPortal ? 'Delivery Partner Sign In' : 'Sign In'}
           </h2>
           <p style={{ color: '#597361', fontSize: '0.84rem', marginTop: '4px' }}>
-            Access your Natural Milk Dairy account
+            {isDeliveryPortal
+              ? 'Enter your mobile/email and portal password'
+              : 'Access your Natural Milk Dairy account'}
           </p>
         </div>
 
-        {/* Unified Login Form — No Role Selector */}
+        {/* Unified Login Form */}
         <form onSubmit={handleSubmit}>
           {error && (
             <div
               style={{
                 background: '#fee2e2',
                 color: '#991b1b',
-                padding: '9px 12px',
-                borderRadius: '8px',
+                padding: '10px 14px',
+                borderRadius: '10px',
                 fontSize: '0.82rem',
                 marginBottom: '14px',
                 border: '1px solid #fecaca',
-                lineHeight: 1.4,
+                lineHeight: 1.45,
+                fontWeight: 600,
               }}
             >
-              {error}
+              ⚠️ {error}
             </div>
           )}
 
           <div style={{ marginBottom: '14px' }}>
             <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
-              Mobile Number
+              Email or Mobile Number
             </label>
             <div style={{ position: 'relative' }}>
-              <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '13px' }} />
+              <Mail size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '13px' }} />
               <input
-                type="tel"
+                type="text"
                 required
-                placeholder="e.g. 9876543210"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                placeholder="e.g. admin@gmail.com"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 style={{
                   paddingLeft: '36px',
                   height: '42px',
@@ -202,9 +234,9 @@ export default function LoginPage({ setActiveTab }) {
         </form>
 
         {/* Switch to Register */}
-        <div style={{ marginTop: '18px', textAlign: 'center', borderTop: '1px solid #edf3ee', paddingTop: '14px' }}>
+        <div style={{ marginTop: '14px', textAlign: 'center', borderTop: '1px solid #edf3ee', paddingTop: '12px' }}>
           <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0 }}>
-            Don't have an account yet?{' '}
+            New customer?{' '}
             <button
               onClick={() => setActiveTab('register')}
               style={{

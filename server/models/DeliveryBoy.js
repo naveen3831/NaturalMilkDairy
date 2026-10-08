@@ -2,7 +2,9 @@ const mongoose = require('mongoose');
 
 const deliveryBoySchema = new mongoose.Schema({
   name: { type: String, required: true },
+  email: { type: String, default: '' },
   mobile: { type: String, required: true, unique: true },
+  password: { type: String, default: '' },
   assignedArea: { type: String, default: '' },
   vehicleNumber: { type: String, default: '' },
   status: { type: String, enum: ['active', 'inactive'], default: 'active' },

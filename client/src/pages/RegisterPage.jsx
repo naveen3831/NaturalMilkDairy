@@ -4,7 +4,7 @@ import { User, ShieldCheck, Truck, Lock, Phone, MapPin, Milk, ArrowRight, CheckC
 
 export default function RegisterPage({ setActiveTab }) {
   const { register } = useAuth();
-  const [role, setRole] = useState('customer');
+  const role = 'customer';
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -37,16 +37,14 @@ export default function RegisterPage({ setActiveTab }) {
     setIsLoading(true);
     const result = await register({
       ...formData,
-      role,
+      role: 'customer',
     });
     setIsLoading(false);
 
     if (result.success) {
       setRegisteredSuccess(true);
       setTimeout(() => {
-        if (role === 'admin') setActiveTab('dashboard');
-        else if (role === 'delivery_boy') setActiveTab('delivery-boy-app');
-        else setActiveTab('customer-portal');
+        setActiveTab('customer-portal');
       }, 1500);
     } else {
       setError(result.message || 'Registration failed. Please try again.');
@@ -98,93 +96,11 @@ export default function RegisterPage({ setActiveTab }) {
           </div>
 
           <h2 style={{ fontSize: '1.8rem', color: '#0c2340', fontWeight: 900, margin: 0 }}>
-            Create Your Account
+            Create Customer Account
           </h2>
           <p style={{ color: '#597361', fontSize: '0.9rem', marginTop: '4px' }}>
-            Join Natural Milk Dairy for seamless doorstep deliveries & ledger tracking
+            Join Natural Milk Dairy for fresh doorstep morning deliveries & live tracking
           </p>
-        </div>
-
-        {/* Role Selector */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '6px',
-            background: '#f1f5f2',
-            padding: '5px',
-            borderRadius: '14px',
-            marginBottom: '26px',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => setRole('customer')}
-            style={{
-              padding: '10px 4px',
-              borderRadius: '10px',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              border: 'none',
-              background: role === 'customer' ? '#0d5c3a' : 'transparent',
-              color: role === 'customer' ? '#ffffff' : '#4b5563',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s',
-            }}
-          >
-            <User size={16} />
-            <span>Customer</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRole('delivery_boy')}
-            style={{
-              padding: '10px 4px',
-              borderRadius: '10px',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              border: 'none',
-              background: role === 'delivery_boy' ? '#0d5c3a' : 'transparent',
-              color: role === 'delivery_boy' ? '#ffffff' : '#4b5563',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s',
-            }}
-          >
-            <Truck size={16} />
-            <span>Delivery Boy</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRole('admin')}
-            style={{
-              padding: '10px 4px',
-              borderRadius: '10px',
-              fontSize: '0.84rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              border: 'none',
-              background: role === 'admin' ? '#0d5c3a' : 'transparent',
-              color: role === 'admin' ? '#ffffff' : '#4b5563',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '4px',
-              transition: 'all 0.2s',
-            }}
-          >
-            <ShieldCheck size={16} />
-            <span>Dairy Owner</span>
-          </button>
         </div>
 
         {registeredSuccess ? (

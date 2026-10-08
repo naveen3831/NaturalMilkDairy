@@ -1,222 +1,257 @@
-const store = require('../storage/store');
-
-// Format date as YYYY-MM-DD
-const formatDate = (d = new Date()) => {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const Delivery = require('../models/Delivery');
+const Customer = require('../models/Customer');
+const DeliveryBoy = require('../models/DeliveryBoy');
+const Payment = require('../models/Payment');
+const { recordAudit } = require('../services/auditService');
+const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 
 // Get today's or selected date deliveries
-const getDeliveries = (req, res) => {
-  const date = req.query.date || formatDate();
-  const { status, deliveryBoyId, search } = req.query;
+const getDeliveries = async (req, res) => {
+  try {
+    const date = req.query.date || formatDate();
+    const { status, deliveryBoyId, search } = req.query;
 
-  // Auto-generate scheduled deliveries for this date if not already generated
-  store.ensureDeliveriesForDate(date);
+    // Auto-generate scheduled deliveries in MongoDB for this date
+    await ensureDeliveriesForDate(date);
 
-  let list = store.data.deliveries.filter((d) => d.deliveryDate === date);
+    const filter = { deliveryDate: date };
 
-  if (deliveryBoyId && deliveryBoyId !== 'all') {
-    list = list.filter((d) => d.deliveryBoyId === deliveryBoyId);
+    if (deliveryBoyId && deliveryBoyId !== 'all') {
+      filter.deliveryBoyId = deliveryBoyId;
+    }
+
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    if (search) {
+      const q = search.trim();
+      filter.$or = [
+        { customerName: { $regex: q, $options: 'i' } },
+        { customerAddress: { $regex: q, $options: 'i' } },
+        { customerPhone: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const list = await Delivery.find(filter).sort({ customerName: 1 }).lean();
+
+    const total = list.length;
+    const delivered = list.filter((d) => d.status === 'delivered').length;
+    const pending = list.filter((d) => d.status === 'pending').length;
+    const notDelivered = list.filter((d) => d.status === 'not_delivered').length;
+
+    return res.json({
+      success: true,
+      date,
+      summary: { total, delivered, pending, notDelivered },
+      deliveries: list.map((d) => ({
+        ...d,
+        id: d._id.toString(),
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
-
-  if (status && status !== 'all') {
-    list = list.filter((d) => d.status === status);
-  }
-
-  if (search) {
-    const q = search.toLowerCase();
-    list = list.filter(
-      (d) =>
-        d.customerName.toLowerCase().includes(q) ||
-        (d.customerAddress && d.customerAddress.toLowerCase().includes(q)) ||
-        (d.customerPhone && d.customerPhone.includes(q))
-    );
-  }
-
-  // Summary counts
-  const total = list.length;
-  const delivered = list.filter((d) => d.status === 'delivered').length;
-  const pending = list.filter((d) => d.status === 'pending').length;
-  const notDelivered = list.filter((d) => d.status === 'not_delivered').length;
-
-  return res.json({
-    success: true,
-    date,
-    summary: { total, delivered, pending, notDelivered },
-    deliveries: list,
-  });
 };
 
-// Mark delivery as Delivered (1 or 2-tap fast UX flow)
-const markDelivered = (req, res) => {
-  const { id } = req.params;
-  const {
-    actualMilk,
-    actualCurd,
-    paymentMethod, // 'credit' | 'cash' | 'upi' | 'advance'
-    notes,
-    actor,
-    collectedAmount,
-  } = req.body;
+// Mark delivery as Delivered
+const markDelivered = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      actualMilk,
+      actualCurd,
+      paymentMethod,
+      notes,
+      actor,
+      collectedAmount,
+    } = req.body;
 
-  const delivery = store.data.deliveries.find((d) => d.id === id);
-  if (!delivery) {
-    return res.status(404).json({ success: false, message: 'Delivery record not found' });
-  }
+    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    const delivery = await Delivery.findOne(query);
 
-  const customer = store.data.customers.find((c) => c.id === delivery.customerId);
-
-  const milk = actualMilk !== undefined ? Number(actualMilk) : delivery.plannedMilk;
-  const curd = actualCurd !== undefined ? Number(actualCurd) : delivery.plannedCurd;
-  const milkPrice = delivery.milkPrice || 60;
-  const curdPrice = delivery.curdPrice || 30; // ₹30 per 500g
-
-  const totalAmount = milk * milkPrice + (curd / 500) * curdPrice;
-  const method = paymentMethod || delivery.paymentMethod || 'credit';
-
-  delivery.actualMilk = milk;
-  delivery.actualCurd = curd;
-  delivery.totalAmount = totalAmount;
-  delivery.status = 'delivered';
-  delivery.deliveredAt = new Date().toISOString();
-  delivery.paymentMethod = method;
-  delivery.paymentStatus = method === 'credit' ? 'credit' : 'paid';
-  if (notes) delivery.notes = notes;
-
-  // Handle financial ledger rules
-  if (customer) {
-    if (method === 'credit') {
-      // Rule 1: Delivered on credit -> add to customer outstanding balance
-      customer.currentBalance += totalAmount;
-    } else if (method === 'cash' || method === 'upi') {
-      // Immediate payment collected at delivery
-      const paid = collectedAmount !== undefined ? Number(collectedAmount) : totalAmount;
-      delivery.paymentAmount = paid;
-
-      const prevBal = customer.currentBalance;
-      // If customer had an existing balance and paid, net change = (totalAmount - paid)
-      customer.currentBalance = prevBal + (totalAmount - paid);
-
-      // Record in Payment ledger
-      store.data.payments.push({
-        id: 'pay_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-        customerId: customer.id,
-        customerName: customer.name,
-        amount: paid,
-        paymentMethod: method,
-        paymentDate: new Date().toISOString(),
-        collectedBy: actor || delivery.deliveryBoyName || 'Delivery Boy',
-        deliveryBoyId: delivery.deliveryBoyId,
-        referenceNumber: `${method.toUpperCase()}-DELIVERY-${formatDate()}`,
-        previousBalance: prevBal,
-        newBalance: customer.currentBalance,
-        notes: `Collected during delivery on ${delivery.deliveryDate}`,
-        createdAt: new Date().toISOString(),
-      });
-
-      // Update Delivery Boy's daily collection stats
-      const boy = store.data.deliveryBoys.find((b) => b.id === delivery.deliveryBoyId);
-      if (boy) {
-        if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paid;
-        if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paid;
-      }
-    } else if (method === 'advance') {
-      // Consumes from existing advance credit
-      customer.currentBalance += totalAmount;
+    if (!delivery) {
+      return res.status(404).json({ success: false, message: 'Delivery record not found' });
     }
+
+    const customer = await Customer.findOne({
+      $or: [{ customerId: delivery.customerId }, { _id: delivery.customerId.length === 24 ? delivery.customerId : null }],
+    });
+
+    const milk = actualMilk !== undefined ? Number(actualMilk) : delivery.plannedMilk;
+    const curd = actualCurd !== undefined ? Number(actualCurd) : delivery.plannedCurd;
+    const milkPrice = delivery.milkPrice || 60;
+    const curdPrice = delivery.curdPrice || 30;
+
+    const totalAmount = milk * milkPrice + (curd / 500) * curdPrice;
+    const method = paymentMethod || delivery.paymentMethod || 'credit';
+
+    delivery.actualMilk = milk;
+    delivery.actualCurd = curd;
+    delivery.totalAmount = totalAmount;
+    delivery.status = 'delivered';
+    delivery.deliveredAt = new Date();
+    delivery.paymentMethod = method;
+    delivery.paymentStatus = method === 'credit' ? 'credit' : 'paid';
+    if (notes) delivery.notes = notes;
+    await delivery.save();
+
+    let newCustomerBalance = 0;
+
+    if (customer) {
+      if (method === 'credit') {
+        customer.currentBalance += totalAmount;
+        await customer.save();
+        newCustomerBalance = customer.currentBalance;
+      } else if (method === 'cash' || method === 'upi') {
+        const paid = collectedAmount !== undefined ? Number(collectedAmount) : totalAmount;
+        delivery.paymentAmount = paid;
+        await delivery.save();
+
+        const prevBal = customer.currentBalance;
+        customer.currentBalance = prevBal + (totalAmount - paid);
+        await customer.save();
+        newCustomerBalance = customer.currentBalance;
+
+        // Record Payment in MongoDB
+        await Payment.create({
+          customerId: customer.customerId || customer._id.toString(),
+          customerName: customer.name,
+          amount: paid,
+          paymentMethod: method,
+          paymentDate: new Date(),
+          collectedBy: actor || delivery.deliveryBoyName || 'Delivery Boy',
+          deliveryBoyId: delivery.deliveryBoyId,
+          referenceNumber: `${method.toUpperCase()}-DELIVERY-${formatDate()}`,
+          previousBalance: prevBal,
+          newBalance: customer.currentBalance,
+          notes: `Collected during delivery on ${delivery.deliveryDate}`,
+          createdAt: new Date(),
+        });
+
+        // Update driver's daily cash
+        if (delivery.deliveryBoyId) {
+          const boyQuery = delivery.deliveryBoyId.length === 24 ? { _id: delivery.deliveryBoyId } : { mobile: delivery.deliveryBoyId };
+          const boy = await DeliveryBoy.findOne(boyQuery);
+          if (boy) {
+            if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paid;
+            if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paid;
+            await boy.save();
+          }
+        }
+      } else if (method === 'advance') {
+        customer.currentBalance += totalAmount;
+        await customer.save();
+        newCustomerBalance = customer.currentBalance;
+      }
+    }
+
+    await recordAudit(
+      'Delivery Completed',
+      actor || delivery.deliveryBoyName || 'Delivery Boy',
+      `Delivered ${milk}L Milk + ${curd}g Curd to ${delivery.customerName} (₹${totalAmount} via ${method.toUpperCase()})`,
+      'delivery'
+    );
+
+    return res.json({
+      success: true,
+      message: 'Delivery marked completed successfully',
+      delivery: {
+        ...delivery.toObject(),
+        id: delivery._id.toString(),
+      },
+      customerBalance: newCustomerBalance,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
-
-  store.addAudit(
-    'Delivery Completed',
-    actor || delivery.deliveryBoyName || 'Delivery Boy',
-    `Delivered ${milk}L Milk + ${curd}g Curd to ${delivery.customerName} (₹${totalAmount} via ${method.toUpperCase()})`,
-    'delivery'
-  );
-
-  store.save();
-
-  return res.json({
-    success: true,
-    message: 'Delivery marked completed successfully',
-    delivery,
-    customerBalance: customer ? customer.currentBalance : 0,
-  });
 };
 
 // Mark delivery as Not Delivered
-const markNotDelivered = (req, res) => {
-  const { id } = req.params;
-  const { reason, notes, actor } = req.body;
+const markNotDelivered = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason, notes, actor } = req.body;
 
-  const delivery = store.data.deliveries.find((d) => d.id === id);
-  if (!delivery) {
-    return res.status(404).json({ success: false, message: 'Delivery record not found' });
+    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    const delivery = await Delivery.findOne(query);
+
+    if (!delivery) {
+      return res.status(404).json({ success: false, message: 'Delivery record not found' });
+    }
+
+    delivery.status = 'not_delivered';
+    delivery.notDeliveredReason = reason || 'Customer Not Home';
+    delivery.actualMilk = 0;
+    delivery.actualCurd = 0;
+    delivery.totalAmount = 0;
+    delivery.deliveredAt = new Date();
+    if (notes) delivery.notes = notes;
+    await delivery.save();
+
+    await recordAudit(
+      'Delivery Marked Not Delivered',
+      actor || delivery.deliveryBoyName || 'Delivery Boy',
+      `${delivery.customerName} - Reason: ${delivery.notDeliveredReason}${notes ? ` (${notes})` : ''}`,
+      'delivery'
+    );
+
+    return res.json({
+      success: true,
+      message: 'Delivery marked as Not Delivered (no charge applied)',
+      delivery: {
+        ...delivery.toObject(),
+        id: delivery._id.toString(),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
-
-  delivery.status = 'not_delivered';
-  delivery.notDeliveredReason = reason || 'Customer Not Home';
-  delivery.actualMilk = 0;
-  delivery.actualCurd = 0;
-  delivery.totalAmount = 0; // Rule 2: Not Delivered -> No charge by default
-  delivery.deliveredAt = new Date().toISOString();
-  if (notes) delivery.notes = notes;
-
-  store.addAudit(
-    'Delivery Marked Not Delivered',
-    actor || delivery.deliveryBoyName || 'Delivery Boy',
-    `${delivery.customerName} - Reason: ${delivery.notDeliveredReason}${notes ? ` (${notes})` : ''}`,
-    'delivery'
-  );
-
-  store.save();
-
-  return res.json({
-    success: true,
-    message: 'Delivery marked as Not Delivered (no charge applied)',
-    delivery,
-  });
 };
 
 // Batch sync for offline mode
-const batchSyncOfflineDeliveries = (req, res) => {
-  const { offlineActions } = req.body; // array of { type: 'delivered'|'not_delivered', id, data }
+const batchSyncOfflineDeliveries = async (req, res) => {
+  try {
+    const { offlineActions } = req.body;
 
-  if (!Array.isArray(offlineActions) || offlineActions.length === 0) {
-    return res.json({ success: true, count: 0, message: 'No offline actions to sync' });
-  }
-
-  let syncedCount = 0;
-  offlineActions.forEach((item) => {
-    const delivery = store.data.deliveries.find((d) => d.id === item.id);
-    if (!delivery) return;
-
-    if (item.type === 'delivered') {
-      delivery.status = 'delivered';
-      delivery.actualMilk = item.data?.actualMilk ?? delivery.plannedMilk;
-      delivery.actualCurd = item.data?.actualCurd ?? delivery.plannedCurd;
-      delivery.paymentMethod = item.data?.paymentMethod || 'credit';
-      delivery.totalAmount = delivery.actualMilk * (delivery.milkPrice || 60) + (delivery.actualCurd / 500) * (delivery.curdPrice || 30);
-      delivery.deliveredAt = item.data?.timestamp || new Date().toISOString();
-      syncedCount++;
-    } else if (item.type === 'not_delivered') {
-      delivery.status = 'not_delivered';
-      delivery.notDeliveredReason = item.data?.reason || 'Customer Not Home';
-      delivery.totalAmount = 0;
-      syncedCount++;
+    if (!Array.isArray(offlineActions) || offlineActions.length === 0) {
+      return res.json({ success: true, count: 0, message: 'No offline actions to sync' });
     }
-  });
 
-  store.addAudit('Offline Sync Completed', 'System', `Synced ${syncedCount} offline deliveries`, 'system');
-  store.save();
+    let syncedCount = 0;
+    for (const item of offlineActions) {
+      const query = item.id.length === 24 ? { _id: item.id } : { customerId: item.id };
+      const delivery = await Delivery.findOne(query);
+      if (!delivery) continue;
 
-  return res.json({
-    success: true,
-    count: syncedCount,
-    message: `Successfully synchronized ${syncedCount} offline deliveries`,
-  });
+      if (item.type === 'delivered') {
+        delivery.status = 'delivered';
+        delivery.actualMilk = item.data?.actualMilk ?? delivery.plannedMilk;
+        delivery.actualCurd = item.data?.actualCurd ?? delivery.plannedCurd;
+        delivery.paymentMethod = item.data?.paymentMethod || 'credit';
+        delivery.totalAmount = delivery.actualMilk * (delivery.milkPrice || 60) + (delivery.actualCurd / 500) * (delivery.curdPrice || 30);
+        delivery.deliveredAt = item.data?.timestamp ? new Date(item.data.timestamp) : new Date();
+        await delivery.save();
+        syncedCount++;
+      } else if (item.type === 'not_delivered') {
+        delivery.status = 'not_delivered';
+        delivery.notDeliveredReason = item.data?.reason || 'Customer Not Home';
+        delivery.totalAmount = 0;
+        await delivery.save();
+        syncedCount++;
+      }
+    }
+
+    await recordAudit('Offline Sync Completed', 'System', `Synced ${syncedCount} offline deliveries`, 'system');
+
+    return res.json({
+      success: true,
+      count: syncedCount,
+      message: `Successfully synchronized ${syncedCount} offline deliveries`,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 module.exports = {

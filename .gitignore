@@ -20,3 +20,7 @@ yarn-debug.log*
 .system_generated/
 .DS_Store
 Thumbs.db
+
+# Storage JSON files (database is MongoDB Atlas)
+server/storage/*.json
+

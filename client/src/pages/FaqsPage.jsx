@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, MessageSquare, Phone, Search, HelpCircle } from 'lucide-react';
 import Footer from '../components/Footer';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function FaqsPage({ setActiveTab }) {
   const [openFaq, setOpenFaq] = useState(0);
@@ -55,16 +56,29 @@ export default function FaqsPage({ setActiveTab }) {
 
   return (
     <div style={{ background: '#f8faf8', minHeight: '100vh', paddingBottom: '90px' }}>
-      {/* Header */}
+      {/* Header with Organic Farm Background Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0d5c3a 0%, #0c2340 100%)',
+          position: 'relative',
+          backgroundImage: `url(${CLOUDINARY_MEDIA.organicFarm})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 40%',
           color: '#ffffff',
-          padding: '70px 24px 60px 24px',
+          padding: '80px 24px 70px 24px',
           textAlign: 'center',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(7, 31, 19, 0.78) 0%, rgba(7, 31, 19, 0.90) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -208,6 +222,68 @@ export default function FaqsPage({ setActiveTab }) {
               );
             })
           )}
+        </div>
+
+        {/* Visual Milk & Glass Bottle Photo Cards */}
+        <div
+          style={{
+            marginTop: '60px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+            gap: '26px',
+          }}
+        >
+          <div
+            style={{
+              borderRadius: '20px',
+              overflow: 'hidden',
+              background: '#ffffff',
+              border: '1.5px solid #e2ece3',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div style={{ height: '220px', overflow: 'hidden' }}>
+              <img
+                src={CLOUDINARY_MEDIA.glassBottles}
+                alt="Sterilized Glass Bottles"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <div style={{ padding: '22px' }}>
+              <h4 style={{ fontSize: '1.15rem', color: '#0c2340', fontWeight: 800, marginBottom: '6px' }}>
+                Why do we strictly use Glass Bottles?
+              </h4>
+              <p style={{ fontSize: '0.88rem', color: '#597361', lineHeight: 1.6 }}>
+                Hot milk packed into plastic pouches leaches harmful endocrine-disrupting chemicals. Our sterilized glass bottles preserve 100% natural flavor with zero environmental plastic waste.
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: '20px',
+              overflow: 'hidden',
+              background: '#ffffff',
+              border: '1.5px solid #e2ece3',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div style={{ height: '220px', overflow: 'hidden' }}>
+              <img
+                src={CLOUDINARY_MEDIA.milkPour}
+                alt="Cold Farm Milk Pour"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <div style={{ padding: '22px' }}>
+              <h4 style={{ fontSize: '1.15rem', color: '#0c2340', fontWeight: 800, marginBottom: '6px' }}>
+                Should I boil the milk after morning delivery?
+              </h4>
+              <p style={{ fontSize: '0.88rem', color: '#597361', lineHeight: 1.6 }}>
+                Yes! Our milk is farm-fresh and chilled to 4°C immediately after milking. We recommend a gentle, slow boil on your stove, which produces a rich, thick golden malai layer on top.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* WhatsApp & Call Banner */}

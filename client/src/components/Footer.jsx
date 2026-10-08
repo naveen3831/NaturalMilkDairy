@@ -1,5 +1,5 @@
 import React from 'react';
-import { Milk, Phone, Mail, MapPin, Clock, ShieldCheck, HeartHandshake, ArrowUp, Database } from 'lucide-react';
+import { Milk, Phone, Mail, MapPin, Clock, ShieldCheck, HeartHandshake, ArrowUp } from 'lucide-react';
 
 export default function Footer({ setActiveTab }) {
   const scrollToTop = () => {
@@ -12,7 +12,7 @@ export default function Footer({ setActiveTab }) {
         background: '#071629',
         color: '#ffffff',
         borderTop: '3px solid #0d5c3a',
-        padding: '70px 24px 30px 24px',
+        padding: '38px 24px 18px 24px',
         position: 'relative',
       }}
     >
@@ -21,9 +21,9 @@ export default function Footer({ setActiveTab }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '40px',
-            paddingBottom: '50px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '28px',
+            paddingBottom: '28px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           }}
         >
@@ -205,48 +205,21 @@ export default function Footer({ setActiveTab }) {
         {/* Bottom Bar */}
         <div
           style={{
-            paddingTop: '26px',
+            paddingTop: '16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
-            gap: '16px',
-            fontSize: '0.82rem',
+            gap: '14px',
+            fontSize: '0.8rem',
             color: '#94a3b8',
           }}
         >
           <div>
-            © 2026 Natural Milk Dairy. All rights reserved. • FSSAI License Certified.
+            © 2026 Natural Milk Dairy. All rights reserved. • FSSAI Certified Organic Farm Fresh.
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            {/* MongoDB Atlas Real-Time Cloud Status Badge */}
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'rgba(13, 92, 58, 0.35)',
-                padding: '5px 14px',
-                borderRadius: '20px',
-                border: '1px solid rgba(34, 197, 94, 0.35)',
-                color: '#86efac',
-                fontSize: '0.78rem',
-              }}
-            >
-              <span
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                  boxShadow: '0 0 8px #22c55e',
-                  display: 'inline-block',
-                }}
-              />
-              <span>MongoDB Atlas Cloud: Connected</span>
-            </div>
-
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
             <button
               onClick={scrollToTop}
               className="dairy-btn-hover"
@@ -256,7 +229,7 @@ export default function Footer({ setActiveTab }) {
                 gap: '6px',
                 background: 'rgba(255, 255, 255, 0.1)',
                 color: '#cbd5e1',
-                padding: '6px 12px',
+                padding: '5px 12px',
                 borderRadius: '8px',
                 fontSize: '0.78rem',
                 border: '1px solid rgba(255, 255, 255, 0.15)',

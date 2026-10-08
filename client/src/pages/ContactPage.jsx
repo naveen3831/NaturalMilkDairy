@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Phone, Mail, MapPin, Clock, MessageSquare, Send, CheckCircle2 } from 'lucide-react';
 import Footer from '../components/Footer';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function ContactPage({ setActiveTab }) {
   const [formData, setFormData] = useState({
@@ -20,16 +21,29 @@ export default function ContactPage({ setActiveTab }) {
 
   return (
     <div style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
+      {/* Header with Organic Farm Background Banner */}
       <div
         style={{
-          background: 'linear-gradient(135deg, #0d5c3a 0%, #0c2340 100%)',
+          position: 'relative',
+          backgroundImage: `url(${CLOUDINARY_MEDIA.organicFarm})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 40%',
           color: '#ffffff',
-          padding: '70px 24px 60px 24px',
+          padding: '80px 24px 70px 24px',
           textAlign: 'center',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(7, 31, 19, 0.78) 0%, rgba(7, 31, 19, 0.90) 100%)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -275,6 +289,67 @@ export default function ContactPage({ setActiveTab }) {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+
+        {/* Visit Our Organic Dairy Farm Banner */}
+        <div
+          style={{
+            marginTop: '70px',
+            borderRadius: '24px',
+            overflow: 'hidden',
+            boxShadow: '0 16px 40px rgba(0,0,0,0.08)',
+            position: 'relative',
+            height: '360px',
+            marginBottom: '70px',
+          }}
+        >
+          <img
+            src={CLOUDINARY_MEDIA.cowsPasture}
+            alt="Visit Our Organic Dairy Pastures in Karjat"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(90deg, rgba(7, 31, 19, 0.9) 0%, rgba(7, 31, 19, 0.5) 60%, transparent 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 44px',
+            }}
+          >
+            <div style={{ maxWidth: '580px', color: '#ffffff' }}>
+              <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                Open Farm Policy
+              </span>
+              <h3 style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
+                Visit Our Cows & Pastures in Person
+              </h3>
+              <p style={{ color: '#e2fdf0', fontSize: '1rem', lineHeight: 1.6, marginBottom: '22px' }}>
+                We believe in 100% transparency. Families and kids are welcome to visit our Karjat & Nashik dairy pastures on weekends. See how our cattle live, graze, and get milked without human touch.
+              </p>
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                <a
+                  href="tel:+919876543210"
+                  style={{
+                    background: '#E5B842',
+                    color: '#071629',
+                    padding: '12px 24px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '0.92rem',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <Phone size={16} />
+                  <span>Call to Schedule a Weekend Farm Tour</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </div>
