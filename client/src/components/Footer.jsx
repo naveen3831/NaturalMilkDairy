@@ -8,6 +8,7 @@ export default function Footer({ setActiveTab }) {
 
   return (
     <footer
+      className="public-site-footer"
       style={{
         background: '#071629',
         color: '#ffffff',
@@ -16,9 +17,10 @@ export default function Footer({ setActiveTab }) {
         position: 'relative',
       }}
     >
-      <div style={{ maxWidth: '1360px', margin: '0 auto' }}>
+      <div className="public-site-footer-inner" style={{ maxWidth: '1360px', margin: '0 auto' }}>
         {/* Top Grid */}
         <div
+          className="public-site-footer-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',

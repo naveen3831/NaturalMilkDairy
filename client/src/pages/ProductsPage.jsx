@@ -150,9 +150,10 @@ export default function ProductsPage({ setActiveTab }) {
   };
 
   return (
-    <div style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="public-products-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Page Header with Real Glass Bottles Background Banner */}
       <div
+        className="public-page-hero"
         style={{
           position: 'relative',
           backgroundImage: `url(${CLOUDINARY_MEDIA.glassBottles})`,
@@ -173,8 +174,9 @@ export default function ProductsPage({ setActiveTab }) {
           }}
         />
 
-        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
+        <div className="public-page-hero-content" style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
+            className="public-products-eyebrow"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -202,6 +204,9 @@ export default function ProductsPage({ setActiveTab }) {
 
           {/* Category Filter Tabs with Smooth Animation */}
           <div
+            className="public-product-category-filter"
+            role="group"
+            aria-label="Filter products by category"
             style={{
               display: 'inline-flex',
               background: 'rgba(255, 255, 255, 0.1)',
@@ -224,6 +229,7 @@ export default function ProductsPage({ setActiveTab }) {
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
+                aria-pressed={activeCategory === cat.id}
                 style={{
                   padding: '9px 22px',
                   borderRadius: '25px',
@@ -245,8 +251,9 @@ export default function ProductsPage({ setActiveTab }) {
       </div>
 
       {/* Product Grid with Images & Animations */}
-      <div style={{ maxWidth: '1360px', margin: '60px auto', padding: '0 24px', flex: 1, width: '100%' }}>
+      <div className="public-page-content" style={{ maxWidth: '1360px', margin: '60px auto', padding: '0 24px', flex: 1, width: '100%' }}>
         <div
+          className="public-card-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
@@ -271,6 +278,7 @@ export default function ProductsPage({ setActiveTab }) {
             >
               {/* Product Real Image Header */}
               <div
+                className="public-product-image"
                 style={{
                   position: 'relative',
                   width: '100%',
@@ -332,8 +340,8 @@ export default function ProductsPage({ setActiveTab }) {
               </div>
 
               {/* Product Body Details */}
-              <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
+              <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div className="public-product-card-info">
                   <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0c2340', marginBottom: '8px' }}>
                     {p.name}
                   </h3>
@@ -343,7 +351,7 @@ export default function ProductsPage({ setActiveTab }) {
                   </p>
 
                   {/* Features List */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                     {p.features.map((feat, fidx) => (
                       <div key={fidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#475569' }}>
                         <Check size={14} color="#16a34a" />
@@ -355,6 +363,7 @@ export default function ProductsPage({ setActiveTab }) {
 
                 {/* Price and CTA */}
                 <div
+                  className="public-product-card-footer"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -363,14 +372,14 @@ export default function ProductsPage({ setActiveTab }) {
                     borderTop: '1px solid #edf3ee',
                   }}
                 >
-                  <div>
+                  <div className="public-product-price">
                     <span style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0d5c3a' }}>{p.price}</span>
                     <span style={{ fontSize: '0.82rem', color: '#597361', marginLeft: '6px' }}>{p.unit}</span>
                   </div>
 
                   <button
                     onClick={() => handleSubscribe(p)}
-                    className="dairy-btn-hover"
+                    className="dairy-btn-hover public-product-subscribe"
                     style={{
                       background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
                       color: '#ffffff',
@@ -397,6 +406,7 @@ export default function ProductsPage({ setActiveTab }) {
 
         {/* Pasture Cows & Single-Source Heritage Banner */}
         <div
+          className="public-feature-grid public-products-farm-banner"
           style={{
             marginTop: '80px',
             borderRadius: '24px',
@@ -412,6 +422,7 @@ export default function ProductsPage({ setActiveTab }) {
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
           <div
+            className="public-products-farm-overlay"
             style={{
               position: 'absolute',
               inset: 0,
@@ -421,11 +432,11 @@ export default function ProductsPage({ setActiveTab }) {
               padding: '0 40px',
             }}
           >
-            <div style={{ maxWidth: '560px', color: '#ffffff' }}>
+            <div className="public-products-farm-content" style={{ maxWidth: '560px', color: '#ffffff' }}>
               <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Single-Source Heritage
               </span>
-              <h3 style={{ fontSize: '2.1rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
+              <h3 className="public-products-farm-title" style={{ fontSize: '2.1rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
                 100% Grass-Fed Cows. Sweeter, Creamier Milk.
               </h3>
               <p style={{ color: '#e2fdf0', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '20px' }}>

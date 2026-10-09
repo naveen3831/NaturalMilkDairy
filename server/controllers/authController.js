@@ -155,7 +155,14 @@ const login = async (req, res) => {
         });
       }
 
-      const custPass = foundCustomer.password || `${foundCustomer.name.split(' ')[0].toLowerCase()}@123`;
+      const customerUser = await User.findOne({
+        mobile: foundCustomer.mobile,
+        role: 'customer',
+      }).lean();
+      const custPass =
+        customerUser?.password ||
+        foundCustomer.password ||
+        `${foundCustomer.name.split(' ')[0].toLowerCase()}@123`;
       if (custPass && inputPassword && custPass !== inputPassword) {
         return res.status(401).json({
           success: false,
@@ -171,7 +178,7 @@ const login = async (req, res) => {
         role: 'customer',
         status: customerStatus,
         customerId: foundCustomer.customerId || 'CUST-101',
-        area: foundCustomer.area || 'Andheri West',
+        area: foundCustomer.area || '',
       };
       const token = generateToken(custPayload);
 
@@ -243,12 +250,15 @@ const register = async (req, res) => {
       frequency = 'daily',
     } = req.body;
 
-    if (!name || !mobile) {
+    if (typeof name !== 'string' || !name.trim() || typeof mobile !== 'string' || !mobile.trim()) {
       return res.status(400).json({ success: false, message: 'Name and mobile number are required' });
     }
 
     const cleanMobile = mobile.trim();
     const cleanName = name.trim();
+    if (typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({ success: false, message: 'Password is required' });
+    }
 
     const existingUser = await User.findOne({ mobile: cleanMobile });
     if (existingUser) {
@@ -256,10 +266,33 @@ const register = async (req, res) => {
     }
 
     if (role === 'customer') {
+      const existingCustomer = await Customer.findOne({ mobile: cleanMobile });
+      if (existingCustomer) {
+        return res.status(400).json({ success: false, message: 'A customer with this mobile number already exists. Please log in.' });
+      }
+
+      const configuredAreas = await DeliveryBoy.distinct('assignedArea', { status: 'active' });
+      const areaByKey = new Map(
+        configuredAreas
+          .filter((configuredArea) => typeof configuredArea === 'string' && configuredArea.trim())
+          .map((configuredArea) => [configuredArea.trim().toLowerCase(), configuredArea.trim()])
+      );
+      const selectedArea = areaByKey.get((typeof area === 'string' ? area : '').trim().toLowerCase());
+      if (!selectedArea) {
+        return res.status(400).json({
+          success: false,
+          message: 'Please select a delivery area currently served by the dairy.',
+        });
+      }
+      if (!['daily', 'alternate', 'weekdays'].includes(frequency)) {
+        return res.status(400).json({ success: false, message: 'Please select a valid delivery frequency.' });
+      }
+
       const custCount = await Customer.countDocuments();
       const customerId = `CUST-${custCount + 101}`;
 
-      const firstBoy = await DeliveryBoy.findOne({ assignedArea: area || 'Andheri West' });
+      const firstBoy = await DeliveryBoy.findOne({ assignedArea: selectedArea, status: 'active' });
+      const weekdayDelivery = frequency === 'weekdays';
 
       const newCustomer = await Customer.create({
         customerId,
@@ -267,15 +300,17 @@ const register = async (req, res) => {
         mobile: cleanMobile,
         whatsapp: cleanMobile,
         address: address || 'Home Delivery Address',
-        area: area || 'Andheri West',
+        area: selectedArea,
         status: 'active',
         deliveryPlan: {
           milkQty: Number(milkQty) || 1,
           milkUnit: 'L',
           curdQty: Number(curdQty) || 0,
           curdUnit: 'g',
-          frequency: frequency || 'daily',
-          deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          frequency: weekdayDelivery ? 'selected' : frequency,
+          deliveryDays: weekdayDelivery
+            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+            : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
           deliveryBoyId: firstBoy ? firstBoy._id.toString() : '',
           deliveryBoyName: firstBoy ? firstBoy.name : '',
           startDate: new Date(),
@@ -289,27 +324,34 @@ const register = async (req, res) => {
         createdAt: new Date(),
       });
 
-      await User.create({
-        name: cleanName,
-        mobile: cleanMobile,
-        password: password || '123456',
-        role: 'customer',
-        status: 'active',
-      });
+      try {
+        await User.create({
+          name: cleanName,
+          mobile: cleanMobile,
+          password: password.trim(),
+          role: 'customer',
+          status: 'active',
+        });
+      } catch (err) {
+        await Customer.deleteOne({ _id: newCustomer._id });
+        throw err;
+      }
 
       await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
 
+      const userPayload = {
+        id: newCustomer._id.toString(),
+        name: newCustomer.name,
+        mobile: newCustomer.mobile,
+        role: 'customer',
+        status: 'active',
+        customerId: newCustomer.customerId,
+        area: newCustomer.area,
+      };
       return res.status(201).json({
         success: true,
-        user: {
-          id: newCustomer._id.toString(),
-          name: newCustomer.name,
-          mobile: newCustomer.mobile,
-          role: 'customer',
-          customerId: newCustomer.customerId,
-          area: newCustomer.area,
-        },
-        token: `token_cust_${newCustomer._id}_${Date.now()}`,
+        user: userPayload,
+        token: generateToken(userPayload),
       });
     }
 
@@ -354,6 +396,23 @@ const register = async (req, res) => {
   }
 };
 
+const getDeliveryAreas = async (req, res) => {
+  try {
+    const configuredAreas = await DeliveryBoy.distinct('assignedArea', { status: 'active' });
+    const areasByKey = new Map();
+    configuredAreas.forEach((area) => {
+      if (typeof area === 'string' && area.trim()) {
+        const normalizedArea = area.trim();
+        areasByKey.set(normalizedArea.toLowerCase(), normalizedArea);
+      }
+    });
+
+    return res.json({ success: true, areas: [...areasByKey.values()].sort((a, b) => a.localeCompare(b)) });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Unable to load delivery areas.' });
+  }
+};
+
 const getMe = async (req, res) => {
   try {
     if (req.user) {
@@ -385,4 +444,4 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-module.exports = { login, register, getMe, getAllUsers };
+module.exports = { login, register, getDeliveryAreas, getMe, getAllUsers };

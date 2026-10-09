@@ -18,7 +18,9 @@ import {
   UserPlus,
   ChevronRight,
   Sparkles,
+  Bell,
 } from 'lucide-react';
+import { useNotifications } from '../context/NotificationContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function AdminLayout({
@@ -30,6 +32,7 @@ export default function AdminLayout({
 }) {
   const { user, logout } = useAuth();
   const { selectedDate, setSelectedDate, dashboardSummary } = useDairy();
+  const { unreadCount, setIsNotificationOpen } = useNotifications();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const summary = dashboardSummary || {};
@@ -501,35 +504,52 @@ export default function AdminLayout({
 
           {/* Right: Date Filter & Fast Actions */}
           <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Clean Date Picker */}
-            <div
+            {/* Notification Bell Button (Replaces Date Picker in Nav Bar) */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(true)}
               style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
+                fontWeight: 700,
+                fontSize: '0.82rem',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '7px',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '9px',
-                padding: '5px 10px',
+                position: 'relative',
+                transition: 'all 0.15s ease',
               }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.borderColor = '#059669';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#ffffff';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+              aria-label="View notifications"
             >
-              <Calendar size={14} color="#059669" />
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  color: '#0f172a',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              />
-            </div>
+              <Bell size={16} color="#059669" />
+              <span>Notifications</span>
+              {unreadCount > 0 && (
+                <span
+                  style={{
+                    background: '#e11d48',
+                    color: '#ffffff',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                  }}
+                >
+                  {unreadCount}
+                </span>
+              )}
+            </button>
 
             {/* Quick Action: Add Customer */}
             <button

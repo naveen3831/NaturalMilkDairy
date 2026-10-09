@@ -2,6 +2,7 @@ const Delivery = require('../models/Delivery');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const Payment = require('../models/Payment');
+const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 
@@ -153,6 +154,25 @@ const markDelivered = async (req, res) => {
       'delivery'
     );
 
+    // Send real-time notification to Admin
+    try {
+      await Notification.create({
+        recipientRole: 'admin',
+        title: '✅ Delivery Completed',
+        message: `${actor || delivery.deliveryBoyName || 'Driver'} delivered ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''} to ${delivery.customerName}. Collected: ₹${totalAmount} (${method.toUpperCase()}).`,
+        type: 'delivery_completed',
+        data: {
+          deliveryId: delivery._id.toString(),
+          customerName: delivery.customerName,
+          amount: totalAmount,
+          method,
+          driverName: delivery.deliveryBoyName || actor,
+        },
+      });
+    } catch (notifErr) {
+      console.warn('Admin notification error:', notifErr.message);
+    }
+
     return res.json({
       success: true,
       message: 'Delivery marked completed successfully',
@@ -195,6 +215,24 @@ const markNotDelivered = async (req, res) => {
       `${delivery.customerName} - Reason: ${delivery.notDeliveredReason}${notes ? ` (${notes})` : ''}`,
       'delivery'
     );
+
+    // Send real-time notification to Admin
+    try {
+      await Notification.create({
+        recipientRole: 'admin',
+        title: '⚠️ Delivery Issue / Missed',
+        message: `${actor || delivery.deliveryBoyName || 'Driver'} reported drop could not be completed for ${delivery.customerName}. Reason: ${delivery.notDeliveredReason}.`,
+        type: 'delivery_missed',
+        data: {
+          deliveryId: delivery._id.toString(),
+          customerName: delivery.customerName,
+          reason: delivery.notDeliveredReason,
+          driverName: delivery.deliveryBoyName || actor,
+        },
+      });
+    } catch (notifErr) {
+      console.warn('Admin notification error:', notifErr.message);
+    }
 
     return res.json({
       success: true,
@@ -254,9 +292,66 @@ const batchSyncOfflineDeliveries = async (req, res) => {
   }
 };
 
+// Assign delivery to delivery partner (sends notification to delivery partner)
+const assignDelivery = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { deliveryBoyId, deliveryBoyName, actor } = req.body;
+
+    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    const delivery = await Delivery.findOne(query);
+
+    if (!delivery) {
+      return res.status(404).json({ success: false, message: 'Delivery record not found' });
+    }
+
+    delivery.deliveryBoyId = deliveryBoyId || '';
+    delivery.deliveryBoyName = deliveryBoyName || '';
+    await delivery.save();
+
+    // Create notification for delivery partner
+    try {
+      await Notification.create({
+        recipientRole: 'delivery_boy',
+        recipientId: deliveryBoyId || '',
+        title: '📦 New Delivery Assigned',
+        message: `Dispatch Admin assigned customer ${delivery.customerName} (${delivery.plannedMilk}L Milk) at ${delivery.customerAddress || 'your route'} to your shift.`,
+        type: 'delivery_assigned',
+        data: {
+          deliveryId: delivery._id.toString(),
+          customerName: delivery.customerName,
+          deliveryBoyId,
+          deliveryBoyName,
+        },
+      });
+    } catch (notifErr) {
+      console.warn('Driver notification error:', notifErr.message);
+    }
+
+    await recordAudit(
+      'Delivery Partner Assigned',
+      actor || 'Admin',
+      `Assigned ${delivery.customerName} to ${deliveryBoyName || 'partner'}`,
+      'delivery'
+    );
+
+    return res.json({
+      success: true,
+      message: `Delivery assigned to ${deliveryBoyName || 'partner'} successfully`,
+      delivery: {
+        ...delivery.toObject(),
+        id: delivery._id.toString(),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getDeliveries,
   markDelivered,
   markNotDelivered,
   batchSyncOfflineDeliveries,
+  assignDelivery,
 };

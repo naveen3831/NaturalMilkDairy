@@ -31,6 +31,7 @@ import CustomerModal from './components/CustomerModal';
 import PaymentModal from './components/PaymentModal';
 import PauseDeliveryModal from './components/PauseDeliveryModal';
 import TempQuantityModal from './components/TempQuantityModal';
+import NotificationModal from './components/NotificationModal';
 
 export default function App() {
   const { user, logout } = useAuth();
@@ -365,6 +366,9 @@ export default function App() {
 
           {activeTab === 'audit-logs' && <AuditLogs />}
         </AdminLayout>
+      ) : activeTab === 'delivery-boy-app' ? (
+        /* Dedicated Driver Portal Layout (Sidebar on Web, Bottom Bar on Mobile) */
+        <DeliveryBoyApp setActiveTab={setActiveTab} />
       ) : (
         <>
           {/* Universal Navbar for Public & User Views */}
@@ -410,11 +414,6 @@ export default function App() {
                 onOpenPaymentModal={handleOpenPayment}
               />
             )}
-
-            {/* Delivery Boy Mobile App View */}
-            {activeTab === 'delivery-boy-app' && (
-              <DeliveryBoyApp />
-            )}
           </main>
         </>
       )}
@@ -451,6 +450,8 @@ export default function App() {
         }}
         customer={tempQtyCustomer}
       />
+
+      <NotificationModal />
     </div>
   );
 }

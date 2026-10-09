@@ -103,28 +103,23 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify(formData),
       });
       const data = await res.json();
-      if (data.success && data.user) {
+      if (data.success && data.user && data.token) {
         setUser(data.user);
-        if (data.token) {
-          setToken(data.token);
-          localStorage.setItem('nmd_jwt_token', data.token);
-        }
+        setToken(data.token);
+        localStorage.setItem('nmd_jwt_token', data.token);
         return { success: true, user: data.user, token: data.token };
       } else {
-        return { success: false, message: data.message || 'Registration failed' };
+        return {
+          success: false,
+          message: data.message || 'Registration did not return a valid customer account. Please try again.',
+        };
       }
     } catch (err) {
-      console.warn('API register error, falling back:', err);
-      const fallbackUser = {
-        id: 'usr_' + Date.now(),
-        name: formData.name,
-        mobile: formData.mobile,
-        email: formData.email,
-        role: formData.role || 'customer',
-        assignedArea: formData.area || 'Andheri West',
+      console.warn('API registration error:', err);
+      return {
+        success: false,
+        message: 'Unable to reach the registration service. Please try again when the server is available.',
       };
-      setUser(fallbackUser);
-      return { success: true, user: fallbackUser };
     }
   };
 

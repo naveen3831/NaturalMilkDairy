@@ -55,9 +55,10 @@ export default function FaqsPage({ setActiveTab }) {
   });
 
   return (
-    <div style={{ background: '#f8faf8', minHeight: '100vh', paddingBottom: '90px' }}>
+    <div className="public-faqs-page" style={{ background: '#f8faf8', minHeight: '100vh', paddingBottom: '90px' }}>
       {/* Header with Organic Farm Background Banner */}
       <div
+        className="public-page-hero"
         style={{
           position: 'relative',
           backgroundImage: `url(${CLOUDINARY_MEDIA.organicFarm})`,
@@ -78,7 +79,7 @@ export default function FaqsPage({ setActiveTab }) {
           }}
         />
 
-        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
+        <div className="public-page-hero-content" style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -128,8 +129,8 @@ export default function FaqsPage({ setActiveTab }) {
       </div>
 
       {/* Category Pills */}
-      <div style={{ maxWidth: '920px', margin: '40px auto 0 auto', padding: '0 24px' }}>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '32px' }}>
+      <div className="public-page-content" style={{ maxWidth: '920px', margin: '40px auto 0 auto', padding: '0 24px' }}>
+        <div className="public-faq-category-pills" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '32px' }}>
           {[
             { id: 'all', label: 'All Questions' },
             { id: 'delivery', label: 'Morning Delivery' },
@@ -159,7 +160,7 @@ export default function FaqsPage({ setActiveTab }) {
         </div>
 
         {/* FAQs List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div className="public-faq-list" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {filteredFaqs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', background: '#ffffff', borderRadius: '16px' }}>
               <p style={{ color: '#597361', fontSize: '1rem' }}>No questions found matching your search. Please reach out to us below!</p>
@@ -170,6 +171,7 @@ export default function FaqsPage({ setActiveTab }) {
               return (
                 <div
                   key={idx}
+                  className="public-faq-item"
                   style={{
                     background: '#ffffff',
                     borderRadius: '16px',
@@ -206,6 +208,7 @@ export default function FaqsPage({ setActiveTab }) {
 
                   {isOpen && (
                     <div
+                      className="public-card-grid"
                       style={{
                         padding: '0 24px 22px 24px',
                         color: '#475569',
@@ -226,6 +229,7 @@ export default function FaqsPage({ setActiveTab }) {
 
         {/* Visual Milk & Glass Bottle Photo Cards */}
         <div
+          className="public-faq-feature-grid"
           style={{
             marginTop: '60px',
             display: 'grid',
@@ -234,6 +238,7 @@ export default function FaqsPage({ setActiveTab }) {
           }}
         >
           <div
+            className="public-faq-feature-card"
             style={{
               borderRadius: '20px',
               overflow: 'hidden',
@@ -260,6 +265,7 @@ export default function FaqsPage({ setActiveTab }) {
           </div>
 
           <div
+            className="public-faq-feature-card"
             style={{
               borderRadius: '20px',
               overflow: 'hidden',

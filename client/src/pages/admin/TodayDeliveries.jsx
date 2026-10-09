@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
+import { useNotifications } from '../../context/NotificationContext';
 import {
   Truck,
   CheckCircle,
@@ -25,8 +26,10 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     fetchDeliveries,
     markDelivered,
     markNotDelivered,
+    assignDelivery,
     deliveryBoys,
   } = useDairy();
+  const { sendNotification } = useNotifications();
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [boyFilter, setBoyFilter] = useState('all');
@@ -88,6 +91,35 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
       actor: 'Admin',
     });
     setNotDeliveringItem(null);
+  };
+
+  const [assignmentSuccess, setAssignmentSuccess] = useState('');
+
+  const handleAssignDelivery = async (item, boyId, boyName) => {
+    if (!item) return;
+    try {
+      await assignDelivery(item.id, {
+        deliveryBoyId: boyId,
+        deliveryBoyName: boyName,
+        actor: 'Admin',
+      });
+
+      if (boyId) {
+        await sendNotification({
+          recipientRole: 'delivery_boy',
+          recipientId: boyId,
+          title: '📦 New Delivery Assigned',
+          message: `Dispatch Admin assigned customer ${item.customerName} (${item.plannedMilk || 1}L Milk) at ${item.customerAddress || 'your route'} to your shift.`,
+          type: 'delivery_assigned',
+          data: { deliveryId: item.id, customerName: item.customerName, plannedMilk: item.plannedMilk },
+        });
+      }
+
+      setAssignmentSuccess(`Delivery assigned to ${boyName || 'Partner'}! Delivery partner notified.`);
+      setTimeout(() => setAssignmentSuccess(''), 3500);
+    } catch (err) {
+      console.error('Failed to assign delivery:', err);
+    }
   };
 
   const filteredDeliveries = deliveries.filter((d) => {
@@ -271,6 +303,28 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         </div>
       </div>
 
+      {/* Assignment Success Alert Banner */}
+      {assignmentSuccess && (
+        <div
+          style={{
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            color: '#065f46',
+            padding: '10px 16px',
+            borderRadius: '10px',
+            fontSize: '0.84rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 1px 3px rgba(5,150,105,0.1)',
+          }}
+        >
+          <CheckCircle size={16} color="#059669" />
+          <span>{assignmentSuccess}</span>
+        </div>
+      )}
+
       {/* 3. Delivery Schedule Cards List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {filteredDeliveries.length === 0 ? (
@@ -352,6 +406,40 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#64748b' }}>
                     <MapPin size={13} color="#059669" />
                     <span>{item.customerAddress || 'Address on file'}</span>
+                  </div>
+
+                  {/* Partner Assignment Dropdown (Notifies Delivery Partner) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Truck size={13} color="#059669" /> Assigned:
+                    </span>
+                    <select
+                      value={item.deliveryBoyId || ''}
+                      onChange={(e) => {
+                        const selId = e.target.value;
+                        const selBoy = deliveryBoys.find((b) => (b.id === selId || b._id === selId));
+                        handleAssignDelivery(item, selId, selBoy ? selBoy.name : '');
+                      }}
+                      style={{
+                        padding: '3px 8px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        background: item.deliveryBoyId ? '#ecfdf5' : '#f8fafc',
+                        color: item.deliveryBoyId ? '#065f46' : '#64748b',
+                        cursor: 'pointer',
+                        maxWidth: '220px',
+                      }}
+                      title="Assign or reassign delivery partner (sends instant alert to driver)"
+                    >
+                      <option value="">Unassigned (Tap to Assign)</option>
+                      {deliveryBoys.map((boy) => (
+                        <option key={boy.id || boy._id} value={boy.id || boy._id}>
+                          {boy.name} ({boy.assignedArea || 'Route'})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   {item.notes && (

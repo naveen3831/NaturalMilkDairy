@@ -20,9 +20,10 @@ export default function ContactPage({ setActiveTab }) {
   };
 
   return (
-    <div style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="public-contact-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Header with Organic Farm Background Banner */}
       <div
+        className="public-page-hero"
         style={{
           position: 'relative',
           backgroundImage: `url(${CLOUDINARY_MEDIA.organicFarm})`,
@@ -43,7 +44,7 @@ export default function ContactPage({ setActiveTab }) {
           }}
         />
 
-        <div style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
+        <div className="public-page-hero-content" style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -73,8 +74,9 @@ export default function ContactPage({ setActiveTab }) {
       </div>
 
       {/* Main Content */}
-      <div style={{ maxWidth: '1280px', margin: '60px auto 0 auto', padding: '0 24px' }}>
+      <div className="public-page-content" style={{ maxWidth: '1280px', margin: '60px auto 0 auto', padding: '0 24px' }}>
         <div
+          className="public-contact-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
@@ -167,6 +169,7 @@ export default function ContactPage({ setActiveTab }) {
 
           {/* Contact Form */}
           <div
+            className="public-contact-form"
             style={{
               background: '#ffffff',
               borderRadius: '24px',
@@ -222,7 +225,7 @@ export default function ContactPage({ setActiveTab }) {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
+                <div className="public-contact-form-pair" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '16px' }}>
                   <div>
                     <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '6px' }}>
                       Mobile Number *
@@ -294,6 +297,7 @@ export default function ContactPage({ setActiveTab }) {
 
         {/* Visit Our Organic Dairy Farm Banner */}
         <div
+          className="public-feature-banner public-contact-farm-banner"
           style={{
             marginTop: '70px',
             borderRadius: '24px',
@@ -310,6 +314,7 @@ export default function ContactPage({ setActiveTab }) {
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
           <div
+            className="public-contact-farm-overlay"
             style={{
               position: 'absolute',
               inset: 0,
@@ -319,11 +324,11 @@ export default function ContactPage({ setActiveTab }) {
               padding: '0 44px',
             }}
           >
-            <div style={{ maxWidth: '580px', color: '#ffffff' }}>
+            <div className="public-contact-farm-content" style={{ maxWidth: '580px', color: '#ffffff' }}>
               <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
                 Open Farm Policy
               </span>
-              <h3 style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
+              <h3 className="public-contact-farm-title" style={{ fontSize: '2.2rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
                 Visit Our Cows & Pastures in Person
               </h3>
               <p style={{ color: '#e2fdf0', fontSize: '1rem', lineHeight: 1.6, marginBottom: '22px' }}>

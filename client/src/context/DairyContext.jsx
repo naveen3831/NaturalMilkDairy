@@ -204,6 +204,26 @@ export const DairyProvider = ({ children }) => {
     }
   };
 
+  // Assign Delivery to Delivery Partner
+  const assignDelivery = async (id, payload) => {
+    try {
+      const res = await fetch(`/api/deliveries/${id}/assign`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshAll();
+        return data;
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
   // Sync offline queue
   const syncOfflineQueue = async () => {
     if (offlineQueue.length === 0) return;
@@ -605,6 +625,7 @@ export const DairyProvider = ({ children }) => {
         fetchAuditLogs,
         markDelivered,
         markNotDelivered,
+        assignDelivery,
         recordPayment,
         addCustomer,
         updateCustomer,

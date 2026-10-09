@@ -166,235 +166,63 @@ export default function HomePage({ setActiveTab }) {
     : products.filter(p => p.category === activeCategory);
 
   return (
-    <div style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
+    <div className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
       
-      {/* ============================================================ */}
-      {/* 1. HERO BANNER — 100% SINGLE SCREEN VIEWPORT & FULL COVERAGE */}
-      {/* ============================================================ */}
       <section
         className="home-hero-banner"
         style={{
-          position: 'relative',
-          width: '100%',
-          height: 'calc(100vh - 68px)',
-          minHeight: '520px',
-          display: 'flex',
-          alignItems: 'center',
           backgroundImage: `url(${CLOUDINARY_MEDIA.heroDairy})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'right bottom',
-          backgroundRepeat: 'no-repeat',
-          overflow: 'hidden',
-          boxSizing: 'border-box',
-          padding: 0,
         }}
       >
-        {/* Soft, gentle left gradient so text is crystal clear while right image shines */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background:
-              'linear-gradient(90deg, rgba(6, 28, 16, 0.96) 0%, rgba(6, 28, 16, 0.92) 40%, rgba(6, 28, 16, 0.55) 56%, rgba(6, 28, 16, 0.12) 74%, transparent 100%)',
-            pointerEvents: 'none',
-          }}
-        />
-
-        {/* Ambient Warm Golden Glow */}
-        <div
-          className="hero-glow-orb hero-glow-gold"
-          style={{
-            top: '15%',
-            left: '8%',
-            width: '420px',
-            height: '420px',
-          }}
-        />
-
-        {/* Hero Content Container — Text Positioned Perfectly covering the LEFT side fully */}
-        <div
-          style={{
-            maxWidth: '1440px',
-            width: '100%',
-            margin: '0 auto',
-            padding: '24px 36px',
-            position: 'relative',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-start',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div style={{ maxWidth: '660px', width: '100%' }}>
-            {/* Luminous Eyebrow Pill */}
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '6px 16px',
-                borderRadius: '30px',
-                background: 'rgba(229, 184, 66, 0.22)',
-                border: '1px solid rgba(229, 184, 66, 0.5)',
-                color: '#fce082',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                marginBottom: '14px',
-                backdropFilter: 'blur(10px)',
-              }}
-            >
-              <Sparkles size={14} color="#fce082" />
-              <span>100% Single-Origin Farm Fresh • Mumbai</span>
+        <div className="home-hero-overlay" />
+        <div className="home-hero-inner">
+          <div className="home-hero-copy">
+            <div className="home-hero-eyebrow">
+              <Sparkles size={15} aria-hidden="true" />
+              <span>Fresh from our farm to your family</span>
             </div>
 
-            {/* Editorial Headline on Left — Bolder & Increased Size */}
-            <h1
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(2.2rem, 3.6vw, 3.3rem)',
-                fontWeight: 900,
-                lineHeight: 1.15,
-                letterSpacing: '-0.025em',
-                color: '#ffffff',
-                marginBottom: '14px',
-                textShadow: '0 4px 24px rgba(0,0,0,0.5)',
-              }}
-            >
-              Natural Milk Dairy.<br />
-              <span className="gradient-text-gold">Pure, Fresh & Untouched.</span><br />
-              Before Your 6:30 AM Alarm.
+            <h1>
+              A better start to
+              <br />
+              every morning.
+              <span className="home-hero-title-accent">Pure dairy. Simply delivered.</span>
             </h1>
 
-            {/* Sub-headline description — Rich & Clear */}
-            <p
-              style={{
-                fontSize: 'clamp(0.96rem, 1.2vw, 1.08rem)',
-                lineHeight: 1.55,
-                color: 'rgba(241, 245, 249, 0.95)',
-                fontWeight: 400,
-                maxWidth: '600px',
-                marginBottom: '18px',
-                textShadow: '0 2px 10px rgba(0,0,0,0.3)',
-              }}
-            >
-              Direct from grass-fed cows to your doorstep in sterilized glass bottles. 
-              Chilled to 4°C within 30 minutes of 4:30 AM milking with zero adulterants, 
-              zero preservatives, and zero plastic pouches.
+            <p className="home-hero-description">
+              Thoughtfully sourced milk and dairy, prepared fresh and delivered to your
+              doorstep each morning.
             </p>
 
-            {/* Feature Highlights Row — Covering image cleanly with key values */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                flexWrap: 'wrap',
-                marginBottom: '20px',
-              }}
-            >
-              <span style={{ background: 'rgba(255, 255, 255, 0.12)', border: '1px solid rgba(255, 255, 255, 0.25)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', color: '#f0fdf4', fontWeight: 600 }}>
-                🥛 Raw Untouched Harvest
-              </span>
-              <span style={{ background: 'rgba(255, 255, 255, 0.12)', border: '1px solid rgba(255, 255, 255, 0.25)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', color: '#fef3c7', fontWeight: 600 }}>
-                ⏱️ 4:30 AM Morning Milking
-              </span>
-              <span style={{ background: 'rgba(255, 255, 255, 0.12)', border: '1px solid rgba(255, 255, 255, 0.25)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', color: '#cffafe', fontWeight: 600 }}>
-                ❄️ 4°C Active Cold Chain
-              </span>
-              <span style={{ background: 'rgba(255, 255, 255, 0.12)', border: '1px solid rgba(255, 255, 255, 0.25)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.8rem', color: '#dcfce7', fontWeight: 600 }}>
-                🍾 Eco Glass Bottles
-              </span>
-            </div>
-
-            {/* Primary Action Buttons */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '14px',
-                flexWrap: 'wrap',
-                marginBottom: '22px',
-              }}
-            >
-              <button
-                onClick={() => handleSubscribe(products[0])}
-                className="shine-button dairy-btn-hover"
-                style={{
-                  background: 'linear-gradient(135deg, #E5B842 0%, #D4A32A 100%)',
-                  color: '#071629',
-                  fontWeight: 900,
-                  fontSize: '1rem',
-                  padding: '13px 30px',
-                  borderRadius: '14px',
-                  boxShadow: '0 8px 24px rgba(229, 184, 66, 0.45)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  cursor: 'pointer',
-                  border: 'none',
-                }}
-              >
-                <Milk size={20} />
-                <span>Subscribe & Order Now</span>
-                <ArrowRight size={18} />
-              </button>
-
+            <div className="home-hero-actions">
               <button
                 onClick={() => setActiveTab('products')}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.16)',
-                  backdropFilter: 'blur(12px)',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.96rem',
-                  padding: '13px 26px',
-                  borderRadius: '14px',
-                  border: '1.5px solid rgba(255, 255, 255, 0.5)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  transition: 'all 0.25s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.28)';
-                  e.currentTarget.style.borderColor = '#ffffff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.16)';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.5)';
-                }}
+                className="home-hero-button home-hero-button-primary"
               >
-                <span>Our Products</span>
-                <ChevronRight size={18} />
+                <span>Explore our dairy</span>
+                <ArrowRight size={18} aria-hidden="true" />
+              </button>
+              <button
+                onClick={() => handleSubscribe(products[0])}
+                className="home-hero-button home-hero-button-secondary"
+              >
+                <Milk size={18} aria-hidden="true" />
+                <span>Start a subscription</span>
               </button>
             </div>
 
-            {/* Quality & Trust Badges Strip */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '24px',
-                flexWrap: 'wrap',
-                paddingTop: '16px',
-                borderTop: '1px solid rgba(255, 255, 255, 0.2)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#e2fdf0', fontSize: '0.86rem', fontWeight: 600 }}>
-                <CheckCircle size={17} color="#4ade80" />
-                <span>100% Unadulterated</span>
+            <div className="home-hero-trust">
+              <div>
+                <CheckCircle size={17} aria-hidden="true" />
+                <span>Carefully sourced</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fef3c7', fontSize: '0.86rem', fontWeight: 600 }}>
-                <Clock size={17} color="#E5B842" />
-                <span>Before 6:30 AM Drop</span>
+              <div>
+                <Clock size={17} aria-hidden="true" />
+                <span>Morning delivery</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#cffafe', fontSize: '0.86rem', fontWeight: 600 }}>
-                <ShieldCheck size={17} color="#38bdf8" />
-                <span>Sterilized Glass Bottles</span>
+              <div>
+                <ShieldCheck size={17} aria-hidden="true" />
+                <span>Quality you can trust</span>
               </div>
             </div>
           </div>
@@ -1107,7 +935,7 @@ export default function HomePage({ setActiveTab }) {
         </div>
 
         {/* 5 Luxury Product Cards Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px' }}>
+        <div className="public-home-product-grid public-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px' }}>
           {filteredProducts.map((prod) => (
             <div
               key={prod.id}
@@ -1124,7 +952,7 @@ export default function HomePage({ setActiveTab }) {
               }}
             >
               {/* Product Visual Container */}
-              <div style={{ position: 'relative', width: '100%', height: '240px', overflow: 'hidden', background: '#f8faf8' }}>
+              <div className="public-product-image" style={{ position: 'relative', width: '100%', height: '240px', overflow: 'hidden', background: '#f8faf8' }}>
                 <img
                   src={prod.image}
                   alt={prod.name}
@@ -1175,8 +1003,8 @@ export default function HomePage({ setActiveTab }) {
               </div>
 
               {/* Product Information Body */}
-              <div style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
+              <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div className="public-product-card-info">
                   <div style={{ fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
                     {prod.tagline}
                   </div>
@@ -1188,7 +1016,7 @@ export default function HomePage({ setActiveTab }) {
                   </p>
 
                   {/* Feature Checklist */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                     {prod.highlights.map((h, hidx) => (
                       <div key={hidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#334155' }}>
                         <Check size={14} color="#0d5c3a" />
@@ -1200,6 +1028,7 @@ export default function HomePage({ setActiveTab }) {
 
                 {/* Price & Action Footer */}
                 <div
+                  className="public-product-card-footer"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1208,14 +1037,14 @@ export default function HomePage({ setActiveTab }) {
                     paddingTop: '16px',
                   }}
                 >
-                  <div>
+                  <div className="public-product-price">
                     <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0d5c3a' }}>{prod.price}</span>
                     <span style={{ fontSize: '0.82rem', color: '#597361', marginLeft: '4px' }}>{prod.unit}</span>
                   </div>
 
                   <button
                     onClick={() => handleSubscribe(prod)}
-                    className="dairy-btn-hover"
+                    className="dairy-btn-hover public-product-subscribe"
                     style={{
                       background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
                       color: '#ffffff',
@@ -1368,8 +1197,9 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 8. 100% VX ALL LIGHT THEMED: MONTHLY DAIRY COST CALCULATOR   */}
       {/* ============================================================ */}
-      <section style={{ maxWidth: '1360px', margin: '90px auto 0 auto', padding: '0 32px' }}>
+      <section className="public-home-calculator-section" style={{ maxWidth: '1360px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div
+          className="public-home-calculator"
           style={{
             background: '#ffffff',
             borderRadius: '28px',
@@ -1379,7 +1209,7 @@ export default function HomePage({ setActiveTab }) {
             boxShadow: '0 16px 45px rgba(13, 92, 58, 0.08)',
           }}
         >
-          <div style={{ textAlign: 'center', marginBottom: '38px' }}>
+          <div className="public-home-calculator-heading" style={{ textAlign: 'center', marginBottom: '38px' }}>
             <div
               style={{
                 display: 'inline-flex',
@@ -1408,6 +1238,7 @@ export default function HomePage({ setActiveTab }) {
           </div>
 
           <div
+            className="public-home-calculator-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
@@ -1417,6 +1248,7 @@ export default function HomePage({ setActiveTab }) {
           >
             {/* Left Controls Sliders (LIGHT THEMED) */}
             <div
+              className="public-home-calculator-controls"
               style={{
                 background: '#f8faf8',
                 padding: '30px',
@@ -1471,6 +1303,7 @@ export default function HomePage({ setActiveTab }) {
 
             {/* Right Summary Card (LIGHT THEMED) */}
             <div
+              className="public-home-calculator-summary"
               style={{
                 background: 'linear-gradient(135deg, #f7faf8 0%, #edf7f0 100%)',
                 borderRadius: '22px',

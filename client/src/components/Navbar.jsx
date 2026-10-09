@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
+import { useNotifications } from '../context/NotificationContext';
 import {
   Milk,
   Truck,
@@ -19,21 +20,36 @@ import {
   Globe,
   User,
   ShieldCheck,
+  Bell,
+  Menu,
+  X,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const { user, logout, switchUser, DEMO_USERS } = useAuth();
   const { isOnline, offlineQueue, syncOfflineQueue } = useDairy();
+  const { unreadCount, setIsNotificationOpen } = useNotifications();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const publicTabs = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'login', 'register'];
   const isPublicView = publicTabs.includes(activeTab);
+  const publicNavigationItems = [
+    { tab: 'home', label: 'Home' },
+    { tab: 'products', label: 'Our products' },
+    { tab: 'story', label: 'Our story' },
+    { tab: 'faqs', label: 'FAQs' },
+    { tab: 'contact', label: 'Contact' },
+    { tab: 'login', label: 'Login' },
+    { tab: 'register', label: 'Register' },
+  ];
 
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
     return (
       <header
+        className="public-site-header"
         style={{
           background: 'rgba(255, 255, 255, 0.98)',
           backdropFilter: 'blur(16px)',
@@ -46,6 +62,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
         }}
       >
         <div
+          className="public-site-header-inner"
           style={{
             maxWidth: '1440px',
             margin: '0 auto',
@@ -58,6 +75,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
         >
           {/* Brand Logo & Title */}
           <div
+            className="public-site-brand"
             onClick={() => setActiveTab('home')}
             style={{
               display: 'flex',
@@ -203,7 +221,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           </nav>
 
           {/* Right Action: LOGIN & REGISTER (Clearly Visible) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="public-site-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {user ? (
               // Logged in User Controls
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -232,19 +250,41 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
 
                 <button
-                  onClick={logout}
+                  type="button"
+                  onClick={() => setIsNotificationOpen(true)}
                   style={{
                     padding: '8px 12px',
                     borderRadius: '8px',
-                    background: '#fee2e2',
-                    color: '#991b1b',
+                    background: '#f8fafc',
+                    color: '#0f172a',
                     fontWeight: 700,
-                    fontSize: '0.82rem',
-                    border: 'none',
+                    fontSize: '0.84rem',
+                    border: '1px solid #e2e8f0',
                     cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    position: 'relative',
                   }}
+                  title="View Notifications"
+                  aria-label="View notifications"
                 >
-                  Logout
+                  <Bell size={16} color="#059669" />
+                  <span>Alerts</span>
+                  {unreadCount > 0 && (
+                    <span
+                      style={{
+                        background: '#e11d48',
+                        color: '#ffffff',
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        padding: '1px 6px',
+                        borderRadius: '10px',
+                      }}
+                    >
+                      {unreadCount}
+                    </span>
+                  )}
                 </button>
               </div>
             ) : (
@@ -287,6 +327,61 @@ export default function Navbar({ activeTab, setActiveTab }) {
               </>
             )}
           </div>
+
+          <button
+            type="button"
+            className="public-mobile-menu-toggle"
+            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="public-mobile-menu"
+            onClick={() => setMobileMenuOpen((isOpen) => !isOpen)}
+          >
+            {mobileMenuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+          </button>
+
+          {mobileMenuOpen && (
+            <nav id="public-mobile-menu" className="public-mobile-menu" aria-label="Public pages">
+              {publicNavigationItems.map(({ tab, label }) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={activeTab === tab || (tab === 'home' && activeTab === 'landing') ? 'is-active' : ''}
+                  aria-current={activeTab === tab || (tab === 'home' && activeTab === 'landing') ? 'page' : undefined}
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+
+              {user && (
+                <div className="public-mobile-menu-account">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (user.role === 'admin') setActiveTab('dashboard');
+                      else if (user.role === 'delivery_boy') setActiveTab('delivery-boy-app');
+                      else setActiveTab('customer-portal');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    {user.role === 'admin' ? 'Owner Portal' : user.role === 'delivery_boy' ? 'Delivery App' : 'My Portal'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNotificationOpen(true);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Alerts{unreadCount > 0 ? ` (${unreadCount})` : ''}
+                  </button>
+                </div>
+              )}
+            </nav>
+          )}
         </div>
       </header>
     );
@@ -592,8 +687,48 @@ export default function Navbar({ activeTab, setActiveTab }) {
           )}
         </nav>
 
-        {/* User Badge / Role Dropdown */}
+        {/* Alerts & User Profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
+          {/* Notification Bell in Management Header */}
+          <button
+            type="button"
+            onClick={() => setIsNotificationOpen(true)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              color: '#ffffff',
+              borderRadius: '20px',
+              padding: '6px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              position: 'relative',
+              transition: 'background 0.15s ease',
+            }}
+            title="View Notifications"
+            aria-label="View notifications"
+          >
+            <Bell size={15} color="#86efac" />
+            <span>Alerts</span>
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  fontSize: '0.64rem',
+                  fontWeight: 800,
+                  padding: '1px 6px',
+                  borderRadius: '10px',
+                }}
+              >
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
           <div
             onClick={() => setDropdownOpen(!dropdownOpen)}
             style={{
@@ -652,59 +787,31 @@ export default function Navbar({ activeTab, setActiveTab }) {
               }}
             >
               <div style={{ padding: '8px 10px', fontSize: '0.72rem', color: '#6b7280', fontWeight: 700, textTransform: 'uppercase' }}>
-                Switch Account
+                Account Information
               </div>
 
-              {DEMO_USERS.map((u) => (
-                <div
-                  key={u.id}
-                  onClick={() => {
-                    switchUser(u.id);
-                    setDropdownOpen(false);
-                    if (u.role === 'admin') setActiveTab('dashboard');
-                    else if (u.role === 'delivery_boy') setActiveTab('delivery-boy-app');
-                    else setActiveTab('customer-portal');
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: user?.id === u.id ? '#eaf5ee' : 'transparent',
-                    marginBottom: '4px',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#0c2340' }}>{u.name}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#597361' }}>{u.role}</div>
-                  </div>
-                  {user?.id === u.id && <CheckCircle size={16} color="#0d5c3a" />}
-                </div>
-              ))}
-
-              <div style={{ height: '1px', background: '#e5e7eb', margin: '6px 0' }} />
-
               <div
-                onClick={() => {
-                  setDropdownOpen(false);
-                  logout();
-                  setActiveTab('home');
-                }}
                 style={{
-                  padding: '8px 12px',
+                  padding: '10px 12px',
                   borderRadius: '8px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  color: '#dc2626',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
                 }}
               >
-                <LogOut size={16} /> Logout
+                <div style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0f172a' }}>{user?.name || 'Authorized User'}</div>
+                <div style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 600, marginTop: '2px' }}>
+                  Role: {user?.role === 'admin' ? 'Owner / Admin' : user?.role === 'delivery_boy' ? 'Delivery Partner' : 'Customer'}
+                </div>
+                {user?.mobile && (
+                  <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+                    Phone: {user.mobile}
+                  </div>
+                )}
+                {user?.email && (
+                  <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    Email: {user.email}
+                  </div>
+                )}
               </div>
             </div>
           )}

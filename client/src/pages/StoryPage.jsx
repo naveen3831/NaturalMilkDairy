@@ -5,10 +5,11 @@ import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function StoryPage({ setActiveTab }) {
   return (
-    <div style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="public-story-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
       {/* 1. Page Header with Organic Farm Sunrise Banner */}
       <div
+        className="public-page-hero"
         style={{
           position: 'relative',
           backgroundImage: `url(${CLOUDINARY_MEDIA.organicFarm})`,
@@ -29,7 +30,7 @@ export default function StoryPage({ setActiveTab }) {
           }}
         />
 
-        <div style={{ maxWidth: '840px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
+        <div className="public-page-hero-content" style={{ maxWidth: '840px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
             style={{
               display: 'inline-flex',
@@ -63,9 +64,10 @@ export default function StoryPage({ setActiveTab }) {
       </div>
 
       {/* 2. Main Story Content with Real Cows in Pasture Photo */}
-      <div style={{ maxWidth: '1360px', margin: '70px auto 0 auto', padding: '0 24px' }}>
+      <div className="public-page-content" style={{ maxWidth: '1360px', margin: '70px auto 0 auto', padding: '0 24px' }}>
         
         <div
+          className="public-story-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
@@ -112,6 +114,7 @@ export default function StoryPage({ setActiveTab }) {
 
           {/* Real Photo of Desi Gir & Holstein Cows in Pasture */}
           <div
+            className="public-story-grid"
             style={{
               borderRadius: '24px',
               overflow: 'hidden',
@@ -126,6 +129,7 @@ export default function StoryPage({ setActiveTab }) {
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
             <div
+              className="public-feature-banner"
               style={{
                 position: 'absolute',
                 bottom: '18px',
@@ -255,7 +259,7 @@ export default function StoryPage({ setActiveTab }) {
           </h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px', marginBottom: '70px' }}>
+        <div className="public-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '24px', marginBottom: '70px' }}>
           {[
             {
               title: '1. Free-Range Cattle',
