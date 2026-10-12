@@ -10,6 +10,7 @@ import FaqsPage from './pages/FaqsPage';
 import ContactPage from './pages/ContactPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import FloatingContactButton from './components/FloatingContactButton';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TodayDeliveries from './pages/admin/TodayDeliveries';
@@ -88,7 +89,8 @@ export default function App() {
         return 'delivery-boy-app';
       }
       if (savedUser?.role === 'customer') {
-        return 'customer-portal';
+        const customerTabs = ['customer-portal', 'home', 'landing', 'products', 'story', 'faqs', 'contact'];
+        return customerTabs.includes(savedGeneralTab) ? savedGeneralTab : 'home';
       }
       if (savedGeneralTab && !adminTabs.includes(savedGeneralTab)) {
         return savedGeneralTab;
@@ -371,11 +373,16 @@ export default function App() {
         <DeliveryBoyApp setActiveTab={setActiveTab} />
       ) : (
         <>
-          {/* Universal Navbar for Public & User Views */}
-          <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+          {/* Customers use their own dashboard shell and navigation. */}
+          {!(activeTab === 'customer-portal' && user?.role === 'customer') && (
+            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+          )}
 
           {/* Main Content Area - Full 100% Viewport Width */}
-          <main style={{ flex: 1, padding: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
+          <main
+            className={`public-mobile-content${user?.role === 'customer' ? ' customer-public-content' : ''}`}
+            style={{ flex: 1, padding: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}
+          >
             {/* Public Separate Pages */}
             {(activeTab === 'home' || activeTab === 'landing') && (
               <HomePage setActiveTab={setActiveTab} />
@@ -415,6 +422,11 @@ export default function App() {
               />
             )}
           </main>
+
+          {/* Floating Contact Us Action Button (Mobile Responsive Only) */}
+          {activeTab !== 'customer-portal' && (
+            <FloatingContactButton activeTab={activeTab} setActiveTab={setActiveTab} />
+          )}
         </>
       )}
 

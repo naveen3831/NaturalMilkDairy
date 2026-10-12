@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
+import ProductDetailsView from './ProductDetailsView';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
@@ -112,6 +113,7 @@ export default function ProductsPage({ setActiveTab }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProductDetails, setSelectedProductDetails] = useState(null);
 
   // Live dynamic catalog from MongoDB Atlas & local database
   const catalogProducts = (dbProducts && dbProducts.length > 0)
@@ -134,6 +136,7 @@ export default function ProductsPage({ setActiveTab }) {
             tagBg: fallback?.tagBg || '#eaf5ee',
             fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
             image: p.image || getProductImage(p),
+            images: Array.isArray(p.images) ? p.images : [],
             features: fallback?.features || ['100% Unadulterated', 'Chilled to 4°C', 'Food-Grade Sealed'],
           };
         })
@@ -144,10 +147,52 @@ export default function ProductsPage({ setActiveTab }) {
       ? catalogProducts
       : catalogProducts.filter((p) => p.category === activeCategory);
 
+  useEffect(() => {
+    const targetProdId = localStorage.getItem('nmd_selected_product_id');
+    if (targetProdId && catalogProducts.length > 0) {
+      const found = catalogProducts.find(
+        (p) => p.id === targetProdId || p.name.toLowerCase() === targetProdId.toLowerCase()
+      );
+      if (found) {
+        setSelectedProductDetails(found);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      localStorage.removeItem('nmd_selected_product_id');
+    }
+  }, [catalogProducts]);
+
   const handleSubscribe = (product) => {
-    setSelectedProduct(product);
-    setIsSubscribeOpen(true);
+    setSelectedProductDetails(product);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Dedicated Product Details Page
+  if (selectedProductDetails) {
+    return (
+      <div className="public-products-page product-details-view-active" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <ProductDetailsView
+          product={selectedProductDetails}
+          onBack={() => {
+            setSelectedProductDetails(null);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          onSubscribe={(prodWithConfig) => {
+            setSelectedProduct(prodWithConfig);
+            setIsSubscribeOpen(true);
+          }}
+        />
+
+        {/* Subscribe / Booking Modal */}
+        <SubscribeModal
+          isOpen={isSubscribeOpen}
+          onClose={() => setIsSubscribeOpen(false)}
+          preselectedProduct={selectedProduct}
+        />
+
+        <Footer setActiveTab={setActiveTab} />
+      </div>
+    );
+  }
 
   return (
     <div className="public-products-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -264,6 +309,20 @@ export default function ProductsPage({ setActiveTab }) {
             <div
               key={p.id}
               className="dairy-product-card dairy-fade-in-up"
+              onClick={() => {
+                setSelectedProductDetails(p);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              role="button"
+              tabIndex={0}
+              aria-label={`View details and book ${p.name}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedProductDetails(p);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              }}
               style={{
                 background: '#ffffff',
                 borderRadius: '22px',
@@ -274,6 +333,8 @@ export default function ProductsPage({ setActiveTab }) {
                 justifyContent: 'space-between',
                 boxShadow: '0 6px 20px rgba(13, 92, 58, 0.06)',
                 animationDelay: `${idx * 0.07}s`,
+                cursor: 'pointer',
+                transition: 'transform 0.22s ease, box-shadow 0.22s ease',
               }}
             >
               {/* Product Real Image Header */}
@@ -342,22 +403,30 @@ export default function ProductsPage({ setActiveTab }) {
               {/* Product Body Details */}
               <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div className="public-product-card-info">
-                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0c2340', marginBottom: '8px' }}>
-                    {p.name}
-                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0c2340', margin: 0 }}>
+                      {p.name}
+                    </h3>
+                  </div>
 
                   <p style={{ fontSize: '0.9rem', color: '#597361', lineHeight: 1.6, marginBottom: '16px' }}>
                     {p.desc}
                   </p>
 
                   {/* Features List */}
-                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
                     {p.features.map((feat, fidx) => (
                       <div key={fidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#475569' }}>
                         <Check size={14} color="#16a34a" />
                         <span>{feat}</span>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Tap to View Details pill */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 700, marginBottom: '6px' }}>
+                    <Eye size={13} />
+                    <span>Click card for details & specs →</span>
                   </div>
                 </div>
 
@@ -368,7 +437,7 @@ export default function ProductsPage({ setActiveTab }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    paddingTop: '18px',
+                    paddingTop: '16px',
                     borderTop: '1px solid #edf3ee',
                   }}
                 >
@@ -378,7 +447,10 @@ export default function ProductsPage({ setActiveTab }) {
                   </div>
 
                   <button
-                    onClick={() => handleSubscribe(p)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSubscribe(p);
+                    }}
                     className="dairy-btn-hover public-product-subscribe"
                     style={{
                       background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
@@ -395,7 +467,7 @@ export default function ProductsPage({ setActiveTab }) {
                       boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
                     }}
                   >
-                    <span>Subscribe</span>
+                    <span>Subscribe Now</span>
                     <ArrowRight size={16} />
                   </button>
                 </div>
@@ -404,67 +476,10 @@ export default function ProductsPage({ setActiveTab }) {
           ))}
         </div>
 
-        {/* Pasture Cows & Single-Source Heritage Banner */}
-        <div
-          className="public-feature-grid public-products-farm-banner"
-          style={{
-            marginTop: '80px',
-            borderRadius: '24px',
-            overflow: 'hidden',
-            boxShadow: '0 16px 40px rgba(0,0,0,0.08)',
-            position: 'relative',
-            height: '340px',
-          }}
-        >
-          <img
-            src={CLOUDINARY_MEDIA.cowsPasture}
-            alt="Healthy Desi Cows in Green Pasture"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-          <div
-            className="public-products-farm-overlay"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(90deg, rgba(7, 31, 19, 0.88) 0%, rgba(7, 31, 19, 0.5) 60%, transparent 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 40px',
-            }}
-          >
-            <div className="public-products-farm-content" style={{ maxWidth: '560px', color: '#ffffff' }}>
-              <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                Single-Source Heritage
-              </span>
-              <h3 className="public-products-farm-title" style={{ fontSize: '2.1rem', fontWeight: 900, marginTop: '6px', marginBottom: '12px', lineHeight: 1.2 }}>
-                100% Grass-Fed Cows. Sweeter, Creamier Milk.
-              </h3>
-              <p style={{ color: '#e2fdf0', fontSize: '0.98rem', lineHeight: 1.6, marginBottom: '20px' }}>
-                Our milk is never blended from multiple anonymous dairies. Every single drop comes from our own healthy, stress-free herd grazing naturally under open skies.
-              </p>
-              <button
-                onClick={() => setActiveTab('story')}
-                style={{
-                  background: '#E5B842',
-                  color: '#071629',
-                  padding: '10px 22px',
-                  borderRadius: '10px',
-                  fontWeight: 800,
-                  fontSize: '0.88rem',
-                  cursor: 'pointer',
-                  border: 'none',
-                }}
-              >
-                Learn More About Our Farm
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Quality Assurance Badges */}
         <div
           style={{
-            marginTop: '70px',
+            marginTop: '50px',
             background: '#ffffff',
             borderRadius: '24px',
             padding: '40px',

@@ -35,8 +35,8 @@ export default function LoginPage({ setActiveTab }) {
         localStorage.setItem('nmd_current_tab', 'dashboard');
         setActiveTab('dashboard');
       } else {
-        localStorage.setItem('nmd_current_tab', 'customer-portal');
-        setActiveTab('customer-portal');
+        localStorage.setItem('nmd_current_tab', 'home');
+        setActiveTab('home');
       }
     } else {
       setError(res.message || 'Invalid mobile number/email or password. Please try again.');

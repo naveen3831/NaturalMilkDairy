@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import {
   Users,
@@ -19,21 +19,27 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpenPaymentModal }) {
-  const { dashboardSummary, deliveryBoys, auditLogs } = useDairy();
+  const { dashboardSummary, deliveryBoys, auditLogs, fetchDashboard, refreshAll } = useDairy();
+
+  useEffect(() => {
+    fetchDashboard();
+    refreshAll();
+  }, [fetchDashboard, refreshAll]);
 
   const summary = dashboardSummary || {
-    totalCustomers: 7,
-    activeCustomers: 6,
-    deliveriesCount: 6,
-    completed: 4,
-    pending: 1,
-    notDelivered: 1,
-    todaySales: 390,
-    creditAdded: 240,
-    paymentsCollected: 150,
-    totalOutstanding: 3080,
-    todayMilkLitres: '8.5',
-    todayCurdKg: '2.50',
+    totalCustomers: 0,
+    activeCustomers: 0,
+    deliveriesCount: 0,
+    completed: 0,
+    pending: 0,
+    notDelivered: 0,
+    todaySales: 0,
+    creditAdded: 0,
+    paymentsCollected: 0,
+    totalOutstanding: 0,
+    totalAdvance: 0,
+    todayMilkLitres: '0.0',
+    todayCurdKg: '0.00',
   };
 
   const deliveryProgress = summary.deliveriesCount > 0
@@ -630,13 +636,13 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
                 <div>
                   <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>DONE</div>
                   <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
-                    {boy.todayStats?.completed ?? 2}
+                    {boy.todayStats?.completed ?? 0}
                   </div>
                 </div>
                 <div>
                   <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>PENDING</div>
                   <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d97706' }}>
-                    {boy.todayStats?.pending ?? 1}
+                    {boy.todayStats?.pending ?? 0}
                   </div>
                 </div>
                 <div>

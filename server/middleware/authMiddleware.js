@@ -94,10 +94,21 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+const requireCustomer = (req, res, next) => {
+  if (!req.user || req.user.role !== 'customer') {
+    return res.status(403).json({
+      success: false,
+      message: 'Forbidden. Customer account access is required.',
+    });
+  }
+  next();
+};
+
 module.exports = {
   generateToken,
   verifyToken,
   optionalToken,
   requireAdmin,
+  requireCustomer,
   JWT_SECRET,
 };

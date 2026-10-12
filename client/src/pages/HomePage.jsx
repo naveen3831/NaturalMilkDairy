@@ -121,8 +121,11 @@ export default function HomePage({ setActiveTab }) {
   const [heroSelectedProduct, setHeroSelectedProduct] = useState('cow-milk');
 
   const handleSubscribe = (prod = null) => {
-    setSelectedProduct(prod);
-    setIsSubscribeOpen(true);
+    if (prod) {
+      localStorage.setItem('nmd_selected_product_id', prod.id || prod.name);
+    }
+    setActiveTab('products');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Farm Products Data dynamically synced with MongoDB Atlas & store
@@ -940,6 +943,10 @@ export default function HomePage({ setActiveTab }) {
             <div
               key={prod.id}
               className="dairy-product-card"
+              onClick={() => {
+                setActiveTab('products');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
               style={{
                 background: '#ffffff',
                 borderRadius: '24px',
@@ -949,6 +956,7 @@ export default function HomePage({ setActiveTab }) {
                 flexDirection: 'column',
                 justifyContent: 'space-between',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
               }}
             >
               {/* Product Visual Container */}
@@ -1043,7 +1051,10 @@ export default function HomePage({ setActiveTab }) {
                   </div>
 
                   <button
-                    onClick={() => handleSubscribe(prod)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSubscribe(prod);
+                    }}
                     className="dairy-btn-hover public-product-subscribe"
                     style={{
                       background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',

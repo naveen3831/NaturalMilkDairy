@@ -18,7 +18,34 @@ const getDeliveries = async (req, res) => {
     const filter = { deliveryDate: date };
 
     if (deliveryBoyId && deliveryBoyId !== 'all') {
-      filter.deliveryBoyId = deliveryBoyId;
+      const boyQuery = [
+        ...(deliveryBoyId.length === 24 ? [{ _id: deliveryBoyId }] : []),
+        { mobile: deliveryBoyId },
+      ];
+      let driverBoy = null;
+      let driverUser = null;
+      try {
+        const User = require('../models/User');
+        driverBoy = await DeliveryBoy.findOne({ $or: boyQuery }).lean();
+        driverUser = await User.findOne({ $or: boyQuery }).lean();
+      } catch (e) {}
+
+      const possibleIds = [deliveryBoyId];
+      if (driverBoy) {
+        possibleIds.push(driverBoy._id.toString());
+        if (driverBoy.mobile) possibleIds.push(driverBoy.mobile);
+      }
+      if (driverUser) {
+        possibleIds.push(driverUser._id.toString());
+        if (driverUser.mobile) possibleIds.push(driverUser.mobile);
+      }
+
+      const driverNames = [driverBoy?.name, driverUser?.name].filter(Boolean);
+
+      filter.$or = [
+        { deliveryBoyId: { $in: possibleIds } },
+        ...(driverNames.length > 0 ? [{ deliveryBoyName: { $in: driverNames } }] : []),
+      ];
     }
 
     if (status && status !== 'all') {
@@ -308,6 +335,21 @@ const assignDelivery = async (req, res) => {
     delivery.deliveryBoyId = deliveryBoyId || '';
     delivery.deliveryBoyName = deliveryBoyName || '';
     await delivery.save();
+
+    // Also update Customer delivery plan so future deliveries retain this assigned driver
+    try {
+      const custQuery = delivery.customerId.length === 24
+        ? { $or: [{ _id: delivery.customerId }, { customerId: delivery.customerId }] }
+        : { customerId: delivery.customerId };
+      await Customer.findOneAndUpdate(custQuery, {
+        $set: {
+          'deliveryPlan.deliveryBoyId': deliveryBoyId || '',
+          'deliveryPlan.deliveryBoyName': deliveryBoyName || '',
+        },
+      });
+    } catch (custUpdateErr) {
+      console.warn('Customer partner sync note:', custUpdateErr.message);
+    }
 
     // Create notification for delivery partner
     try {

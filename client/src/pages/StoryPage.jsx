@@ -1,9 +1,74 @@
-import React from 'react';
-import { HeartHandshake, Check, Sparkles, Award, ShieldCheck, Clock, ArrowRight, Leaf, Milk } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  HeartHandshake,
+  Check,
+  Sparkles,
+  Award,
+  ShieldCheck,
+  Clock,
+  ArrowRight,
+  Leaf,
+  Milk,
+  ChevronDown,
+  Search,
+  HelpCircle,
+  MessageSquare,
+  Phone,
+} from 'lucide-react';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function StoryPage({ setActiveTab }) {
+  const [openFaq, setOpenFaq] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
+
+  const faqs = [
+    {
+      category: 'delivery',
+      q: 'What time is milk delivered to my doorstep in the morning?',
+      a: 'All deliveries are completed strictly before 6:30 AM every morning. Our delivery boys begin dispatch at 5:30 AM so you have fresh, chilled milk ready for your morning tea, coffee, and cooking.',
+    },
+    {
+      category: 'subscription',
+      q: 'How do I pause my delivery if I am traveling or on vacation?',
+      a: 'Pausing is completely hassle-free! You can set your pause dates directly in your Customer Portal, or send a quick WhatsApp message to your delivery partner before 9:00 PM the previous night. Deliveries automatically resume on your return date with ₹0 charges.',
+    },
+    {
+      category: 'packaging',
+      q: 'Do you charge a bottle deposit or use plastic packaging?',
+      a: 'We use premium sterilized, food-grade glass bottles to ensure zero plastic leaching and authentic farm taste. There is no deposit required. Simply rinse yesterday’s empty bottle and leave it outside your door; our delivery partner swaps it out seamlessly each morning.',
+    },
+    {
+      category: 'billing',
+      q: 'How does billing and monthly payment work?',
+      a: 'Every daily drop is logged automatically in our digital ledger. At the end of the month, you receive a transparent WhatsApp statement showing exact dates and quantities with an instant 1-tap UPI payment link. You can also pay via Net Banking, Debit/Credit Card, or cash.',
+    },
+    {
+      category: 'quality',
+      q: 'How do you guarantee that the milk is 100% unadulterated?',
+      a: 'Every single batch undergoes rigorous testing before dispatch: testing fat percentage, SNF, and screening for starch, detergents, urea, and neutralizers. We also maintain a strict 4°C cold chain from milking parlor to delivery van.',
+    },
+    {
+      category: 'subscription',
+      q: 'Can I increase or decrease my quantity for just one day?',
+      a: 'Yes! If you have guests arriving tomorrow and need 2L instead of your usual 1L, simply update your quantity in the portal or WhatsApp your delivery boy by 9:00 PM. The temporary quantity applies for that day only and automatically reverts the following morning.',
+    },
+    {
+      category: 'quality',
+      q: 'What is the difference between Cow Milk and Buffalo Milk?',
+      a: 'Our Cow Milk is lighter (4.2% fat), easily digestible, naturally sweet, and rich in beta-carotene. Our Buffalo Milk is thicker and creamier (7.5% fat), producing rich, golden-yellow malai ideal for homemade ghee, paneer, and rich desserts.',
+    },
+  ];
+
+  const filteredFaqs = faqs.filter((faq) => {
+    const matchesCat = activeCategory === 'all' || faq.category === activeCategory;
+    const matchesSearch =
+      faq.q.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      faq.a.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCat && matchesSearch;
+  });
+
   return (
     <div className="public-story-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       
@@ -129,7 +194,7 @@ export default function StoryPage({ setActiveTab }) {
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
             <div
-              className="public-feature-banner"
+              className="public-story-photo-caption"
               style={{
                 position: 'absolute',
                 bottom: '18px',
@@ -212,45 +277,7 @@ export default function StoryPage({ setActiveTab }) {
           </div>
         </div>
 
-        {/* 4. Glass Bottles Lineup Banner */}
-        <div
-          style={{
-            borderRadius: '24px',
-            overflow: 'hidden',
-            marginBottom: '80px',
-            boxShadow: '0 16px 40px rgba(0,0,0,0.08)',
-            position: 'relative',
-            height: '320px',
-          }}
-        >
-          <img
-            src={CLOUDINARY_MEDIA.glassBottles}
-            alt="Sterilized Glass Milk Bottles Lineup"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(90deg, rgba(7, 31, 19, 0.85) 0%, rgba(7, 31, 19, 0.4) 60%, transparent 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 40px',
-            }}
-          >
-            <div style={{ maxWidth: '500px', color: '#ffffff' }}>
-              <span style={{ color: '#E5B842', fontWeight: 800, fontSize: '0.82rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                Zero Waste Packaging
-              </span>
-              <h3 style={{ fontSize: '2rem', fontWeight: 900, marginTop: '6px', marginBottom: '10px' }}>
-                Sterilized Glass Bottles, Every Morning
-              </h3>
-              <p style={{ color: '#e2fdf0', fontSize: '0.95rem', lineHeight: 1.6 }}>
-                We deliver in thick food-grade glass bottles that are collected, sanitized in high-temperature steam wash, and reused hundreds of times.
-              </p>
-            </div>
-          </div>
-        </div>
+
 
         {/* 5. 4 Pillars Section */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
@@ -298,6 +325,270 @@ export default function StoryPage({ setActiveTab }) {
             </div>
           ))}
         </div>
+
+        {/* 6. Comprehensive FAQs Section (Mobile App Only - Website has dedicated FAQs page) */}
+        <section
+          id="farm-faqs-section"
+          className="story-faqs-mobile-only"
+          style={{
+            marginTop: '30px',
+            marginBottom: '70px',
+            padding: '50px 24px',
+            borderRadius: '24px',
+            background: 'linear-gradient(180deg, #ffffff 0%, #f1f8f3 100%)',
+            border: '1.5px solid #d9ebd8',
+            boxShadow: '0 10px 30px rgba(13, 92, 58, 0.04)',
+          }}
+          aria-label="Frequently Asked Questions"
+        >
+          {/* Header */}
+          <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 34px auto' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                background: '#eaf5ee',
+                color: '#0d5c3a',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                marginBottom: '12px',
+              }}
+            >
+              <HelpCircle size={15} />
+              <span>Questions & Answers</span>
+            </div>
+            <h2 style={{ fontSize: 'clamp(2rem, 3.8vw, 2.6rem)', color: '#0c2340', fontWeight: 900, marginBottom: '12px' }}>
+              Frequently Asked Questions
+            </h2>
+            <p style={{ color: '#597361', fontSize: '1.02rem', lineHeight: 1.6 }}>
+              Have questions about our daily morning doorstep delivery, glass bottle sterilizing, subscriptions, or 100% pure testing? We have all your answers right here.
+            </p>
+
+            {/* Search Input */}
+            <div style={{ maxWidth: '520px', margin: '22px auto 0 auto', position: 'relative' }}>
+              <Search size={18} color="#94a3b8" style={{ position: 'absolute', left: '16px', top: '15px' }} />
+              <input
+                type="text"
+                placeholder="Search questions (e.g. delivery time, vacation, bottle, testing)..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '14px 16px 14px 46px',
+                  borderRadius: '30px',
+                  border: '1px solid #d1e7d6',
+                  background: '#ffffff',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+                  fontSize: '0.94rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Category Filter Pills */}
+          <div
+            className="public-faq-category-pills"
+            style={{
+              display: 'flex',
+              gap: '8px',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              marginBottom: '30px',
+            }}
+          >
+            {[
+              { id: 'all', label: 'All Questions' },
+              { id: 'delivery', label: 'Morning Delivery' },
+              { id: 'subscription', label: 'Vacation & Pauses' },
+              { id: 'quality', label: 'Quality & Testing' },
+              { id: 'billing', label: 'Billing & Payments' },
+              { id: 'packaging', label: 'Bottles & Eco Glass' },
+            ].map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveCategory(cat.id)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  fontSize: '0.84rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: activeCategory === cat.id ? '#0d5c3a' : '#ffffff',
+                  color: activeCategory === cat.id ? '#ffffff' : '#4b5563',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                  border: activeCategory === cat.id ? '1px solid #0d5c3a' : '1px solid #e2ece3',
+                  transition: 'all 0.18s ease',
+                }}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
+          {/* FAQs List Accordion */}
+          <div
+            className="public-faq-list"
+            style={{
+              maxWidth: '860px',
+              margin: '0 auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}
+          >
+            {filteredFaqs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '36px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2ece3' }}>
+                <p style={{ color: '#597361', fontSize: '0.98rem', margin: 0 }}>
+                  No questions found matching "{searchTerm}". Reach out to us below and we will help you right away!
+                </p>
+              </div>
+            ) : (
+              filteredFaqs.map((faq, idx) => {
+                const isOpen = openFaq === idx;
+                return (
+                  <div
+                    key={idx}
+                    className="public-faq-item"
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      border: isOpen ? '1.5px solid #0d5c3a' : '1px solid #e2ece3',
+                      overflow: 'hidden',
+                      boxShadow: isOpen ? '0 6px 20px rgba(13, 92, 58, 0.08)' : '0 2px 6px rgba(0,0,0,0.02)',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaq(isOpen ? -1 : idx)}
+                      style={{
+                        width: '100%',
+                        padding: '18px 22px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        background: 'transparent',
+                        border: 'none',
+                        textAlign: 'left',
+                      }}
+                      aria-expanded={isOpen}
+                    >
+                      <h4 style={{ fontSize: '1.04rem', color: '#0c2340', fontWeight: 700, margin: 0, paddingRight: '12px', lineHeight: 1.4 }}>
+                        {faq.q}
+                      </h4>
+                      <ChevronDown
+                        size={20}
+                        color={isOpen ? '#0d5c3a' : '#94a3b8'}
+                        style={{
+                          transform: isOpen ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.2s',
+                          flexShrink: 0,
+                        }}
+                      />
+                    </button>
+
+                    {isOpen && (
+                      <div
+                        style={{
+                          padding: '0 22px 20px 22px',
+                          color: '#475569',
+                          fontSize: '0.95rem',
+                          lineHeight: 1.65,
+                          borderTop: '1px solid #f1f5f9',
+                          paddingTop: '14px',
+                        }}
+                      >
+                        {faq.a}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Quick Support Assistance Card */}
+          <div
+            style={{
+              maxWidth: '860px',
+              margin: '36px auto 0 auto',
+              background: '#ffffff',
+              borderRadius: '18px',
+              padding: '28px 24px',
+              border: '1px solid #d9ebd8',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '18px',
+            }}
+          >
+            <div>
+              <h4 style={{ fontSize: '1.12rem', color: '#0c2340', fontWeight: 800, margin: '0 0 4px 0' }}>
+                Still have a question?
+              </h4>
+              <p style={{ color: '#597361', fontSize: '0.9rem', margin: 0 }}>
+                Our customer happiness team is available daily from 6:00 AM to 8:00 PM.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('contact');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="dairy-btn-hover"
+                style={{
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  padding: '10px 18px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Phone size={16} />
+                <span>Contact Us</span>
+              </button>
+              <a
+                href="https://wa.me/919876543210"
+                target="_blank"
+                rel="noreferrer"
+                className="dairy-btn-hover"
+                style={{
+                  background: '#25D366',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  padding: '10px 18px',
+                  borderRadius: '10px',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <MessageSquare size={16} />
+                <span>WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </section>
 
         {/* Bottom CTA */}
         <div style={{ textAlign: 'center', marginBottom: '80px' }}>

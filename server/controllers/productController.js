@@ -13,6 +13,7 @@ const getProducts = async (req, res) => {
           id: p._id.toString(),
           image: img,
           imageUrl: img,
+          images: Array.isArray(p.images) ? p.images : [],
         };
       }),
     });
@@ -62,7 +63,7 @@ const updateProductPrice = async (req, res) => {
 
 const addProduct = async (req, res) => {
   try {
-    const { name, category, unit, price, description, image, imageUrl, status, actor } = req.body;
+    const { name, category, unit, price, description, image, imageUrl, images, status, actor } = req.body;
     if (!name || !price || !unit) {
       return res.status(400).json({ success: false, message: 'Name, unit, and price are required' });
     }
@@ -78,6 +79,7 @@ const addProduct = async (req, res) => {
       description: (description || '').trim(),
       image: finalImg,
       imageUrl: finalImg,
+      images: Array.isArray(images) ? images : [],
       updatedAt: new Date(),
     });
 
@@ -90,6 +92,7 @@ const addProduct = async (req, res) => {
         id: newProduct._id.toString(),
         image: finalImg,
         imageUrl: finalImg,
+        images: newProduct.images || [],
       },
     });
   } catch (err) {
@@ -100,7 +103,7 @@ const addProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, category, unit, price, description, image, imageUrl, status, actor } = req.body;
+    const { name, category, unit, price, description, image, imageUrl, images, status, actor } = req.body;
 
     const query = id.length === 24 ? { _id: id } : { name: id };
     const product = await Product.findOne(query);
@@ -119,6 +122,9 @@ const updateProduct = async (req, res) => {
       product.image = updatedImg;
       product.imageUrl = updatedImg;
     }
+    if (images !== undefined && Array.isArray(images)) {
+      product.images = images;
+    }
     if (status !== undefined) product.status = status;
     product.updatedAt = new Date();
 
@@ -133,6 +139,7 @@ const updateProduct = async (req, res) => {
         id: product._id.toString(),
         image: product.image,
         imageUrl: product.imageUrl || product.image,
+        images: product.images || [],
       },
     });
   } catch (err) {

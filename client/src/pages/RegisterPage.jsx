@@ -10,7 +10,7 @@ export default function RegisterPage({ setActiveTab }) {
     password: '',
     confirmPassword: '',
     address: '',
-    area: '',
+    area: 'Madhapur',
     frequency: 'daily',
     milkQty: 1,
     curdQty: 0,
@@ -19,8 +19,20 @@ export default function RegisterPage({ setActiveTab }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
-  const [deliveryAreas, setDeliveryAreas] = useState([]);
-  const [areasLoading, setAreasLoading] = useState(true);
+  const DEFAULT_AREAS = [
+    'Madhapur',
+    'Hitec City',
+    'Gachibowli',
+    'Kondapur',
+    'Jubilee Hills',
+    'Banjara Hills',
+    'Kukatpally',
+    'Manikonda',
+    'Financial District',
+  ];
+
+  const [deliveryAreas, setDeliveryAreas] = useState(DEFAULT_AREAS);
+  const [areasLoading, setAreasLoading] = useState(false);
   const [areasError, setAreasError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [registeredSuccess, setRegisteredSuccess] = useState(false);
@@ -32,23 +44,18 @@ export default function RegisterPage({ setActiveTab }) {
       try {
         const response = await fetch('/api/auth/delivery-areas');
         const data = await response.json();
-        if (!response.ok || !data.success || !Array.isArray(data.areas)) {
-          throw new Error(data.message || 'Unable to load delivery areas.');
-        }
-
-        if (isMounted) {
-          setDeliveryAreas(data.areas);
-          setFormData((current) => ({
-            ...current,
-            area: data.areas.includes(current.area) ? current.area : (data.areas[0] || ''),
-          }));
+        if (response.ok && data.success && Array.isArray(data.areas) && data.areas.length > 0) {
+          if (isMounted) {
+            setDeliveryAreas(data.areas);
+            setFormData((current) => ({
+              ...current,
+              area: current.area || data.areas[0],
+            }));
+          }
         }
       } catch (err) {
-        if (isMounted) {
-          setAreasError(err.message || 'Unable to load delivery areas. Please try again.');
-        }
-      } finally {
-        if (isMounted) setAreasLoading(false);
+        // Fallback to DEFAULT_AREAS already pre-populated
+        console.warn('Delivery areas fetch note:', err.message);
       }
     };
 
@@ -87,7 +94,7 @@ export default function RegisterPage({ setActiveTab }) {
     if (result.success) {
       setRegisteredSuccess(true);
       setTimeout(() => {
-        setActiveTab('customer-portal');
+        setActiveTab('home');
       }, 1500);
     } else {
       setError(result.message || 'Registration failed. Please try again.');

@@ -157,7 +157,7 @@ const login = async (req, res) => {
 
       const customerUser = await User.findOne({
         mobile: foundCustomer.mobile,
-        role: 'customer',
+        role: { $in: ['customer', 'user'] },
       }).lean();
       const custPass =
         customerUser?.password ||
@@ -236,6 +236,21 @@ const login = async (req, res) => {
   }
 };
 
+const DEFAULT_DELIVERY_AREAS = [
+  'Madhapur',
+  'Hitec City',
+  'Gachibowli',
+  'Kondapur',
+  'Jubilee Hills',
+  'Banjara Hills',
+  'Kukatpally',
+  'Manikonda',
+  'Financial District',
+  'Andheri West',
+  'Bandra',
+  'Juhu',
+];
+
 const register = async (req, res) => {
   try {
     const {
@@ -265,33 +280,29 @@ const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A user with this mobile number already exists. Please log in.' });
     }
 
-    if (role === 'customer') {
+    if (role === 'customer' || role === 'user') {
       const existingCustomer = await Customer.findOne({ mobile: cleanMobile });
       if (existingCustomer) {
         return res.status(400).json({ success: false, message: 'A customer with this mobile number already exists. Please log in.' });
       }
 
-      const configuredAreas = await DeliveryBoy.distinct('assignedArea', { status: 'active' });
-      const areaByKey = new Map(
-        configuredAreas
-          .filter((configuredArea) => typeof configuredArea === 'string' && configuredArea.trim())
-          .map((configuredArea) => [configuredArea.trim().toLowerCase(), configuredArea.trim()])
-      );
-      const selectedArea = areaByKey.get((typeof area === 'string' ? area : '').trim().toLowerCase());
-      if (!selectedArea) {
-        return res.status(400).json({
-          success: false,
-          message: 'Please select a delivery area currently served by the dairy.',
-        });
-      }
-      if (!['daily', 'alternate', 'weekdays'].includes(frequency)) {
-        return res.status(400).json({ success: false, message: 'Please select a valid delivery frequency.' });
-      }
+      const selectedArea = (typeof area === 'string' && area.trim()) ? area.trim() : 'Madhapur';
+      const cleanAddress = (typeof address === 'string' && address.trim()) ? address.trim() : `${selectedArea}, Home Delivery`;
 
       const custCount = await Customer.countDocuments();
       const customerId = `CUST-${custCount + 101}`;
 
-      const firstBoy = await DeliveryBoy.findOne({ assignedArea: selectedArea, status: 'active' });
+      // Check if any active delivery boy covers this area
+      let firstBoy = null;
+      try {
+        firstBoy = await DeliveryBoy.findOne({
+          assignedArea: { $regex: new RegExp(`^${selectedArea.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i') },
+          status: 'active',
+        });
+      } catch (e) {
+        console.warn('Driver lookup note during registration:', e.message);
+      }
+
       const weekdayDelivery = frequency === 'weekdays';
 
       const newCustomer = await Customer.create({
@@ -299,7 +310,7 @@ const register = async (req, res) => {
         name: cleanName,
         mobile: cleanMobile,
         whatsapp: cleanMobile,
-        address: address || 'Home Delivery Address',
+        address: cleanAddress,
         area: selectedArea,
         status: 'active',
         deliveryPlan: {
@@ -307,11 +318,11 @@ const register = async (req, res) => {
           milkUnit: 'L',
           curdQty: Number(curdQty) || 0,
           curdUnit: 'g',
-          frequency: weekdayDelivery ? 'selected' : frequency,
+          frequency: weekdayDelivery ? 'selected' : (frequency || 'daily'),
           deliveryDays: weekdayDelivery
             ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
             : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-          deliveryBoyId: firstBoy ? firstBoy._id.toString() : '',
+          deliveryBoyId: firstBoy ? (firstBoy.id || firstBoy._id.toString()) : '',
           deliveryBoyName: firstBoy ? firstBoy.name : '',
           startDate: new Date(),
         },
@@ -331,10 +342,20 @@ const register = async (req, res) => {
           password: password.trim(),
           role: 'customer',
           status: 'active',
+          assignedArea: selectedArea,
+          address: cleanAddress,
         });
       } catch (err) {
         await Customer.deleteOne({ _id: newCustomer._id });
         throw err;
+      }
+
+      // Auto-generate today's delivery record in MongoDB so it is immediately visible to driver & admin
+      try {
+        const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
+        await ensureDeliveriesForDate(formatDate());
+      } catch (delivErr) {
+        console.warn('Auto ensure delivery error:', delivErr.message);
       }
 
       await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
@@ -347,6 +368,7 @@ const register = async (req, res) => {
         status: 'active',
         customerId: newCustomer.customerId,
         area: newCustomer.area,
+        address: newCustomer.address,
       };
       return res.status(201).json({
         success: true,
@@ -362,15 +384,16 @@ const register = async (req, res) => {
       password: password || '123456',
       role: role === 'delivery_boy' ? 'delivery_boy' : 'admin',
       status: 'active',
-      assignedArea: area || (role === 'delivery_boy' ? 'Andheri West' : 'All Areas'),
+      assignedArea: area || (role === 'delivery_boy' ? 'Madhapur' : 'All Areas'),
+      address: address || '',
     });
 
     if (role === 'delivery_boy') {
       await DeliveryBoy.create({
         name: cleanName,
         mobile: cleanMobile,
-        assignedArea: area || 'Andheri West',
-        vehicleNumber: 'MH-02-ND-' + Math.floor(1000 + Math.random() * 9000),
+        assignedArea: area || 'Madhapur',
+        vehicleNumber: 'AP-40-ND-' + Math.floor(1000 + Math.random() * 9000),
         status: 'active',
       });
     }
@@ -398,18 +421,33 @@ const register = async (req, res) => {
 
 const getDeliveryAreas = async (req, res) => {
   try {
-    const configuredAreas = await DeliveryBoy.distinct('assignedArea', { status: 'active' });
+    let configuredAreas = [];
+    try {
+      configuredAreas = await DeliveryBoy.distinct('assignedArea', { status: 'active' });
+    } catch (e) {
+      console.warn('DeliveryBoy distinct area warning:', e.message);
+    }
+
+    let customerAreas = [];
+    try {
+      customerAreas = await Customer.distinct('area');
+    } catch (e) {
+      console.warn('Customer distinct area warning:', e.message);
+    }
+
     const areasByKey = new Map();
-    configuredAreas.forEach((area) => {
+    [...configuredAreas, ...customerAreas, ...DEFAULT_DELIVERY_AREAS].forEach((area) => {
       if (typeof area === 'string' && area.trim()) {
-        const normalizedArea = area.trim();
-        areasByKey.set(normalizedArea.toLowerCase(), normalizedArea);
+        const trimmed = area.trim();
+        const formatted = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+        areasByKey.set(trimmed.toLowerCase(), formatted);
       }
     });
 
-    return res.json({ success: true, areas: [...areasByKey.values()].sort((a, b) => a.localeCompare(b)) });
+    const sortedAreas = [...areasByKey.values()].sort((a, b) => a.localeCompare(b));
+    return res.json({ success: true, areas: sortedAreas });
   } catch (err) {
-    return res.status(500).json({ success: false, message: 'Unable to load delivery areas.' });
+    return res.json({ success: true, areas: DEFAULT_DELIVERY_AREAS });
   }
 };
 

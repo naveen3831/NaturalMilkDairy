@@ -1,19 +1,33 @@
 import React, { useState } from 'react';
-import { Milk, CheckCircle2, X, Calendar, MapPin, Phone, User, Clock, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  Clock,
+  Home,
+  MapPin,
+  Milk,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  User,
+  X,
+} from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 
 export default function SubscribeModal({ isOpen, onClose, preselectedProduct = null }) {
-  const { addCustomer, deliveryBoys } = useDairy();
+  const { addCustomer, deliveryBoys, refreshAll, notifyRealtimeSync } = useDairy();
 
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
     whatsapp: '',
     address: '',
+    landmark: '',
     area: 'Andheri West',
-    milkQty: preselectedProduct?.name?.includes('500ml') ? 0.5 : 1,
+    milkQty: preselectedProduct?.selectedQty || (preselectedProduct?.name?.includes('500ml') ? 0.5 : 1),
     curdQty: preselectedProduct?.category === 'curd' ? 500 : 0,
-    frequency: 'daily',
+    frequency: preselectedProduct?.selectedFrequency || 'daily',
     paymentType: 'credit',
     paymentCycle: 'monthly',
   });
@@ -21,6 +35,17 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdInfo, setCreatedInfo] = useState(null);
+
+  React.useEffect(() => {
+    if (preselectedProduct) {
+      setFormData((prev) => ({
+        ...prev,
+        milkQty: preselectedProduct.selectedQty || (preselectedProduct.name?.includes('500ml') ? 0.5 : 1),
+        curdQty: preselectedProduct.category === 'curd' ? 500 : 0,
+        frequency: preselectedProduct.selectedFrequency || 'daily',
+      }));
+    }
+  }, [preselectedProduct]);
 
   if (!isOpen) return null;
 
@@ -41,7 +66,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
         whatsapp: formData.whatsapp || formData.mobile,
         address: formData.address,
         area: formData.area,
-        landmark: '',
+        landmark: formData.landmark || '',
         milkQty: Number(formData.milkQty),
         milkUnit: 'L',
         curdQty: Number(formData.curdQty),
@@ -58,9 +83,13 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
       const result = await addCustomer(customerPayload);
       setIsSuccess(true);
       setCreatedInfo(result);
+      refreshAll?.();
+      notifyRealtimeSync?.();
     } catch (err) {
       alert('Subscription saved! Deliveries will start tomorrow morning.');
       setIsSuccess(true);
+      refreshAll?.();
+      notifyRealtimeSync?.();
     } finally {
       setIsSubmitting(false);
     }
@@ -73,214 +102,241 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(7, 22, 41, 0.75)',
-        backdropFilter: 'blur(6px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
-      }}
-      onClick={handleClose}
-    >
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: '20px',
-          maxWidth: '520px',
-          width: '100%',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
-            padding: '24px 28px',
-            color: '#ffffff',
-            position: 'relative',
-          }}
-        >
+    <div className="subscribe-fullpage-overlay" onClick={handleClose}>
+      <div className="subscribe-fullpage-container" onClick={(e) => e.stopPropagation()}>
+        {/* Light Sticky Top Header */}
+        <header className="subscribe-fullpage-header">
           <button
+            type="button"
+            className="subscribe-back-btn"
             onClick={handleClose}
-            style={{
-              position: 'absolute',
-              top: '18px',
-              right: '18px',
-              background: 'rgba(255, 255, 255, 0.15)',
-              color: '#ffffff',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            aria-label="Back"
+          >
+            <ArrowLeft size={18} />
+            <span>Back</span>
+          </button>
+
+          <div className="subscribe-header-title-box">
+            <div className="subscribe-header-icon">
+              <Milk size={20} />
+            </div>
+            <div>
+              <h3>Start Morning Delivery</h3>
+              <p>Before 6:30 AM · Zero Deposit</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="subscribe-close-btn"
+            onClick={handleClose}
+            aria-label="Close"
           >
             <X size={18} />
           </button>
+        </header>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '10px',
-                background: 'rgba(255, 255, 255, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Milk size={24} color="#ffffff" />
-            </div>
-            <div>
-              <h3 style={{ color: '#ffffff', fontSize: '1.25rem', margin: 0 }}>Start Morning Milk Delivery</h3>
-              <p style={{ color: '#86efac', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-                Delivered fresh before 6:30 AM • No advance deposit needed
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Success View */}
+        {/* Success View (Light Theme) */}
         {isSuccess ? (
-          <div style={{ padding: '36px 28px', textAlign: 'center' }}>
-            <div
-              style={{
-                width: '68px',
-                height: '68px',
-                borderRadius: '50%',
-                background: '#dcfce7',
-                color: '#166534',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 20px auto',
-              }}
-            >
-              <CheckCircle2 size={42} />
-            </div>
-            <h3 style={{ fontSize: '1.4rem', color: '#0c2340', marginBottom: '8px' }}>
-              Subscription Confirmed!
-            </h3>
-            <p style={{ color: '#597361', lineHeight: 1.6, marginBottom: '24px' }}>
-              Thank you, <strong>{formData.name}</strong>! Your fresh milk delivery plan is active and will begin tomorrow morning before 6:30 AM at:
-            </p>
-            <div
-              style={{
-                background: '#f8faf8',
-                border: '1px solid #e2ece3',
-                borderRadius: '12px',
-                padding: '16px',
-                textAlign: 'left',
-                fontSize: '0.9rem',
-                marginBottom: '24px',
-              }}
-            >
-              <div><strong>Address:</strong> {formData.address}, {formData.area}</div>
-              <div style={{ marginTop: '6px' }}>
-                <strong>Daily Delivery:</strong> {formData.milkQty}L Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency})
+          <div className="subscribe-fullpage-body">
+            <div className="subscribe-success-card">
+              <div className="subscribe-success-icon">
+                <CheckCircle2 size={42} />
               </div>
-              <div style={{ marginTop: '6px', color: '#0d5c3a', fontWeight: 600 }}>
-                🌿 Saved directly to MongoDB Atlas Dairy Network
+              <h3 className="subscribe-success-title">Subscription Confirmed!</h3>
+              <p className="subscribe-success-intro">
+                Thank you, <strong>{formData.name}</strong>! Your fresh milk delivery plan is active and will begin tomorrow morning before 6:30 AM.
+              </p>
+
+              <div className="subscribe-success-summary">
+                <div className="subscribe-summary-row">
+                  <span>Delivery Address</span>
+                  <strong>{formData.address}, {formData.area}</strong>
+                </div>
+                {formData.landmark && (
+                  <div className="subscribe-summary-row">
+                    <span>Landmark</span>
+                    <strong>{formData.landmark}</strong>
+                  </div>
+                )}
+                <div className="subscribe-summary-row">
+                  <span>Daily Morning Plan</span>
+                  <strong>
+                    {formData.milkQty}L Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency === 'daily' ? 'Every Morning' : formData.frequency})
+                  </strong>
+                </div>
+                <div className="subscribe-summary-row">
+                  <span>Drop Timing</span>
+                  <strong style={{ color: '#16a34a' }}>5:00 AM – 6:30 AM (Silent Doorstep Drop)</strong>
+                </div>
+                <div className="subscribe-summary-row">
+                  <span>Packaging</span>
+                  <strong>Sanitized Glass Bottles (Cold-Chain 4°C)</strong>
+                </div>
               </div>
+
+              <button
+                type="button"
+                className="subscribe-submit-btn"
+                onClick={handleClose}
+              >
+                Done & Return Home
+              </button>
             </div>
-            <button
-              onClick={handleClose}
-              style={{
-                background: '#0d5c3a',
-                color: '#ffffff',
-                fontWeight: 700,
-                padding: '12px 28px',
-                borderRadius: '10px',
-              }}
-            >
-              Done & Return Home
-            </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Full Name *
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <User size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '12px' }} />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ramesh Patel"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    style={{ paddingLeft: '34px' }}
-                  />
+          /* Form View (Light Theme) */
+          <form className="subscribe-fullpage-body" onSubmit={handleSubmit}>
+            {/* Section 1: Customer Contact Details */}
+            <div className="subscribe-card-section">
+              <span className="subscribe-section-label">
+                <User size={15} /> Personal Contact Details
+              </span>
+
+              <div className="subscribe-form-grid">
+                <div>
+                  <label className="subscribe-field-label">Full Name *</label>
+                  <div className="subscribe-input-wrap">
+                    <User size={16} className="subscribe-input-icon" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Ramesh Patel"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="subscribe-input has-icon"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="subscribe-field-label">Mobile Number *</label>
+                  <div className="subscribe-input-wrap">
+                    <Phone size={16} className="subscribe-input-icon" />
+                    <input
+                      type="tel"
+                      required
+                      placeholder="9876543210"
+                      value={formData.mobile}
+                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                      className="subscribe-input has-icon"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Mobile Number *
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '12px' }} />
+              <div className="subscribe-field-full">
+                <label className="subscribe-field-label">WhatsApp Number (Optional)</label>
+                <div className="subscribe-input-wrap">
+                  <Phone size={16} className="subscribe-input-icon" />
                   <input
                     type="tel"
-                    required
-                    placeholder="9876543210"
-                    value={formData.mobile}
-                    onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                    style={{ paddingLeft: '34px' }}
+                    placeholder="Same as mobile if left blank"
+                    value={formData.whatsapp}
+                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
+                    className="subscribe-input has-icon"
                   />
                 </div>
               </div>
             </div>
 
-            <div style={{ marginBottom: '14px' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                Complete Delivery Address (Door No, Building, Floor) *
-              </label>
-              <textarea
-                required
-                rows={2}
-                placeholder="Flat 402, Lotus Greens, Near Sai Mandir"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              />
+            {/* Section 2: Doorstep Delivery Address */}
+            <div className="subscribe-card-section">
+              <span className="subscribe-section-label">
+                <MapPin size={15} /> Doorstep Delivery Address
+              </span>
+
+              <div className="subscribe-field-full">
+                <label className="subscribe-field-label">
+                  Complete Address (Door No, Flat, Wing, Society, Street) *
+                </label>
+                <textarea
+                  required
+                  rows={2}
+                  placeholder="Flat 402, Lotus Greens, Near Sai Mandir"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="subscribe-textarea"
+                />
+              </div>
+
+              <div className="subscribe-form-grid">
+                <div>
+                  <label className="subscribe-field-label">Delivery Area / Locality</label>
+                  <select
+                    value={formData.area}
+                    onChange={(e) => setFormData({ ...formData, area: e.target.value })}
+                    className="subscribe-select"
+                  >
+                    <option value="Andheri West">Andheri West</option>
+                    <option value="Andheri East">Andheri East</option>
+                    <option value="Bandra">Bandra</option>
+                    <option value="Juhu">Juhu</option>
+                    <option value="Goregaon">Goregaon</option>
+                    <option value="Powai">Powai</option>
+                    <option value="Borivali">Borivali</option>
+                    <option value="Dadar">Dadar</option>
+                    <option value="Thane">Thane</option>
+                    <option value="Navi Mumbai">Navi Mumbai</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="subscribe-field-label">Landmark / Gate Access</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Opposite City Park"
+                    value={formData.landmark}
+                    onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
+                    className="subscribe-input"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Delivery Area / Colony
-                </label>
-                <select
-                  value={formData.area}
-                  onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                >
-                  <option value="Andheri West">Andheri West</option>
-                  <option value="Andheri East">Andheri East</option>
-                  <option value="Bandra">Bandra</option>
-                  <option value="Juhu">Juhu</option>
-                  <option value="Goregaon">Goregaon</option>
-                </select>
+            {/* Section 3: Daily Delivery Plan */}
+            <div className="subscribe-card-section">
+              <span className="subscribe-section-label">
+                <Calendar size={15} /> Daily Milk & Curd Plan
+              </span>
+
+              <div className="subscribe-form-grid">
+                <div>
+                  <label className="subscribe-field-label">Daily Cow Milk Quantity</label>
+                  <select
+                    value={formData.milkQty}
+                    onChange={(e) => setFormData({ ...formData, milkQty: e.target.value })}
+                    className="subscribe-select"
+                  >
+                    <option value={0.5}>500 ml (Half Litre)</option>
+                    <option value={1}>1 Litre (Standard)</option>
+                    <option value={1.5}>1.5 Litres</option>
+                    <option value={2}>2 Litres (Family)</option>
+                    <option value={3}>3 Litres</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="subscribe-field-label">Daily Farm Curd (Dahi)</label>
+                  <select
+                    value={formData.curdQty}
+                    onChange={(e) => setFormData({ ...formData, curdQty: e.target.value })}
+                    className="subscribe-select"
+                  >
+                    <option value={0}>None</option>
+                    <option value={250}>250 grams</option>
+                    <option value={500}>500 grams (Standard)</option>
+                    <option value={1000}>1 Kg (Family)</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Delivery Schedule
-                </label>
+                <label className="subscribe-field-label">Delivery Schedule</label>
                 <select
                   value={formData.frequency}
                   onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
+                  className="subscribe-select"
                 >
                   <option value="daily">Every Morning (Daily)</option>
                   <option value="alternate">Alternate Days (1 day gap)</option>
@@ -289,73 +345,29 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Daily Cow Milk Quantity
-                </label>
-                <select
-                  value={formData.milkQty}
-                  onChange={(e) => setFormData({ ...formData, milkQty: e.target.value })}
-                >
-                  <option value={0.5}>500 ml (Half Litre)</option>
-                  <option value={1}>1 Litre (Standard)</option>
-                  <option value={1.5}>1.5 Litres</option>
-                  <option value={2}>2 Litres (Family)</option>
-                  <option value={3}>3 Litres</option>
-                </select>
+            {/* Delivery Guarantee Info Box (Light Mint) */}
+            <div className="subscribe-info-box">
+              <div className="subscribe-info-box-icon">
+                <Clock size={18} />
               </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  Daily Farm Curd (Dahi)
-                </label>
-                <select
-                  value={formData.curdQty}
-                  onChange={(e) => setFormData({ ...formData, curdQty: e.target.value })}
-                >
-                  <option value={0}>None</option>
-                  <option value={250}>250 grams</option>
-                  <option value={500}>500 grams (Standard)</option>
-                  <option value={1000}>1 Kg (Family)</option>
-                </select>
-              </div>
+              <p>
+                Delivery starts tomorrow between <strong>5:00 AM – 6:30 AM</strong>. Silent doorstep drop in sanitized glass bottles. Pause or adjust quantity anytime before 8:00 PM.
+              </p>
             </div>
 
-            <div
-              style={{
-                background: '#f8faf8',
-                borderRadius: '12px',
-                padding: '12px 16px',
-                border: '1px solid #e2ece3',
-                marginBottom: '20px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-              }}
-            >
-              <Clock size={20} color="#0d5c3a" />
-              <div style={{ fontSize: '0.82rem', color: '#597361' }}>
-                Delivery starts tomorrow at <strong>6:00 AM – 6:30 AM</strong>. You can pause or adjust quantity anytime before 9:00 PM.
-              </div>
+            {/* Submit Action */}
+            <div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="subscribe-submit-btn"
+              >
+                {isSubmitting ? 'Starting Subscription...' : 'Confirm Morning Subscription (Pay Monthly)'}
+              </button>
+              <p className="subscribe-footer-guarantee">
+                🌿 100% Raw A2 Gir Cow Milk · No advance deposit · Cancel or pause anytime
+              </p>
             </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
-                color: '#ffffff',
-                fontWeight: 700,
-                fontSize: '1rem',
-                padding: '14px',
-                borderRadius: '12px',
-                boxShadow: '0 4px 15px rgba(13, 92, 58, 0.3)',
-              }}
-            >
-              {isSubmitting ? 'Starting Subscription...' : 'Confirm Subscription (Pay Monthly)'}
-            </button>
           </form>
         )}
       </div>

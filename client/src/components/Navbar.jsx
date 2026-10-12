@@ -15,52 +15,50 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
-  Home,
   CheckCircle,
   Globe,
   User,
+  UserRound,
   ShieldCheck,
   Bell,
-  Menu,
-  X,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from './CustomerBottomNav';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const { user, logout, switchUser, DEMO_USERS } = useAuth();
   const { isOnline, offlineQueue, syncOfflineQueue } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isLoggedInCustomer = user?.role === 'customer';
 
   const publicTabs = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'login', 'register'];
   const isPublicView = publicTabs.includes(activeTab);
-  const publicNavigationItems = [
-    { tab: 'home', label: 'Home' },
-    { tab: 'products', label: 'Our products' },
-    { tab: 'story', label: 'Our story' },
-    { tab: 'faqs', label: 'FAQs' },
-    { tab: 'contact', label: 'Contact' },
-    { tab: 'login', label: 'Login' },
-    { tab: 'register', label: 'Register' },
-  ];
-
+  const openUserPortal = () => {
+    if (user?.role === 'admin') setActiveTab('dashboard');
+    else if (user?.role === 'delivery_boy') setActiveTab('delivery-boy-app');
+    else {
+      localStorage.setItem('nmd_customer_page', 'profile');
+      setActiveTab('customer-portal');
+    }
+  };
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
     return (
-      <header
-        className="public-site-header"
-        style={{
-          background: 'rgba(255, 255, 255, 0.98)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          borderBottom: '1px solid #e5e7eb',
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
-        }}
-      >
+      <>
+        <header
+          className={`public-site-header${isLoggedInCustomer ? ' customer-public-header' : ''}`}
+          style={{
+            background: 'rgba(255, 255, 255, 0.98)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            borderBottom: '1px solid #e5e7eb',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
+            boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
+          }}
+        >
         <div
           className="public-site-header-inner"
           style={{
@@ -227,9 +225,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button
                   onClick={() => {
-                    if (user.role === 'admin') setActiveTab('dashboard');
-                    else if (user.role === 'delivery_boy') setActiveTab('delivery-boy-app');
-                    else setActiveTab('customer-portal');
+                    openUserPortal();
                   }}
                   style={{
                     display: 'flex',
@@ -246,7 +242,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   }}
                 >
                   {user.role === 'admin' ? <ShieldCheck size={16} /> : user.role === 'delivery_boy' ? <Truck size={16} /> : <User size={16} />}
-                  <span>{user.role === 'admin' ? 'Owner Portal' : user.role === 'delivery_boy' ? 'Delivery App' : 'My Portal'}</span>
+                  <span>{user.role === 'admin' ? 'Owner Portal' : user.role === 'delivery_boy' ? 'Delivery App' : 'Profile'}</span>
                 </button>
 
                 <button
@@ -330,66 +326,41 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
           <button
             type="button"
-            className="public-mobile-menu-toggle"
-            aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            aria-expanded={mobileMenuOpen}
-            aria-controls="public-mobile-menu"
-            onClick={() => setMobileMenuOpen((isOpen) => !isOpen)}
+            className="public-mobile-alerts"
+            onClick={() => setIsNotificationOpen(true)}
+            aria-label={`View notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
           >
-            {mobileMenuOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
+            <Bell size={19} aria-hidden="true" />
+            {unreadCount > 0 && (
+              <span className="public-mobile-alert-count">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </button>
 
-          {mobileMenuOpen && (
-            <nav id="public-mobile-menu" className="public-mobile-menu" aria-label="Public pages">
-              {publicNavigationItems.map(({ tab, label }) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={activeTab === tab || (tab === 'home' && activeTab === 'landing') ? 'is-active' : ''}
-                  aria-current={activeTab === tab || (tab === 'home' && activeTab === 'landing') ? 'page' : undefined}
-                  onClick={() => {
-                    setActiveTab(tab);
-                    setMobileMenuOpen(false);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-
-              {user && (
-                <div className="public-mobile-menu-account">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (user.role === 'admin') setActiveTab('dashboard');
-                      else if (user.role === 'delivery_boy') setActiveTab('delivery-boy-app');
-                      else setActiveTab('customer-portal');
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    {user.role === 'admin' ? 'Owner Portal' : user.role === 'delivery_boy' ? 'Delivery App' : 'My Portal'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNotificationOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    Alerts{unreadCount > 0 ? ` (${unreadCount})` : ''}
-                  </button>
-                </div>
-              )}
-            </nav>
-          )}
         </div>
-      </header>
+        </header>
+        <CustomerBottomNav
+          className="public-mobile-bottom-nav"
+          ariaLabel="Main navigation"
+          items={CUSTOMER_HOME_NAV_ITEMS}
+          activePage={activeTab === 'landing' ? 'home' : activeTab}
+          onNavigate={(page) => {
+            if (page === 'profile' && user?.role === 'customer') {
+              openUserPortal();
+              return;
+            }
+            setActiveTab(page === 'profile' ? 'login' : page);
+          }}
+        />
+      </>
     );
   }
 
   // Otherwise, user is inside the internal Admin or Delivery partner management portal
   return (
     <header
+      className={user?.role === 'customer' ? 'customer-dashboard-nav' : undefined}
       style={{
         background: 'linear-gradient(180deg, #0c2340 0%, #081a30 100%)',
         color: '#ffffff',
@@ -495,7 +466,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 NATURAL MILK DAIRY
               </div>
               <div style={{ fontSize: '0.65rem', fontWeight: 600, color: '#f5a623', textTransform: 'uppercase' }}>
-                Management Portal
+                {user?.role === 'customer' ? 'Customer Portal' : 'Management Portal'}
               </div>
             </div>
           </div>
@@ -521,7 +492,10 @@ export default function Navbar({ activeTab, setActiveTab }) {
         </div>
 
         {/* Portal Nav Items */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        <nav
+          className={user?.role === 'customer' ? 'customer-portal-top-nav' : undefined}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}
+        >
           {user?.role === 'admin' ? (
             <>
               <button
@@ -650,24 +624,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <FileText size={16} /> Audit Trail
               </button>
             </>
-          ) : user?.role === 'customer' ? (
-            <button
-              onClick={() => setActiveTab('customer-portal')}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '8px',
-                fontSize: '0.9rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: '#0d5c3a',
-                color: '#ffffff',
-              }}
-            >
-              <User size={18} /> My Subscription & Ledger
-            </button>
-          ) : (
+          ) : user?.role === 'customer' ? null : (
             <button
               onClick={() => setActiveTab('delivery-boy-app')}
               style={{
@@ -729,8 +686,13 @@ export default function Navbar({ activeTab, setActiveTab }) {
             )}
           </button>
 
-          <div
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+          <button
+            type="button"
+            className="portal-account-trigger"
+            onClick={() => setDropdownOpen((isOpen) => !isOpen)}
+            aria-expanded={dropdownOpen}
+            aria-haspopup="true"
+            aria-label="Open account menu"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -767,7 +729,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               </div>
             </div>
             <ChevronDown size={14} color="#9ca3af" />
-          </div>
+          </button>
 
           {dropdownOpen && (
             <div
@@ -813,6 +775,19 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   </div>
                 )}
               </div>
+
+              <button
+                type="button"
+                className="portal-profile-link"
+                onClick={() => {
+                  openUserPortal();
+                  setDropdownOpen(false);
+                }}
+              >
+                <User size={17} aria-hidden="true" />
+                <span>{user?.role === 'customer' ? 'Profile & dashboard' : 'Open portal'}</span>
+                <ChevronDown size={15} aria-hidden="true" />
+              </button>
             </div>
           )}
         </div>

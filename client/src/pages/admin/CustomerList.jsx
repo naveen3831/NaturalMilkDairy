@@ -17,6 +17,8 @@ import {
   MessageSquare,
   Edit,
   Zap,
+  Truck,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function CustomerList({
@@ -26,10 +28,27 @@ export default function CustomerList({
   onOpenPauseModal,
   onOpenTempQtyModal,
 }) {
-  const { customers, resumeDelivery } = useDairy();
+  const { customers, resumeDelivery, deliveryBoys, assignPartnerToCustomer } = useDairy();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
+  const [partnerMsg, setPartnerMsg] = useState('');
+
+  const handleAssignPartner = async (customer, boyId, boyName) => {
+    try {
+      const res = await assignPartnerToCustomer(customer.id, {
+        deliveryBoyId: boyId,
+        deliveryBoyName: boyName,
+        actor: 'Admin',
+      });
+      if (res && res.success) {
+        setPartnerMsg(`Assigned partner "${boyName || 'None'}" to ${customer.name}. Driver list updated!`);
+        setTimeout(() => setPartnerMsg(''), 4000);
+      }
+    } catch (err) {
+      console.error('Assign partner error:', err);
+    }
+  };
 
   const filtered = customers.filter((c) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
@@ -96,6 +115,28 @@ export default function CustomerList({
           <span>Add Customer</span>
         </button>
       </div>
+
+      {/* Partner Assignment Feedback Banner */}
+      {partnerMsg && (
+        <div
+          style={{
+            background: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            color: '#065f46',
+            padding: '12px 18px',
+            borderRadius: '12px',
+            fontSize: '0.86rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 5px rgba(5, 150, 105, 0.12)',
+          }}
+        >
+          <CheckCircle2 size={18} color="#059669" />
+          <span>{partnerMsg}</span>
+        </div>
+      )}
 
       {/* 2. Filter & Search Controls */}
       <div
@@ -336,8 +377,50 @@ export default function CustomerList({
                     )}
                   </div>
 
-                  <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '3px' }}>
-                    Partner: <strong>{customer.deliveryPlan?.deliveryBoyName || 'Assigned Driver'}</strong>
+                  {/* Interactive Delivery Partner Selector */}
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.74rem', color: '#475569', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <Truck size={13} color="#059669" /> Assigned Delivery Partner:
+                      </span>
+                      {customer.deliveryPlan?.deliveryBoyName ? (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857', background: '#dcfce7', padding: '1px 6px', borderRadius: '4px' }}>
+                          ✓ {customer.deliveryPlan.deliveryBoyName}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', padding: '1px 6px', borderRadius: '4px' }}>
+                          ⚠️ Unassigned
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={customer.deliveryPlan?.deliveryBoyId || ''}
+                      onChange={(e) => {
+                        const selId = e.target.value;
+                        const selBoy = (deliveryBoys || []).find((b) => (b.id === selId || b._id === selId));
+                        handleAssignPartner(customer, selId, selBoy ? selBoy.name : '');
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        fontSize: '0.78rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        background: customer.deliveryPlan?.deliveryBoyId ? '#ecfdf5' : '#ffffff',
+                        color: customer.deliveryPlan?.deliveryBoyId ? '#065f46' : '#334155',
+                        cursor: 'pointer',
+                        boxSizing: 'border-box',
+                      }}
+                      title="Assign a delivery partner to this user"
+                    >
+                      <option value="">Choose Delivery Partner (Unassigned)</option>
+                      {(deliveryBoys || []).map((boy) => (
+                        <option key={boy.id || boy._id} value={boy.id || boy._id}>
+                          {boy.name} • {boy.assignedArea || 'Route'} {boy.vehicleNumber ? `(${boy.vehicleNumber})` : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

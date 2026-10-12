@@ -25,6 +25,7 @@ export default function AddProductPage({ onBack, onSaved }) {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('active');
   const [image, setImage] = useState(CLOUDINARY_MEDIA.cowMilk);
+  const [additionalImages, setAdditionalImages] = useState([]);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
@@ -78,6 +79,7 @@ export default function AddProductPage({ onBack, onSaved }) {
         price: Number(price),
         description: description.trim(),
         image: image.trim(),
+        images: [image.trim(), ...additionalImages.filter(Boolean)],
         status,
         actor: 'Admin',
       });
@@ -524,6 +526,71 @@ export default function AddProductPage({ onBack, onSaved }) {
                   color: '#475569',
                 }}
               />
+            </div>
+
+            {/* Additional Product Images Gallery (Optional) */}
+            <div style={{ marginTop: '10px', paddingTop: '12px', borderTop: '1px solid #f1f5f9' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                  Additional Images ({additionalImages.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = prompt('Enter image URL:');
+                    if (url && url.trim()) setAdditionalImages((prev) => [...prev, url.trim()]);
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: '#e0f2fe',
+                    color: '#0369a1',
+                    border: 'none',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  + Add Extra Image
+                </button>
+              </div>
+
+              {additionalImages.length === 0 ? (
+                <div style={{ fontSize: '0.74rem', color: '#94a3b8', fontStyle: 'italic' }}>
+                  Only 1 main image attached. (If you add more images here, they will appear as small thumbnails below the main image on the product details page).
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {additionalImages.map((extraImg, eidx) => (
+                    <div key={eidx} style={{ position: 'relative', width: '56px', height: '56px', borderRadius: '8px', overflow: 'hidden', border: '1.5px solid #cbd5e1' }}>
+                      <img src={extraImg} alt={`Extra ${eidx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <button
+                        type="button"
+                        onClick={() => setAdditionalImages((prev) => prev.filter((_, i) => i !== eidx))}
+                        title="Remove image"
+                        style={{
+                          position: 'absolute',
+                          top: '2px',
+                          right: '2px',
+                          width: '18px',
+                          height: '18px',
+                          borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.7)',
+                          color: '#fff',
+                          border: 'none',
+                          fontSize: '11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

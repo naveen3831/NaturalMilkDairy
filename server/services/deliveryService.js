@@ -97,6 +97,13 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
           deliveredAt: null,
           createdAt: new Date(),
         });
+      } else {
+        // Sync assigned delivery boy to existing pending delivery if it was unassigned
+        if ((!existing.deliveryBoyId || existing.deliveryBoyId !== plan.deliveryBoyId) && plan.deliveryBoyId) {
+          existing.deliveryBoyId = plan.deliveryBoyId;
+          existing.deliveryBoyName = plan.deliveryBoyName || '';
+          await existing.save();
+        }
       }
     }
   } catch (err) {

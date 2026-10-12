@@ -13,11 +13,11 @@ const initialProducts = [
   { name: 'Fresh Malai Paneer 500g', category: 'paneer', unit: '500 g', price: 190, status: 'active', description: 'Soft, melt-in-mouth cottage cheese', image: '/product-paneer.jpg' },
 ];
 
-const connectDB = async () => {
+const connectDB = async (retryCount = 0) => {
   try {
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/natural_milk_dairy';
     const conn = await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 30000,
     });
     isMongoConnected = true;
     mongoConnectionInfo = {
@@ -54,7 +54,10 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     isMongoConnected = false;
-    console.log(`⚡ MongoDB connection note (${error.message}).`);
+    console.log(`⚡ MongoDB connection note (${error.message}). Retrying in 5 seconds...`);
+    setTimeout(() => {
+      connectDB(retryCount + 1);
+    }, 5000);
   }
 };
 

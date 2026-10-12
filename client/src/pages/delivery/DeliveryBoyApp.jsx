@@ -207,9 +207,24 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   };
 
   // Filter deliveries assigned to this delivery partner directly from active database
-  const myDeliveries = (deliveries || []).filter(
-    (d) => d.deliveryBoyId === boyId || d.deliveryBoyName === boyName || !d.deliveryBoyId
-  );
+  const myDeliveries = (deliveries || []).filter((d) => {
+    if (!d) return false;
+    const matchesId =
+      (boyId && d.deliveryBoyId === boyId) ||
+      (matchedBoy?._id && d.deliveryBoyId === matchedBoy._id.toString()) ||
+      (matchedBoy?.id && d.deliveryBoyId === matchedBoy.id.toString()) ||
+      (user?.id && d.deliveryBoyId === user.id.toString()) ||
+      (user?.mobile && d.deliveryBoyId === user.mobile) ||
+      (matchedBoy?.mobile && d.deliveryBoyId === matchedBoy.mobile);
+
+    const matchesName =
+      (boyName && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === boyName.toLowerCase()) ||
+      (matchedBoy?.name && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === matchedBoy.name.toLowerCase());
+
+    const isUnassigned = !d.deliveryBoyId;
+
+    return matchesId || matchesName || isUnassigned;
+  });
 
   const pendingList = myDeliveries.filter((d) => d.status === 'pending');
   const completedList = myDeliveries.filter((d) => d.status === 'delivered');

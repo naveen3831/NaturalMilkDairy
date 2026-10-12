@@ -1,14 +1,55 @@
+const mongoose = require('mongoose');
 const Customer = require('../models/Customer');
 const User = require('../models/User');
 const Delivery = require('../models/Delivery');
 const Payment = require('../models/Payment');
 const DeliveryBoy = require('../models/DeliveryBoy');
+const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
+const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 
 // Get all customers with search and filters
 const getCustomers = async (req, res) => {
   try {
     const { search, status, area, deliveryBoyId } = req.query;
+
+    // Ensure all registered users (role: customer or user) have a Customer document
+    try {
+      const customerUsers = await User.find({ role: { $in: ['customer', 'user'] } }).lean();
+      for (const u of customerUsers) {
+        const hasCustomer = await Customer.findOne({ mobile: u.mobile });
+        if (!hasCustomer) {
+          const custCount = await Customer.countDocuments();
+          await Customer.create({
+            customerId: `CUST-${custCount + 101}`,
+            name: u.name,
+            mobile: u.mobile,
+            email: u.email || '',
+            address: u.address || `${u.assignedArea || 'Madhapur'}, Home Delivery`,
+            area: u.assignedArea || 'Madhapur',
+            status: u.status || 'active',
+            deliveryPlan: {
+              milkQty: 1,
+              milkUnit: 'L',
+              curdQty: 0,
+              curdUnit: 'g',
+              frequency: 'daily',
+              deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+              deliveryBoyId: '',
+              deliveryBoyName: '',
+              startDate: u.createdAt || new Date(),
+            },
+            paymentInfo: { paymentType: 'credit', paymentCycle: 'monthly' },
+            currentBalance: 0,
+            notes: 'Created from registered user account',
+            createdAt: u.createdAt || new Date(),
+          });
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Sync registered users note:', syncErr.message);
+    }
+
     const filter = {};
 
     if (status && status !== 'all') {
@@ -323,6 +364,24 @@ const pauseDelivery = async (req, res) => {
     if (reason) customer.notes = `${customer.notes ? customer.notes + ' | ' : ''}Pause: ${reason}`;
     await customer.save();
 
+    // Sync pending deliveries immediately so driver route list doesn't show paused drops
+    await Delivery.updateMany(
+      {
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerId: customer.customerId },
+          { customerPhone: customer.mobile },
+        ],
+        status: 'pending',
+      },
+      {
+        $set: {
+          status: 'not_delivered',
+          notDeliveredReason: `Delivery Paused: ${reason || 'Customer Vacation'}`,
+        },
+      }
+    );
+
     await recordAudit(
       'Customer Delivery Paused',
       actor || 'Admin',
@@ -359,6 +418,28 @@ const resumeDelivery = async (req, res) => {
     customer.pauseUntil = null;
     await customer.save();
 
+    const today = formatDate();
+    // Reactivate paused deliveries for today/future
+    await Delivery.updateMany(
+      {
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerId: customer.customerId },
+          { customerPhone: customer.mobile },
+        ],
+        deliveryDate: { $gte: today },
+        status: 'not_delivered',
+        notDeliveredReason: { $regex: /Paused|Vacation/i },
+      },
+      {
+        $set: {
+          status: 'pending',
+          notDeliveredReason: '',
+        },
+      }
+    );
+    await ensureDeliveriesForDate(today);
+
     await recordAudit('Customer Delivery Resumed', actor || 'Admin', `Resumed active delivery for ${customer.name}`, 'customer');
 
     return res.json({
@@ -391,6 +472,28 @@ const setTemporaryQty = async (req, res) => {
       curdQty: Number(curdQty),
     };
     await customer.save();
+
+    // Update existing pending delivery for this date so driver sees the new quantity instantly
+    await Delivery.updateMany(
+      {
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerId: customer.customerId },
+          { customerPhone: customer.mobile },
+        ],
+        deliveryDate: date,
+        status: 'pending',
+      },
+      {
+        $set: {
+          plannedMilk: Number(milkQty),
+          actualMilk: Number(milkQty),
+          plannedCurd: Number(curdQty),
+          actualCurd: Number(curdQty),
+          totalAmount: Number(milkQty) * 60 + (Number(curdQty) / 500) * 30,
+        },
+      }
+    );
 
     await recordAudit(
       'Temporary Quantity Changed',
@@ -562,11 +665,317 @@ const sendCustomerCredentials = async (req, res) => {
   }
 };
 
+const updateOwnCustomerProfile = async (req, res) => {
+  try {
+    let customer = null;
+    if (req.user.id && req.user.id.length === 24) {
+      try {
+        customer = await Customer.findById(req.user.id);
+      } catch (e) {
+        customer = null;
+      }
+    }
+    if (!customer && req.user.mobile) {
+      customer = await Customer.findOne({ mobile: req.user.mobile });
+    }
+    if (!customer && req.user.email) {
+      customer = await Customer.findOne({ email: req.user.email });
+    }
+    if (!customer && req.user.customerId) {
+      customer = await Customer.findOne({ customerId: req.user.customerId });
+    }
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    const fields = ['name', 'mobile', 'email', 'whatsapp', 'address', 'area', 'landmark'];
+    const profile = {};
+    for (const field of fields) {
+      if (req.body[field] !== undefined) {
+        if (typeof req.body[field] !== 'string') {
+          return res.status(400).json({ success: false, message: `Invalid ${field} value.` });
+        }
+        profile[field] = req.body[field].trim();
+      }
+    }
+
+    if (!profile.name || !profile.mobile || !profile.address) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, mobile number, and delivery address are required.',
+      });
+    }
+
+    if (profile.email) profile.email = profile.email.toLowerCase();
+    if (profile.mobile !== customer.mobile) {
+      const [duplicateCustomer, duplicateUser] = await Promise.all([
+        Customer.findOne({ mobile: profile.mobile, _id: { $ne: customer._id } }).lean(),
+        User.findOne({ mobile: profile.mobile, _id: { $ne: req.user.id } }).lean(),
+      ]);
+      if (duplicateCustomer || duplicateUser) {
+        return res.status(409).json({ success: false, message: 'That mobile number is already in use.' });
+      }
+    }
+
+    if (profile.email) {
+      const duplicateEmail = await Customer.findOne({
+        email: { $regex: new RegExp(`^${profile.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+        _id: { $ne: customer._id },
+      }).lean();
+      if (duplicateEmail) {
+        return res.status(409).json({ success: false, message: 'That email address is already in use.' });
+      }
+    }
+
+    const oldMobile = customer.mobile;
+    if (req.body.deliveryPlan && typeof req.body.deliveryPlan === 'object') {
+      const dp = req.body.deliveryPlan;
+      customer.deliveryPlan = {
+        ...(customer.deliveryPlan || {}),
+        ...dp,
+        milkQty: dp.milkQty !== undefined ? Number(dp.milkQty) : customer.deliveryPlan?.milkQty ?? 1,
+        curdQty: dp.curdQty !== undefined ? Number(dp.curdQty) : customer.deliveryPlan?.curdQty ?? 0,
+        frequency: dp.frequency || customer.deliveryPlan?.frequency || 'daily',
+      };
+    }
+
+    Object.assign(customer, profile);
+    await customer.save();
+
+    await User.updateMany(
+      { mobile: oldMobile, role: { $in: ['customer', 'user'] } },
+      {
+        $set: {
+          name: customer.name,
+          mobile: customer.mobile,
+          email: customer.email || '',
+          address: customer.address,
+          assignedArea: customer.area || '',
+        },
+      }
+    );
+
+    // Sync all pending deliveries in real time for driver and admin
+    const fullAddress = [customer.address, customer.landmark, customer.area].filter(Boolean).join(', ');
+    const deliveryUpdate = {
+      customerName: customer.name,
+      customerPhone: customer.mobile,
+      customerAddress: fullAddress,
+    };
+    if (customer.deliveryPlan?.milkQty !== undefined) {
+      deliveryUpdate.plannedMilk = customer.deliveryPlan.milkQty;
+      deliveryUpdate.actualMilk = customer.deliveryPlan.milkQty;
+    }
+    if (customer.deliveryPlan?.curdQty !== undefined) {
+      deliveryUpdate.plannedCurd = customer.deliveryPlan.curdQty;
+      deliveryUpdate.actualCurd = customer.deliveryPlan.curdQty;
+    }
+    if (deliveryUpdate.plannedMilk !== undefined) {
+      const milkPrice = 60;
+      const curdPrice = 30;
+      deliveryUpdate.totalAmount = (deliveryUpdate.plannedMilk * milkPrice) + ((deliveryUpdate.plannedCurd / 500) * curdPrice);
+    }
+
+    await Delivery.updateMany(
+      {
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerId: customer.customerId },
+          { customerPhone: oldMobile },
+          { customerPhone: customer.mobile },
+        ],
+        status: 'pending',
+      },
+      { $set: deliveryUpdate }
+    );
+
+    return res.json({
+      success: true,
+      customer: { ...customer.toObject(), id: customer._id.toString() },
+    });
+  } catch (err) {
+    console.error('Customer profile update failed:', err.message);
+    return res.status(500).json({ success: false, message: 'Unable to update your profile right now.' });
+  }
+};
+
+const deleteOwnCustomerAccount = async (req, res) => {
+  let session;
+  try {
+    session = await mongoose.startSession();
+    if (req.body.confirmation !== 'DELETE' || typeof req.body.password !== 'string' || !req.body.password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Enter your password and type DELETE to permanently remove your account.',
+      });
+    }
+
+    await session.withTransaction(async () => {
+      let customer = null;
+      if (req.user.id && req.user.id.length === 24) {
+        try {
+          customer = await Customer.findById(req.user.id).session(session);
+        } catch (e) {
+          customer = null;
+        }
+      }
+      if (!customer && req.user.mobile) {
+        customer = await Customer.findOne({ mobile: req.user.mobile }).session(session);
+      }
+      if (!customer && req.user.email) {
+        customer = await Customer.findOne({ email: req.user.email }).session(session);
+      }
+      if (!customer) {
+        const error = new Error('Customer account not found.');
+        error.status = 404;
+        throw error;
+      }
+
+      const user = await User.findOne({
+        mobile: customer.mobile,
+        role: { $in: ['customer', 'user'] },
+      }).session(session);
+      const fallbackPassword = `${customer.name.split(' ')[0].toLowerCase()}@123`;
+      const expectedPassword = user?.password || customer.password || fallbackPassword;
+      if (req.body.password !== expectedPassword) {
+        const error = new Error('The password you entered is incorrect.');
+        error.status = 401;
+        throw error;
+      }
+
+      const customerIds = [customer._id.toString(), customer.customerId];
+      await Delivery.deleteMany({ customerId: { $in: customerIds } }, { session });
+      await Payment.deleteMany({ customerId: { $in: customerIds } }, { session });
+      await Notification.deleteMany({
+          recipientRole: 'customer',
+          recipientId: { $in: [req.user.id, ...customerIds] },
+        }, { session });
+      await User.deleteMany({
+          mobile: customer.mobile,
+          role: { $in: ['customer', 'user'] },
+        }, { session });
+      await Customer.deleteOne({ _id: customer._id }, { session });
+    });
+
+    return res.json({ success: true, message: 'Your account and associated history have been permanently deleted.' });
+  } catch (err) {
+    console.error('Customer account deletion failed:', err.message);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.status ? err.message : 'Unable to delete your account right now. No account data was intentionally removed.',
+    });
+  } finally {
+    if (session) {
+      try {
+        await session.endSession();
+      } catch (err) {
+        console.error('Customer account deletion session cleanup failed:', err.message);
+      }
+    }
+  }
+};
+
+// Assign delivery partner to customer
+const assignPartner = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { deliveryBoyId, deliveryBoyName, actor } = req.body;
+
+    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    const customer = await Customer.findOne(query);
+
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    let resolvedBoyName = deliveryBoyName || '';
+    let resolvedBoyId = deliveryBoyId || '';
+
+    if (resolvedBoyId && !resolvedBoyName) {
+      const boy = await DeliveryBoy.findOne(
+        resolvedBoyId.length === 24 ? { _id: resolvedBoyId } : { mobile: resolvedBoyId }
+      ).lean();
+      if (boy) {
+        resolvedBoyName = boy.name;
+        resolvedBoyId = boy._id.toString();
+      }
+    }
+
+    customer.deliveryPlan = customer.deliveryPlan || {};
+    customer.deliveryPlan.deliveryBoyId = resolvedBoyId;
+    customer.deliveryPlan.deliveryBoyName = resolvedBoyName;
+    await customer.save();
+
+    // Ensure today's delivery schedule is up to date
+    const today = formatDate();
+    await ensureDeliveriesForDate(today);
+
+    // Update today's and all pending delivery records for this customer
+    const custIds = [customer.customerId, customer._id.toString()];
+    await Delivery.updateMany(
+      {
+        customerId: { $in: custIds },
+        status: 'pending',
+      },
+      {
+        $set: {
+          deliveryBoyId: resolvedBoyId,
+          deliveryBoyName: resolvedBoyName,
+        },
+      }
+    );
+
+    // Send instant notification to delivery partner
+    if (resolvedBoyId) {
+      try {
+        await Notification.create({
+          recipientRole: 'delivery_boy',
+          recipientId: resolvedBoyId,
+          title: '📦 New Customer Assigned',
+          message: `Dairy Admin assigned customer ${customer.name} (${customer.deliveryPlan?.milkQty || 1}L Milk, ${customer.area}) to your delivery route.`,
+          type: 'delivery_assigned',
+          data: {
+            customerId: customer.customerId,
+            customerName: customer.name,
+            customerAddress: customer.address,
+            customerPhone: customer.mobile,
+            deliveryBoyId: resolvedBoyId,
+            deliveryBoyName: resolvedBoyName,
+          },
+        });
+      } catch (notifErr) {
+        console.warn('Driver notification error:', notifErr.message);
+      }
+    }
+
+    await recordAudit(
+      'Partner Assigned to Customer',
+      actor || 'Admin',
+      `Assigned partner "${resolvedBoyName || 'None'}" to customer ${customer.name} (${customer.customerId})`,
+      'customer'
+    );
+
+    return res.json({
+      success: true,
+      message: `Successfully assigned ${resolvedBoyName || 'partner'} to ${customer.name}`,
+      customer: {
+        ...customer.toObject(),
+        id: customer._id.toString(),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomerById,
   createCustomer,
   updateCustomer,
+  updateOwnCustomerProfile,
+  deleteOwnCustomerAccount,
+  assignPartner,
   pauseDelivery,
   resumeDelivery,
   setTemporaryQty,

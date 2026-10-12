@@ -147,9 +147,57 @@ export const DairyProvider = ({ children }) => {
     fetchAuditLogs();
   }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPendingCredit, fetchAuditLogs]);
 
+  // Real-time synchronization notifier (broadcasts to all open tabs and windows)
+  const notifyRealtimeSync = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('nmd_realtime_sync');
+        bc.postMessage({ type: 'DATA_UPDATED', timestamp: Date.now() });
+        bc.close();
+      }
+      localStorage.setItem('nmd_last_sync_timestamp', Date.now().toString());
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
+
+  // Listen for real-time updates from other tabs or windows (Customer, Driver, Admin)
+  useEffect(() => {
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      bc = new BroadcastChannel('nmd_realtime_sync');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'DATA_UPDATED') {
+          refreshAll();
+        }
+      };
+    }
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'nmd_last_sync_timestamp') {
+        refreshAll();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // 4-second real-time poll so Admin & Driver receive customer updates across devices
+    const realtimePoll = setInterval(() => {
+      fetchCustomers();
+      fetchDeliveries();
+      fetchDashboard();
+    }, 4000);
+
+    return () => {
+      if (bc) bc.close();
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(realtimePoll);
+    };
+  }, [refreshAll, fetchCustomers, fetchDeliveries, fetchDashboard]);
 
   // Mark Delivery as Delivered
   const markDelivered = async (id, payload) => {
@@ -171,6 +219,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
     } catch (err) {
@@ -197,6 +246,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
     } catch (err) {
@@ -215,6 +265,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
       return data;
@@ -272,6 +323,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
       }
       return data;
     } catch (err) {
@@ -291,6 +343,27 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
+    }
+  };
+
+  // Assign Partner to Customer
+  const assignPartnerToCustomer = async (customerId, payload) => {
+    try {
+      const res = await fetch(`/api/customers/${customerId}/assign-partner`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshAll();
+        notifyRealtimeSync();
       }
       return data;
     } catch (err) {
@@ -310,6 +383,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
     } catch (err) {
@@ -328,6 +402,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
     } catch (err) {
@@ -346,6 +421,7 @@ export const DairyProvider = ({ children }) => {
       const data = await res.json();
       if (data.success) {
         refreshAll();
+        notifyRealtimeSync();
         return data;
       }
     } catch (err) {
@@ -616,6 +692,7 @@ export const DairyProvider = ({ children }) => {
         offlineQueue,
         syncOfflineQueue,
         refreshAll,
+        notifyRealtimeSync,
         fetchDashboard,
         fetchDeliveries,
         fetchCustomers,
@@ -629,6 +706,7 @@ export const DairyProvider = ({ children }) => {
         recordPayment,
         addCustomer,
         updateCustomer,
+        assignPartnerToCustomer,
         pauseDelivery,
         resumeDelivery,
         setTemporaryQty,
