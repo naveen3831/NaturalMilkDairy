@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const { recordAudit } = require('../services/auditService');
+const { broadcast } = require('../config/websocket');
 
 const getProducts = async (req, res) => {
   try {
@@ -48,6 +49,8 @@ const updateProductPrice = async (req, res) => {
       'price'
     );
 
+    broadcast('PRODUCT_UPDATED', {});
+
     return res.json({
       success: true,
       message: `Updated ${product.name} price to ₹${newPrice}`,
@@ -84,6 +87,8 @@ const addProduct = async (req, res) => {
     });
 
     await recordAudit('Product Added', actor || 'Admin', `Added new product ${cleanName} at ₹${price}`, 'price');
+
+    broadcast('PRODUCT_UPDATED', {});
 
     return res.status(201).json({
       success: true,
@@ -132,6 +137,8 @@ const updateProduct = async (req, res) => {
 
     await recordAudit('Product Updated', actor || 'Admin', `Updated details for ${product.name}`, 'price');
 
+    broadcast('PRODUCT_UPDATED', {});
+
     return res.json({
       success: true,
       product: {
@@ -160,6 +167,8 @@ const deleteProduct = async (req, res) => {
     }
 
     await recordAudit('Product Deleted', actor || 'Admin', `Deleted catalog product: ${product.name}`, 'price');
+
+    broadcast('PRODUCT_UPDATED', {});
 
     return res.json({
       success: true,

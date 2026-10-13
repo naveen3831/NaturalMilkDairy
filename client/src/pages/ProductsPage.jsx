@@ -33,7 +33,7 @@ const DEFAULT_CATALOG = [
     tagColor: '#0c2340',
     tagBg: '#edf4fc',
     fat: '4.2% Fat • 8.5% SNF',
-    image: CLOUDINARY_MEDIA.cowMilk,
+    image: CLOUDINARY_MEDIA.cowMilk500ml || '/product-cow-milk-500ml.jpg',
     features: ['Fresh Every Dawn', 'Sealed Bottle', 'Easy Morning Drop'],
   },
   {
@@ -47,7 +47,7 @@ const DEFAULT_CATALOG = [
     tagColor: '#d98a0d',
     tagBg: '#fef8eb',
     fat: '7.5% Fat • 9.0% SNF',
-    image: CLOUDINARY_MEDIA.buffaloMilk,
+    image: CLOUDINARY_MEDIA.buffaloMilk || '/product-buffalo-milk.jpg',
     features: ['Extra Thick Malai', 'Natural Cream', 'Wholesome Taste'],
   },
   {
@@ -148,6 +148,13 @@ export default function ProductsPage({ setActiveTab }) {
       : catalogProducts.filter((p) => p.category === activeCategory);
 
   useEffect(() => {
+    const handleReset = () => {
+      setSelectedProductDetails(null);
+      setActiveCategory('all');
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('nmd_reset_products_page', handleReset);
+
     const targetProdId = localStorage.getItem('nmd_selected_product_id');
     if (targetProdId && catalogProducts.length > 0) {
       const found = catalogProducts.find(
@@ -159,6 +166,8 @@ export default function ProductsPage({ setActiveTab }) {
       }
       localStorage.removeItem('nmd_selected_product_id');
     }
+
+    return () => window.removeEventListener('nmd_reset_products_page', handleReset);
   }, [catalogProducts]);
 
   const handleSubscribe = (product) => {
@@ -343,9 +352,13 @@ export default function ProductsPage({ setActiveTab }) {
                 style={{
                   position: 'relative',
                   width: '100%',
-                  height: '240px',
+                  aspectRatio: '1 / 1',
+                  maxHeight: '340px',
                   overflow: 'hidden',
-                  background: '#f1f5f2',
+                  background: '#f6f9f7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
                 <img
@@ -353,12 +366,19 @@ export default function ProductsPage({ setActiveTab }) {
                   alt={p.name}
                   className="product-img"
                   onError={(e) => {
-                    e.currentTarget.src = CLOUDINARY_MEDIA.heroDairy;
+                    e.currentTarget.src = p.name?.toLowerCase().includes('buffalo')
+                      ? '/product-buffalo-milk.jpg'
+                      : p.name?.toLowerCase().includes('500')
+                      ? '/product-cow-milk-500ml.jpg'
+                      : CLOUDINARY_MEDIA.cowMilk;
                   }}
                   style={{
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
+                    objectPosition: 'center 10%',
+                    display: 'block',
+                    transition: 'transform 0.35s ease',
                   }}
                 />
 

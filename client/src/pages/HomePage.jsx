@@ -40,7 +40,7 @@ const DEFAULT_HOME_PRODUCTS = [
     name: 'Farm Fresh Cow Milk 1L',
     tagline: 'Single-origin morning harvest',
     badge: 'Bestseller',
-    badgeColor: '#0d5c3a',
+    badgeColor: '#059669',
     fat: '4.2% Fat • 8.5% SNF',
     price: '₹60',
     numericPrice: 60,
@@ -70,7 +70,7 @@ const DEFAULT_HOME_PRODUCTS = [
     name: 'Traditional Farm Curd 500g',
     tagline: 'Cultured in earthen pots',
     badge: 'Clay Pot Set',
-    badgeColor: '#0d5c3a',
+    badgeColor: '#059669',
     fat: 'Live Probiotics',
     price: '₹35',
     numericPrice: 35,
@@ -261,7 +261,7 @@ export default function HomePage({ setActiveTab }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  color: '#0d5c3a',
+                  color: '#059669',
                   fontWeight: 800,
                   fontSize: '0.82rem',
                   textTransform: 'uppercase',
@@ -269,7 +269,7 @@ export default function HomePage({ setActiveTab }) {
                   marginBottom: '10px',
                 }}
               >
-                <Leaf size={16} color="#0d5c3a" />
+                <Leaf size={16} color="#059669" />
                 <span>Good Mornings Begin Naturally</span>
               </div>
 
@@ -284,7 +284,7 @@ export default function HomePage({ setActiveTab }) {
                 }}
               >
                 Pure, Fresh Milk Drawn Every Dawn.<br />
-                <span style={{ color: '#0d5c3a' }}>Delivered In Glass Bottles.</span>
+                <span style={{ color: '#059669' }}>Delivered In Glass Bottles.</span>
               </h2>
 
               <p style={{ fontSize: '1.02rem', color: '#475569', lineHeight: 1.65, marginBottom: '24px' }}>
@@ -294,15 +294,15 @@ export default function HomePage({ setActiveTab }) {
 
               {/* 3 Key Purity Checks */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#166534', fontSize: '0.94rem', fontWeight: 600 }}>
-                  <CheckCircle size={19} color="#16a34a" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#065f46', fontSize: '0.94rem', fontWeight: 600 }}>
+                  <CheckCircle size={19} color="#059669" />
                   <span>100% Unadulterated (Zero added water, starch, or milk powders)</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#166534', fontSize: '0.94rem', fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#065f46', fontSize: '0.94rem', fontWeight: 600 }}>
                   <Clock size={19} color="#d98a0d" />
                   <span>Guaranteed Silent Drop Before 6:30 AM Every Single Day</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#166534', fontSize: '0.94rem', fontWeight: 600 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#065f46', fontSize: '0.94rem', fontWeight: 600 }}>
                   <ShieldCheck size={19} color="#0284c7" />
                   <span>Sterilized Food-Grade Glass Bottles (Zero Plastic Leaching)</span>
                 </div>
@@ -312,14 +312,14 @@ export default function HomePage({ setActiveTab }) {
             {/* Right Column: Interactive Light Morning Subscription Selector Box */}
             <div
               style={{
-                background: 'linear-gradient(135deg, #f8faf8 0%, #edf7f0 100%)',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
                 borderRadius: '24px',
                 padding: '36px',
-                border: '1.5px solid #d1e7d8',
-                boxShadow: '0 12px 36px rgba(13, 92, 58, 0.06)',
+                border: '1.5px solid #d1fae5',
+                boxShadow: '0 12px 36px rgba(5, 150, 105, 0.06)',
               }}
             >
-              <div style={{ fontSize: '0.82rem', color: '#0d5c3a', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>
+              <div style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '6px' }}>
                 Quick Doorstep Subscription
               </div>
               <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0c2340', marginBottom: '8px' }}>
@@ -372,20 +372,20 @@ export default function HomePage({ setActiveTab }) {
                         padding: '16px 18px',
                         borderRadius: '16px',
                         background: '#ffffff',
-                        border: isSelected ? '2px solid #0d5c3a' : '1.5px solid #e2ece3',
-                        boxShadow: isSelected ? '0 8px 20px rgba(13, 92, 58, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
+                        border: isSelected ? '2px solid #059669' : '1.5px solid #e2ece3',
+                        boxShadow: isSelected ? '0 8px 20px rgba(5, 150, 105, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
                         cursor: 'pointer',
                         transition: 'all 0.2s',
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>
                           {item.badge}
                         </span>
-                        {isSelected && <Check size={16} color="#0d5c3a" />}
+                        {isSelected && <Check size={16} color="#059669" />}
                       </div>
                       <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0c2340' }}>{item.label}</div>
-                      <div style={{ fontWeight: 900, fontSize: '1.15rem', color: '#0d5c3a', marginTop: '4px' }}>{item.price}</div>
+                      <div style={{ fontWeight: 900, fontSize: '1.15rem', color: '#059669', marginTop: '4px' }}>{item.price}</div>
                     </div>
                   );
                 })}
@@ -396,7 +396,7 @@ export default function HomePage({ setActiveTab }) {
                 className="shine-button dairy-btn-hover"
                 style={{
                   width: '100%',
-                  background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                   color: '#ffffff',
                   fontWeight: 800,
                   fontSize: '1.02rem',
@@ -404,7 +404,7 @@ export default function HomePage({ setActiveTab }) {
                   borderRadius: '14px',
                   cursor: 'pointer',
                   border: 'none',
-                  boxShadow: '0 8px 24px rgba(13, 92, 58, 0.3)',
+                  boxShadow: '0 8px 24px rgba(5, 150, 105, 0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -453,14 +453,14 @@ export default function HomePage({ setActiveTab }) {
                   width: '50px',
                   height: '50px',
                   borderRadius: '14px',
-                  background: '#eaf5ee',
-                  border: '1.5px solid #bbf7d0',
+                  background: '#ecfdf5',
+                  border: '1.5px solid #a7f3d0',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Award size={26} color="#0d5c3a" />
+                <Award size={26} color="#059669" />
               </div>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -471,9 +471,9 @@ export default function HomePage({ setActiveTab }) {
                     style={{
                       padding: '4px 12px',
                       borderRadius: '20px',
-                      background: '#dcfce7',
-                      border: '1px solid #86efac',
-                      color: '#166534',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
                       fontSize: '0.74rem',
                       fontWeight: 800,
                       textTransform: 'uppercase',
@@ -498,7 +498,7 @@ export default function HomePage({ setActiveTab }) {
                   background: '#ffffff',
                   padding: '8px 18px',
                   borderRadius: '30px',
-                  border: '1px solid #cbd5e1',
+                  border: '1px solid #e2e8f0',
                   boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
                 }}
               >
@@ -507,18 +507,18 @@ export default function HomePage({ setActiveTab }) {
                     width: '10px',
                     height: '10px',
                     borderRadius: '50%',
-                    background: '#22c55e',
-                    boxShadow: '0 0 8px #22c55e',
+                    background: '#10b981',
+                    boxShadow: '0 0 8px #10b981',
                   }}
                   className="pulse-badge"
                 />
                 <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#0c2340' }}>
-                  Tomorrow's 6:00 AM Mumbai Routes Active
+                  Tomorrow's 6:00 AM Hyderabad Routes Active
                 </span>
                 <button
                   onClick={() => handleSubscribe(products[0])}
                   style={{
-                    background: '#0d5c3a',
+                    background: '#059669',
                     color: '#ffffff',
                     padding: '4px 12px',
                     borderRadius: '8px',
@@ -719,8 +719,8 @@ export default function HomePage({ setActiveTab }) {
                 gap: '6px',
                 padding: '5px 14px',
                 borderRadius: '20px',
-                background: '#eaf5ee',
-                color: '#0d5c3a',
+                background: '#ecfdf5',
+                color: '#059669',
                 fontSize: '0.82rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
@@ -728,7 +728,7 @@ export default function HomePage({ setActiveTab }) {
                 marginBottom: '12px',
               }}
             >
-              <HeartHandshake size={15} color="#0d5c3a" />
+              <HeartHandshake size={15} color="#059669" />
               <span>Ethical Farm Standards</span>
             </div>
 
@@ -742,20 +742,20 @@ export default function HomePage({ setActiveTab }) {
             </p>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#166534', fontWeight: 600 }}>
-                <Check size={16} color="#16a34a" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
+                <Check size={16} color="#059669" />
                 <span>Zero Oxytocin or Hormones</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#166534', fontWeight: 600 }}>
-                <Check size={16} color="#16a34a" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
+                <Check size={16} color="#059669" />
                 <span>Clean Automated Milking</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#166534', fontWeight: 600 }}>
-                <Check size={16} color="#16a34a" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
+                <Check size={16} color="#059669" />
                 <span>Ayurvedic Veterinary Care</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#166534', fontWeight: 600 }}>
-                <Check size={16} color="#16a34a" />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
+                <Check size={16} color="#059669" />
                 <span>Mineral-Rich Clean Water</span>
               </div>
             </div>
@@ -763,7 +763,7 @@ export default function HomePage({ setActiveTab }) {
             <button
               onClick={() => setActiveTab('story')}
               style={{
-                background: '#0d5c3a',
+                background: '#059669',
                 color: '#ffffff',
                 padding: '12px 24px',
                 borderRadius: '12px',
@@ -960,14 +960,18 @@ export default function HomePage({ setActiveTab }) {
               }}
             >
               {/* Product Visual Container */}
-              <div className="public-product-image" style={{ position: 'relative', width: '100%', height: '240px', overflow: 'hidden', background: '#f8faf8' }}>
+              <div className="public-product-image" style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', maxHeight: '340px', overflow: 'hidden', background: '#f6f9f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img
                   src={prod.image}
                   alt={prod.name}
                   className="product-img"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 10%', display: 'block', transition: 'transform 0.35s ease' }}
                   onError={(e) => {
-                    e.currentTarget.src = CLOUDINARY_MEDIA.heroDairy;
+                    e.currentTarget.src = prod.name?.toLowerCase().includes('buffalo')
+                      ? '/product-buffalo-milk.jpg'
+                      : prod.name?.toLowerCase().includes('500')
+                      ? '/product-cow-milk-500ml.jpg'
+                      : CLOUDINARY_MEDIA.cowMilk;
                   }}
                 />
                 
@@ -1013,7 +1017,7 @@ export default function HomePage({ setActiveTab }) {
               {/* Product Information Body */}
               <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div className="public-product-card-info">
-                  <div style={{ fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
                     {prod.tagline}
                   </div>
                   <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
@@ -1027,7 +1031,7 @@ export default function HomePage({ setActiveTab }) {
                   <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
                     {prod.highlights.map((h, hidx) => (
                       <div key={hidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#334155' }}>
-                        <Check size={14} color="#0d5c3a" />
+                        <Check size={14} color="#059669" />
                         <span>{h}</span>
                       </div>
                     ))}
@@ -1046,7 +1050,7 @@ export default function HomePage({ setActiveTab }) {
                   }}
                 >
                   <div className="public-product-price">
-                    <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0d5c3a' }}>{prod.price}</span>
+                    <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#059669' }}>{prod.price}</span>
                     <span style={{ fontSize: '0.82rem', color: '#597361', marginLeft: '4px' }}>{prod.unit}</span>
                   </div>
 
@@ -1057,7 +1061,7 @@ export default function HomePage({ setActiveTab }) {
                     }}
                     className="dairy-btn-hover public-product-subscribe"
                     style={{
-                      background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                      background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                       color: '#ffffff',
                       fontWeight: 800,
                       fontSize: '0.88rem',
@@ -1068,7 +1072,7 @@ export default function HomePage({ setActiveTab }) {
                       gap: '8px',
                       cursor: 'pointer',
                       border: 'none',
-                      boxShadow: '0 4px 14px rgba(13, 92, 58, 0.25)',
+                      boxShadow: '0 4px 14px rgba(5, 150, 105, 0.25)',
                     }}
                   >
                     <span>Subscribe Daily</span>
@@ -1126,7 +1130,7 @@ export default function HomePage({ setActiveTab }) {
             <thead>
               <tr style={{ background: '#f4f8f5' }}>
                 <th style={{ padding: '20px 24px', fontSize: '0.98rem', color: '#0c2340' }}>Standard / Purity Metric</th>
-                <th style={{ padding: '20px 24px', fontSize: '1.05rem', color: '#0d5c3a', background: '#eaf5ee', fontWeight: 900 }}>
+                <th style={{ padding: '20px 24px', fontSize: '1.05rem', color: '#059669', background: '#ecfdf5', fontWeight: 900 }}>
                   🌿 Natural Milk Dairy (Ours)
                 </th>
                 <th style={{ padding: '20px 24px', fontSize: '0.96rem', color: '#64748b' }}>Supermarket Plastic Pouches</th>
@@ -1136,9 +1140,9 @@ export default function HomePage({ setActiveTab }) {
             <tbody>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Milk Source & Cattle Welfare</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>Single-Origin Grass-Fed Pasture Cattle</span>
                   </div>
                 </td>
@@ -1147,9 +1151,9 @@ export default function HomePage({ setActiveTab }) {
               </tr>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Processing & Chilling Speed</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>Chilled to 4°C within 30 min of milking</span>
                   </div>
                 </td>
@@ -1158,9 +1162,9 @@ export default function HomePage({ setActiveTab }) {
               </tr>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Packaging Materials</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>Sterilized Food-Grade Glass Bottles</span>
                   </div>
                 </td>
@@ -1169,9 +1173,9 @@ export default function HomePage({ setActiveTab }) {
               </tr>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Adulterants & Reconstitution</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>Zero water, zero milk powder, zero starch</span>
                   </div>
                 </td>
@@ -1180,9 +1184,9 @@ export default function HomePage({ setActiveTab }) {
               </tr>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Vacation Pause & Flexible Qty</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>1-Tap Pause Online / WhatsApp Instant</span>
                   </div>
                 </td>
@@ -1191,9 +1195,9 @@ export default function HomePage({ setActiveTab }) {
               </tr>
               <tr>
                 <td style={{ padding: '18px 24px', fontWeight: 700 }}>Billing Transparency & UPI</td>
-                <td style={{ background: '#f9fdfa', color: '#0d5c3a', fontWeight: 800 }}>
+                <td style={{ background: '#f9fdfa', color: '#059669', fontWeight: 800 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={18} color="#0d5c3a" />
+                    <CheckCircle size={18} color="#059669" />
                     <span>Automated WhatsApp Ledger & 1-Click UPI</span>
                   </div>
                 </td>
@@ -1228,8 +1232,8 @@ export default function HomePage({ setActiveTab }) {
                 gap: '6px',
                 padding: '6px 16px',
                 borderRadius: '20px',
-                background: '#eaf5ee',
-                color: '#0d5c3a',
+                background: '#ecfdf5',
+                color: '#059669',
                 fontSize: '0.82rem',
                 fontWeight: 800,
                 textTransform: 'uppercase',
@@ -1237,7 +1241,7 @@ export default function HomePage({ setActiveTab }) {
                 marginBottom: '10px',
               }}
             >
-              <Calculator size={14} color="#0d5c3a" />
+              <Calculator size={14} color="#059669" />
               <span>Transparent Pricing Calculator</span>
             </div>
             <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.6rem)', color: '#0c2340', fontWeight: 900 }}>
@@ -1270,7 +1274,7 @@ export default function HomePage({ setActiveTab }) {
               <div style={{ marginBottom: '26px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <label style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0c2340' }}>Daily Farm Cow Milk (Litres)</label>
-                  <span style={{ fontWeight: 900, color: '#0d5c3a', fontSize: '1.25rem' }}>{calcMilkQty} L / day</span>
+                  <span style={{ fontWeight: 900, color: '#059669', fontSize: '1.25rem' }}>{calcMilkQty} L / day</span>
                 </div>
                 <input
                   type="range"
@@ -1279,7 +1283,7 @@ export default function HomePage({ setActiveTab }) {
                   step="0.5"
                   value={calcMilkQty}
                   onChange={(e) => setCalcMilkQty(Number(e.target.value))}
-                  style={{ width: '100%', cursor: 'pointer', accentColor: '#0d5c3a', height: '6px' }}
+                  style={{ width: '100%', cursor: 'pointer', accentColor: '#059669', height: '6px' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#64748b', marginTop: '6px' }}>
                   <span>0.5 L (₹30)</span>
@@ -1316,19 +1320,19 @@ export default function HomePage({ setActiveTab }) {
             <div
               className="public-home-calculator-summary"
               style={{
-                background: 'linear-gradient(135deg, #f7faf8 0%, #edf7f0 100%)',
+                background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
                 borderRadius: '22px',
                 padding: '36px',
                 color: '#0c2340',
                 textAlign: 'center',
-                border: '1.5px solid #d1e7d8',
-                boxShadow: '0 8px 24px rgba(13, 92, 58, 0.06)',
+                border: '1.5px solid #d1fae5',
+                boxShadow: '0 8px 24px rgba(5, 150, 105, 0.08)',
               }}
             >
-              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Estimated 30-Day Monthly Total
               </div>
-              <div style={{ fontSize: '3.4rem', fontWeight: 900, color: '#0d5c3a', margin: '6px 0', letterSpacing: '-0.02em' }}>
+              <div style={{ fontSize: '3.4rem', fontWeight: 900, color: '#059669', margin: '6px 0', letterSpacing: '-0.02em' }}>
                 ₹{totalMonthlyCost}
               </div>
               <div style={{ fontSize: '0.92rem', color: '#597361', marginBottom: '22px' }}>
@@ -1340,7 +1344,7 @@ export default function HomePage({ setActiveTab }) {
                 className="shine-button dairy-btn-hover"
                 style={{
                   width: '100%',
-                  background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                   color: '#ffffff',
                   fontWeight: 900,
                   fontSize: '1rem',
@@ -1348,7 +1352,7 @@ export default function HomePage({ setActiveTab }) {
                   borderRadius: '14px',
                   cursor: 'pointer',
                   border: 'none',
-                  boxShadow: '0 8px 24px rgba(13, 92, 58, 0.35)',
+                  boxShadow: '0 8px 24px rgba(5, 150, 105, 0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -1444,7 +1448,7 @@ export default function HomePage({ setActiveTab }) {
               <div style={{ borderTop: '1px solid #edf3ee', paddingTop: '16px' }}>
                 <div style={{ fontWeight: 900, color: '#0c2340', fontSize: '1.02rem' }}>{t.name}</div>
                 <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                  {t.area} • <span style={{ color: '#0d5c3a', fontWeight: 700 }}>{t.plan}</span>
+                  {t.area} • <span style={{ color: '#059669', fontWeight: 700 }}>{t.plan}</span>
                 </div>
               </div>
             </div>
@@ -1458,23 +1462,23 @@ export default function HomePage({ setActiveTab }) {
       <section style={{ maxWidth: '1440px', margin: '0 auto 80px auto', padding: '0 32px' }}>
         <div
           style={{
-            background: 'linear-gradient(135deg, #eaf5ee 0%, #f0fdf4 100%)',
+            background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
             borderRadius: '28px',
             padding: '48px 38px',
             color: '#0c2340',
-            border: '2px solid #bbf7d0',
+            border: '2px solid #a7f3d0',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             flexWrap: 'wrap',
             gap: '26px',
-            boxShadow: '0 16px 40px rgba(13, 92, 58, 0.08)',
+            boxShadow: '0 16px 40px rgba(5, 150, 105, 0.08)',
           }}
         >
           <div style={{ maxWidth: '640px' }}>
             <span
               style={{
-                background: '#0d5c3a',
+                background: '#059669',
                 color: '#ffffff',
                 padding: '4px 14px',
                 borderRadius: '20px',
@@ -1500,7 +1504,7 @@ export default function HomePage({ setActiveTab }) {
               onClick={() => handleSubscribe(products[0])}
               className="shine-button dairy-btn-hover"
               style={{
-                background: '#0d5c3a',
+                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                 color: '#ffffff',
                 padding: '16px 32px',
                 borderRadius: '14px',
@@ -1508,7 +1512,7 @@ export default function HomePage({ setActiveTab }) {
                 fontSize: '1rem',
                 cursor: 'pointer',
                 border: 'none',
-                boxShadow: '0 8px 24px rgba(13, 92, 58, 0.3)',
+                boxShadow: '0 8px 24px rgba(5, 150, 105, 0.25)',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '8px',

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useWebSocket } from '../../context/WebSocketContext';
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -35,6 +36,19 @@ import {
   Send,
   Check,
   ExternalLink,
+  PlayCircle,
+  Edit2,
+  Headphones,
+  PhoneCall,
+  MessageCircle,
+  Sliders,
+  User,
+  Settings,
+  Camera,
+  Heart,
+  Eye,
+  EyeOff,
+  FileText,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
@@ -50,8 +64,9 @@ const formatProfileDate = (value) => {
 
 export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenTempQtyModal, onOpenPaymentModal }) {
   const { user, logout, setUser, getAuthHeaders } = useAuth();
-  const { customers, deliveries, refreshAll, notifyRealtimeSync } = useDairy();
+  const { customers, deliveries, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
+  const { subscribe: wsSubscribe } = useWebSocket();
   const [activePage, setActivePage] = useState(() => localStorage.getItem('nmd_customer_page') || 'dashboard');
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState(null);
@@ -100,7 +115,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
@@ -108,6 +124,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [supportTopic, setSupportTopic] = useState('delivery');
   const [supportMsg, setSupportMsg] = useState('');
   const [supportSubmitted, setSupportSubmitted] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordValue, setPasswordValue] = useState('••••••••••••');
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const openProfileDetail = (view) => {
     if (view === 'personal-info') {
@@ -168,10 +195,18 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         }
       };
     }
+
+    const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => reloadLedger());
+    const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', () => reloadLedger());
+    const unsubPayment = wsSubscribe('PAYMENT_RECORDED', () => reloadLedger());
+
     return () => {
       if (bc) bc.close();
+      unsubDelivery();
+      unsubCustomer();
+      unsubPayment();
     };
-  }, [reloadLedger]);
+  }, [wsSubscribe, reloadLedger]);
 
   useEffect(() => {
     if (!customerLedgerId) return undefined;
@@ -207,9 +242,31 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     return () => controller.abort();
   }, [customerLedgerId]);
 
+  const [restartingDelivery, setRestartingDelivery] = useState(false);
+
+  const handleRestartDelivery = async () => {
+    setRestartingDelivery(true);
+    try {
+      const custId = currentCustomer.id || currentCustomer._id || customerLedgerId;
+      await resumeDelivery(custId, { actor: user?.name || currentCustomer.name || 'Customer' });
+      setProfileMessage('Your doorstep deliveries have been restarted and set to active!');
+      refreshAll?.();
+      notifyRealtimeSync?.();
+      reloadLedger?.();
+    } catch (e) {
+      console.error('Error restarting delivery:', e);
+    } finally {
+      setRestartingDelivery(false);
+    }
+  };
+
   const navigateToPage = (page) => {
     localStorage.setItem('nmd_customer_page', page);
     setActivePage(page);
+    setProfileDetailView(null);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    const mainEl = document.querySelector('.customer-dashboard-content') || document.querySelector('.customer-app-main');
+    if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
   const beginProfileEdit = () => {
@@ -322,6 +379,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       if (!response.ok || !data.success) {
         throw new Error(data.message || 'Unable to delete your account.');
       }
+      setShowDeleteConfirm(false);
       localStorage.removeItem('nmd_customer_page');
       logout();
       setActiveTab('home');
@@ -366,6 +424,61 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <span>Handled with care by <strong>{currentCustomer.deliveryPlan?.deliveryBoyName || 'your delivery partner'}</strong></span>
         </div>
       </div>
+
+      {isPaused && (
+        <div style={{
+          marginTop: '16px',
+          padding: '14px 16px',
+          borderRadius: '14px',
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+          border: '1.5px solid #86efac',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+              <span style={{
+                display: 'inline-block',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#e11d48',
+              }} />
+              <strong style={{ fontSize: '0.90rem', color: '#14532d' }}>Deliveries are currently paused</strong>
+            </div>
+            <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
+              {currentCustomer.pauseUntil
+                ? `Paused until ${formatProfileDate(currentCustomer.pauseUntil)}. Ready to receive fresh milk again?`
+                : 'Pause active. Restart your daily delivery anytime.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={restartingDelivery}
+            onClick={handleRestartDelivery}
+            style={{
+              padding: '9px 16px',
+              borderRadius: '10px',
+              background: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              fontWeight: 800,
+              fontSize: '0.84rem',
+              cursor: restartingDelivery ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+            }}
+          >
+            <PlayCircle size={15} />
+            <span>{restartingDelivery ? 'Restarting...' : 'Restart Delivery Now'}</span>
+          </button>
+        </div>
+      )}
     </article>
   );
 
@@ -379,15 +492,52 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       </div>
       <p className="customer-actions-intro">Plans change. Update your next delivery whenever you need to.</p>
       <div className="customer-action-list">
-        <button
-          type="button"
-          className="customer-action-button customer-action-pause"
-          onClick={() => onOpenPauseModal?.(currentCustomer)}
-        >
-          <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
-          <span>{isPaused ? 'Manage delivery pause' : 'Pause delivery for a trip'}</span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
+        {isPaused ? (
+          <>
+            <button
+              type="button"
+              className="customer-action-button"
+              style={{
+                background: '#f0fdf4',
+                borderColor: '#86efac',
+              }}
+              disabled={restartingDelivery}
+              onClick={handleRestartDelivery}
+            >
+              <span className="customer-action-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
+                <PlayCircle size={19} aria-hidden="true" />
+              </span>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <strong style={{ color: '#15803d', display: 'block', fontSize: '0.92rem' }}>
+                  {restartingDelivery ? 'Restarting delivery...' : 'Restart / Resume Delivery'}
+                </strong>
+                <small style={{ color: '#475569', fontSize: '0.74rem' }}>
+                  End pause and resume doorstep milk delivery
+                </small>
+              </div>
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="customer-action-button customer-action-pause"
+              onClick={() => onOpenPauseModal?.(currentCustomer)}
+            >
+              <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
+              <span>Change vacation return date</span>
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="customer-action-button customer-action-pause"
+            onClick={() => onOpenPauseModal?.(currentCustomer)}
+          >
+            <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
+            <span>Pause delivery for a trip</span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        )}
         <button
           type="button"
           className="customer-action-button customer-action-quantity"
@@ -469,8 +619,28 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     <td>₹{delivery.totalAmount}</td>
                     <td>
                       <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
-                        {delivery.status === 'delivered' ? 'Delivered' : 'Pending'}
+                        {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
                       </span>
+                      {delivery.proofImage && (
+                        <a
+                          href={delivery.proofImage}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.72rem',
+                            color: '#059669',
+                            marginLeft: '6px',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                          title="View doorstep delivery proof photo"
+                        >
+                          📷 Proof
+                        </a>
+                      )}
                     </td>
                     <td>
                       <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : ' is-unpaid'}`}>
@@ -1111,13 +1281,30 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <p style={{ margin: '0 0 18px', fontSize: '0.84rem', color: '#64748b' }}>
                 Going out of town? Select your travel dates to pause milk delivery. Zero cancellation charges, 100% wallet credit.
               </p>
+              {isPaused && (
+                <button
+                  type="button"
+                  className="mobile-detail-big-action-btn"
+                  style={{
+                    background: '#059669',
+                    color: '#ffffff',
+                    marginBottom: '10px',
+                    boxShadow: '0 4px 14px rgba(5, 150, 105, 0.25)',
+                  }}
+                  disabled={restartingDelivery}
+                  onClick={handleRestartDelivery}
+                >
+                  <PlayCircle size={18} />
+                  <span>{restartingDelivery ? 'Restarting Delivery...' : 'Restart / Resume Delivery Now'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="mobile-detail-big-action-btn"
                 onClick={() => onOpenPauseModal?.(currentCustomer)}
               >
                 <PauseCircle size={18} />
-                <span>{isPaused ? 'Update Vacation Dates / Resume' : 'Set Vacation Schedule Now'}</span>
+                <span>{isPaused ? 'Update Vacation Dates / Schedule' : 'Set Vacation Schedule Now'}</span>
               </button>
             </div>
 
@@ -1635,11 +1822,471 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     );
   };
 
-  const renderProfile = () => {
-    if (profileDetailView) {
-      return renderProfileDetailView();
-    }
+  const renderModernCustomerProfile = () => {
+    const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
+    const customerName = currentCustomer.name || user?.name || 'Customer';
+    const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
+    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const handleTag = `@${customerId.toLowerCase()}`;
 
+    return (
+      <div className="modern-profile-container">
+        {/* Top Header matching reference image: ←  My Profile  ⚙️ */}
+        <div className="modern-profile-header">
+          <button
+            type="button"
+            className="modern-profile-header-btn"
+            onClick={() => {
+              setActivePage('dashboard');
+              setActiveTab('home');
+            }}
+            aria-label="Back to home"
+          >
+            <ArrowLeft size={22} />
+          </button>
+          <h2 className="modern-profile-header-title">My Profile</h2>
+          <button
+            type="button"
+            className="modern-profile-header-btn"
+            onClick={() => openProfileDetail('personal-info')}
+            aria-label="Settings"
+          >
+            <Settings size={22} />
+          </button>
+        </div>
+
+        {/* FEEDBACK TOAST */}
+        {profileMessage && (
+          <div
+            className="driver-profile-feedback"
+            style={{
+              padding: '12px 16px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '12px',
+              color: '#065f46',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '18px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            }}
+          >
+            <CheckCircle2 size={16} color="#059669" />
+            <span>{profileMessage}</span>
+          </div>
+        )}
+
+        {/* Identity Section: Circular avatar with camera badge + Name + Handle + Red Pill Button */}
+        <div className="modern-profile-identity">
+          <div className="modern-profile-avatar-wrap">
+            <div className="modern-profile-avatar-placeholder">
+              {customerInitial}
+            </div>
+            <button
+              type="button"
+              className="modern-profile-camera-badge"
+              onClick={() => openProfileDetail('personal-info')}
+              title="Change profile photo"
+              aria-label="Change photo"
+            >
+              <Camera size={13} />
+            </button>
+          </div>
+
+          <div className="modern-profile-identity-info">
+            <h3 className="modern-profile-name">{customerName}</h3>
+            <span className="modern-profile-handle">{handleTag}</span>
+            <button
+              type="button"
+              className="modern-profile-edit-btn"
+              onClick={() => openProfileDetail('personal-info')}
+            >
+              Edit Profile
+            </button>
+          </div>
+        </div>
+
+        {/* List of menu rows matching reference image layout */}
+        <div className="modern-profile-menu-list">
+          {/* Favourites / Daily Milk Plan */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('subscription')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Heart size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Favourites</span>
+                <span className="modern-profile-menu-sub">{milkQuantity} {milkUnit} Daily Milk</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Downloads / Invoices & History */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => navigateToPage('deliveries')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><FileText size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Downloads</span>
+                <span className="modern-profile-menu-sub">Delivery receipts & statements</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Language / Delivery Timing Preferences */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('delivery-window')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Clock3 size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Delivery Window</span>
+                <span className="modern-profile-menu-sub">Before 6:30 AM early morning</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Location / Doorstep Address */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('personal-info')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><MapPin size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Location</span>
+                <span className="modern-profile-menu-sub">{address || 'Doorstep Address'}</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Subscription / Vacation & Plan */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('pause')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><CalendarDays size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Subscription</span>
+                <span className="modern-profile-menu-sub">{isPaused ? 'Paused for vacation' : 'Active doorstep delivery'}</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: isPaused ? '#b45309' : '#059669', background: isPaused ? '#fef3c7' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                {isPaused ? 'Paused' : 'Active'}
+              </span>
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Clear Cache / Refresh Data */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => {
+              refreshAll?.();
+              reloadLedger();
+              setProfileMessage('App cache cleared and data reloaded.');
+              setTimeout(() => setProfileMessage(''), 2500);
+            }}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Trash2 size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Clear cache</span>
+                <span className="modern-profile-menu-sub">Sync with live farm database</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Clear History / About Farm */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('about')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Info size={20} /></span>
+              <div>
+                <span className="modern-profile-menu-label">About Us</span>
+                <span className="modern-profile-menu-sub">100% Pure A2 Gir Cow & Buffalo Milk</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* Log out (Red text & icon matching reference image) */}
+          <button
+            type="button"
+            className="modern-profile-menu-row is-logout"
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
+              <span className="modern-profile-menu-label">Log out</span>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderModernEditProfile = () => {
+    const customerInitial = (profileForm.name || currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
+    const handleTag = profileForm.username || (profileForm.name ? `@${profileForm.name.toLowerCase().replace(/\s+/g, '')}` : `@${customerId.toLowerCase()}`);
+
+    return (
+      <div className="modern-profile-container">
+        {/* Screen 2 Header: Back Arrow, "Edit Profile", Green Checkmark (Save) */}
+        <div className="modern-profile-header">
+          <button
+            type="button"
+            className="modern-profile-header-btn"
+            onClick={() => {
+              setIsEditingProfile(false);
+              setProfileDetailView(null);
+            }}
+            aria-label="Back"
+          >
+            <ArrowLeft size={22} />
+          </button>
+          <h2 className="modern-profile-header-title">Edit Profile</h2>
+          <button
+            type="submit"
+            form="modern-customer-edit-form"
+            className="modern-profile-header-btn is-save"
+            disabled={profileSaving}
+            aria-label="Save changes"
+          >
+            <Check size={24} strokeWidth={2.5} color="#10b981" />
+          </button>
+        </div>
+
+        {/* Feedback Messages */}
+        {profileMessage && (
+          <div
+            className="driver-profile-feedback"
+            style={{
+              padding: '12px 16px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '12px',
+              color: '#065f46',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '16px',
+            }}
+          >
+            <CheckCircle2 size={16} color="#059669" />
+            <span>{profileMessage}</span>
+          </div>
+        )}
+        {profileError && (
+          <div
+            className="customer-profile-feedback is-error"
+            role="alert"
+            style={{
+              padding: '12px 16px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '12px',
+              color: '#991b1b',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '16px',
+            }}
+          >
+            <AlertCircle size={16} color="#dc2626" />
+            <span>{profileError}</span>
+          </div>
+        )}
+
+        {/* Centered Avatar with Camera Badge */}
+        <div className="modern-edit-avatar-wrap">
+          <div className="modern-profile-avatar-wrap">
+            <div className="modern-profile-avatar-placeholder">
+              {customerInitial}
+            </div>
+            <button
+              type="button"
+              className="modern-profile-camera-badge"
+              title="Change profile picture"
+              aria-label="Change photo"
+              onClick={() => {
+                alert('Upload profile photo feature: you can connect your photo or select from gallery.');
+              }}
+            >
+              <Camera size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* Edit Form */}
+        <form id="modern-customer-edit-form" className="modern-edit-form" onSubmit={saveProfile}>
+          {/* 1. Name */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Name</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="text"
+                className="modern-edit-input"
+                placeholder="Charlotte king"
+                value={profileForm.name ?? ''}
+                required
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, name: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* 2. E mail address */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">E mail address</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="email"
+                className="modern-edit-input"
+                placeholder="@johnkgraphics.gmail.com"
+                value={profileForm.email ?? ''}
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, email: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* 3. User name */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">User name</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="text"
+                className="modern-edit-input"
+                placeholder="@johnkgraphics"
+                value={profileForm.username ?? handleTag}
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, username: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* 4. Password */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Password</label>
+            <div className="modern-edit-input-container">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="modern-edit-input"
+                value={passwordValue}
+                onChange={(e) => setPasswordValue(e.target.value)}
+              />
+              <button
+                type="button"
+                className="modern-edit-icon-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Phone number */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Phone number</label>
+            <div className="modern-edit-input-container">
+              <div className="modern-edit-phone-prefix">
+                +91 ▼
+              </div>
+              <input
+                type="tel"
+                className="modern-edit-input"
+                placeholder="6895312"
+                value={profileForm.mobile ?? ''}
+                required
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, mobile: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* 6. Doorstep Address */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Doorstep Address</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="text"
+                className="modern-edit-input"
+                placeholder="Flat / House / Wing / Society"
+                value={profileForm.address ?? ''}
+                required
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, address: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* 7. Area / Locality */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Area / Locality</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="text"
+                className="modern-edit-input"
+                placeholder="Madhapur"
+                value={profileForm.area ?? ''}
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, area: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            className="modern-edit-submit-btn"
+            disabled={profileSaving}
+          >
+            {profileSaving ? 'Saving...' : '✓ Save Profile'}
+          </button>
+        </form>
+      </div>
+    );
+  };
+
+  const renderMobileProfile = () => {
     const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
     const customerName = currentCustomer.name || user?.name || 'Customer';
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
@@ -1651,297 +2298,827 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const totalDeliveries = ledgerEntries.filter((e) => e.type === 'delivery').length || customerDeliveries.length;
 
     return (
-      <div className="profile-full-page">
-        {/* Page Title Row */}
-        <div className="profile-page-title-row">
-          <div className="profile-page-title-left">
-            <span className="customer-section-kicker">MY ACCOUNT · {customerId}</span>
-            <h1>My Profile</h1>
-          </div>
-          <button
-            type="button"
-            className="profile-page-edit-btn"
-            onClick={() => openProfileDetail('personal-info')}
-          >
-            <Edit3 size={15} />
-            Edit Profile
-          </button>
+      <div
+        className="driver-profile-page customer-profile-page"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          maxWidth: '880px',
+          margin: '0 auto',
+          width: '100%',
+        }}
+      >
+        {/* Page Heading matching driver mobile profile page */}
+        <div className="driver-profile-page-heading" style={{ padding: '4px 2px 2px' }}>
+          <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>My profile</h1>
+          <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0 }}>
+            Manage your personal details, subscription plan, and doorstep preferences.
+          </p>
         </div>
 
-        {/* Success message */}
+        {/* FEEDBACK TOAST */}
         {profileMessage && (
-          <div className="mobile-profile-alert is-success" role="status" style={{ marginBottom: '20px' }}>
-            <CheckCircle2 size={16} />
+          <div
+            className="driver-profile-feedback"
+            style={{
+              padding: '12px 16px',
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '12px',
+              color: '#065f46',
+              fontSize: '0.84rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            }}
+          >
+            <CheckCircle2 size={16} color="#059669" />
             <span>{profileMessage}</span>
           </div>
         )}
 
-        {/* Two-column layout */}
-        <div className="profile-two-col">
-
-          {/* ── LEFT PANEL ── */}
-          <div className="profile-left-panel">
-
-            {/* Identity Card */}
-            <div className="profile-identity-card">
-              <div className="profile-avatar-large">{customerInitial}</div>
-              <div className="profile-identity-meta">
-                <div className="profile-identity-name-row">
-                  <h2 className="profile-identity-name">{customerName}</h2>
+        {/* 1. PRIMARY CUSTOMER PROFILE CARD WITH EDIT BUTTON RIGHT NEAR PROFILE */}
+        <div
+          className="driver-profile-primary-card"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+          }}
+        >
+          {/* Identity Row: Avatar, Name, and Quick Edit Button directly alongside avatar */}
+          <div
+            style={{
+              padding: '18px 18px 14px',
+              borderBottom: '1px solid #f1f5f9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+              background: '#ffffff',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <div
+                style={{
+                  width: '54px',
+                  height: '54px',
+                  borderRadius: '50%',
+                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                  color: '#ffffff',
+                  fontSize: '1.4rem',
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(5, 150, 105, 0.22)',
+                  flexShrink: 0,
+                }}
+              >
+                {customerInitial}
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h2 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    {customerName}
+                  </h2>
                   <span
-                    className={`profile-identity-dot${isPaused ? ' is-paused' : ''}`}
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      background: isPaused ? '#f59e0b' : '#10b981',
+                      display: 'inline-block',
+                    }}
                     title={isPaused ? 'Delivery paused' : 'Subscription active'}
                   />
                 </div>
-                <p className="profile-identity-phone">{customerPhone}</p>
-                <span className={`profile-identity-status${isPaused ? ' is-paused' : ''}`}>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '2px 0 6px 0' }}>
+                  {customerPhone} {customerEmail && customerEmail !== 'Not provided' ? `• ${customerEmail}` : ''}
+                </p>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '3px 10px',
+                    borderRadius: '12px',
+                    background: isPaused ? '#fef3c7' : '#ecfdf5',
+                    color: isPaused ? '#92400e' : '#065f46',
+                    border: `1px solid ${isPaused ? '#fde68a' : '#a7f3d0'}`,
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                  }}
+                >
                   {isPaused ? '⏸ Delivery Paused' : '✓ Subscription Active'}
                 </span>
               </div>
             </div>
 
-            {/* Info Grid */}
-            <div className="profile-info-card">
-              <h3 className="profile-card-title">Contact & Location</h3>
-              <div className="profile-info-grid">
-                <div className="profile-info-field" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><Mail size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">EMAIL</span>
-                    <span className="profile-field-value" title={customerEmail}>{customerEmail}</span>
-                  </div>
-                </div>
-                <div className="profile-info-field" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><Phone size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">PHONE</span>
-                    <span className="profile-field-value">{customerPhone}</span>
-                  </div>
-                </div>
-                <div className="profile-info-field" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><MapPin size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">CITY / AREA</span>
-                    <span className="profile-field-value" title={customerArea}>{customerArea}</span>
-                  </div>
-                </div>
-                <div className="profile-info-field" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><UserRound size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">CUSTOMER ID</span>
-                    <span className="profile-field-value">{customerId}</span>
-                  </div>
-                </div>
-                <div className="profile-info-field is-full" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><Home size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">DELIVERY ADDRESS</span>
-                    <span className="profile-field-value" style={{ whiteSpace: 'normal', lineHeight: 1.4 }} title={customerAddress}>{customerAddress}</span>
-                  </div>
-                </div>
-                <div className="profile-info-field is-full" onClick={() => openProfileDetail('personal-info')} style={{ cursor: 'pointer' }}>
-                  <div className="profile-field-icon"><MessageSquare size={15} /></div>
-                  <div>
-                    <span className="profile-field-label">WHATSAPP</span>
-                    <span className="profile-field-value">{customerWhatsapp}</span>
-                  </div>
-                </div>
+            {/* Direct Edit Button positioned near profile */}
+            <button
+              type="button"
+              onClick={() => openProfileDetail('personal-info')}
+              style={{
+                background: '#f0fdf4',
+                color: '#059669',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                padding: '7px 14px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Edit2 size={13} />
+              <span>Edit Profile</span>
+            </button>
+          </div>
+
+          {/* Clean Summary Grid with User Data and Modules */}
+          <div
+            className="driver-profile-summary-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '10px',
+              padding: '16px 18px',
+            }}
+          >
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                Full name
               </div>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerName}</div>
             </div>
 
-            {/* Quick Stats */}
-            <div className="profile-stats-row">
-              <div className="profile-stat-card">
-                <span className="profile-stat-num" style={{ color: '#2563eb' }}>{milkQuantity} {milkUnit}</span>
-                <span className="profile-stat-lbl">Daily Milk</span>
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                Mobile number
               </div>
-              <div className="profile-stat-card">
-                <span className="profile-stat-num" style={{ color: '#059669' }}>{totalDeliveries}</span>
-                <span className="profile-stat-lbl">Deliveries</span>
+              <a
+                href={`tel:${customerPhone}`}
+                style={{ fontSize: '0.94rem', fontWeight: 800, color: '#315a42', textDecoration: 'none' }}
+              >
+                {customerPhone}
+              </a>
+            </div>
+
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                Email address
               </div>
-              <div className="profile-stat-card">
-                <span className="profile-stat-num" style={{ color: balance > 0 ? '#dc2626' : '#059669' }}>₹{balance.toLocaleString('en-IN')}</span>
-                <span className="profile-stat-lbl">Balance Due</span>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', wordBreak: 'break-all' }}>{customerEmail}</div>
+            </div>
+
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                City / Area
               </div>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerArea}</div>
+            </div>
+
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                Customer ID
+              </div>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#059669' }}>{customerId}</div>
+            </div>
+
+            <div
+              className="driver-profile-summary-item"
+              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                WhatsApp
+              </div>
+              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerWhatsapp}</div>
+            </div>
+
+            <div
+              className="driver-profile-summary-item"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '12px',
+                gridColumn: '1 / -1',
+              }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
+                Doorstep delivery address
+              </div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.4 }}>{customerAddress}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. SUBSCRIPTIONS & BOOKINGS MODULE (MATCHING DRIVER BOOKINGS STYLE) */}
+        <div
+          onClick={() => openProfileDetail('subscription')}
+          className="driver-profile-bookings"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                color: '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <CalendarDays size={22} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  My Subscriptions
+                </h3>
+                <span
+                  style={{
+                    background: '#ecfdf5',
+                    color: '#065f46',
+                    border: '1px solid #a7f3d0',
+                    borderRadius: '12px',
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  {milkQuantity} {milkUnit} · {isPaused ? 'Paused' : 'Active'}
+                </span>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                Daily milk plan & doorstep delivery schedule • Tap to view & edit
+              </p>
             </div>
           </div>
 
-          {/* ── RIGHT PANEL ── */}
-          <div className="profile-right-panel">
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: '#f0fdf4',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#059669',
+              flexShrink: 0,
+            }}
+          >
+            <ChevronRight size={18} />
+          </div>
+        </div>
 
-            {/* Subscriptions & Wallet */}
-            <div className="profile-section-card">
-              <div className="profile-section-kicker">SUBSCRIPTIONS &amp; WALLET</div>
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('subscription')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><CalendarDays size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">My subscriptions</span>
-                    <span className="profile-menu-desc">Daily milk plan &amp; delivery schedule</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">{milkQuantity} {milkUnit} · {isPaused ? 'Paused' : 'Active'}</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('deliveries')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><Truck size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Saved deliveries</span>
-                    <span className="profile-menu-desc">View your doorstep delivery history</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">{totalDeliveries} drops</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('wallet')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><Wallet size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Refund wallet &amp; balance</span>
-                    <span className="profile-menu-desc">Outstanding dues &amp; UPI payments</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">₹{balance.toLocaleString('en-IN')}</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
+        {/* 3. SAVED DELIVERIES MODULE */}
+        <div
+          onClick={() => openProfileDetail('deliveries')}
+          className="driver-profile-bookings"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                color: '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Truck size={22} />
             </div>
-
-            {/* Delivery Control & Help */}
-            <div className="profile-section-card">
-              <div className="profile-section-kicker">DELIVERY CONTROL &amp; HELP</div>
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('pause')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><PauseCircle size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Cancel / Pause schedule</span>
-                    <span className="profile-menu-desc">Set vacation dates — 100% free, no penalty</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">100% free</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('quantity')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><RefreshCw size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Reschedule / Update quantity</span>
-                    <span className="profile-menu-desc">Change tomorrow&apos;s delivery quantity</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('support')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><HelpCircle size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">24/7 helpline &amp; support</span>
-                    <span className="profile-menu-desc">WhatsApp, call or raise a support ticket</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Saved Deliveries
+                </h3>
+                <span
+                  style={{
+                    background: '#ecfdf5',
+                    color: '#065f46',
+                    border: '1px solid #a7f3d0',
+                    borderRadius: '12px',
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  {totalDeliveries} Drops Completed
+                </span>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                Doorstep delivery history, proofs & timing logs • Tap to view all
+              </p>
             </div>
+          </div>
 
-            {/* Preferences */}
-            <div className="profile-section-card">
-              <div className="profile-section-kicker">PREFERENCES</div>
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('delivery-window')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><Clock3 size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Morning delivery window</span>
-                    <span className="profile-menu-desc">Doorstep delivery schedule</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">Before 6:30 AM</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('personal-info')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><ShieldCheck size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Doorstep delivery instructions</span>
-                    <span className="profile-menu-desc">Gate code, bag placement &amp; notes</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <span className="profile-menu-badge">Active</span>
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('about')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><Info size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">About Natural Milk Dairy</span>
-                    <span className="profile-menu-desc">Our farm story &amp; pure A2 milk promise</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: '#f0fdf4',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#059669',
+              flexShrink: 0,
+            }}
+          >
+            <ChevronRight size={18} />
+          </div>
+        </div>
+
+        {/* 4. REFUND WALLET & BALANCE MODULE */}
+        <div
+          onClick={() => openProfileDetail('wallet')}
+          className="driver-profile-bookings"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+                color: '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <Wallet size={22} />
             </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Refund Wallet & Balance
+                </h3>
+                <span
+                  style={{
+                    background: balance > 0 ? '#fef2f2' : '#ecfdf5',
+                    color: balance > 0 ? '#dc2626' : '#065f46',
+                    border: `1px solid ${balance > 0 ? '#fecaca' : '#a7f3d0'}`,
+                    borderRadius: '12px',
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                  }}
+                >
+                  ₹{balance.toLocaleString('en-IN')} Due
+                </span>
+              </div>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                Outstanding dues, ledger statement & UPI payments • Tap to manage
+              </p>
+            </div>
+          </div>
 
-            {/* Account Actions */}
-            <div className="profile-section-card">
-              <div className="profile-section-kicker">ACCOUNT</div>
-              <button
-                type="button"
-                className="profile-menu-row"
-                onClick={() => { logout(); setActiveTab('home'); }}
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: '#f0fdf4',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#059669',
+              flexShrink: 0,
+            }}
+          >
+            <ChevronRight size={18} />
+          </div>
+        </div>
+
+        {/* 5. DELIVERY SCHEDULE & CONTROLS (MATCHING DRIVER BIKE & FLEET CARD) */}
+        <div
+          className="driver-profile-vehicle-card"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div
+            className="driver-profile-card-heading"
+            style={{
+              background: 'linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%)',
+              borderBottom: '1px solid #e2e8f0',
+              padding: '12px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Sliders size={18} color="#059669" />
+              <span
+                style={{
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                  color: '#065f46',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}
               >
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon"><LogOut size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label">Log out</span>
-                    <span className="profile-menu-desc">Sign out of your customer account</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
-              <div className="profile-row-divider" />
-              <button type="button" className="profile-menu-row" onClick={() => openProfileDetail('delete-account')}>
-                <div className="profile-menu-left">
-                  <div className="profile-menu-icon" style={{ background: '#fff5f5', color: '#dc2626' }}><Trash2 size={18} /></div>
-                  <div>
-                    <span className="profile-menu-label" style={{ color: '#dc2626' }}>Delete account</span>
-                    <span className="profile-menu-desc">Permanently remove your account &amp; data</span>
-                  </div>
-                </div>
-                <div className="profile-menu-right">
-                  <ChevronRight size={17} className="mobile-profile-row-chevron" />
-                </div>
-              </button>
+                Delivery Schedule & Controls
+              </span>
             </div>
+          </div>
 
+          <div style={{ padding: '16px 18px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+              <div
+                onClick={() => openProfileDetail('pause')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <PauseCircle size={16} color="#059669" />
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Cancel / Pause</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#065f46', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
+                    100% Free
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
+                  Set vacation dates without any cancellation fee
+                </p>
+              </div>
+
+              <div
+                onClick={() => openProfileDetail('quantity')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <RefreshCw size={16} color="#059669" />
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Update Quantity</span>
+                  </div>
+                  <ChevronRight size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
+                  Change tomorrow's milk quantity or extra packets
+                </p>
+              </div>
+
+              <div
+                onClick={() => openProfileDetail('delivery-window')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Clock3 size={16} color="#059669" />
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Delivery Window</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', padding: '2px 6px', borderRadius: '6px' }}>
+                    Before 6:30 AM
+                  </span>
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
+                  Silent early morning doorstep delivery guarantee
+                </p>
+              </div>
+
+              <div
+                onClick={() => openProfileDetail('personal-info')}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShieldCheck size={16} color="#059669" />
+                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Drop Instructions</span>
+                  </div>
+                  <ChevronRight size={14} color="#94a3b8" />
+                </div>
+                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
+                  Gate codes, milk bag placement & special notes
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 6. SUPPORT & HELPLINES (MATCHING DRIVER SUPPORT CARD) */}
+        <div
+          className="driver-profile-support-card"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '18px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
+                background: '#eff6ff',
+                color: '#2563eb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Headphones size={16} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                Customer Care & Helplines
+              </h3>
+              <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
+                Instant contact for delivery timings, milk quality, or account help
+              </p>
+            </div>
+          </div>
+
+          <div
+            className="driver-profile-support-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}
+          >
+            {/* Supervisor Hotline */}
+            <a
+              href="tel:9876543210"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                textDecoration: 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Hub Care Hotline</span>
+                <PhoneCall size={16} color="#059669" />
+              </div>
+              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>+91 98765 43210</span>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                Delivery queries, address changes & urgent issues
+              </span>
+            </a>
+
+            {/* WhatsApp Support Desk */}
+            <a
+              href={`https://wa.me/919876543210?text=Hello%20Natural%20Milk%20Dairy%20Support,%20Customer%20${customerId}%20needs%20assistance.`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                textDecoration: 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>WhatsApp Desk</span>
+                <MessageCircle size={16} color="#059669" />
+              </div>
+              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>Chat with Support</span>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                Send doorstep delivery notes or feedback
+              </span>
+            </a>
+
+            {/* Farm Story & Purity */}
+            <div
+              onClick={() => openProfileDetail('about')}
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Our Farm Story</span>
+                <Info size={16} color="#059669" />
+              </div>
+              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>100% Pure A2 Milk</span>
+              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                Sterilized glass bottles & grass-fed farm promise
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 7. ACCOUNT ACTIONS (MATCHING DRIVER ACCOUNT ACTIONS CARD) */}
+        <div
+          className="driver-profile-account-actions"
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '18px 16px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          {/* Sign Out Button */}
+          <button
+            type="button"
+            onClick={() => setShowLogoutConfirm(true)}
+            style={{
+              width: '100%',
+              padding: '12px 18px',
+              borderRadius: '10px',
+              background: '#ffffff',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
+          >
+            <LogOut size={16} />
+            <span>Sign Out of Customer Account</span>
+          </button>
+
+          {/* Delete Account Button */}
+          <button
+            type="button"
+            onClick={() => openProfileDetail('delete-account')}
+            style={{
+              width: '100%',
+              padding: '12px 18px',
+              borderRadius: '10px',
+              background: '#fff1f2',
+              border: '1px solid #fecdd3',
+              color: '#e11d48',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffe4e6')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#fff1f2')}
+          >
+            <Trash2 size={16} />
+            <span>Delete Customer Account</span>
+          </button>
+
+          <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '0.72rem', color: '#94a3b8' }}>
+            Natural Milk Dairy — Hyderabad Direct Farm Delivery System
           </div>
         </div>
       </div>
     );
+  };
+
+  const renderProfile = () => {
+    if (isEditingProfile || profileDetailView === 'personal-info') {
+      return renderModernEditProfile();
+    }
+    if (profileDetailView) {
+      return renderProfileDetailView();
+    }
+    return renderModernCustomerProfile();
   };
 
   const renderPage = () => {
@@ -1998,23 +3175,36 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <small>Customer account</small>
             </span>
           </div>
-          <button
-            type="button"
-            className="customer-sidebar-logout"
-            title="Sign out"
-            aria-label="Sign out"
-            onClick={() => {
-              logout();
-              setActiveTab('home');
-            }}
-          >
-            <LogOut size={16} aria-hidden="true" />
-          </button>
+          <div className="customer-sidebar-footer-actions">
+            <button
+              type="button"
+              className="customer-sidebar-logout"
+              title="Sign out"
+              aria-label="Sign out"
+              onClick={() => setShowLogoutConfirm(true)}
+            >
+              <LogOut size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="customer-sidebar-delete-btn"
+              title="Delete account"
+              aria-label="Delete account"
+              onClick={() => {
+                setDeleteConfirmation('');
+                setDeletePassword('');
+                setDeleteError('');
+                setShowDeleteConfirm(true);
+              }}
+            >
+              <Trash2 size={15} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </aside>
 
       <div className="customer-app-main">
-        <header className={`customer-app-header${activePage === 'profile' ? ' is-profile-mobile-hidden' : ''}`}>
+        <header className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}>
           <button
             type="button"
             className="customer-app-header-title customer-app-header-brand-btn"
@@ -2031,10 +3221,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </span>
           </button>
           <div className="customer-app-header-actions">
-            <span className={`customer-page-status${isPaused ? ' is-paused' : ''}`}>
+            <button
+              type="button"
+              className={`customer-page-status${isPaused ? ' is-paused is-interactive' : ''}`}
+              onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
+              title={isPaused ? 'Click to restart deliveries' : 'Manage delivery schedule'}
+              style={{ cursor: 'pointer', font: 'inherit' }}
+            >
               <span />
-              {isPaused ? 'Delivery paused' : 'Subscription active'}
-            </span>
+              {isPaused ? (restartingDelivery ? 'Restarting...' : 'Delivery paused · Click to restart') : 'Subscription active'}
+            </button>
             <button
               type="button"
               className="customer-header-alerts"
@@ -2058,15 +3254,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         </header>
 
         <div className="customer-dashboard-content">
-          {activePage !== 'profile' && (
+          {(!isMobile || activePage !== 'profile') && (
             <div className="customer-page-heading">
               <div>
                 <span className="customer-section-kicker">CUSTOMER PORTAL · ID {currentCustomer.customerId || 'CUST-101'}</span>
-                <h1>{currentPage.label}</h1>
+                <h1>{activePage === 'profile' ? 'Profile & Settings' : currentPage.label}</h1>
                 <p>
                   {activePage === 'dashboard' && 'Your daily essentials, all in one place.'}
                   {activePage === 'subscription' && 'Review your plan and manage your upcoming delivery.'}
                   {activePage === 'deliveries' && 'Track your latest doorstep deliveries and payments.'}
+                  {activePage === 'profile' && 'Manage your personal details, subscription plan, and doorstep preferences.'}
                 </p>
               </div>
             </div>
@@ -2075,19 +3272,223 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         </div>
       </div>
 
-      <CustomerBottomNav
-        className={`customer-bottom-nav customer-home-bottom-nav${activePage === 'profile' ? ' is-profile-mobile-hidden' : ''}`}
-        ariaLabel="Main navigation"
-        items={CUSTOMER_HOME_NAV_ITEMS}
-        activePage={activePage === 'profile' ? 'profile' : 'home'}
-        onNavigate={(page) => {
-          if (page === 'profile') {
-            navigateToPage('profile');
-          } else {
-            setActiveTab(page);
-          }
-        }}
-      />
+      {isMobile && (
+        <CustomerBottomNav
+          className="customer-bottom-nav customer-home-bottom-nav"
+          ariaLabel="Main navigation"
+          items={CUSTOMER_HOME_NAV_ITEMS}
+          activePage={activePage === 'profile' ? 'profile' : 'home'}
+          onNavigate={(page) => {
+            if (page === 'profile') {
+              navigateToPage('profile');
+            } else {
+              if (page === 'products') {
+                localStorage.removeItem('nmd_selected_product_id');
+                window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+              }
+              setActiveTab(page);
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            }
+          }}
+        />
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="modal-overlay" onClick={() => setShowLogoutConfirm(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '420px', padding: '26px 24px', borderRadius: '18px', textAlign: 'center' }}
+          >
+            <div
+              style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '50%',
+                background: '#fef3c7',
+                color: '#d97706',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px',
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+              Sign Out of Account?
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: '#64748b', margin: '0 0 22px 0', lineHeight: 1.5 }}>
+              Are you sure you want to sign out of your Natural Milk Dairy customer account? You can log back in anytime.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                  setActiveTab('home');
+                }}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#059669',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Yes, Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay" onClick={() => !deletingAccount && setShowDeleteConfirm(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', padding: '26px 24px', borderRadius: '18px' }}
+          >
+            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '54px',
+                  height: '54px',
+                  borderRadius: '50%',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: '12px',
+                }}
+              >
+                <Trash2 size={26} />
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', margin: '0 0 6px 0' }}>
+                Delete Account?
+              </h3>
+              <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+                This action is permanent and cannot be undone. All your milk subscriptions, delivery records, and profile details will be permanently removed.
+              </p>
+            </div>
+
+            <form onSubmit={deleteAccount}>
+              {deleteError && (
+                <div className="mobile-profile-alert is-error" style={{ marginBottom: '14px' }}>
+                  <AlertCircle size={16} />
+                  <span>{deleteError}</span>
+                </div>
+              )}
+
+              <label style={{ display: 'block', marginBottom: '12px' }}>
+                <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  Enter your password:
+                </span>
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  placeholder="Your account password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  disabled={deletingAccount}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </label>
+
+              <label style={{ display: 'block', marginBottom: '18px' }}>
+                <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
+                  Type <strong style={{ color: '#dc2626' }}>DELETE</strong> to confirm:
+                </span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  required
+                  placeholder="DELETE"
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  disabled={deletingAccount}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <button
+                  type="button"
+                  disabled={deletingAccount}
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{
+                    padding: '11px',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword}
+                  style={{
+                    padding: '11px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword ? '#fca5a5' : '#dc2626',
+                    color: '#ffffff',
+                    fontSize: '0.9rem',
+                    fontWeight: 700,
+                    cursor: deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {deletingAccount ? 'Deleting...' : 'Permanently Delete'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

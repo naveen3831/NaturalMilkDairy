@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useWebSocket } from '../../context/WebSocketContext';
 import {
   Truck,
   Check,
   X,
   Phone,
+  Camera,
+  Image,
+  Eye,
   Navigation,
   MapPin,
   Clock,
@@ -46,6 +50,10 @@ import {
   Trash2,
   Bike,
   Save,
+  Settings,
+  Heart,
+  EyeOff,
+  Globe,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
@@ -82,6 +90,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   // Navigation tab: 'deliveries' | 'route' | 'cash' | 'profile'
   const [navTab, setNavTab] = useState('deliveries');
 
+  const handleNavChange = (tab) => {
+    setNavTab(tab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    const mainEl = document.querySelector('.driver-main') || document.querySelector('.driver-layout-container') || document.querySelector('.driver-content');
+    if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+
   // Filter for deliveries: 'all' | 'pending' | 'delivered' | 'not_delivered'
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +112,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [payMode, setPayMode] = useState('credit');
   const [collectedNow, setCollectedNow] = useState(0);
   const [deliveryNote, setDeliveryNote] = useState('');
+  const [homeProofImage, setHomeProofImage] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState('');
+  const [previewProofModal, setPreviewProofModal] = useState(null);
+  const fileInputRef = useRef(null);
+  const { subscribe: wsSubscribe } = useWebSocket();
 
   // Not delivered form
   const [missedReason, setMissedReason] = useState('Customer Not Home');
@@ -120,6 +141,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [profileEmergencyContact, setProfileEmergencyContact] = useState(matchedBoy?.emergencyContact || '');
   const [profileJoiningDate, setProfileJoiningDate] = useState(matchedBoy?.createdAt ? new Date(matchedBoy.createdAt).toLocaleDateString() : 'Active Partner');
   const [profileShift, setProfileShift] = useState(matchedBoy?.shift || 'Morning Dispatch');
+  const [driverPassword, setDriverPassword] = useState('••••••••••••');
+  const [showDriverPassword, setShowDriverPassword] = useState(false);
+  const [driverUsername, setDriverUsername] = useState('');
 
   // Bike / Vehicle Editable States (Real vehicle details from database)
   const [isEditingBike, setIsEditingBike] = useState(false);
@@ -200,6 +224,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     fetchDeliveries(selectedDate, 'all', boyId);
   }, [selectedDate, boyId, fetchDeliveries]);
 
+  // Real-time synchronization for deliveries
+  useEffect(() => {
+    const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
+      fetchDeliveries(selectedDate, 'all', boyId);
+    });
+    return unsub;
+  }, [wsSubscribe, selectedDate, boyId, fetchDeliveries]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await fetchDeliveries(selectedDate, 'all', boyId);
@@ -221,9 +253,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       (boyName && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === boyName.toLowerCase()) ||
       (matchedBoy?.name && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === matchedBoy.name.toLowerCase());
 
-    const isUnassigned = !d.deliveryBoyId;
+    const matchesArea =
+      !d.deliveryBoyId &&
+      boyArea &&
+      ((d.customerAddress && d.customerAddress.toLowerCase().includes(boyArea.toLowerCase())) ||
+       (d.customerArea && d.customerArea.toLowerCase().includes(boyArea.toLowerCase())));
 
-    return matchesId || matchesName || isUnassigned;
+    return matchesId || matchesName || matchesArea;
   });
 
   const pendingList = myDeliveries.filter((d) => d.status === 'pending');
@@ -261,6 +297,45 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const totalDrops = myDeliveries.length;
   const progressPercent = totalDrops > 0 ? Math.round((completedList.length / totalDrops) * 100) : 0;
 
+  const handlePhotoCapture = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingPhoto(true);
+    setPhotoUploadError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('folder', 'doorstep-delivery-proofs');
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        setHomeProofImage(data.url);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setHomeProofImage(event.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err) {
+      console.warn('Photo upload warning, falling back to local preview:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setHomeProofImage(event.target.result);
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const openDeliverModal = (item) => {
     setActiveItem(item);
     setActionType('delivered');
@@ -272,6 +347,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       ((item.plannedCurd || 0) / 500) * (item.curdPrice || 30);
     setCollectedNow(amt);
     setDeliveryNote('');
+    setHomeProofImage(item.proofImage || '');
+    setPhotoUploadError('');
+    setIsUploadingPhoto(false);
   };
 
   const openNotDeliveredModal = (item) => {
@@ -283,6 +361,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
   const handleConfirmDelivery = async () => {
     if (!activeItem) return;
+
+    if (!homeProofImage) {
+      setPhotoUploadError('Doorstep home photo is required. Please capture or upload the photo of the home before marking delivered.');
+      return;
+    }
+
     await markDelivered(activeItem.id, {
       actualMilk: Number(milkQty),
       actualCurd: Number(curdQty),
@@ -290,13 +374,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       collectedAmount: payMode === 'cash' || payMode === 'upi' ? Number(collectedNow) : 0,
       notes: deliveryNote,
       actor: boyName,
+      proofImage: homeProofImage,
     });
 
     // Notify Admin of completed delivery
     sendNotification({
       recipientRole: 'admin',
       title: '✅ Delivery Completed',
-      message: `${boyName} completed drop for ${activeItem.customerName} (${milkQty}L Milk). Collected ₹${collectedNow} (${payMode.toUpperCase()}).`,
+      message: `${boyName} completed drop for ${activeItem.customerName} (${milkQty}L Milk) with doorstep photo proof verified. Collected ₹${collectedNow} (${payMode.toUpperCase()}).`,
       type: 'delivery_completed',
       data: {
         customerId: activeItem.customerId,
@@ -304,11 +389,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         driverName: boyName,
         amount: collectedNow,
         method: payMode,
+        proofImage: homeProofImage,
       },
     });
 
     setActiveItem(null);
     setActionType(null);
+    setHomeProofImage('');
+    setPhotoUploadError('');
   };
 
   const handleConfirmMissed = async () => {
@@ -1130,7 +1218,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             return (
               <button
                 key={item.id}
-                onClick={() => setNavTab(item.id)}
+                onClick={() => handleNavChange(item.id)}
                 className="driver-sidebar-nav-btn"
                 style={{
                   background: isActive ? '#ecfdf5' : 'transparent',
@@ -2076,6 +2164,66 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             </>
                           )}
                         </div>
+
+                        {/* Doorstep Home Proof Photo Tag (Visible when Delivered) */}
+                        {isDone && item.proofImage && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              paddingTop: '8px',
+                              borderTop: '1px dashed #bbf7d0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                              background: '#f0fdf4',
+                              padding: '8px 10px',
+                              borderRadius: '8px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <img
+                                src={item.proofImage}
+                                alt="Home Proof"
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '6px',
+                                  objectFit: 'cover',
+                                  border: '1px solid #86efac',
+                                  cursor: 'pointer',
+                                }}
+                                onClick={() => setPreviewProofModal(item)}
+                              />
+                              <div>
+                                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Camera size={13} color="#059669" />
+                                  <span>Doorstep Proof Verified</span>
+                                </div>
+                                <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                                  Home photo captured
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setPreviewProofModal(item)}
+                              style={{
+                                padding: '5px 10px',
+                                background: '#ffffff',
+                                border: '1px solid #bbf7d0',
+                                color: '#059669',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              View Photo
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2324,12 +2472,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* TAB 4: DRIVER PROFILE                                     */}
           {/* ========================================================= */}
           {navTab === 'profile' && (
-            <div className="driver-profile-page" style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '880px', margin: '0 auto', width: '100%' }}>
-              <div className="driver-profile-page-heading">
-                <h1>My profile</h1>
-                <p>Manage your partner details and delivery account.</p>
-              </div>
-
+            <div className="modern-profile-container">
               {/* FEEDBACK TOAST */}
               {profileFeedbackMsg && (
                 <div
@@ -2345,7 +2488,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    marginBottom: '16px',
                   }}
                 >
                   <CheckCircle2 size={16} color="#059669" />
@@ -2353,1470 +2496,389 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               )}
 
-              {/* 1. DRIVER PROFILE CARD (BASIC DETAILS ONLY) */}
-              <div
-                className="driver-profile-primary-card"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                }}
-              >
-                {/* Header bar with Edit button */}
-                <div
-                  className="driver-profile-card-heading"
-                  style={{
-                    background: 'linear-gradient(90deg, #ecfdf5 0%, #f0fdf4 100%)',
-                    borderBottom: '1px solid #e2e8f0',
-                    padding: '12px 18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldCheck size={16} color="#059669" />
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Driver Profile
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingProfile(true)}
-                    className="driver-profile-edit-button"
-                    style={{
-                      background: '#eaf3ed',
-                      color: '#315a42',
-                      border: '1px solid #d9e8dd',
-                      borderRadius: '8px',
-                      padding: '0 13px',
-                      fontSize: '0.8rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Edit2 size={13} />
-                    <span>Edit Profile</span>
-                  </button>
-                </div>
-
-                <div className="driver-profile-summary-grid">
-                  <div className="driver-profile-summary-item">
-                    <div className="driver-profile-summary-label">Full name</div>
-                    <div className="driver-profile-summary-value">{profileName}</div>
-                  </div>
-                  <div className="driver-profile-summary-item">
-                    <div className="driver-profile-summary-label">Mobile number</div>
-                    <a
-                      className="driver-profile-summary-value"
-                      href={`tel:${profilePhone}`}
-                      style={{ color: '#315a42', textDecoration: 'none' }}
+              {!isEditingProfile ? (
+                /* ── SCREEN 1: MY PROFILE ── */
+                <>
+                  {/* Header: Back Arrow, "My Profile", Settings Gear */}
+                  <div className="modern-profile-header">
+                    <button
+                      type="button"
+                      className="modern-profile-header-btn"
+                      onClick={() => handleNavChange('deliveries')}
+                      aria-label="Back to deliveries"
                     >
-                      {profilePhone}
-                    </a>
+                      <ArrowLeft size={22} />
+                    </button>
+                    <h2 className="modern-profile-header-title">My Profile</h2>
+                    <button
+                      type="button"
+                      className="modern-profile-header-btn"
+                      onClick={() => setIsEditingProfile(true)}
+                      aria-label="Settings / Edit profile"
+                    >
+                      <Settings size={22} />
+                    </button>
                   </div>
-                </div>
-              </div>
 
-              {/* 2. BOOKINGS SECTION (CLICK TO SHOW BOOKINGS) */}
-              <div
-                onClick={() => setShowProfileBookings(true)}
-                className="driver-profile-bookings"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '16px 18px',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <div
-                    style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '12px',
-                      background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-                      color: '#059669',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Calendar size={22} />
-                  </div>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                        Assigned Bookings
-                      </h3>
-                      <span
-                        style={{
-                          background: '#ecfdf5',
-                          color: '#065f46',
-                          border: '1px solid #a7f3d0',
-                          borderRadius: '12px',
-                          padding: '2px 8px',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                        }}
+                  {/* Identity: Avatar with Camera Badge + Name + Handle + Red Pill Button */}
+                  <div className="modern-profile-identity">
+                    <div className="modern-profile-avatar-wrap">
+                      <div className="modern-profile-avatar-placeholder">
+                        {(profileName || boyName || 'D').charAt(0).toUpperCase()}
+                      </div>
+                      <button
+                        type="button"
+                        className="modern-profile-camera-badge"
+                        onClick={() => setIsEditingProfile(true)}
+                        title="Change photo"
+                        aria-label="Change photo"
                       >
-                        {effectiveDeliveries.length} Drops Today
+                        <Camera size={13} />
+                      </button>
+                    </div>
+
+                    <div className="modern-profile-identity-info">
+                      <h3 className="modern-profile-name">{profileName || boyName || 'Delivery Partner'}</h3>
+                      <span className="modern-profile-handle">
+                        {driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
                       </span>
-                    </div>
-                    <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
-                      {effectivePending.length} Pending • {effectiveDelivered.length} Delivered • Tap to view all customer drops
-                    </p>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    color: '#059669',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      borderRadius: '50%',
-                      background: '#f0fdf4',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <ChevronRight size={18} />
-                  </div>
-                </div>
-              </div>
-
-              {/* 3. BIKE & FLEET DETAILS (BASIC DETAILS ONLY) */}
-              <div
-                className="driver-profile-vehicle-card"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                }}
-              >
-                {/* Header with Edit Bike button */}
-                <div
-                  className="driver-profile-card-heading"
-                  style={{
-                    background: 'linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%)',
-                    borderBottom: '1px solid #e2e8f0',
-                    padding: '12px 18px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Bike size={18} color="#059669" />
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Bike & Fleet Details
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingBike(true)}
-                    style={{
-                      background: '#059669',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      padding: '6px 12px',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <Edit2 size={13} />
-                    <span>Edit Bike</span>
-                  </button>
-                </div>
-
-                {/* Bike Card Body (Basic Details Only) */}
-                <div style={{ padding: '18px' }}>
-                  <div className="driver-vehicle-details-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Assigned Bike</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                        {bikeModel}
-                      </div>
-                    </div>
-
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Registration Number</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#394b40', marginTop: '2px' }}>
-                        {bikePlate}
-                      </div>
-                    </div>
-
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Vehicle Type</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                        {bikeType}
-                      </div>
-                    </div>
-
-                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}>
-                      <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Battery / Fuel Status</div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
-                        {bikeBattery}
-                      </div>
+                      <button
+                        type="button"
+                        className="modern-profile-edit-btn"
+                        onClick={() => setIsEditingProfile(true)}
+                      >
+                        Edit Profile
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
+                  {/* Menu List matching reference layout */}
+                  <div className="modern-profile-menu-list">
+                    {/* Favourites */}
                     <button
                       type="button"
-                      onClick={() => setIsEditingBike(true)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#059669',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: '4px 0',
+                      className="modern-profile-menu-row"
+                      onClick={() => setIsEditingProfile(true)}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><Heart size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Favourites</span>
+                          <span className="modern-profile-menu-sub">{profileArea || boyArea || 'Madhapur Sector'} Route</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Downloads */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => handleNavChange('deliveries')}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><FileText size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Downloads</span>
+                          <span className="modern-profile-menu-sub">Morning manifests & delivery proofs</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Language */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => setIsEditingProfile(true)}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><Globe size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Language</span>
+                          <span className="modern-profile-menu-sub">{profileShift} (5:00 AM - 7:30 AM)</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Location */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => setIsEditingProfile(true)}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><MapPin size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Location</span>
+                          <span className="modern-profile-menu-sub">{profileAddress || 'Madhapur Farm Dispatch Depot'}</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Subscription */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => setIsEditingProfile(true)}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><Bike size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Subscription</span>
+                          <span className="modern-profile-menu-sub">{bikePlate || 'Delivery Fleet Bike'} · {bikeModel || 'Commercial Cargo EV'}</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                          Verified
+                        </span>
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Clear cashe */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => {
+                        refreshAll?.();
+                        setProfileFeedbackMsg('App cache cleared and routes synchronized.');
+                        setTimeout(() => setProfileFeedbackMsg(''), 2500);
                       }}
                     >
-                      <Edit2 size={13} />
-                      <span>Edit Bike & View All Specs →</span>
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><Trash2 size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Clear cashe</span>
+                          <span className="modern-profile-menu-sub">Sync with live customer orders & route</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Clear history */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row"
+                      onClick={() => {
+                        alert('4 Pure Farm Rules: 1. Keep milk at 4°C. 2. Collect empty glass bottles. 3. Finish deliveries before 6:30 AM. 4. Collect cash receipts.');
+                      }}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><Clock size={20} /></span>
+                        <div>
+                          <span className="modern-profile-menu-label">Clear history</span>
+                          <span className="modern-profile-menu-sub">Cold-chain guidelines & bottle exchange</span>
+                        </div>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
+                    </button>
+
+                    {/* Log out */}
+                    <button
+                      type="button"
+                      className="modern-profile-menu-row is-logout"
+                      onClick={() => setShowLogoutConfirm(true)}
+                    >
+                      <div className="modern-profile-menu-left">
+                        <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
+                        <span className="modern-profile-menu-label">Log out</span>
+                      </div>
+                      <div className="modern-profile-menu-right">
+                        <ChevronRight size={18} />
+                      </div>
                     </button>
                   </div>
-                </div>
-              </div>
-
-              {/* 4. SUPPORT (DRIVER & BOOKING HELPLINES) */}
-              <div
-                className="driver-profile-support-card"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '18px 16px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Headphones size={16} />
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      Driver & Delivery Support
-                    </h3>
-                    <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                      Instant contact for customer issues, gate locks, or roadside help
-                    </p>
-                  </div>
-                </div>
-
-                <div className="driver-profile-support-grid">
-                  {/* Supervisor Call */}
-                  <a
-                    href="tel:9876543210"
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      padding: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      textDecoration: 'none',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Hub Supervisor</span>
-                      <PhoneCall size={16} color="#059669" />
-                    </div>
-                    <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>+91 98765 43210</span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                      Door lock, address changes, missing crates
-                    </span>
-                  </a>
-
-                  {/* WhatsApp Desk */}
-                  <a
-                    href={`https://wa.me/919876543210?text=Hello%20Dispatch,%20Driver%20support%20needed%20for%20${profileName}%20in%20${profileArea}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      padding: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      textDecoration: 'none',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>WhatsApp Desk</span>
-                      <MessageCircle size={16} color="#059669" />
-                    </div>
-                    <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>Chat with Dispatch</span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                      Send doorstep photo or gate proof
-                    </span>
-                  </a>
-
-                  {/* Vehicle SOS */}
-                  <a
-                    href="tel:1800123456"
-                    style={{
-                      background: '#fff1f2',
-                      border: '1px solid #fecdd3',
-                      borderRadius: '12px',
-                      padding: '14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '4px',
-                      textDecoration: 'none',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#991b1b' }}>Breakdown SOS</span>
-                      <AlertCircle size={16} color="#dc2626" />
-                    </div>
-                    <span style={{ fontSize: '0.76rem', color: '#dc2626', fontWeight: 700 }}>1800-123-456 (24x7)</span>
-                    <span style={{ fontSize: '0.72rem', color: '#991b1b', marginTop: '2px' }}>
-                      Flat tyre, breakdown, backup vehicle
-                    </span>
-                  </a>
-                </div>
-              </div>
-
-              {/* 5. DELETE & LOGOUT ACTIONS */}
-              <div
-                className="driver-profile-account-actions"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '18px 16px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px',
-                }}
-              >
-                {/* Logout Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowLogoutConfirm(true)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 18px',
-                    borderRadius: '10px',
-                    background: '#ffffff',
-                    border: '1px solid #fecaca',
-                    color: '#dc2626',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
-                >
-                  <LogOut size={16} />
-                  <span>Sign Out of Driver Account</span>
-                </button>
-
-                {/* Delete Account Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 18px',
-                    borderRadius: '10px',
-                    background: '#fff1f2',
-                    border: '1px solid #fecdd3',
-                    color: '#e11d48',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#ffe4e6')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#fff1f2')}
-                >
-                  <Trash2 size={16} />
-                  <span>Delete Driver Account</span>
-                </button>
-
-                <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '0.72rem', color: '#94a3b8' }}>
-                  Natural Milk Dairy — Hyderabad Direct Delivery System
-                </div>
-              </div>
-
-              {/* ========================================================= */}
-              {/* MODAL 1: EDIT DRIVER PROFILE (SHOW ALL DATA)              */}
-              {/* ========================================================= */}
-              {isEditingProfile && (
-                <div className="modal-overlay" onClick={() => setIsEditingProfile(false)}>
-                  <div
-                    className="modal-content driver-modal-sheet"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: '#ffffff',
-                      borderRadius: '20px',
-                      maxWidth: '560px',
-                      padding: '22px',
-                      maxHeight: '88vh',
-                      overflowY: 'auto',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <User size={18} />
-                        </div>
-                        <div>
-                          <h3 style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                            Edit profile details
-                          </h3>
-                          <p style={{ fontSize: '0.76rem', color: '#64748b', margin: 0 }}>
-                            Update your personal, partner, and dispatch information
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingProfile(false)}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer', padding: '4px' }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Full Name *
-                          </label>
-                          <input
-                            type="text"
-                            value={profileName}
-                            onChange={(e) => setProfileName(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Mobile Number *
-                          </label>
-                          <input
-                            type="tel"
-                            value={profilePhone}
-                            onChange={(e) => setProfilePhone(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Email Address *
-                          </label>
-                          <input
-                            type="email"
-                            value={profileEmail}
-                            onChange={(e) => setProfileEmail(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Assigned Territory / Route *
-                          </label>
-                          <input
-                            type="text"
-                            value={profileArea}
-                            onChange={(e) => setProfileArea(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Driving License Number *
-                          </label>
-                          <input
-                            type="text"
-                            value={profileLicense}
-                            onChange={(e) => setProfileLicense(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Partner / Employee ID
-                          </label>
-                          <input
-                            type="text"
-                            value={`#NMD-DRV-${(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}`}
-                            disabled
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #e2e8f0',
-                              background: '#f8fafc',
-                              color: '#64748b',
-                              fontSize: '0.86rem',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div style={{ gridColumn: '1 / -1' }}>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Residential / Hub Address
-                          </label>
-                          <input
-                            type="text"
-                            value={profileAddress}
-                            onChange={(e) => setProfileAddress(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Blood Group
-                          </label>
-                          <input
-                            type="text"
-                            value={profileBloodGroup}
-                            onChange={(e) => setProfileBloodGroup(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Emergency Contact
-                          </label>
-                          <input
-                            type="text"
-                            value={profileEmergencyContact}
-                            onChange={(e) => setProfileEmergencyContact(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Duty Shift Timing
-                          </label>
-                          <input
-                            type="text"
-                            value={profileShift}
-                            onChange={(e) => setProfileShift(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Date of Joining
-                          </label>
-                          <input
-                            type="text"
-                            value={profileJoiningDate}
-                            onChange={(e) => setProfileJoiningDate(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                        <button
-                          type="submit"
-                          style={{
-                            flex: 1,
-                            padding: '12px 18px',
-                            borderRadius: '10px',
-                            background: '#059669',
-                            color: '#ffffff',
-                            fontWeight: 700,
-                            fontSize: '0.88rem',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <Save size={15} /> Save Profile Changes
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsEditingProfile(false)}
-                          style={{
-                            padding: '12px 18px',
-                            borderRadius: '10px',
-                            background: '#ffffff',
-                            color: '#64748b',
-                            fontWeight: 600,
-                            fontSize: '0.88rem',
-                            border: '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              )}
-
-              {/* ========================================================= */}
-              {/* FULLSCREEN VIEW: ASSIGNED BOOKINGS                        */}
-              {/* ========================================================= */}
-              {showProfileBookings && (
-                <div
-                  className="driver-fullscreen-bookings-view"
-                  style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    width: '100%',
-                    height: '100%',
-                    background: '#ffffff',
-                    zIndex: 9999,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Fullscreen Sticky Header */}
-                  <div
-                    style={{
-                      background: '#ffffff',
-                      borderBottom: '1px solid #e2e8f0',
-                      padding: '14px 18px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowProfileBookings(false)}
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '10px',
-                          background: '#f1f5f9',
-                          border: 'none',
-                          color: '#0f172a',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                        }}
-                        aria-label="Back to Profile"
-                      >
-                        <ArrowLeft size={18} />
-                      </button>
-                      <div>
-                        <h3 style={{ fontSize: '1.08rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.2 }}>
-                          Today's Delivery Bookings
-                        </h3>
-                        <p style={{ fontSize: '0.74rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                          {effectiveDeliveries.length} doorstep customer drops for {selectedDate}
-                        </p>
-                      </div>
-                    </div>
+                </>
+              ) : (
+                /* ── SCREEN 2: EDIT PROFILE ── */
+                <>
+                  {/* Header: Back Arrow, "Edit Profile", Green Checkmark (Save) */}
+                  <div className="modern-profile-header">
                     <button
                       type="button"
-                      onClick={() => setShowProfileBookings(false)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#64748b',
-                        fontSize: '1.3rem',
-                        cursor: 'pointer',
-                        padding: '6px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
+                      className="modern-profile-header-btn"
+                      onClick={() => setIsEditingProfile(false)}
+                      aria-label="Back"
                     >
-                      ✕
+                      <ArrowLeft size={22} />
+                    </button>
+                    <h2 className="modern-profile-header-title">Edit Profile</h2>
+                    <button
+                      type="submit"
+                      form="modern-driver-edit-form"
+                      className="modern-profile-header-btn is-save"
+                      aria-label="Save profile"
+                    >
+                      <Check size={24} strokeWidth={2.5} color="#10b981" />
                     </button>
                   </div>
 
-                  {/* Scrollable Fullscreen Content Area */}
-                  <div
-                    style={{
-                      flex: 1,
-                      overflowY: 'auto',
-                      padding: '16px 18px 80px 18px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                      maxWidth: '860px',
-                      width: '100%',
-                      margin: '0 auto',
-                    }}
-                  >
-                    {/* Filter Tabs */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '6px',
-                        background: '#f8fafc',
-                        padding: '4px',
-                        borderRadius: '10px',
-                        border: '1px solid #e2e8f0',
-                      }}
-                    >
-                      {[
-                        { id: 'all', label: `All (${effectiveDeliveries.length})` },
-                        { id: 'pending', label: `Pending (${effectivePending.length})` },
-                        { id: 'delivered', label: `Delivered (${effectiveDelivered.length})` },
-                      ].map((btn) => (
-                        <button
-                          key={btn.id}
-                          type="button"
-                          onClick={() => setProfileBookingFilter(btn.id)}
-                          style={{
-                            flex: 1,
-                            padding: '8px 10px',
-                            borderRadius: '7px',
-                            border: 'none',
-                            fontSize: '0.78rem',
-                            fontWeight: profileBookingFilter === btn.id ? 700 : 500,
-                            background: profileBookingFilter === btn.id ? '#ffffff' : 'transparent',
-                            color: profileBookingFilter === btn.id ? '#059669' : '#64748b',
-                            boxShadow: profileBookingFilter === btn.id ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {btn.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Bookings List (Real Data Only) */}
-                    {effectiveDeliveries.length === 0 ? (
-                      <div
-                        style={{
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '14px',
-                          padding: '48px 20px',
-                          textAlign: 'center',
-                          marginTop: '20px',
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: '50px',
-                            height: '50px',
-                            borderRadius: '50%',
-                            background: '#ecfdf5',
-                            color: '#059669',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            margin: '0 auto 12px auto',
-                          }}
-                        >
-                          <Truck size={24} />
-                        </div>
-                        <h4 style={{ color: '#0f172a', fontSize: '1rem', fontWeight: 800, margin: '0 0 6px 0' }}>
-                          No Delivery Bookings Found
-                        </h4>
-                        <p style={{ color: '#64748b', fontSize: '0.8rem', margin: 0, maxWidth: '300px', marginInline: 'auto', lineHeight: 1.5 }}>
-                          There are no customer drops scheduled for route ({boyArea}) on {selectedDate}.
-                        </p>
+                  {/* Centered Avatar with Camera Badge */}
+                  <div className="modern-edit-avatar-wrap">
+                    <div className="modern-profile-avatar-wrap">
+                      <div className="modern-profile-avatar-placeholder">
+                        {(profileName || boyName || 'D').charAt(0).toUpperCase()}
                       </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {effectiveDeliveries
-                          .filter((b) => {
-                            if (profileBookingFilter === 'pending') return b.status === 'pending';
-                            if (profileBookingFilter === 'delivered') return b.status === 'delivered';
-                            return true;
-                          })
-                          .map((item, idx) => {
-                            const isDone = item.status === 'delivered';
-                            const isMissed = item.status === 'not_delivered';
-                            return (
-                              <div
-                                key={item.id || idx}
-                                style={{
-                                  background: '#ffffff',
-                                  border: '1px solid #e2e8f0',
-                                  borderRadius: '12px',
-                                  padding: '14px 16px',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '8px',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                                }}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                  <div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#64748b', background: '#f1f5f9', borderRadius: '4px', padding: '1px 6px' }}>
-                                        #{idx + 1}
-                                      </span>
-                                      <h4 style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                                        {item.customerName}
-                                      </h4>
-                                    </div>
-                                    <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <MapPin size={13} color="#059669" />
-                                      <span>{item.customerAddress || 'Address on file'}</span>
-                                    </div>
-                                  </div>
-
-                                  {/* Status Badge */}
-                                  <span
-                                    style={{
-                                      fontSize: '0.7rem',
-                                      fontWeight: 700,
-                                      borderRadius: '12px',
-                                      padding: '3px 9px',
-                                      background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
-                                      color: isDone ? '#065f46' : isMissed ? '#991b1b' : '#92400e',
-                                      border: `1px solid ${isDone ? '#a7f3d0' : isMissed ? '#fecaca' : '#fde68a'}`,
-                                    }}
-                                  >
-                                    {isDone ? '✓ Delivered' : isMissed ? '✕ Missed' : '⏳ Pending'}
-                                  </span>
-                                </div>
-
-                                <div
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    paddingTop: '8px',
-                                    borderTop: '1px solid #f1f5f9',
-                                    fontSize: '0.8rem',
-                                    flexWrap: 'wrap',
-                                    gap: '6px',
-                                  }}
-                                >
-                                  <span style={{ color: '#065f46', fontWeight: 700 }}>
-                                    🥛 {isDone ? item.actualMilk : item.plannedMilk}L Cow Milk {(isDone ? item.actualCurd : item.plannedCurd) > 0 ? `+ ${isDone ? item.actualCurd : item.plannedCurd}g Curd` : ''}
-                                  </span>
-                                  <span style={{ color: '#334155', fontWeight: 600 }}>
-                                    Amount: <strong style={{ color: '#059669' }}>₹{item.totalAmount || 0}</strong> ({item.paymentMethod?.toUpperCase() || 'CREDIT'})
-                                  </span>
-                                  {item.customerPhone && (
-                                    <a
-                                      href={`tel:${item.customerPhone}`}
-                                      style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        color: '#2563eb',
-                                        textDecoration: 'none',
-                                        fontWeight: 600,
-                                      }}
-                                    >
-                                      <Phone size={13} /> Call
-                                    </a>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    )}
-
-                    {/* Bottom CTA to switch to live route */}
-                    <div style={{ marginTop: '14px', display: 'flex', gap: '10px' }}>
                       <button
                         type="button"
+                        className="modern-profile-camera-badge"
+                        title="Change photo"
+                        aria-label="Change photo"
                         onClick={() => {
-                          setShowProfileBookings(false);
-                          setNavTab('deliveries');
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          borderRadius: '10px',
-                          background: '#059669',
-                          color: '#ffffff',
-                          fontWeight: 700,
-                          fontSize: '0.86rem',
-                          border: 'none',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px',
+                          alert('Upload driver photo feature: select from device camera or gallery.');
                         }}
                       >
-                        <Truck size={16} />
-                        <span>Open Deliveries Route View</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowProfileBookings(false)}
-                        style={{
-                          padding: '12px 18px',
-                          borderRadius: '10px',
-                          background: '#f1f5f9',
-                          color: '#475569',
-                          fontWeight: 700,
-                          fontSize: '0.86rem',
-                          border: 'none',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Close
+                        <Camera size={13} />
                       </button>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* ========================================================= */}
-              {/* MODAL 3: EDIT BIKE & FLEET (SHOW ALL DATA)                */}
-              {/* ========================================================= */}
-              {isEditingBike && (
-                <div className="modal-overlay" onClick={() => setIsEditingBike(false)}>
-                  <div
-                    className="modal-content driver-modal-sheet"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      background: '#ffffff',
-                      borderRadius: '20px',
-                      maxWidth: '560px',
-                      padding: '22px',
-                      maxHeight: '88vh',
-                      overflowY: 'auto',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Bike size={18} />
-                        </div>
-                        <div>
-                          <h3 style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                            Bike & Fleet — All Details
-                          </h3>
-                          <p style={{ fontSize: '0.76rem', color: '#64748b', margin: 0 }}>
-                            View and edit assigned vehicle specifications and registration
-                          </p>
-                        </div>
+                  {/* Form fields matching reference design */}
+                  <form id="modern-driver-edit-form" className="modern-edit-form" onSubmit={handleSaveProfile}>
+                    {/* Name */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Name</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="text"
+                          className="modern-edit-input"
+                          placeholder="Charlotte king"
+                          value={profileName}
+                          required
+                          onChange={(e) => setProfileName(e.target.value)}
+                        />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingBike(false)}
-                        style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer', padding: '4px' }}
-                      >
-                        ✕
-                      </button>
                     </div>
 
-                    <form onSubmit={handleSaveBike} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Bike / Vehicle Model *
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeModel}
-                            onChange={(e) => setBikeModel(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Registration / Plate Number *
-                          </label>
-                          <input
-                            type="text"
-                            value={bikePlate}
-                            onChange={(e) => setBikePlate(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Vehicle Category
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeType}
-                            onChange={(e) => setBikeType(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Insurance & RC Validity
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeInsurance}
-                            onChange={(e) => setBikeInsurance(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Battery / Fuel Status
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeBattery}
-                            onChange={(e) => setBikeBattery(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                            required
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Chassis / Motor Serial
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeChassis}
-                            onChange={(e) => setBikeChassis(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Next Scheduled Service
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeServiceDate}
-                            onChange={(e) => setBikeServiceDate(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                            Cold Chain Crates Kit
-                          </label>
-                          <input
-                            type="text"
-                            value={bikeCratesCapacity}
-                            onChange={(e) => setBikeCratesCapacity(e.target.value)}
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              borderRadius: '8px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '0.86rem',
-                              outline: 'none',
-                              boxSizing: 'border-box',
-                            }}
-                          />
-                        </div>
+                    {/* E mail address */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">E mail address</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="email"
+                          className="modern-edit-input"
+                          placeholder="@johnkgraphics.gmail.com"
+                          value={profileEmail}
+                          onChange={(e) => setProfileEmail(e.target.value)}
+                        />
                       </div>
+                    </div>
 
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                        <button
-                          type="submit"
-                          style={{
-                            flex: 1,
-                            padding: '12px 18px',
-                            borderRadius: '10px',
-                            background: '#059669',
-                            color: '#ffffff',
-                            fontWeight: 700,
-                            fontSize: '0.88rem',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <Save size={15} /> Save Bike Details
-                        </button>
+                    {/* User name */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">User name</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="text"
+                          className="modern-edit-input"
+                          placeholder="@johnkgraphics"
+                          value={driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
+                          onChange={(e) => setDriverUsername(e.target.value.replace(/^@/, ''))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Password</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type={showDriverPassword ? 'text' : 'password'}
+                          className="modern-edit-input"
+                          value={driverPassword}
+                          onChange={(e) => setDriverPassword(e.target.value)}
+                        />
                         <button
                           type="button"
-                          onClick={() => setIsEditingBike(false)}
-                          style={{
-                            padding: '12px 18px',
-                            borderRadius: '10px',
-                            background: '#ffffff',
-                            color: '#64748b',
-                            fontWeight: 600,
-                            fontSize: '0.88rem',
-                            border: '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                          }}
+                          className="modern-edit-icon-btn"
+                          onClick={() => setShowDriverPassword(!showDriverPassword)}
+                          aria-label={showDriverPassword ? 'Hide password' : 'Show password'}
                         >
-                          Cancel
+                          {showDriverPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                       </div>
-                    </form>
-                  </div>
-                </div>
-              )}
+                    </div>
 
-              {/* LOGOUT CONFIRMATION MODAL */}
-              {showLogoutConfirm && (
-                <div className="modal-overlay" onClick={() => setShowLogoutConfirm(false)}>
-                  <div
-                    className="modal-content driver-modal-sheet"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ background: '#ffffff', borderRadius: '18px', maxWidth: '420px', padding: '22px' }}
-                  >
-                    <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                      <div
-                        style={{
-                          width: '48px',
-                          height: '48px',
-                          borderRadius: '50%',
-                          background: '#fff1f2',
-                          color: '#e11d48',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginBottom: '10px',
-                        }}
-                      >
-                        <LogOut size={22} />
+                    {/* Phone number */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Phone number</label>
+                      <div className="modern-edit-input-container">
+                        <div className="modern-edit-phone-prefix">+91 ▼</div>
+                        <input
+                          type="tel"
+                          className="modern-edit-input"
+                          placeholder="6895312"
+                          value={profilePhone}
+                          required
+                          onChange={(e) => setProfilePhone(e.target.value)}
+                        />
                       </div>
-                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-                        End Shift & Sign Out?
-                      </h3>
-                      <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0, lineHeight: 1.45 }}>
-                        Ensure you have completed all pending deliveries and reconciled your{' '}
-                        <strong style={{ color: '#059669' }}>₹{totalCashCollected}</strong> in cash collections with the depot supervisor before signing out.
-                      </p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowLogoutConfirm(false)}
-                        style={{
-                          padding: '11px',
-                          borderRadius: '10px',
-                          border: '1px solid #e2e8f0',
-                          background: '#ffffff',
-                          color: '#475569',
-                          fontSize: '0.88rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Keep Delivering
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowLogoutConfirm(false);
-                          handleLogout();
-                        }}
-                        style={{
-                          padding: '11px',
-                          borderRadius: '10px',
-                          border: 'none',
-                          background: '#e11d48',
-                          color: '#ffffff',
-                          fontSize: '0.88rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Yes, Sign Out
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* DELETE ACCOUNT CONFIRMATION MODAL */}
-              {showDeleteConfirm && (
-                <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
-                  <div
-                    className="modal-content driver-modal-sheet"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ background: '#ffffff', borderRadius: '18px', maxWidth: '420px', padding: '22px' }}
-                  >
-                    <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                      <div
-                        style={{
-                          width: '48px',
-                          height: '48px',
-                          borderRadius: '50%',
-                          background: '#fef2f2',
-                          color: '#dc2626',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginBottom: '10px',
-                        }}
-                      >
-                        <Trash2 size={22} />
+                    {/* Vehicle Number */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Vehicle Number</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="text"
+                          className="modern-edit-input"
+                          placeholder="TS09-AB-1234"
+                          value={bikePlate}
+                          onChange={(e) => setBikePlate(e.target.value)}
+                        />
                       </div>
-                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#991b1b', margin: '0 0 6px 0' }}>
-                        Delete Driver Account?
-                      </h3>
-                      <p style={{ fontSize: '0.82rem', color: '#64748b', margin: 0, lineHeight: 1.45 }}>
-                        This will unlink your profile from Natural Milk Dairy routes, surrender assigned vehicle{' '}
-                        <strong>{bikePlate}</strong>, and permanently deactivate your driver portal account.
-                      </p>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowDeleteConfirm(false)}
-                        style={{
-                          padding: '11px',
-                          borderRadius: '10px',
-                          border: '1px solid #e2e8f0',
-                          background: '#ffffff',
-                          color: '#475569',
-                          fontSize: '0.88rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDeleteAccount}
-                        style={{
-                          padding: '11px',
-                          borderRadius: '10px',
-                          border: 'none',
-                          background: '#dc2626',
-                          color: '#ffffff',
-                          fontSize: '0.88rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Confirm Delete
-                      </button>
+                    {/* Assigned Delivery Area */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Assigned Delivery Area</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="text"
+                          className="modern-edit-input"
+                          placeholder="Madhapur Sector 1"
+                          value={profileArea}
+                          onChange={(e) => setProfileArea(e.target.value)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                </div>
+
+                    {/* Emergency Contact */}
+                    <div className="modern-edit-field">
+                      <label className="modern-edit-label">Emergency Contact</label>
+                      <div className="modern-edit-input-container">
+                        <input
+                          type="tel"
+                          className="modern-edit-input"
+                          placeholder="Supervisor / Emergency Phone"
+                          value={profileEmergencyContact}
+                          onChange={(e) => setProfileEmergencyContact(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Submit Button */}
+                    <button type="submit" className="modern-edit-submit-btn">
+                      ✓ Save Profile
+                    </button>
+                  </form>
+                </>
               )}
             </div>
           )}
@@ -3829,7 +2891,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       <nav className="driver-bottom-nav">
         <button
           type="button"
-          onClick={() => setNavTab('deliveries')}
+          onClick={() => handleNavChange('deliveries')}
           className={`driver-bottom-tab ${navTab === 'deliveries' ? 'active' : ''}`}
         >
           <Truck size={20} />
@@ -3841,7 +2903,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
         <button
           type="button"
-          onClick={() => setNavTab('route')}
+          onClick={() => handleNavChange('route')}
           className={`driver-bottom-tab ${navTab === 'route' ? 'active' : ''}`}
         >
           <ListOrdered size={20} />
@@ -3850,7 +2912,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
         <button
           type="button"
-          onClick={() => setNavTab('cash')}
+          onClick={() => handleNavChange('cash')}
           className={`driver-bottom-tab ${navTab === 'cash' ? 'active' : ''}`}
         >
           <Wallet size={20} />
@@ -3859,7 +2921,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
         <button
           type="button"
-          onClick={() => setNavTab('profile')}
+          onClick={() => handleNavChange('profile')}
           className={`driver-bottom-tab ${navTab === 'profile' ? 'active' : ''}`}
         >
           <User size={20} />
@@ -4019,27 +3081,218 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 }}
               />
 
-              {/* Confirm Button */}
+              {/* Doorstep Home Proof Photo Section (MANDATORY REQUIREMENT) */}
+              <div
+                style={{
+                  background: homeProofImage ? '#f0fdf4' : photoUploadError ? '#fef2f2' : '#f8fafc',
+                  border: homeProofImage
+                    ? '2px solid #10b981'
+                    : photoUploadError
+                    ? '2px solid #ef4444'
+                    : '1.5px dashed #94a3b8',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                    <Camera size={16} color="#059669" />
+                    <span>Home Doorstep Photo <span style={{ color: '#dc2626' }}>* (Required)</span></span>
+                  </label>
+                  {homeProofImage && (
+                    <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#059669', background: '#dcfce7', padding: '2px 8px', borderRadius: '12px' }}>
+                      ✓ Photo Attached
+                    </span>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={handlePhotoCapture}
+                />
+
+                {!homeProofImage ? (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploadingPhoto}
+                      style={{
+                        width: '100%',
+                        padding: '16px 12px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '10px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        cursor: isUploadingPhoto ? 'wait' : 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {isUploadingPhoto ? (
+                        <>
+                          <RefreshCw size={24} className="spin" color="#059669" />
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#059669' }}>
+                            Uploading home proof photo...
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <div
+                            style={{
+                              width: '44px',
+                              height: '44px',
+                              borderRadius: '50%',
+                              background: '#ecfdf5',
+                              color: '#059669',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: '0 2px 6px rgba(5, 150, 105, 0.15)',
+                            }}
+                          >
+                            <Camera size={22} />
+                          </div>
+                          <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>
+                            📸 Capture Home / Doorstep Photo
+                          </span>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                            Take camera photo or upload (Required to complete drop)
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    {photoUploadError && (
+                      <div
+                        style={{
+                          marginTop: '8px',
+                          fontSize: '0.76rem',
+                          color: '#dc2626',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        <AlertCircle size={14} />
+                        <span>{photoUploadError}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <div
+                      style={{
+                        position: 'relative',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                        border: '1px solid #bbf7d0',
+                        maxHeight: '170px',
+                      }}
+                    >
+                      <img
+                        src={homeProofImage}
+                        alt="Home Doorstep Proof"
+                        style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block' }}
+                      />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '8px',
+                          right: '8px',
+                          display: 'flex',
+                          gap: '6px',
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(15, 23, 42, 0.8)',
+                            color: '#ffffff',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backdropFilter: 'blur(4px)',
+                          }}
+                        >
+                          <Camera size={12} />
+                          <span>Retake</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHomeProofImage('')}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: 'rgba(220, 38, 38, 0.85)',
+                            color: '#ffffff',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backdropFilter: 'blur(4px)',
+                          }}
+                        >
+                          <Trash2 size={12} />
+                          <span>Remove</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Confirm Button — Requires Image of Home First */}
               <button
                 type="button"
                 onClick={handleConfirmDelivery}
+                disabled={!homeProofImage || isUploadingPhoto}
                 style={{
                   width: '100%',
-                  padding: '12px',
+                  padding: '13px',
                   borderRadius: '10px',
-                  background: '#059669',
+                  background: !homeProofImage || isUploadingPhoto ? '#94a3b8' : '#059669',
                   color: '#ffffff',
                   fontSize: '0.94rem',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: !homeProofImage || isUploadingPhoto ? 'not-allowed' : 'pointer',
                   marginTop: '4px',
-                  transition: 'background 0.15s ease',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '7px',
+                  boxShadow: homeProofImage ? '0 3px 10px rgba(5, 150, 105, 0.25)' : 'none',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#047857')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#059669')}
               >
-                Confirm Delivery
+                <Check size={18} />
+                <span>
+                  {!homeProofImage
+                    ? '📸 Take Home Photo to Mark Delivered'
+                    : isUploadingPhoto
+                    ? 'Uploading Home Photo...'
+                    : '✓ Confirm Delivery (Proof Verified)'}
+                </span>
               </button>
             </div>
           </div>
@@ -4148,6 +3401,64 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 onMouseLeave={(e) => (e.currentTarget.style.background = '#dc2626')}
               >
                 Save Reason
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL                             */}
+      {/* ============================================================ */}
+      {previewProofModal && (
+        <div className="modal-overlay" onClick={() => setPreviewProofModal(null)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '480px', padding: '18px', textAlign: 'center' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  📸 Doorstep Delivery Proof
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {previewProofModal.customerName} • {previewProofModal.customerAddress}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewProofModal(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
+              <img
+                src={previewProofModal.proofImage}
+                alt="Home doorstep proof photo"
+                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
+              />
+            </div>
+
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
+              <span>Delivered at: {previewProofModal.deliveredAt ? new Date(previewProofModal.deliveredAt).toLocaleTimeString() : 'Today'}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewProofModal(null)}
+                style={{
+                  padding: '6px 14px',
+                  background: '#059669',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Close Preview
               </button>
             </div>
           </div>

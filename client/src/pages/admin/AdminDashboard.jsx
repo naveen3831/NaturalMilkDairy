@@ -141,13 +141,9 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
         </div>
       </div>
 
-      {/* 2. Sleek KPI Metrics Cards Grid */}
+      {/* 2. Sleek KPI Metrics Cards Grid (3 cards per row) */}
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-          gap: '16px',
-        }}
+        className="kpi-grid-3cols"
       >
         {/* Card 1: Total Customers */}
         <div

@@ -247,7 +247,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
               <div
                 style={{
                   width: '100%',
-                  aspectRatio: '4 / 3.4',
+                  aspectRatio: '1 / 1',
                   maxHeight: '440px',
                   background: '#f8faf9',
                   display: 'flex',
@@ -259,10 +259,18 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
                 <img
                   src={activeImage}
                   alt={product.name}
+                  onError={(e) => {
+                    e.currentTarget.src = product.name?.toLowerCase().includes('buffalo')
+                      ? '/product-buffalo-milk.jpg'
+                      : product.name?.toLowerCase().includes('500')
+                      ? '/product-cow-milk-500ml.jpg'
+                      : '/product-cow-milk.jpg';
+                  }}
                   style={{
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
+                    objectPosition: 'center 10%',
                     display: 'block',
                     transition: 'transform 0.3s ease',
                   }}

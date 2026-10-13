@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import {
   Users,
@@ -28,11 +28,17 @@ export default function CustomerList({
   onOpenPauseModal,
   onOpenTempQtyModal,
 }) {
-  const { customers, resumeDelivery, deliveryBoys, assignPartnerToCustomer } = useDairy();
+  const { customers, resumeDelivery, deliveryBoys, assignPartnerToCustomer, fetchDeliveryBoys } = useDairy();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
   const [partnerMsg, setPartnerMsg] = useState('');
+
+  useEffect(() => {
+    if (fetchDeliveryBoys) {
+      fetchDeliveryBoys();
+    }
+  }, [fetchDeliveryBoys]);
 
   const handleAssignPartner = async (customer, boyId, boyName) => {
     try {
@@ -220,13 +226,9 @@ export default function CustomerList({
         </div>
       </div>
 
-      {/* 3. Customer Cards Grid */}
+      {/* 3. Customer Cards Grid (3 cards per row) */}
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
-          gap: '16px',
-        }}
+        className="customer-grid-3cols"
       >
         {filtered.map((customer) => {
           const isPaused = customer.status === 'paused';
@@ -394,7 +396,11 @@ export default function CustomerList({
                       )}
                     </div>
                     <select
-                      value={customer.deliveryPlan?.deliveryBoyId || ''}
+                      value={
+                        customer.deliveryPlan?.deliveryBoyId ||
+                        (deliveryBoys || []).find((b) => b.name?.toLowerCase() === customer.deliveryPlan?.deliveryBoyName?.toLowerCase())?.id ||
+                        ''
+                      }
                       onChange={(e) => {
                         const selId = e.target.value;
                         const selBoy = (deliveryBoys || []).find((b) => (b.id === selId || b._id === selId));
@@ -402,20 +408,22 @@ export default function CustomerList({
                       }}
                       style={{
                         width: '100%',
-                        padding: '6px 10px',
-                        fontSize: '0.78rem',
+                        padding: '7px 10px',
+                        fontSize: '0.80rem',
                         fontWeight: 600,
                         borderRadius: '6px',
                         border: '1px solid #cbd5e1',
-                        background: customer.deliveryPlan?.deliveryBoyId ? '#ecfdf5' : '#ffffff',
-                        color: customer.deliveryPlan?.deliveryBoyId ? '#065f46' : '#334155',
+                        background: (customer.deliveryPlan?.deliveryBoyId || customer.deliveryPlan?.deliveryBoyName) ? '#ecfdf5' : '#ffffff',
+                        color: (customer.deliveryPlan?.deliveryBoyId || customer.deliveryPlan?.deliveryBoyName) ? '#065f46' : '#334155',
                         cursor: 'pointer',
                         boxSizing: 'border-box',
                       }}
                       title="Assign a delivery partner to this user"
                     >
                       <option value="">Choose Delivery Partner (Unassigned)</option>
-                      {(deliveryBoys || []).map((boy) => (
+                      {(deliveryBoys || [])
+                        .filter((boy) => boy.status !== 'inactive')
+                        .map((boy) => (
                         <option key={boy.id || boy._id} value={boy.id || boy._id}>
                           {boy.name} • {boy.assignedArea || 'Route'} {boy.vehicleNumber ? `(${boy.vehicleNumber})` : ''}
                         </option>

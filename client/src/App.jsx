@@ -146,6 +146,23 @@ export default function App() {
     }
   }, [activeTab]);
 
+  // Whenever activeTab changes, automatically scroll to the starting top of the page
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
+  const navigateToTab = (tab) => {
+    if (tab === 'products') {
+      localStorage.removeItem('nmd_selected_product_id');
+      window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+    }
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+    }, 40);
+  };
+
   // Strict Role Isolation:
   // Admin isolation
   useEffect(() => {
@@ -178,7 +195,7 @@ export default function App() {
   }, [user, activeTab]);
 
   // Ledger state
-  const [selectedLedgerCustomerId, setSelectedLedgerCustomerId] = useState('cust_1');
+  const [selectedLedgerCustomerId, setSelectedLedgerCustomerId] = useState(null);
 
   // Selected Delivery Boy & Product for Full Page Editing
   const [selectedDeliveryBoyId, setSelectedDeliveryBoyId] = useState(null);
@@ -227,7 +244,7 @@ export default function App() {
       {isAdminView ? (
         <AdminLayout
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={navigateToTab}
           onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
           onOpenPaymentModal={() => handleOpenPayment()}
         >
@@ -278,6 +295,7 @@ export default function App() {
           {activeTab === 'ledger' && (
             <LedgerView
               customerId={selectedLedgerCustomerId}
+              onSelectCustomer={(id) => setSelectedLedgerCustomerId(id)}
               onBack={() => setActiveTab('customers')}
               onOpenPaymentModal={handleOpenPayment}
             />
@@ -370,12 +388,12 @@ export default function App() {
         </AdminLayout>
       ) : activeTab === 'delivery-boy-app' ? (
         /* Dedicated Driver Portal Layout (Sidebar on Web, Bottom Bar on Mobile) */
-        <DeliveryBoyApp setActiveTab={setActiveTab} />
+        <DeliveryBoyApp setActiveTab={navigateToTab} />
       ) : (
         <>
           {/* Customers use their own dashboard shell and navigation. */}
           {!(activeTab === 'customer-portal' && user?.role === 'customer') && (
-            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+            <Navbar activeTab={activeTab} setActiveTab={navigateToTab} />
           )}
 
           {/* Main Content Area - Full 100% Viewport Width */}
@@ -385,37 +403,37 @@ export default function App() {
           >
             {/* Public Separate Pages */}
             {(activeTab === 'home' || activeTab === 'landing') && (
-              <HomePage setActiveTab={setActiveTab} />
+              <HomePage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'products' && (
-              <ProductsPage setActiveTab={setActiveTab} />
+              <ProductsPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'story' && (
-              <StoryPage setActiveTab={setActiveTab} />
+              <StoryPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'faqs' && (
-              <FaqsPage setActiveTab={setActiveTab} />
+              <FaqsPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'contact' && (
-              <ContactPage setActiveTab={setActiveTab} />
+              <ContactPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'login' && (
-              <LoginPage setActiveTab={setActiveTab} />
+              <LoginPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'register' && (
-              <RegisterPage setActiveTab={setActiveTab} />
+              <RegisterPage setActiveTab={navigateToTab} />
             )}
 
             {/* Customer Self-Service Portal */}
             {activeTab === 'customer-portal' && (
               <CustomerPortal
-                setActiveTab={setActiveTab}
+                setActiveTab={navigateToTab}
                 onOpenPauseModal={handleOpenPause}
                 onOpenTempQtyModal={handleOpenTempQty}
                 onOpenPaymentModal={handleOpenPayment}
@@ -425,7 +443,7 @@ export default function App() {
 
           {/* Floating Contact Us Action Button (Mobile Responsive Only) */}
           {activeTab !== 'customer-portal' && (
-            <FloatingContactButton activeTab={activeTab} setActiveTab={setActiveTab} />
+            <FloatingContactButton activeTab={activeTab} setActiveTab={navigateToTab} />
           )}
         </>
       )}

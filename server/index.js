@@ -73,10 +73,18 @@ app.get('*', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const http = require('http');
+const { initWebSocket } = require('./config/websocket');
+
+const server = http.createServer(app);
+initWebSocket(server);
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n======================================================`);
   console.log(`🥛 NATURAL MILK DAIRY — Server Running on Port ${PORT}`);
   console.log(`🌿 Natural • Pure • Healthy`);
-  console.log(`📡 API Health: http://localhost:${PORT}/api/health`);
+  console.log(`📡 Local API:   http://localhost:${PORT}/api/health`);
+  console.log(`🌐 Network API: http://0.0.0.0:${PORT}/api/health`);
+  console.log(`⚡ WebSocket:   ws://0.0.0.0:${PORT}/ws`);
   console.log(`======================================================\n`);
 });

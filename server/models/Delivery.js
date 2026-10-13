@@ -21,6 +21,7 @@ const deliverySchema = new mongoose.Schema({
   paymentAmount: { type: Number, default: 0 },
   paymentMethod: { type: String, enum: ['credit', 'cash', 'upi', 'advance', 'none'], default: 'credit' },
   notes: { type: String, default: '' },
+  proofImage: { type: String, default: '' },
   deliveredAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },
 });

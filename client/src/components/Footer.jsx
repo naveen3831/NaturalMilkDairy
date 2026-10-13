@@ -107,6 +107,8 @@ export default function Footer({ setActiveTab }) {
               </button>
               <button
                 onClick={() => {
+                  localStorage.removeItem('nmd_selected_product_id');
+                  window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
                   setActiveTab('products');
                   scrollToTop();
                 }}

@@ -134,6 +134,9 @@ export default function AdminLayout({
   const handleNavClick = (tabId) => {
     setActiveTab(tabId);
     setIsMobileSidebarOpen(false);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    const mainEl = document.querySelector('main');
+    if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
   return (
@@ -502,9 +505,9 @@ export default function AdminLayout({
             </div>
           </div>
 
-          {/* Right: Date Filter & Fast Actions */}
-          <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {/* Notification Bell Button (Replaces Date Picker in Nav Bar) */}
+          {/* Right: Notification Only */}
+          <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Notification Bell Button */}
             <button
               type="button"
               onClick={() => setIsNotificationOpen(true)}
@@ -550,97 +553,10 @@ export default function AdminLayout({
                 </span>
               )}
             </button>
-
-            {/* Quick Action: Add Customer */}
-            <button
-              onClick={() => onOpenAddCustomer && onOpenAddCustomer()}
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                color: '#334155',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f8fafc';
-                e.currentTarget.style.borderColor = '#cbd5e1';
-                e.currentTarget.style.color = '#0f172a';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#ffffff';
-                e.currentTarget.style.borderColor = '#e2e8f0';
-                e.currentTarget.style.color = '#334155';
-              }}
-            >
-              <Plus size={15} color="#059669" />
-              <span>Add Customer</span>
-            </button>
-
-            {/* Quick Action: Add Partner */}
-            <button
-              onClick={() => setActiveTab('add-delivery-boy')}
-              style={{
-                background: '#059669',
-                border: 'none',
-                color: '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                padding: '7px 13px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 1px 2px rgba(5, 150, 105, 0.2)',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#047857';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#059669';
-              }}
-            >
-              <UserPlus size={15} />
-              <span>+ Partner</span>
-            </button>
-
-            {/* Quick Action: Record Payment */}
-            <button
-              onClick={() => onOpenPaymentModal && onOpenPaymentModal()}
-              style={{
-                background: '#fffbeb',
-                border: '1px solid #fde68a',
-                color: '#b45309',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#fef3c7';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#fffbeb';
-              }}
-            >
-              <Wallet size={15} />
-              <span>Record Payment</span>
-            </button>
           </div>
         </header>
+
+
 
         {/* Page Content Container */}
         <main

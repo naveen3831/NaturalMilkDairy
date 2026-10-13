@@ -270,9 +270,11 @@ export default function CustomerModal({ isOpen, onClose }) {
                   style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
                 >
                   <option value="">Select Delivery Partner</option>
-                  {deliveryBoys.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name} ({b.assignedArea})
+                  {(deliveryBoys || [])
+                    .filter((b) => b.status !== 'inactive')
+                    .map((b) => (
+                    <option key={b.id || b._id} value={b.id || b._id}>
+                      {b.name} ({b.assignedArea || 'Route'})
                     </option>
                   ))}
                 </select>

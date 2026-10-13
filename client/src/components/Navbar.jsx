@@ -34,6 +34,19 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   const publicTabs = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'login', 'register'];
   const isPublicView = publicTabs.includes(activeTab);
+
+  const navigatePage = (tab) => {
+    if (tab === 'products') {
+      localStorage.removeItem('nmd_selected_product_id');
+      window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+    }
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+    }, 40);
+  };
+
   const openUserPortal = () => {
     if (user?.role === 'admin') setActiveTab('dashboard');
     else if (user?.role === 'delivery_boy') setActiveTab('delivery-boy-app');
@@ -41,6 +54,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
       localStorage.setItem('nmd_customer_page', 'profile');
       setActiveTab('customer-portal');
     }
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
@@ -74,7 +88,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           {/* Brand Logo & Title */}
           <div
             className="public-site-brand"
-            onClick={() => setActiveTab('home')}
+            onClick={() => navigatePage('home')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -109,23 +123,25 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <div
                 style={{
                   fontFamily: 'var(--font-display)',
-                  fontSize: '1.28rem',
+                  fontSize: '1.24rem',
                   fontWeight: 900,
-                  lineHeight: 1.05,
+                  lineHeight: 1.15,
                   color: '#0d5c3a',
-                  letterSpacing: '0.01em',
+                  letterSpacing: '0.02em',
+                  whiteSpace: 'nowrap',
                 }}
               >
-                NATURAL<br />MILK DAIRY
+                NATURAL MILK DAIRY
               </div>
               <div
                 style={{
                   fontSize: '0.62rem',
                   fontWeight: 700,
                   color: '#15803d',
-                  letterSpacing: '0.16em',
-                  marginTop: '3px',
+                  letterSpacing: '0.14em',
+                  marginTop: '2px',
                   textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 NATURAL • PURE • HEALTHY
@@ -143,7 +159,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             className="public-nav-links"
           >
             <button
-              onClick={() => setActiveTab('home')}
+              onClick={() => navigatePage('home')}
               style={{
                 color: activeTab === 'home' || activeTab === 'landing' ? '#0d5c3a' : '#4b5563',
                 fontWeight: activeTab === 'home' || activeTab === 'landing' ? 800 : 600,
@@ -158,7 +174,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             </button>
 
             <button
-              onClick={() => setActiveTab('products')}
+              onClick={() => navigatePage('products')}
               style={{
                 color: activeTab === 'products' ? '#0d5c3a' : '#4b5563',
                 fontWeight: activeTab === 'products' ? 800 : 600,
@@ -173,7 +189,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             </button>
 
             <button
-              onClick={() => setActiveTab('story')}
+              onClick={() => navigatePage('story')}
               style={{
                 color: activeTab === 'story' ? '#0d5c3a' : '#4b5563',
                 fontWeight: activeTab === 'story' ? 800 : 600,
@@ -188,7 +204,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             </button>
 
             <button
-              onClick={() => setActiveTab('faqs')}
+              onClick={() => navigatePage('faqs')}
               style={{
                 color: activeTab === 'faqs' ? '#0d5c3a' : '#4b5563',
                 fontWeight: activeTab === 'faqs' ? 800 : 600,
@@ -203,7 +219,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             </button>
 
             <button
-              onClick={() => setActiveTab('contact')}
+              onClick={() => navigatePage('contact')}
               style={{
                 color: activeTab === 'contact' ? '#0d5c3a' : '#4b5563',
                 fontWeight: activeTab === 'contact' ? 800 : 600,
@@ -287,7 +303,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               // Not Logged In: SHOW LOGIN & REGISTER BUTTONS PROMINENTLY
               <>
                 <button
-                  onClick={() => setActiveTab('login')}
+                  onClick={() => navigatePage('login')}
                   style={{
                     padding: '9px 20px',
                     borderRadius: '8px',
@@ -304,7 +320,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('register')}
+                  onClick={() => navigatePage('register')}
                   style={{
                     padding: '9px 22px',
                     borderRadius: '8px',
@@ -348,9 +364,10 @@ export default function Navbar({ activeTab, setActiveTab }) {
           onNavigate={(page) => {
             if (page === 'profile' && user?.role === 'customer') {
               openUserPortal();
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
               return;
             }
-            setActiveTab(page === 'profile' ? 'login' : page);
+            navigatePage(page === 'profile' ? 'login' : page);
           }}
         />
       </>

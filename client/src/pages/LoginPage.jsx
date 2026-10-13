@@ -18,7 +18,7 @@ export default function LoginPage({ setActiveTab }) {
     setError('');
 
     if (!identifier.trim()) {
-      setError('Please enter your registered mobile number or email');
+      setError('Please enter your registered email or mobile number');
       return;
     }
 
@@ -39,7 +39,7 @@ export default function LoginPage({ setActiveTab }) {
         setActiveTab('home');
       }
     } else {
-      setError(res.message || 'Invalid mobile number/email or password. Please try again.');
+      setError(res.message || 'Invalid email/mobile number or password. Please try again.');
     }
   };
 
@@ -375,16 +375,16 @@ export default function LoginPage({ setActiveTab }) {
           )}
 
           <form onSubmit={handleSubmit}>
-            {/* Mobile / Identifier Input */}
+            {/* Email / Mobile Identifier Input */}
             <div className="login-form-group">
               <label className="login-form-label">
-                Mobile number
+                Email or mobile number
               </label>
               <input
                 type="text"
                 required
                 className="login-input"
-                placeholder="10-digit mobile"
+                placeholder="Enter email or 10-digit mobile"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
               />

@@ -1,12 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { useWebSocket } from './WebSocketContext';
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
   const { user } = useAuth();
-  const currentRole = user?.role || 'delivery_boy';
-  const currentUserId = user?.id || '';
+  const { subscribe: wsSubscribe } = useWebSocket();
+  // Intelligently identify current active portal / role
+  const currentRole = user?.role || (
+    typeof window !== 'undefined' && window.location.search.includes('tab=delivery')
+      ? 'delivery_boy'
+      : (typeof window !== 'undefined' && (window.location.search.includes('portal=admin') || window.location.search.includes('tab='))
+        ? 'admin'
+        : 'customer')
+  );
+  const currentUserId = user?.id || user?.customerId || '';
 
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -45,12 +54,12 @@ export function NotificationProvider({ children }) {
           createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
         },
       ];
-    } else {
+    } else if (role === 'delivery_boy') {
       return [
         {
           id: 'seed-drv-1',
           recipientRole: 'delivery_boy',
-          title: '📦 New Shift Deliveries Assigned',
+          title: '📦 Shift Route Assigned',
           message: 'Dispatch Admin assigned your morning route with 5 customer doorstep deliveries in Madhapur.',
           type: 'delivery_assigned',
           isRead: false,
@@ -73,6 +82,46 @@ export function NotificationProvider({ children }) {
           type: 'system',
           isRead: true,
           createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+        },
+      ];
+    } else {
+      // Customer
+      return [
+        {
+          id: 'seed-cust-1',
+          recipientRole: 'customer',
+          title: '🥛 Morning Milk Dispatched',
+          message: 'Your 1.5L Farm Fresh Cow Milk pouch is on the way with delivery partner Naveen Kumar.',
+          type: 'delivery_assigned',
+          isRead: false,
+          createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'seed-cust-2',
+          recipientRole: 'customer',
+          title: '✅ Doorstep Delivery Completed',
+          message: 'Your fresh milk delivery was placed safely at your doorstep at 06:15 AM. Enjoy the purity!',
+          type: 'delivery_completed',
+          isRead: false,
+          createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'seed-cust-3',
+          recipientRole: 'customer',
+          title: '🌿 100% Raw & Chilled Farm Milk',
+          message: 'Today\'s batch arrived at 3.8°C with uncompromised natural freshness and zero adulteration.',
+          type: 'system',
+          isRead: false,
+          createdAt: new Date(Date.now() - 110 * 60 * 1000).toISOString(),
+        },
+        {
+          id: 'seed-cust-4',
+          recipientRole: 'customer',
+          title: '📅 Subscription Active',
+          message: 'Your daily doorstep milk delivery schedule is active and running smoothly.',
+          type: 'route_update',
+          isRead: true,
+          createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
         },
       ];
     }
@@ -110,9 +159,11 @@ export function NotificationProvider({ children }) {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 8000); // 8-second real-time poll
-    return () => clearInterval(interval);
-  }, [fetchNotifications]);
+    const unsub = wsSubscribe('NOTIFICATION_UPDATED', () => {
+      fetchNotifications();
+    });
+    return () => unsub();
+  }, [fetchNotifications, wsSubscribe]);
 
   // Persist to local storage
   useEffect(() => {
@@ -180,6 +231,19 @@ export function NotificationProvider({ children }) {
     } catch (e) {}
   };
 
+  // Delete single notification
+  const deleteNotification = async (id) => {
+    setNotifications((prev) => {
+      const updated = prev.filter((n) => n.id !== id);
+      setUnreadCount(updated.filter((n) => !n.isRead).length);
+      localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(updated));
+      return updated;
+    });
+    try {
+      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+    } catch (e) {}
+  };
+
   // Clear all notifications
   const clearAllNotifications = async () => {
     setNotifications([]);
@@ -204,6 +268,7 @@ export function NotificationProvider({ children }) {
         sendNotification,
         markAsRead,
         markAllAsRead,
+        deleteNotification,
         clearAllNotifications,
         fetchNotifications,
         currentRole,

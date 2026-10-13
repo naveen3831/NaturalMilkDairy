@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useWebSocket } from './WebSocketContext';
 
 const DairyContext = createContext();
 
 export const DairyProvider = ({ children }) => {
+  const { isConnected: wsConnected, subscribe: wsSubscribe } = useWebSocket();
   const [customers, setCustomers] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [deliverySummary, setDeliverySummary] = useState({ total: 0, delivered: 0, pending: 0, notDelivered: 0 });
@@ -185,19 +187,48 @@ export const DairyProvider = ({ children }) => {
 
     window.addEventListener('storage', handleStorageChange);
 
-    // 4-second real-time poll so Admin & Driver receive customer updates across devices
-    const realtimePoll = setInterval(() => {
-      fetchCustomers();
-      fetchDeliveries();
-      fetchDashboard();
-    }, 4000);
-
     return () => {
       if (bc) bc.close();
       window.removeEventListener('storage', handleStorageChange);
-      clearInterval(realtimePoll);
     };
-  }, [refreshAll, fetchCustomers, fetchDeliveries, fetchDashboard]);
+  }, [refreshAll]);
+
+  // Real-time WebSocket synchronization across the entire project
+  useEffect(() => {
+    const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
+      fetchDeliveries();
+      fetchDashboard();
+      fetchPendingCredit();
+    });
+
+    const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', () => {
+      fetchCustomers();
+      fetchDashboard();
+      fetchPendingCredit();
+    });
+
+    const unsubPayment = wsSubscribe('PAYMENT_RECORDED', () => {
+      fetchPendingCredit();
+      fetchDashboard();
+      fetchCustomers();
+    });
+
+    const unsubProduct = wsSubscribe('PRODUCT_UPDATED', () => {
+      fetchProducts();
+    });
+
+    const unsubDriver = wsSubscribe('DELIVERY_BOY_UPDATED', () => {
+      fetchDeliveryBoys();
+    });
+
+    return () => {
+      unsubDelivery();
+      unsubCustomer();
+      unsubPayment();
+      unsubProduct();
+      unsubDriver();
+    };
+  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys]);
 
   // Mark Delivery as Delivered
   const markDelivered = async (id, payload) => {
@@ -688,6 +719,7 @@ export const DairyProvider = ({ children }) => {
         loading,
         selectedDate,
         setSelectedDate,
+        wsConnected,
         isOnline,
         offlineQueue,
         syncOfflineQueue,

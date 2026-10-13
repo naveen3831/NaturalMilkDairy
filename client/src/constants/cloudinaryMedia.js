@@ -4,7 +4,8 @@
  */
 export const CLOUDINARY_MEDIA = {
   cowMilk: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg',
-  buffaloMilk: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454806/natural-milk-dairy/product-buffalo-milk.jpg',
+  cowMilk500ml: '/product-cow-milk-500ml.jpg',
+  buffaloMilk: '/product-buffalo-milk.jpg',
   curd: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg',
   ghee: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454808/natural-milk-dairy/product-ghee.jpg',
   paneer: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454809/natural-milk-dairy/product-paneer.jpg',
@@ -17,8 +18,9 @@ export const CLOUDINARY_MEDIA = {
 };
 
 export const PRESET_GALLERY = [
-  { label: 'Fresh Cow Milk', url: CLOUDINARY_MEDIA.cowMilk },
-  { label: 'Pure Buffalo Milk', url: CLOUDINARY_MEDIA.buffaloMilk },
+  { label: 'Fresh Cow Milk 1L', url: CLOUDINARY_MEDIA.cowMilk },
+  { label: 'Fresh Cow Milk 500ml', url: '/product-cow-milk-500ml.jpg' },
+  { label: 'Pure Buffalo Milk 1L', url: '/product-buffalo-milk.jpg' },
   { label: 'Traditional Curd', url: CLOUDINARY_MEDIA.curd },
   { label: 'A2 Desi Ghee', url: CLOUDINARY_MEDIA.ghee },
   { label: 'Malai Paneer', url: CLOUDINARY_MEDIA.paneer },
@@ -31,7 +33,8 @@ export const PRESET_GALLERY = [
 export const getDefaultProductImage = (name = '', category = '') => {
   const n = (name || '').toLowerCase();
   const c = (category || '').toLowerCase();
-  if (n.includes('buffalo')) return CLOUDINARY_MEDIA.buffaloMilk;
+  if (n.includes('buffalo')) return '/product-buffalo-milk.jpg';
+  if ((n.includes('500') || n.includes('half')) && (n.includes('cow') || c === 'milk')) return '/product-cow-milk-500ml.jpg';
   if (n.includes('cow') || c === 'milk') return CLOUDINARY_MEDIA.cowMilk;
   if (c === 'curd' || n.includes('curd') || n.includes('dahi')) return CLOUDINARY_MEDIA.curd;
   if (c === 'ghee' || n.includes('ghee')) return CLOUDINARY_MEDIA.ghee;

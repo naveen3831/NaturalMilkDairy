@@ -7,6 +7,7 @@ const DeliveryBoy = require('../models/DeliveryBoy');
 const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
+const { broadcast } = require('../config/websocket');
 
 // Get all customers with search and filters
 const getCustomers = async (req, res) => {
@@ -252,6 +253,10 @@ const createCustomer = async (req, res) => {
       }
     }
 
+    broadcast('CUSTOMER_UPDATED', { customerId: newCustomer.customerId });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.status(201).json({
       success: true,
       customer: {
@@ -334,6 +339,9 @@ const updateCustomer = async (req, res) => {
       'customer'
     );
 
+    broadcast('CUSTOMER_UPDATED', { id });
+    broadcast('DELIVERY_UPDATED', {});
+
     return res.json({
       success: true,
       customer: {
@@ -389,6 +397,10 @@ const pauseDelivery = async (req, res) => {
       'customer'
     );
 
+    broadcast('CUSTOMER_UPDATED', { id });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({
       success: true,
       customer: {
@@ -441,6 +453,10 @@ const resumeDelivery = async (req, res) => {
     await ensureDeliveriesForDate(today);
 
     await recordAudit('Customer Delivery Resumed', actor || 'Admin', `Resumed active delivery for ${customer.name}`, 'customer');
+
+    broadcast('CUSTOMER_UPDATED', { id });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,
@@ -502,6 +518,9 @@ const setTemporaryQty = async (req, res) => {
       'customer'
     );
 
+    broadcast('CUSTOMER_UPDATED', { id });
+    broadcast('DELIVERY_UPDATED', {});
+
     return res.json({
       success: true,
       customer: {
@@ -550,6 +569,7 @@ const getCustomerLedger = async (req, res) => {
         paymentStatus: del.paymentStatus,
         notes: del.notes || (del.status === 'not_delivered' ? del.notDeliveredReason : ''),
         deliveryBoyName: del.deliveryBoyName,
+        proofImage: del.proofImage || '',
         rawItem: del,
       });
     });
@@ -954,6 +974,10 @@ const assignPartner = async (req, res) => {
       `Assigned partner "${resolvedBoyName || 'None'}" to customer ${customer.name} (${customer.customerId})`,
       'customer'
     );
+
+    broadcast('CUSTOMER_UPDATED', { id: customer._id.toString() });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,

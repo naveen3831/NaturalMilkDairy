@@ -22,15 +22,9 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
     const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
 
     for (const customer of customers) {
-      // Check pause range
+      // Check pause
       if (customer.status === 'paused') {
-        if (customer.pauseFrom && customer.pauseUntil) {
-          if (dateStr >= customer.pauseFrom && dateStr <= customer.pauseUntil) {
-            continue;
-          }
-        } else {
-          continue;
-        }
+        continue;
       }
 
       // Check delivery plan schedule
@@ -51,7 +45,11 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
 
       // Check if delivery already exists in MongoDB
       const existing = await Delivery.findOne({
-        customerId: custId,
+        $or: [
+          { customerId: custId },
+          { customerId: customer._id.toString() },
+          ...(customer.customerId ? [{ customerId: customer.customerId }] : []),
+        ],
         deliveryDate: dateStr,
       });
 

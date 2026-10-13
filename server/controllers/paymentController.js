@@ -2,6 +2,7 @@ const Payment = require('../models/Payment');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const { recordAudit } = require('../services/auditService');
+const { broadcast } = require('../config/websocket');
 
 const recordPayment = async (req, res) => {
   try {
@@ -57,6 +58,10 @@ const recordPayment = async (req, res) => {
       `Received ₹${paymentAmount} via ${(paymentMethod || 'cash').toUpperCase()} from ${customer.name}. New Balance: ₹${newBalance}`,
       'payment'
     );
+
+    broadcast('PAYMENT_RECORDED', { customerId: customer.customerId, amount: paymentAmount });
+    broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId });
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.status(201).json({
       success: true,

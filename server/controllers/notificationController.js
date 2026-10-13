@@ -1,4 +1,5 @@
 const Notification = require('../models/Notification');
+const { broadcast } = require('../config/websocket');
 
 // Default initial notifications to seed if collection is empty
 const defaultSeedNotifications = [
@@ -46,6 +47,33 @@ const defaultSeedNotifications = [
     type: 'route_update',
     isRead: true,
     createdAt: new Date(Date.now() - 60 * 60 * 1000),
+  },
+  {
+    recipientRole: 'customer',
+    recipientId: '',
+    title: '🥛 Morning Milk Dispatched',
+    message: 'Your 1.5L Farm Fresh Cow Milk is out for doorstep delivery with delivery partner Naveen Kumar.',
+    type: 'delivery_assigned',
+    isRead: false,
+    createdAt: new Date(Date.now() - 12 * 60 * 1000),
+  },
+  {
+    recipientRole: 'customer',
+    recipientId: '',
+    title: '✅ Doorstep Delivery Completed',
+    message: 'Your morning milk pouch was delivered safely into your doorstep bag at 06:15 AM.',
+    type: 'delivery_completed',
+    isRead: false,
+    createdAt: new Date(Date.now() - 50 * 60 * 1000),
+  },
+  {
+    recipientRole: 'customer',
+    recipientId: '',
+    title: '🌿 100% Pure & Chilled Batch',
+    message: 'Today\'s batch chilled at 3.8°C with uncompromised natural freshness and zero adulteration.',
+    type: 'system',
+    isRead: true,
+    createdAt: new Date(Date.now() - 120 * 60 * 1000),
   },
 ];
 
@@ -125,6 +153,8 @@ const createNotification = async (req, res) => {
       memoryNotifications.unshift(savedItem);
     }
 
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.status(201).json({
       success: true,
       notification: {
@@ -149,6 +179,8 @@ const markAsRead = async (req, res) => {
     memoryNotifications = memoryNotifications.map((n) =>
       (n.id === id || (n._id && n._id.toString() === id)) ? { ...n, isRead: true } : n
     );
+
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({ success: true, message: 'Notification marked as read' });
   } catch (err) {
@@ -176,6 +208,8 @@ const markAllAsRead = async (req, res) => {
       return n;
     });
 
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -200,7 +234,28 @@ const clearAll = async (req, res) => {
       return n.recipientRole !== role && n.recipientRole !== 'all';
     });
 
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({ success: true, message: 'Notifications cleared' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const deleteNotification = async (req, res) => {
+  try {
+    const { id } = req.params;
+    try {
+      if (id.length === 24) {
+        await Notification.findByIdAndDelete(id);
+      }
+    } catch (e) {}
+
+    memoryNotifications = memoryNotifications.filter((n) =>
+      n.id !== id && (!n._id || n._id.toString() !== id)
+    );
+
+    return res.json({ success: true, message: 'Notification deleted' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -212,4 +267,5 @@ module.exports = {
   markAsRead,
   markAllAsRead,
   clearAll,
+  deleteNotification,
 };

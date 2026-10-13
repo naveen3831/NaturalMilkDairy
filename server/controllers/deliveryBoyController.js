@@ -3,6 +3,7 @@ const DeliveryBoy = require('../models/DeliveryBoy');
 const Delivery = require('../models/Delivery');
 const { recordAudit } = require('../services/auditService');
 const { formatDate } = require('../services/deliveryService');
+const { broadcast } = require('../config/websocket');
 
 const getDeliveryBoys = async (req, res) => {
   try {
@@ -185,6 +186,9 @@ const addDeliveryBoy = async (req, res) => {
       }
     }
 
+    broadcast('DELIVERY_BOY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.status(201).json({
       success: true,
       deliveryBoy: {
@@ -307,6 +311,9 @@ const updateDeliveryBoy = async (req, res) => {
       }
     }
 
+    broadcast('DELIVERY_BOY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({
       success: true,
       message: `Delivery partner ${boy.name} updated successfully`,
@@ -350,6 +357,9 @@ const deleteDeliveryBoy = async (req, res) => {
       'system'
     );
 
+    broadcast('DELIVERY_BOY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({
       success: true,
       message: `Delivery partner ${boy.name} removed successfully`,
@@ -384,6 +394,9 @@ const reconcileCash = async (req, res) => {
     boy.todayCashCollected = 0;
     boy.todayUpiCollected = 0;
     await boy.save();
+
+    broadcast('DELIVERY_BOY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,

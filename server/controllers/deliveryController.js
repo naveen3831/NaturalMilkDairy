@@ -5,6 +5,7 @@ const Payment = require('../models/Payment');
 const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
+const { broadcast } = require('../config/websocket');
 
 // Get today's or selected date deliveries
 const getDeliveries = async (req, res) => {
@@ -93,6 +94,7 @@ const markDelivered = async (req, res) => {
       notes,
       actor,
       collectedAmount,
+      proofImage,
     } = req.body;
 
     const query = id.length === 24 ? { _id: id } : { customerId: id };
@@ -121,6 +123,7 @@ const markDelivered = async (req, res) => {
     delivery.deliveredAt = new Date();
     delivery.paymentMethod = method;
     delivery.paymentStatus = method === 'credit' ? 'credit' : 'paid';
+    if (proofImage) delivery.proofImage = proofImage;
     if (notes) delivery.notes = notes;
     await delivery.save();
 
@@ -200,6 +203,9 @@ const markDelivered = async (req, res) => {
       console.warn('Admin notification error:', notifErr.message);
     }
 
+    broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({
       success: true,
       message: 'Delivery marked completed successfully',
@@ -261,6 +267,9 @@ const markNotDelivered = async (req, res) => {
       console.warn('Admin notification error:', notifErr.message);
     }
 
+    broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
+    broadcast('NOTIFICATION_UPDATED', {});
+
     return res.json({
       success: true,
       message: 'Delivery marked as Not Delivered (no charge applied)',
@@ -296,6 +305,7 @@ const batchSyncOfflineDeliveries = async (req, res) => {
         delivery.paymentMethod = item.data?.paymentMethod || 'credit';
         delivery.totalAmount = delivery.actualMilk * (delivery.milkPrice || 60) + (delivery.actualCurd / 500) * (delivery.curdPrice || 30);
         delivery.deliveredAt = item.data?.timestamp ? new Date(item.data.timestamp) : new Date();
+        if (item.data?.proofImage) delivery.proofImage = item.data.proofImage;
         await delivery.save();
         syncedCount++;
       } else if (item.type === 'not_delivered') {
@@ -308,6 +318,8 @@ const batchSyncOfflineDeliveries = async (req, res) => {
     }
 
     await recordAudit('Offline Sync Completed', 'System', `Synced ${syncedCount} offline deliveries`, 'system');
+
+    broadcast('DELIVERY_UPDATED', { syncedCount });
 
     return res.json({
       success: true,
@@ -376,6 +388,9 @@ const assignDelivery = async (req, res) => {
       `Assigned ${delivery.customerName} to ${deliveryBoyName || 'partner'}`,
       'delivery'
     );
+
+    broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), deliveryBoyId });
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,

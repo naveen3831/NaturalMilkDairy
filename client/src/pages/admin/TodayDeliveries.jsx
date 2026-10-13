@@ -15,6 +15,7 @@ import {
   AlertCircle,
   BookOpen,
   Filter,
+  Camera,
 } from 'lucide-react';
 
 export default function TodayDeliveries({ onSelectCustomerLedger }) {
@@ -38,6 +39,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   // Modals for delivery action
   const [deliveringItem, setDeliveringItem] = useState(null);
   const [notDeliveringItem, setNotDeliveringItem] = useState(null);
+  const [previewProof, setPreviewProof] = useState(null);
 
   // Form states for delivery modal
   const [actualMilk, setActualMilk] = useState(1);
@@ -434,7 +436,9 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                       title="Assign or reassign delivery partner (sends instant alert to driver)"
                     >
                       <option value="">Unassigned (Tap to Assign)</option>
-                      {deliveryBoys.map((boy) => (
+                      {(deliveryBoys || [])
+                        .filter((boy) => boy.status !== 'inactive')
+                        .map((boy) => (
                         <option key={boy.id || boy._id} value={boy.id || boy._id}>
                           {boy.name} ({boy.assignedArea || 'Route'})
                         </option>
@@ -496,6 +500,30 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   >
                     <BookOpen size={13} /> Ledger
                   </button>
+
+                  {isDone && item.proofImage && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewProof(item)}
+                      style={{
+                        padding: '6px 10px',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '6px',
+                        color: '#065f46',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        cursor: 'pointer',
+                      }}
+                      title="View doorstep home proof photo captured by delivery partner"
+                    >
+                      <Camera size={13} color="#059669" />
+                      <span>Proof Photo</span>
+                    </button>
+                  )}
 
                   {isPending && (
                     <>
@@ -748,6 +776,48 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   Confirm Not Delivered
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal for Proof Image */}
+      {previewProof && (
+        <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  📸 Doorstep Delivery Proof
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {previewProof.customerName} • {previewProof.customerAddress}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
+              <img
+                src={previewProof.proofImage}
+                alt="Home doorstep proof photo"
+                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
+              />
+            </div>
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
+              <span>Fulfilled by: <strong>{previewProof.deliveryBoyName || 'Partner'}</strong></span>
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                style={{ padding: '6px 14px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Close Preview
+              </button>
             </div>
           </div>
         </div>
