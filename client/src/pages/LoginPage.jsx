@@ -27,7 +27,10 @@ export default function LoginPage({ setActiveTab }) {
     setIsLoading(false);
 
     if (res.success && res.user) {
-      if (res.user.role === 'delivery_boy') {
+      if (res.user.role === 'customer' && localStorage.getItem('nmd_pending_subscription')) {
+        localStorage.setItem('nmd_current_tab', 'products');
+        setActiveTab('products');
+      } else if (res.user.role === 'delivery_boy') {
         localStorage.setItem('nmd_current_tab', 'delivery-boy-app');
         setActiveTab('delivery-boy-app');
       } else if (res.user.role === 'admin') {
@@ -35,8 +38,14 @@ export default function LoginPage({ setActiveTab }) {
         localStorage.setItem('nmd_current_tab', 'dashboard');
         setActiveTab('dashboard');
       } else {
-        localStorage.setItem('nmd_current_tab', 'home');
-        setActiveTab('home');
+        if (window.innerWidth <= 768) {
+          localStorage.setItem('nmd_customer_page', 'profile');
+          localStorage.setItem('nmd_current_tab', 'customer-portal');
+          setActiveTab('customer-portal');
+        } else {
+          localStorage.setItem('nmd_current_tab', 'home');
+          setActiveTab('home');
+        }
       }
     } else {
       setError(res.message || 'Invalid email/mobile number or password. Please try again.');

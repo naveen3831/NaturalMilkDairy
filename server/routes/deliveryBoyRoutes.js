@@ -8,11 +8,13 @@ const {
   reconcileCash,
   sendDeliveryBoyCredentials,
 } = require('../controllers/deliveryBoyController');
+const { optionalToken } = require('../middleware/authMiddleware');
 
 router.get('/', getDeliveryBoys);
 router.post('/', addDeliveryBoy);
 router.put('/:id', updateDeliveryBoy);
-router.delete('/:id', deleteDeliveryBoy);
+router.delete('/me/account', optionalToken, deleteDeliveryBoy);
+router.delete('/:id', optionalToken, deleteDeliveryBoy);
 router.post('/:id/reconcile', reconcileCash);
 router.post('/:id/send-credentials', sendDeliveryBoyCredentials);
 

@@ -11,7 +11,7 @@ const getDashboardSummary = async (req, res) => {
     await ensureDeliveriesForDate(today);
 
     const [todayDeliveries, totalCustomers, activeCustomers, payments] = await Promise.all([
-      Delivery.find({ deliveryDate: today }).lean(),
+      Delivery.find({ deliveryDate: today, deletedForAdmin: { $ne: true } }).lean(),
       Customer.countDocuments(),
       Customer.countDocuments({ status: 'active' }),
       Payment.find({}).lean(),

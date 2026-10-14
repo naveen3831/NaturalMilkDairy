@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Milk,
   CheckCircle,
@@ -11,7 +11,6 @@ import {
   Sparkles,
   Award,
   ArrowRight,
-  HeartHandshake,
   Star,
   Check,
   Droplets,
@@ -28,6 +27,7 @@ import {
   Percent,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
+import { useAuth } from '../context/AuthContext';
 import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
 import Footer from '../components/Footer';
@@ -46,7 +46,22 @@ const DEFAULT_HOME_PRODUCTS = [
     numericPrice: 60,
     unit: '/ Litre',
     image: CLOUDINARY_MEDIA.cowMilk,
-    desc: 'Freshly milked raw cow milk chilled in sterilized glass bottles. Natural golden cream layer, silky smooth taste.',
+    desc: 'Freshly milked pure organic farm cow milk chilled to 4°C in sterilized glass bottles.',
+    highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
+  },
+  {
+    id: 'p2',
+    category: 'milk',
+    name: 'Farm Fresh Cow Milk 500ml',
+    tagline: 'Single-origin morning harvest',
+    badge: 'Fresh Daily',
+    badgeColor: '#0c2340',
+    fat: '4.2% Fat • 8.5% SNF',
+    price: '₹30',
+    numericPrice: 30,
+    unit: '/ 500ml',
+    image: CLOUDINARY_MEDIA.cowMilk500ml || '/product-cow-milk-500ml.jpg',
+    desc: 'Convenient daily half-litre pack of pure farm cow milk, ideal for morning chai & coffee.',
     highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
   },
   {
@@ -60,35 +75,35 @@ const DEFAULT_HOME_PRODUCTS = [
     price: '₹75',
     numericPrice: 75,
     unit: '/ Litre',
-    image: CLOUDINARY_MEDIA.buffaloMilk,
-    desc: 'Thick, creamy buffalo milk with exceptional fat content. Perfect for homemade rabdi, kheer, and dense malai.',
+    image: CLOUDINARY_MEDIA.buffaloMilk || '/product-buffalo-milk.jpg',
+    desc: 'Thick creamy high-fat pure buffalo milk with rich natural malai.',
     highlights: ['Heavy Natural Malai', 'Zero Dilution', 'Pure Grass-Fed Cattle'],
   },
   {
     id: 'p4',
     category: 'curd',
-    name: 'Traditional Farm Curd 500g',
-    tagline: 'Cultured in earthen pots',
-    badge: 'Clay Pot Set',
+    name: 'Thick Farm Curd 500g',
+    tagline: 'Single-origin morning harvest',
+    badge: 'Pure Produce',
     badgeColor: '#059669',
-    fat: 'Live Probiotics',
+    fat: '100% Pure',
     price: '₹35',
     numericPrice: 35,
     unit: '/ 500g',
     image: CLOUDINARY_MEDIA.curd,
-    desc: 'Naturally set probiotic curd with thick spoonable consistency. Natural subtle sweetness with zero sour preservatives.',
-    highlights: ['Active Gut Cultures', 'Clay Pot Fermentation', 'Zero Gelatin / Stabilizers'],
+    desc: 'Traditional earthen pot set creamy dahi with natural gut probiotics.',
+    highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
   },
   {
     id: 'p5',
     category: 'curd',
-    name: 'Artisanal Malai Paneer 250g',
+    name: 'Fresh Malai Paneer 250g',
     tagline: 'Melt-in-your-mouth soft',
     badge: 'Farm Made',
     badgeColor: '#166534',
     fat: 'High Protein • Pure Cow Milk',
-    price: '₹90',
-    numericPrice: 90,
+    price: '₹95',
+    numericPrice: 95,
     unit: '/ 250g',
     image: CLOUDINARY_MEDIA.paneer,
     desc: 'Crafted fresh every morning from whole cow milk curdled with natural lemon. Ultra-tender, juicy and spongy.',
@@ -97,7 +112,7 @@ const DEFAULT_HOME_PRODUCTS = [
   {
     id: 'p6',
     category: 'ghee',
-    name: 'Vedic A2 Desi Cow Ghee 500ml',
+    name: 'A2 Vedic Desi Ghee 500ml',
     tagline: 'Traditional Bilona churned',
     badge: 'Bilona Churned',
     badgeColor: '#b45309',
@@ -113,6 +128,7 @@ const DEFAULT_HOME_PRODUCTS = [
 
 export default function HomePage({ setActiveTab }) {
   const { products: dbProducts } = useDairy();
+  const { user } = useAuth();
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [calcMilkQty, setCalcMilkQty] = useState(1);
@@ -120,39 +136,79 @@ export default function HomePage({ setActiveTab }) {
   const [activeCategory, setActiveCategory] = useState('all');
   const [heroSelectedProduct, setHeroSelectedProduct] = useState('cow-milk');
 
-  const handleSubscribe = (prod = null) => {
-    if (prod) {
-      localStorage.setItem('nmd_selected_product_id', prod.id || prod.name);
+  const handleProductClick = (prod) => {
+    if (!prod) return;
+    const prodIdentifier = prod.id || prod._id || prod.name;
+    try {
+      localStorage.setItem('nmd_selected_product_id', String(prodIdentifier));
+      localStorage.setItem('nmd_selected_product_name', prod.name || '');
+      localStorage.setItem('nmd_selected_product_obj', JSON.stringify(prod));
+    } catch (e) {}
+
+    window.dispatchEvent(
+      new CustomEvent('nmd_select_product', {
+        detail: { product: prod, id: prodIdentifier },
+      })
+    );
+
+    if (typeof setActiveTab === 'function') {
+      setActiveTab('products', prodIdentifier);
     }
-    setActiveTab('products');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleSubscribe = (prod = null) => {
+    if (!user) {
+      if (prod) {
+        localStorage.setItem('nmd_pending_subscription', JSON.stringify({
+          ...prod,
+          selectedQty: prod.selectedQty || 1,
+          selectedFrequency: prod.selectedFrequency || 'daily',
+        }));
+      }
+      setActiveTab('login');
+      return;
+    }
+    if (user.role !== 'customer') {
+      window.alert('Please sign in with a customer account to start a subscription.');
+      return;
+    }
+
+    setSelectedProduct(prod ? {
+      ...prod,
+      selectedQty: prod.selectedQty || 1,
+      selectedFrequency: prod.selectedFrequency || 'daily',
+    } : null);
+    setIsSubscribeOpen(true);
+  };
+
   // Farm Products Data dynamically synced with MongoDB Atlas & store
-  const products = (dbProducts && dbProducts.length > 0)
-    ? dbProducts
-        .filter((p) => p.status !== 'inactive')
-        .map((p) => {
-          const fallback = DEFAULT_HOME_PRODUCTS.find(
-            (def) => def.id === p.id || def.name.toLowerCase() === (p.name || '').toLowerCase()
-          );
-          return {
-            id: p.id,
-            category: p.category || fallback?.category || 'milk',
-            name: p.name,
-            tagline: fallback?.tagline || 'Single-origin morning harvest',
-            badge: fallback?.badge || (p.category === 'milk' ? 'Fresh Daily' : 'Pure Produce'),
-            badgeColor: fallback?.badgeColor || '#0d5c3a',
-            fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
-            price: `₹${p.price}`,
-            numericPrice: Number(p.price),
-            unit: p.unit?.startsWith('/') ? p.unit : `/ ${p.unit || 'Litre'}`,
-            image: p.image || getProductImage(p),
-            desc: p.description || fallback?.desc || 'Freshly milked pure natural dairy chilled in sterilized glass bottles.',
-            highlights: fallback?.highlights || ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
-          };
-        })
-    : DEFAULT_HOME_PRODUCTS;
+  const products = useMemo(() => {
+    return (dbProducts && dbProducts.length > 0)
+      ? dbProducts
+          .filter((p) => p.status !== 'inactive')
+          .map((p) => {
+            const fallback = DEFAULT_HOME_PRODUCTS.find(
+              (def) => def.id === (p.id || p._id) || def.name.toLowerCase() === (p.name || '').toLowerCase()
+            );
+            return {
+              id: p.id || p._id,
+              category: p.category || fallback?.category || 'milk',
+              name: p.name,
+              tagline: fallback?.tagline || 'Single-origin morning harvest',
+              badge: fallback?.badge || (p.category === 'milk' ? 'Fresh Daily' : 'Pure Produce'),
+              badgeColor: fallback?.badgeColor || '#0d5c3a',
+              fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
+              price: `₹${p.price}`,
+              numericPrice: Number(p.price),
+              unit: p.unit?.startsWith('/') ? p.unit : `/ ${p.unit || 'Litre'}`,
+              image: p.image || getProductImage(p),
+              desc: p.description || fallback?.desc || 'Freshly milked pure natural dairy chilled in sterilized glass bottles.',
+              highlights: fallback?.highlights || ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
+            };
+          })
+      : DEFAULT_HOME_PRODUCTS;
+  }, [dbProducts]);
 
   // Dynamic monthly estimate using live rates
   const cowMilkItem = products.find((p) => p.name.toLowerCase().includes('cow')) || products[0] || { numericPrice: 60 };
@@ -164,9 +220,11 @@ export default function HomePage({ setActiveTab }) {
   const monthlyCurdCost = (calcCurdQty / 500) * curdRate * 30;
   const totalMonthlyCost = monthlyMilkCost + monthlyCurdCost;
 
-  const filteredProducts = activeCategory === 'all'
-    ? products
-    : products.filter(p => p.category === activeCategory);
+  const filteredProducts = useMemo(() => {
+    return activeCategory === 'all'
+      ? products
+      : products.filter((p) => p.category === activeCategory);
+  }, [products, activeCategory]);
 
   return (
     <div className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
@@ -666,221 +724,7 @@ export default function HomePage({ setActiveTab }) {
       </section>
 
       {/* ============================================================ */}
-      {/* 4. 100% VX: OUR PASTURE HERD & ETHICAL FARM (COW IMAGES)      */}
-      {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '80px auto 0 auto', padding: '0 32px' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
-            gap: '40px',
-            alignItems: 'center',
-          }}
-        >
-          {/* Real Photo of Desi Gir & Holstein Cows in Pasture */}
-          <div
-            style={{
-              borderRadius: '24px',
-              overflow: 'hidden',
-              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.08)',
-              position: 'relative',
-              height: '420px',
-            }}
-          >
-            <img
-              src={CLOUDINARY_MEDIA.cowsPasture}
-              alt="Healthy Indian Desi Cows Grazing in Pasture"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                bottom: '16px',
-                left: '16px',
-                background: 'rgba(7, 22, 41, 0.85)',
-                backdropFilter: 'blur(8px)',
-                color: '#ffffff',
-                padding: '8px 16px',
-                borderRadius: '12px',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-              }}
-            >
-              🌱 100% Free-Range Pasture Grazing • Ethical Cattle Care
-            </div>
-          </div>
-
-          {/* Herd Heritage Copy */}
-          <div>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '5px 14px',
-                borderRadius: '20px',
-                background: '#ecfdf5',
-                color: '#059669',
-                fontSize: '0.82rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.1em',
-                marginBottom: '12px',
-              }}
-            >
-              <HeartHandshake size={15} color="#059669" />
-              <span>Ethical Farm Standards</span>
-            </div>
-
-            <h2 style={{ fontSize: 'clamp(1.9rem, 3.2vw, 2.5rem)', color: '#0c2340', fontWeight: 800, lineHeight: 1.25 }}>
-              Healthy, Happy Cows Make Naturally Sweeter Milk
-            </h2>
-
-            <p style={{ color: '#475569', fontSize: '1rem', lineHeight: 1.65, marginTop: '14px', marginBottom: '18px' }}>
-              Unlike industrial dairy factories where cattle are confined to small cement stalls and injected with growth hormones, 
-              our cattle roam freely in lush green pastures under natural sunlight. They graze on natural organic clover and fresh grasses.
-            </p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
-                <Check size={16} color="#059669" />
-                <span>Zero Oxytocin or Hormones</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
-                <Check size={16} color="#059669" />
-                <span>Clean Automated Milking</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
-                <Check size={16} color="#059669" />
-                <span>Ayurvedic Veterinary Care</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', color: '#065f46', fontWeight: 600 }}>
-                <Check size={16} color="#059669" />
-                <span>Mineral-Rich Clean Water</span>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setActiveTab('story')}
-              style={{
-                background: '#059669',
-                color: '#ffffff',
-                padding: '12px 24px',
-                borderRadius: '12px',
-                fontWeight: 700,
-                fontSize: '0.92rem',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-              }}
-            >
-              <span>Read Our Full Farm Story</span>
-              <ArrowRight size={16} />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* 5. 100% VX: FRESH MILK POURING & GLASS BOTTLING GALLERY      */}
-      {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '80px auto 0 auto', padding: '0 32px' }}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: '30px',
-          }}
-        >
-          {/* Card 1: Glass Milk Pour */}
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '24px',
-              overflow: 'hidden',
-              border: '1.5px solid #e2ece3',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ height: '260px', overflow: 'hidden' }}>
-              <img
-                src={CLOUDINARY_MEDIA.milkPour}
-                alt="Fresh Whole Milk Pouring from Glass Bottle"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-            <div style={{ padding: '26px' }}>
-              <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
-                Taste Real Raw Sweetness
-              </h3>
-              <p style={{ color: '#597361', fontSize: '0.92rem', lineHeight: 1.6 }}>
-                Commercial pasteurized packet milk loses its natural enzymes and aromas. Our farm milk is chilled to 4°C immediately, 
-                preserving that creamy, naturally sweet taste your grandparents remember.
-              </p>
-            </div>
-          </div>
-
-          {/* Card 2: Glass Bottles Lineup */}
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '24px',
-              overflow: 'hidden',
-              border: '1.5px solid #e2ece3',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ height: '260px', overflow: 'hidden' }}>
-              <img
-                src={CLOUDINARY_MEDIA.glassBottles}
-                alt="Sterilized Glass Milk Bottles Lineup"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-            <div style={{ padding: '26px' }}>
-              <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
-                Sterilized Glass, Zero Plastic
-              </h3>
-              <p style={{ color: '#597361', fontSize: '0.92rem', lineHeight: 1.6 }}>
-                Hot milk packed in cheap plastic pouches leaches phthalates and microplastics. 
-                We pack exclusively in food-grade, multi-stage sterilized glass bottles for absolute purity.
-              </p>
-            </div>
-          </div>
-
-          {/* Card 3: Sunrise Dairy Farm */}
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: '24px',
-              overflow: 'hidden',
-              border: '1.5px solid #e2ece3',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
-            }}
-          >
-            <div style={{ height: '260px', overflow: 'hidden' }}>
-              <img
-                src={CLOUDINARY_MEDIA.organicFarm}
-                alt="Sunrise Organic Dairy Farm"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-            <div style={{ padding: '26px' }}>
-              <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
-                From Farm To Doorstep in 3 Hours
-              </h3>
-              <p style={{ color: '#597361', fontSize: '0.92rem', lineHeight: 1.6 }}>
-                Milked at 4:30 AM, bottled by 5:15 AM, and delivered silently outside your door by 6:30 AM. 
-                The fastest, freshest dairy journey in Mumbai.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================ */}
-      {/* 6. 100% VX: ARTISANAL FARM PRODUCTS COLLECTION               */}
+      {/* 4. ARTISANAL FARM PRODUCTS COLLECTION                         */}
       {/* ============================================================ */}
       <section style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div
@@ -921,7 +765,7 @@ export default function HomePage({ setActiveTab }) {
           {/* Interactive Category Tabs */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
-              { id: 'all', label: 'All Products (5)' },
+              { id: 'all', label: `All Products (${products.length})` },
               { id: 'milk', label: 'Fresh Milks' },
               { id: 'curd', label: 'Curd & Paneer' },
               { id: 'ghee', label: 'Desi A2 Ghee' },
@@ -943,9 +787,15 @@ export default function HomePage({ setActiveTab }) {
             <div
               key={prod.id}
               className="dairy-product-card"
-              onClick={() => {
-                setActiveTab('products');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+              onClick={() => handleProductClick(prod)}
+              role="button"
+              tabIndex={0}
+              aria-label={`View ${prod.name} details in products catalog`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleProductClick(prod);
+                }
               }}
               style={{
                 background: '#ffffff',
@@ -957,6 +807,7 @@ export default function HomePage({ setActiveTab }) {
                 justifyContent: 'space-between',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
                 cursor: 'pointer',
+                transition: 'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
               }}
             >
               {/* Product Visual Container */}

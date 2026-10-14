@@ -11,11 +11,8 @@ export const WebSocketProvider = ({ children }) => {
 
   const getWsUrl = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // If running with Vite dev server on port 3000, connect to backend server on 5000
-    const host = window.location.port === '3000'
-      ? `${window.location.hostname}:5000`
-      : window.location.host;
-    return `${protocol}//${host}/ws`;
+    // Connect through the same host and port so both localhost and network IP addresses work seamlessly
+    return `${protocol}//${window.location.host}/ws`;
   };
 
   const connect = useCallback(() => {

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { useNotifications } from '../../context/NotificationContext';
 import {
   Truck,
   CheckCircle,
@@ -16,6 +15,7 @@ import {
   BookOpen,
   Filter,
   Camera,
+  Trash2,
 } from 'lucide-react';
 
 export default function TodayDeliveries({ onSelectCustomerLedger }) {
@@ -28,10 +28,11 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     markDelivered,
     markNotDelivered,
     assignDelivery,
+    deleteDelivery,
     deliveryBoys,
   } = useDairy();
-  const { sendNotification } = useNotifications();
-
+  const [timeRange, setTimeRange] = useState('today');
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [boyFilter, setBoyFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -53,8 +54,8 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   const [notDeliveredNotes, setNotDeliveredNotes] = useState('');
 
   useEffect(() => {
-    fetchDeliveries(selectedDate, statusFilter, boyFilter);
-  }, [selectedDate, statusFilter, boyFilter, fetchDeliveries]);
+    fetchDeliveries(selectedDate, statusFilter, boyFilter, timeRange);
+  }, [selectedDate, statusFilter, boyFilter, timeRange, fetchDeliveries]);
 
   const openDeliveredModal = (item) => {
     setDeliveringItem(item);
@@ -106,17 +107,6 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         actor: 'Admin',
       });
 
-      if (boyId) {
-        await sendNotification({
-          recipientRole: 'delivery_boy',
-          recipientId: boyId,
-          title: '📦 New Delivery Assigned',
-          message: `Dispatch Admin assigned customer ${item.customerName} (${item.plannedMilk || 1}L Milk) at ${item.customerAddress || 'your route'} to your shift.`,
-          type: 'delivery_assigned',
-          data: { deliveryId: item.id, customerName: item.customerName, plannedMilk: item.plannedMilk },
-        });
-      }
-
       setAssignmentSuccess(`Delivery assigned to ${boyName || 'Partner'}! Delivery partner notified.`);
       setTimeout(() => setAssignmentSuccess(''), 3500);
     } catch (err) {
@@ -149,41 +139,86 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
           <div>
             <h1 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-              Today's Route Deliveries
+              Deliveries Management
             </h1>
             <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '2px 0 0 0' }}>
-              Real-time fulfillment tracking for daily automated morning door deliveries
+              Real-time fulfillment tracking and scheduling across today, weekly, monthly, and all deliveries
             </p>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: '#f8fafc',
-              padding: '6px 12px',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <Calendar size={14} color="#059669" />
-            <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>Operational Date:</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {/* Quick Range Tabs */}
+            <div
               style={{
-                border: 'none',
-                background: 'transparent',
-                color: '#0f172a',
-                fontWeight: 700,
-                fontSize: '0.84rem',
-                outline: 'none',
-                cursor: 'pointer',
-                padding: 0,
+                display: 'inline-flex',
+                background: '#f1f5f9',
+                padding: '3px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+                gap: '2px',
               }}
-            />
+            >
+              {[
+                { id: 'today', label: 'Today' },
+                { id: 'weekly', label: 'Weekly' },
+                { id: 'monthly', label: 'Monthly' },
+                { id: 'all', label: 'All Deliveries' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setTimeRange(tab.id)}
+                  style={{
+                    padding: '6px 13px',
+                    borderRadius: '6px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    background: timeRange === tab.id ? '#ffffff' : 'transparent',
+                    color: timeRange === tab.id ? '#059669' : '#64748b',
+                    boxShadow: timeRange === tab.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Operational Date Picker */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#f8fafc',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <Calendar size={14} color="#059669" />
+              <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>Date:</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value);
+                  setTimeRange('today');
+                }}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#0f172a',
+                  fontWeight: 700,
+                  fontSize: '0.84rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -369,13 +404,33 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                 }}
               >
                 <div style={{ flex: '1', minWidth: '260px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#94a3b8' }}>
                       #{idx + 1}
                     </span>
                     <h3 style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>
                       {item.customerName}
                     </h3>
+
+                    {/* Delivery Date Tag */}
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        background: '#f1f5f9',
+                        border: '1px solid #e2e8f0',
+                        color: '#334155',
+                      }}
+                      title="Scheduled Delivery Date"
+                    >
+                      <Calendar size={12} color="#059669" />
+                      {item.deliveryDate || selectedDate}
+                    </span>
 
                     {/* Status Pill */}
                     <span
@@ -404,6 +459,11 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                       ({item.paymentMethod?.toUpperCase()})
                     </span>
                   </div>
+                  {item.subscriptionEndDate && (
+                    <div style={{ fontSize: '0.76rem', color: '#047857', fontWeight: 700, marginBottom: '4px' }}>
+                      Prepaid subscription: ₹{Number(item.subscriptionPaymentAmount || 0).toLocaleString('en-IN')} via {item.subscriptionPaymentMethod?.toUpperCase() || 'RAZORPAY'} · through {new Date(item.subscriptionEndDate).toLocaleDateString('en-IN')}{item.subscriptionPaymentId ? ` · ref ${item.subscriptionPaymentId}` : ''}
+                    </div>
+                  )}
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#64748b' }}>
                     <MapPin size={13} color="#059669" />
@@ -525,6 +585,44 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     </button>
                   )}
 
+                  {isDone && (
+                    <span
+                      style={{
+                        padding: '6px 12px',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '6px',
+                        color: '#065f46',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      <CheckCircle size={14} color="#059669" /> Delivered
+                    </span>
+                  )}
+
+                  {isMissed && (
+                    <span
+                      style={{
+                        padding: '6px 12px',
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '6px',
+                        color: '#b91c1c',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      <XCircle size={14} color="#dc2626" /> Missed
+                    </span>
+                  )}
+
                   {isPending && (
                     <>
                       <button
@@ -566,12 +664,119 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                       </button>
                     </>
                   )}
+
+                  {/* Admin-only Delete Button */}
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmItem(item)}
+                    style={{
+                      padding: '6px 10px',
+                      background: '#fff5f5',
+                      border: '1px solid #fee2e2',
+                      borderRadius: '6px',
+                      color: '#b91c1c',
+                      fontWeight: 600,
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Delete delivery from admin and driver dashboards (preserves customer history)"
+                  >
+                    <Trash2 size={13} />
+                    <span>Delete</span>
+                  </button>
                 </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmItem && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmItem(null)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', borderRadius: '16px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#dc2626',
+                }}
+              >
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Delete Delivery?
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {deleteConfirmItem.customerName} • {deleteConfirmItem.deliveryDate}
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              This will remove the delivery from the <strong>Admin Console</strong> and <strong>Driver Dashboards</strong>.
+              <br /><br />
+              <span style={{ color: '#059669', fontWeight: 600 }}>
+                ✓ The customer's order history and ledger will be safely preserved.
+              </span>
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmItem(null)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = deleteConfirmItem;
+                  setDeleteConfirmItem(null);
+                  await deleteDelivery(target.id || target._id);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete from Dashboards
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delivered Confirmation Modal */}
       {deliveringItem && (

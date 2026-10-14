@@ -95,10 +95,20 @@ const requireAdmin = (req, res, next) => {
 };
 
 const requireCustomer = (req, res, next) => {
-  if (!req.user || req.user.role !== 'customer') {
+  if (!req.user || (req.user.role !== 'customer' && req.user.role !== 'user')) {
     return res.status(403).json({
       success: false,
       message: 'Forbidden. Customer account access is required.',
+    });
+  }
+  next();
+};
+
+const requireDeliveryStaff = (req, res, next) => {
+  if (!req.user || !['admin', 'delivery_boy'].includes(req.user.role)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Administrator or delivery partner access is required.',
     });
   }
   next();
@@ -110,5 +120,6 @@ module.exports = {
   optionalToken,
   requireAdmin,
   requireCustomer,
+  requireDeliveryStaff,
   JWT_SECRET,
 };

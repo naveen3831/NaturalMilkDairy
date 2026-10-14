@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import SubscribeModal from '../components/SubscribeModal';
 import StaffLoginModal from '../components/StaffLoginModal';
+import Footer from '../components/Footer';
 
 export default function LandingPage({ setActiveTab }) {
   const { switchUser } = useAuth();
@@ -1267,145 +1268,8 @@ export default function LandingPage({ setActiveTab }) {
       </section>
 
       {/* ============================================================ */}
-      {/* FOOTER                                                       */}
-      {/* ============================================================ */}
-      <footer
-        style={{
-          background: '#071629',
-          color: '#ffffff',
-          padding: '60px 24px 30px 24px',
-          borderTop: '3px solid #0d5c3a',
-        }}
-      >
-        <div style={{ maxWidth: '1360px', margin: '0 auto' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '24px',
-              paddingBottom: '36px',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <img
-                src="/logo.png"
-                alt="Natural Milk Dairy"
-                style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#ffffff' }}
-              />
-              <div>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: '1.3rem',
-                    fontWeight: 900,
-                    color: '#ffffff',
-                    letterSpacing: '0.02em',
-                  }}
-                >
-                  NATURAL MILK DAIRY
-                </div>
-                <div
-                  style={{
-                    fontSize: '0.72rem',
-                    color: '#E5B842',
-                    fontWeight: 700,
-                    letterSpacing: '0.14em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  NATURAL • PURE • HEALTHY
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Staff Jump */}
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <button
-                onClick={handleAdminLaunch}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: '#ffffff',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <ShieldCheck size={16} color="#86efac" /> Dairy Owner Portal
-              </button>
-
-              <button
-                onClick={handleDeliveryLaunch}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  color: '#ffffff',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <Truck size={16} color="#E5B842" /> Delivery Partner App
-              </button>
-            </div>
-          </div>
-
-          <div
-            style={{
-              paddingTop: '24px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px',
-              fontSize: '0.82rem',
-              color: '#94a3b8',
-            }}
-          >
-            <div>
-              © 2026 Natural Milk Dairy. All rights reserved. Pure farm milk and automated daily ledger.
-            </div>
-
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                background: 'rgba(13, 92, 58, 0.3)',
-                padding: '4px 12px',
-                borderRadius: '20px',
-                border: '1px solid rgba(34, 197, 94, 0.3)',
-                color: '#86efac',
-                fontSize: '0.78rem',
-              }}
-            >
-              <span
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                  display: 'inline-block',
-                }}
-              />
-              <span>MongoDB Atlas Cloud Connected & Synchronized</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      {/* FOOTER */}
+      <Footer setActiveTab={setActiveTab} />
 
       {/* Global Modals */}
       <SubscribeModal

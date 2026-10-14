@@ -5,6 +5,7 @@ const Delivery = require('../models/Delivery');
 const Payment = require('../models/Payment');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const Notification = require('../models/Notification');
+const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
@@ -28,19 +29,20 @@ const getCustomers = async (req, res) => {
             email: u.email || '',
             address: u.address || `${u.assignedArea || 'Madhapur'}, Home Delivery`,
             area: u.assignedArea || 'Madhapur',
-            status: u.status || 'active',
+            status: 'inactive',
+            subscription: { status: 'pending_payment' },
             deliveryPlan: {
-              milkQty: 1,
+              milkQty: 0,
               milkUnit: 'L',
               curdQty: 0,
               curdUnit: 'g',
               frequency: 'daily',
-              deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+              deliveryDays: [],
               deliveryBoyId: '',
               deliveryBoyName: '',
               startDate: u.createdAt || new Date(),
             },
-            paymentInfo: { paymentType: 'credit', paymentCycle: 'monthly' },
+            paymentInfo: { paymentType: 'prepaid', paymentCycle: 'monthly' },
             currentBalance: 0,
             notes: 'Created from registered user account',
             createdAt: u.createdAt || new Date(),
@@ -369,8 +371,17 @@ const pauseDelivery = async (req, res) => {
     customer.status = 'paused';
     customer.pauseFrom = pauseFrom;
     customer.pauseUntil = pauseUntil;
+    if (customer.subscription) {
+      customer.subscription.status = 'paused';
+    }
     if (reason) customer.notes = `${customer.notes ? customer.notes + ' | ' : ''}Pause: ${reason}`;
     await customer.save();
+
+    // Also update any matching Subscription documents to paused
+    await Subscription.updateMany(
+      { $or: [{ customer: customer._id }, { customerId: customer.customerId }], status: 'active' },
+      { $set: { status: 'paused', updatedAt: new Date() } }
+    );
 
     // Sync pending deliveries immediately so driver route list doesn't show paused drops
     await Delivery.updateMany(
@@ -428,7 +439,16 @@ const resumeDelivery = async (req, res) => {
     customer.status = 'active';
     customer.pauseFrom = null;
     customer.pauseUntil = null;
+    if (customer.subscription) {
+      customer.subscription.status = 'active';
+    }
     await customer.save();
+
+    // Also update any matching Subscription documents to active
+    await Subscription.updateMany(
+      { $or: [{ customer: customer._id }, { customerId: customer.customerId }], status: 'paused' },
+      { $set: { status: 'active', updatedAt: new Date() } }
+    );
 
     const today = formatDate();
     // Reactivate paused deliveries for today/future
@@ -546,10 +566,10 @@ const getCustomerLedger = async (req, res) => {
 
     const custIds = [customer._id.toString(), customer.customerId];
 
-    // Deliveries and payments for this customer
+    // Deliveries and payments for this customer (respecting user-deleted history entries)
     const [customerDeliveries, customerPayments] = await Promise.all([
-      Delivery.find({ customerId: { $in: custIds } }).lean(),
-      Payment.find({ customerId: { $in: custIds } }).lean(),
+      Delivery.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
+      Payment.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
     ]);
 
     const ledgerEntries = [];
@@ -574,7 +594,8 @@ const getCustomerLedger = async (req, res) => {
       });
     });
 
-    customerPayments.forEach((pay) => {
+    const ledgerPayments = customerPayments.filter((pay) => pay.purpose !== 'subscription');
+    ledgerPayments.forEach((pay) => {
       ledgerEntries.push({
         id: pay._id.toString(),
         type: 'payment',
@@ -614,7 +635,7 @@ const getCustomerLedger = async (req, res) => {
     const totalMilkDelivered = deliveredList.reduce((sum, d) => sum + (d.actualMilk || 0), 0);
     const totalCurdDelivered = deliveredList.reduce((sum, d) => sum + (d.actualCurd || 0), 0) / 1000;
     const grossBill = deliveredList.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
-    const totalPaid = customerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const totalPaid = ledgerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
     const waPhone = customer.whatsapp || customer.mobile;
     const reminderMessage = encodeURIComponent(
@@ -819,80 +840,102 @@ const updateOwnCustomerProfile = async (req, res) => {
   }
 };
 
-const deleteOwnCustomerAccount = async (req, res) => {
-  let session;
+const deleteCustomer = async (req, res) => {
   try {
-    session = await mongoose.startSession();
-    if (req.body.confirmation !== 'DELETE' || typeof req.body.password !== 'string' || !req.body.password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Enter your password and type DELETE to permanently remove your account.',
+    const { id } = req.params;
+    const { actor, customerId: bodyCustomerId } = req.body || {};
+
+    let customer = null;
+    const targetId = (id === 'me' || !id) ? (req.user?.id || bodyCustomerId) : (id || bodyCustomerId);
+
+    if (targetId && targetId.length === 24) {
+      try {
+        customer = await Customer.findById(targetId);
+      } catch (e) {
+        customer = null;
+      }
+    }
+    if (!customer && targetId) {
+      customer = await Customer.findOne({
+        $or: [{ customerId: targetId }, { mobile: targetId }, { email: targetId }],
       });
     }
-
-    await session.withTransaction(async () => {
-      let customer = null;
+    if (!customer && req.user) {
       if (req.user.id && req.user.id.length === 24) {
         try {
-          customer = await Customer.findById(req.user.id).session(session);
+          customer = await Customer.findById(req.user.id);
         } catch (e) {
           customer = null;
         }
       }
       if (!customer && req.user.mobile) {
-        customer = await Customer.findOne({ mobile: req.user.mobile }).session(session);
+        customer = await Customer.findOne({ mobile: req.user.mobile });
       }
       if (!customer && req.user.email) {
-        customer = await Customer.findOne({ email: req.user.email }).session(session);
-      }
-      if (!customer) {
-        const error = new Error('Customer account not found.');
-        error.status = 404;
-        throw error;
-      }
-
-      const user = await User.findOne({
-        mobile: customer.mobile,
-        role: { $in: ['customer', 'user'] },
-      }).session(session);
-      const fallbackPassword = `${customer.name.split(' ')[0].toLowerCase()}@123`;
-      const expectedPassword = user?.password || customer.password || fallbackPassword;
-      if (req.body.password !== expectedPassword) {
-        const error = new Error('The password you entered is incorrect.');
-        error.status = 401;
-        throw error;
-      }
-
-      const customerIds = [customer._id.toString(), customer.customerId];
-      await Delivery.deleteMany({ customerId: { $in: customerIds } }, { session });
-      await Payment.deleteMany({ customerId: { $in: customerIds } }, { session });
-      await Notification.deleteMany({
-          recipientRole: 'customer',
-          recipientId: { $in: [req.user.id, ...customerIds] },
-        }, { session });
-      await User.deleteMany({
-          mobile: customer.mobile,
-          role: { $in: ['customer', 'user'] },
-        }, { session });
-      await Customer.deleteOne({ _id: customer._id }, { session });
-    });
-
-    return res.json({ success: true, message: 'Your account and associated history have been permanently deleted.' });
-  } catch (err) {
-    console.error('Customer account deletion failed:', err.message);
-    return res.status(err.status || 500).json({
-      success: false,
-      message: err.status ? err.message : 'Unable to delete your account right now. No account data was intentionally removed.',
-    });
-  } finally {
-    if (session) {
-      try {
-        await session.endSession();
-      } catch (err) {
-        console.error('Customer account deletion session cleanup failed:', err.message);
+        customer = await Customer.findOne({ email: req.user.email });
       }
     }
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer account not found in database.',
+      });
+    }
+
+    const customerIds = [customer._id.toString(), customer.customerId].filter(Boolean);
+
+    // 1. Permanently remove all deliveries
+    await Delivery.deleteMany({ customerId: { $in: customerIds } });
+
+    // 2. Permanently remove payments/ledger
+    await Payment.deleteMany({ customerId: { $in: customerIds } });
+
+    // 3. Permanently remove notifications
+    await Notification.deleteMany({
+      $or: [
+        { recipientRole: 'customer', recipientId: { $in: [customer._id.toString(), ...customerIds] } },
+        ...(req.user?.id ? [{ recipientId: req.user.id }] : []),
+      ],
+    });
+
+    // 4. Permanently remove user login credentials
+    await User.deleteMany({
+      $or: [
+        { mobile: customer.mobile },
+        ...(customer.email ? [{ email: customer.email }] : []),
+      ],
+    });
+
+    // 5. Permanently remove customer document
+    await Customer.deleteOne({ _id: customer._id });
+
+    await recordAudit(
+      'Customer Account Permanently Deleted',
+      actor || customer.name || 'Customer',
+      `Permanently deleted customer account "${customer.name}" (${customer.customerId || customer.mobile}) and all associated records from database`,
+      'system'
+    );
+
+    broadcast('CUSTOMER_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+
+    return res.json({
+      success: true,
+      message: `Account for "${customer.name}" has been permanently deleted from the database.`,
+      id: customer._id,
+    });
+  } catch (err) {
+    console.error('Customer deletion failed:', err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Unable to delete account right now.',
+    });
   }
+};
+
+const deleteOwnCustomerAccount = async (req, res) => {
+  return deleteCustomer(req, res);
 };
 
 // Assign delivery partner to customer
@@ -908,17 +951,39 @@ const assignPartner = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    let resolvedBoyName = deliveryBoyName || '';
-    let resolvedBoyId = deliveryBoyId || '';
+    let resolvedBoyName = '';
+    let resolvedBoyId = '';
 
-    if (resolvedBoyId && !resolvedBoyName) {
-      const boy = await DeliveryBoy.findOne(
-        resolvedBoyId.length === 24 ? { _id: resolvedBoyId } : { mobile: resolvedBoyId }
-      ).lean();
-      if (boy) {
-        resolvedBoyName = boy.name;
-        resolvedBoyId = boy._id.toString();
+    if (deliveryBoyId) {
+      const lookup = deliveryBoyId.length === 24
+        ? [{ _id: deliveryBoyId }, { mobile: deliveryBoyId }]
+        : [{ mobile: deliveryBoyId }];
+      let boy = await DeliveryBoy.findOne({ $or: lookup }).lean();
+
+      if (!boy) {
+        const user = await User.findOne({
+          $or: lookup,
+          role: 'delivery_boy',
+        }).lean();
+        if (user?.mobile) {
+          boy = await DeliveryBoy.findOne({ mobile: user.mobile }).lean();
+        }
+        if (!boy && user) {
+          resolvedBoyId = user._id.toString();
+          resolvedBoyName = user.name;
+        }
       }
+
+      if (boy) {
+        resolvedBoyId = boy._id.toString();
+        resolvedBoyName = boy.name;
+      }
+
+      if (!resolvedBoyId) {
+        return res.status(404).json({ success: false, message: 'Selected delivery partner could not be found.' });
+      }
+    } else if (deliveryBoyName) {
+      return res.status(400).json({ success: false, message: 'Choose a valid delivery partner.' });
     }
 
     customer.deliveryPlan = customer.deliveryPlan || {};
@@ -930,7 +995,7 @@ const assignPartner = async (req, res) => {
     const today = formatDate();
     await ensureDeliveriesForDate(today);
 
-    // Update today's and all pending delivery records for this customer
+    // Keep pending deliveries assigned consistently with the customer's current route.
     const custIds = [customer.customerId, customer._id.toString()];
     await Delivery.updateMany(
       {
@@ -992,6 +1057,51 @@ const assignPartner = async (req, res) => {
   }
 };
 
+// Customer-only deletion of their own history entries
+const deleteCustomerHistoryEntry = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+    const delivery = await Delivery.findById(entryId);
+    if (delivery) {
+      delivery.deletedForCustomer = true;
+      await delivery.save();
+      broadcast('CUSTOMER_UPDATED', { customerId: delivery.customerId });
+      return res.json({ success: true, message: 'History entry deleted.' });
+    }
+
+    const payment = await Payment.findById(entryId);
+    if (payment) {
+      payment.deletedForCustomer = true;
+      await payment.save();
+      broadcast('CUSTOMER_UPDATED', { customerId: payment.customerId });
+      return res.json({ success: true, message: 'History entry deleted.' });
+    }
+
+    return res.status(404).json({ success: false, message: 'History entry not found.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const clearCustomerHistory = async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const query = customerId.length === 24 ? { _id: customerId } : { customerId };
+    const customer = await Customer.findOne(query).lean();
+    const custIds = customer ? [customer._id.toString(), customer.customerId] : [customerId];
+
+    await Promise.all([
+      Delivery.updateMany({ customerId: { $in: custIds } }, { $set: { deletedForCustomer: true } }),
+      Payment.updateMany({ customerId: { $in: custIds } }, { $set: { deletedForCustomer: true } }),
+    ]);
+
+    broadcast('CUSTOMER_UPDATED', { customerId });
+    return res.json({ success: true, message: 'All customer history cleared.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomerById,
@@ -999,10 +1109,13 @@ module.exports = {
   updateCustomer,
   updateOwnCustomerProfile,
   deleteOwnCustomerAccount,
+  deleteCustomer,
   assignPartner,
   pauseDelivery,
   resumeDelivery,
   setTemporaryQty,
   getCustomerLedger,
   sendCustomerCredentials,
+  deleteCustomerHistoryEntry,
+  clearCustomerHistory,
 };

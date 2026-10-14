@@ -336,34 +336,73 @@ const updateDeliveryBoy = async (req, res) => {
 const deleteDeliveryBoy = async (req, res) => {
   try {
     const { id } = req.params;
-    const { actor } = req.body || {};
+    const { actor, boyId } = req.body || {};
 
-    const query = id.length === 24 ? { _id: id } : { mobile: id };
-    const boy = await DeliveryBoy.findOneAndDelete(query);
+    let boy = null;
+    const targetId = (id === 'me' || !id) ? (req.user?.id || boyId) : id;
 
-    if (!boy) {
-      return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+    if (targetId && targetId.length === 24) {
+      try {
+        boy = await DeliveryBoy.findByIdAndDelete(targetId);
+      } catch (e) {
+        boy = null;
+      }
+    }
+    if (!boy && targetId) {
+      boy = await DeliveryBoy.findOneAndDelete({
+        $or: [{ mobile: targetId }, { email: targetId }, { name: targetId }],
+      });
+    }
+    if (!boy && req.user) {
+      boy = await DeliveryBoy.findOneAndDelete({
+        $or: [
+          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+          ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+          ...(req.user.email ? [{ email: req.user.email }] : []),
+        ],
+      });
     }
 
-    // Delete matching User
-    await User.deleteOne({
-      $or: [{ mobile: boy.mobile }, { name: boy.name }],
+    if (!boy) {
+      return res.status(404).json({ success: false, message: 'Delivery partner not found in database.' });
+    }
+
+    // Permanently remove matching User accounts from database
+    await User.deleteMany({
+      $or: [
+        { mobile: boy.mobile },
+        ...(boy.email ? [{ email: boy.email }] : []),
+        { name: boy.name, role: 'delivery_boy' },
+      ],
     });
 
+    // Unassign customers assigned to this partner
+    await Customer.updateMany(
+      {
+        $or: [
+          { deliveryBoyId: boy._id.toString() },
+          { deliveryBoyId: boy.mobile },
+          { deliveryBoyName: boy.name },
+        ],
+      },
+      { $set: { deliveryBoyId: '', deliveryBoyName: 'Unassigned' } }
+    );
+
     await recordAudit(
-      'Delivery Partner Removed',
-      actor || 'Admin',
-      `Removed delivery partner ${boy.name} (${boy.mobile})`,
+      'Delivery Partner Account Permanently Deleted',
+      actor || boy.name || 'Delivery Partner',
+      `Permanently removed delivery partner "${boy.name}" (${boy.mobile}) from database`,
       'system'
     );
 
     broadcast('DELIVERY_BOY_UPDATED', {});
+    broadcast('CUSTOMER_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,
-      message: `Delivery partner ${boy.name} removed successfully`,
-      id,
+      message: `Delivery partner account "${boy.name}" permanently deleted from database.`,
+      id: boy._id,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

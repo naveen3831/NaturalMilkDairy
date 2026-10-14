@@ -1,204 +1,127 @@
 import React from 'react';
-import { Milk, Phone, Mail, MapPin, Clock, ShieldCheck, HeartHandshake, ArrowUp } from 'lucide-react';
+import {
+  Phone,
+  Mail,
+  MapPin,
+  Clock,
+  ShieldCheck,
+  ArrowUp,
+  Milk,
+  Sparkles,
+  ChevronRight,
+} from 'lucide-react';
 
 export default function Footer({ setActiveTab }) {
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const navLinks = [
+    { label: 'Home', tab: 'home' },
+    { label: 'Our Products', tab: 'products', reset: true },
+    { label: 'Our Story', tab: 'story' },
+    { label: 'FAQs & Support', tab: 'faqs' },
+    { label: 'Contact Us', tab: 'contact' },
+    { label: 'Customer Portal', tab: 'login', highlight: true },
+  ];
+
+  const deliveryHubs = [
+    'Andheri West',
+    'Lokhandwala',
+    'Andheri East',
+    'Bandra',
+    'Juhu',
+    'Goregaon',
+    'Powai',
+    'Borivali',
+    'Thane',
+    'Navi Mumbai',
+  ];
+
   return (
-    <footer
-      className="public-site-footer"
-      style={{
-        background: '#071629',
-        color: '#ffffff',
-        borderTop: '3px solid #0d5c3a',
-        padding: '38px 24px 18px 24px',
-        position: 'relative',
-      }}
-    >
-      <div className="public-site-footer-inner" style={{ maxWidth: '1360px', margin: '0 auto' }}>
-        {/* Top Grid */}
-        <div
-          className="public-site-footer-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '28px',
-            paddingBottom: '28px',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-          }}
-        >
-          {/* Col 1: Brand Info */}
-          <div>
-            <div
-              onClick={() => {
-                setActiveTab('home');
-                scrollToTop();
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                cursor: 'pointer',
-                marginBottom: '16px',
-              }}
-            >
-              <div
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '50%',
-                  overflow: 'hidden',
-                  background: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <img src="/logo.png" alt="Natural Milk Dairy" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-              </div>
-              <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 900, color: '#ffffff', lineHeight: 1.1 }}>
-                  NATURAL MILK DAIRY
-                </div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: '#E5B842', letterSpacing: '0.14em', textTransform: 'uppercase', marginTop: '2px' }}>
-                  Natural • Pure • Healthy
-                </div>
-              </div>
+    <footer className="nmd-footer" aria-label="Site footer">
+      <div className="nmd-footer-inner">
+        {/* Brand Banner */}
+        <div className="nmd-footer-brand-section">
+          <div
+            className="nmd-footer-brand-header"
+            onClick={() => {
+              setActiveTab('home');
+              scrollToTop();
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="nmd-footer-logo-wrap">
+              <img
+                src="/logo.png"
+                alt="Natural Milk Dairy"
+                className="nmd-footer-logo"
+              />
             </div>
-
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: '20px' }}>
-              Pure, unpasteurized farm-fresh milk delivered to doorsteps before 6:30 AM across Mumbai in eco-friendly sterilized glass bottles.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.85rem', color: '#cbd5e1' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Phone size={15} color="#86efac" />
-                <span>+91 98765 43210 (Helpline)</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Mail size={15} color="#86efac" />
-                <span>care@naturalmilkdairy.com</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <MapPin size={15} color="#86efac" />
-                <span>Plot 14, Green Valley Agro Hub, Andheri, Mumbai</span>
-              </div>
+            <div className="nmd-footer-brand-titles">
+              <span className="nmd-footer-brand-title">NATURAL MILK DAIRY</span>
+              <span className="nmd-footer-brand-tagline">Natural • Pure • Healthy</span>
             </div>
           </div>
 
-          {/* Col 2: Navigation Links */}
-          <div>
-            <h4 style={{ fontSize: '1.05rem', color: '#ffffff', fontWeight: 800, marginBottom: '18px', letterSpacing: '0.02em' }}>
-              Quick Navigation
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem' }}>
-              <button
-                onClick={() => {
-                  setActiveTab('home');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => (e.target.style.color = '#86efac')}
-                onMouseLeave={(e) => (e.target.style.color = '#94a3b8')}
-              >
-                Home
-              </button>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('nmd_selected_product_id');
-                  window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
-                  setActiveTab('products');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => (e.target.style.color = '#86efac')}
-                onMouseLeave={(e) => (e.target.style.color = '#94a3b8')}
-              >
-                Our Products
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('story');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => (e.target.style.color = '#86efac')}
-                onMouseLeave={(e) => (e.target.style.color = '#94a3b8')}
-              >
-                Our Story
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('faqs');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => (e.target.style.color = '#86efac')}
-                onMouseLeave={(e) => (e.target.style.color = '#94a3b8')}
-              >
-                FAQs & Support
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('contact');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={(e) => (e.target.style.color = '#86efac')}
-                onMouseLeave={(e) => (e.target.style.color = '#94a3b8')}
-              >
-                Contact Us
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab('login');
-                  scrollToTop();
-                }}
-                style={{ textAlign: 'left', color: '#86efac', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                Sign In to Account →
-              </button>
+          <p className="nmd-footer-desc">
+            Pure, unpasteurized farm-fresh milk delivered to doorsteps before 6:30 AM across Mumbai in eco-friendly sterilized glass bottles.
+          </p>
+
+          <div className="nmd-footer-contact-row">
+            <a href="tel:+919876543210" className="nmd-footer-contact-chip">
+              <Phone size={14} className="text-emerald-400" />
+              <span>+91 98765 43210</span>
+            </a>
+            <a href="mailto:care@naturalmilkdairy.com" className="nmd-footer-contact-chip">
+              <Mail size={14} className="text-emerald-400" />
+              <span>care@naturalmilkdairy.com</span>
+            </a>
+            <div className="nmd-footer-contact-chip">
+              <MapPin size={14} className="text-emerald-400" />
+              <span>Andheri, Mumbai</span>
             </div>
           </div>
+        </div>
 
-          {/* Col 3: Fresh Products */}
-          <div>
-            <h4 style={{ fontSize: '1.05rem', color: '#ffffff', fontWeight: 800, marginBottom: '18px', letterSpacing: '0.02em' }}>
-              Dairy Essentials
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: '#94a3b8' }}>
-              <div>• Farm Fresh Cow Milk 1L (₹60)</div>
-              <div>• Farm Fresh Cow Milk 500ml (₹30)</div>
-              <div>• Pure Buffalo Milk 1L (₹75)</div>
-              <div>• Traditional Farm Curd 500g (₹35)</div>
-              <div>• A2 Vedic Desi Ghee 500ml (₹480)</div>
-              <div>• Fresh Malai Paneer 250g (₹95)</div>
-            </div>
-          </div>
-
-          {/* Col 4: Delivery Zones */}
-          <div>
-            <h4 style={{ fontSize: '1.05rem', color: '#ffffff', fontWeight: 800, marginBottom: '18px', letterSpacing: '0.02em' }}>
-              Active Delivery Hubs
-            </h4>
-            <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: 1.6, marginBottom: '14px' }}>
-              Guaranteed morning doorstep delivery before <strong>6:30 AM</strong> in:
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {['Andheri West', 'Lokhandwala', 'Andheri East', 'Bandra', 'Juhu', 'Goregaon', 'Vile Parle'].map((zone, zidx) => (
-                <span
-                  key={zidx}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.08)',
-                    color: '#cbd5e1',
-                    fontSize: '0.78rem',
-                    padding: '4px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
+        {/* Navigation & Hubs Grid */}
+        <div className="nmd-footer-grid">
+          {/* Quick Navigation */}
+          <div className="nmd-footer-col">
+            <h4 className="nmd-footer-heading">Quick Navigation</h4>
+            <div className="nmd-footer-nav-list">
+              {navLinks.map((link) => (
+                <button
+                  key={link.label}
+                  type="button"
+                  className={`nmd-footer-nav-link ${link.highlight ? 'highlight' : ''}`}
+                  onClick={() => {
+                    if (link.reset) {
+                      localStorage.removeItem('nmd_selected_product_id');
+                      window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+                    }
+                    setActiveTab(link.tab);
+                    scrollToTop();
                   }}
                 >
+                  <ChevronRight size={13} className="nmd-footer-nav-arrow" />
+                  <span>{link.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Delivery Hubs */}
+          <div className="nmd-footer-col">
+            <h4 className="nmd-footer-heading">Morning Delivery Hubs</h4>
+            <p className="nmd-footer-hubs-note">
+              <Clock size={13} className="text-emerald-400 inline mr-1" />
+              Guaranteed morning doorstep drop before <strong>6:30 AM</strong>
+            </p>
+            <div className="nmd-footer-hubs-wrap">
+              {deliveryHubs.map((zone) => (
+                <span key={zone} className="nmd-footer-hub-badge">
                   {zone}
                 </span>
               ))}
@@ -206,44 +129,37 @@ export default function Footer({ setActiveTab }) {
           </div>
         </div>
 
-        {/* Bottom Bar */}
-        <div
-          style={{
-            paddingTop: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '14px',
-            fontSize: '0.8rem',
-            color: '#94a3b8',
-          }}
-        >
-          <div>
-            © 2026 Natural Milk Dairy. All rights reserved. • FSSAI Certified Organic Farm Fresh.
+        {/* Quality Badges */}
+        <div className="nmd-footer-trust-strip">
+          <div className="nmd-footer-trust-item">
+            <ShieldCheck size={16} className="text-emerald-400" />
+            <span>FSSAI Certified Organic Farm Fresh</span>
+          </div>
+          <div className="nmd-footer-trust-item">
+            <Milk size={16} className="text-emerald-400" />
+            <span>Sterilized Cold-Chain Glass Bottles</span>
+          </div>
+          <div className="nmd-footer-trust-item">
+            <Sparkles size={16} className="text-emerald-400" />
+            <span>Zero Preservatives · 100% Raw Milk</span>
+          </div>
+        </div>
+
+        {/* Bottom Bar with Back to Top & Safe Padding */}
+        <div className="nmd-footer-bottom-bar">
+          <div className="nmd-footer-copyright">
+            © 2026 Natural Milk Dairy. All rights reserved.
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <button
-              onClick={scrollToTop}
-              className="dairy-btn-hover"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                color: '#cbd5e1',
-                padding: '5px 12px',
-                borderRadius: '8px',
-                fontSize: '0.78rem',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                cursor: 'pointer',
-              }}
-            >
-              <ArrowUp size={14} color="#86efac" />
-              <span>Back to Top</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className="nmd-footer-back-to-top"
+            onClick={scrollToTop}
+            aria-label="Back to top"
+          >
+            <ArrowUp size={14} />
+            <span>Back to Top</span>
+          </button>
         </div>
       </div>
     </footer>

@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './WebSocketContext';
+import { useAuth } from './AuthContext';
 
 const DairyContext = createContext();
 
 export const DairyProvider = ({ children }) => {
   const { isConnected: wsConnected, subscribe: wsSubscribe } = useWebSocket();
+  const { getAuthHeaders } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [deliverySummary, setDeliverySummary] = useState({ total: 0, delivered: 0, pending: 0, notDelivered: 0 });
@@ -60,9 +62,23 @@ export const DairyProvider = ({ children }) => {
   }, [selectedDate]);
 
   // Fetch Deliveries
-  const fetchDeliveries = useCallback(async (date = selectedDate, status = 'all', boyId = 'all') => {
+  const fetchDeliveries = useCallback(async (date = selectedDate, status = 'all', boyId = 'all', range = 'today') => {
     try {
-      const res = await fetch(`/api/deliveries?date=${date}&status=${status}&deliveryBoyId=${boyId}`);
+      const params = new URLSearchParams({
+        status,
+        deliveryBoyId: boyId,
+      });
+      if (range === 'all') {
+        params.set('range', 'all');
+      } else if (range === 'weekly') {
+        params.set('range', 'weekly');
+      } else if (range === 'monthly') {
+        params.set('range', 'monthly');
+      } else {
+        params.set('range', 'today');
+        params.set('date', date || selectedDate);
+      }
+      const res = await fetch(`/api/deliveries?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
         setDeliveries(data.deliveries);
@@ -244,7 +260,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/deliveries/${id}/delivered`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -253,8 +269,10 @@ export const DairyProvider = ({ children }) => {
         notifyRealtimeSync();
         return data;
       }
+      return { success: false, message: data.message || 'Could not save delivery.' };
     } catch (err) {
       console.error(err);
+      return { success: false, message: err.message || 'Could not reach the delivery service.' };
     }
   };
 
@@ -271,7 +289,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/deliveries/${id}/not-delivered`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -290,7 +308,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/deliveries/${id}/assign`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -306,13 +324,34 @@ export const DairyProvider = ({ children }) => {
     }
   };
 
+  // Delete Delivery from Admin & Driver Dashboards (preserves customer history)
+  const deleteDelivery = async (id) => {
+    try {
+      const res = await fetch(`/api/deliveries/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDeliveries((prev) => prev.filter((d) => d.id !== id && d._id !== id));
+        refreshAll();
+        notifyRealtimeSync();
+        return data;
+      }
+      return { success: false, message: data.message || 'Could not delete delivery.' };
+    } catch (err) {
+      console.error('Delete delivery error:', err);
+      return { success: false, message: err.message || 'Could not reach server.' };
+    }
+  };
+
   // Sync offline queue
   const syncOfflineQueue = async () => {
     if (offlineQueue.length === 0) return;
     try {
       const res = await fetch('/api/deliveries/offline-sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ offlineActions: offlineQueue }),
       });
       const data = await res.json();
@@ -610,14 +649,43 @@ export const DairyProvider = ({ children }) => {
   // Delete Delivery Boy
   const deleteDeliveryBoy = async (boyId, actor = 'Admin') => {
     try {
+      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/delivery-boys/${boyId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ actor }),
       });
       const data = await res.json();
       if (data.success) {
         fetchDeliveryBoys();
+        fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message || 'Network error connecting to server.' };
+    }
+  };
+
+  // Delete Customer Permanently
+  const deleteCustomer = async (customerId, actor = 'Customer') => {
+    try {
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ actor }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchCustomers();
+        fetchDeliveries();
         fetchAuditLogs();
       }
       return data;
@@ -735,9 +803,11 @@ export const DairyProvider = ({ children }) => {
         markDelivered,
         markNotDelivered,
         assignDelivery,
+        deleteDelivery,
         recordPayment,
         addCustomer,
         updateCustomer,
+        deleteCustomer,
         assignPartnerToCustomer,
         pauseDelivery,
         resumeDelivery,

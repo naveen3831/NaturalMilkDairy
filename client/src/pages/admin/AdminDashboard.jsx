@@ -407,7 +407,7 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Truck size={16} />
           </div>
-          <span>Today's Deliveries</span>
+          <span>Deliveries</span>
         </button>
 
         <button

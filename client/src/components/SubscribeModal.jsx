@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ArrowLeft,
   Calendar,
   CheckCircle2,
   Clock,
-  Home,
   MapPin,
   Milk,
   Phone,
@@ -12,19 +11,57 @@ import {
   Sparkles,
   User,
   X,
+  Lock,
+  ChevronDown,
+  Truck,
+  Check,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
+import { useAuth } from '../context/AuthContext';
+
+const AVAILABLE_AREAS = [
+  'Andheri West',
+  'Andheri East',
+  'Bandra',
+  'Juhu',
+  'Goregaon',
+  'Powai',
+  'Borivali',
+  'Dadar',
+  'Thane',
+  'Navi Mumbai',
+  'Madhapur',
+  'Gachibowli',
+  'Hitec City',
+  'Jubilee Hills',
+  'Banjara Hills',
+  'Kondapur',
+  'Kukatpally',
+];
+
+const loadRazorpay = () => new Promise((resolve) => {
+  if (window.Razorpay) {
+    resolve(true);
+    return;
+  }
+  const script = document.createElement('script');
+  script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+  script.onload = () => resolve(true);
+  script.onerror = () => resolve(false);
+  document.body.appendChild(script);
+});
 
 export default function SubscribeModal({ isOpen, onClose, preselectedProduct = null }) {
-  const { addCustomer, deliveryBoys, refreshAll, notifyRealtimeSync } = useDairy();
+  const { refreshAll, notifyRealtimeSync } = useDairy();
+  const { user, getAuthHeaders } = useAuth();
 
   const [formData, setFormData] = useState({
-    name: '',
-    mobile: '',
-    whatsapp: '',
-    address: '',
+    name: user?.name || '',
+    mobile: user?.mobile || '',
+    whatsapp: user?.mobile || '',
+    address: user?.address || '',
     landmark: '',
-    area: 'Andheri West',
+    area: user?.area || user?.assignedArea || 'Andheri West',
     milkQty: preselectedProduct?.selectedQty || (preselectedProduct?.name?.includes('500ml') ? 0.5 : 1),
     curdQty: preselectedProduct?.category === 'curd' ? 500 : 0,
     frequency: preselectedProduct?.selectedFrequency || 'daily',
@@ -35,6 +72,20 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdInfo, setCreatedInfo] = useState(null);
+  const [paymentError, setPaymentError] = useState('');
+
+  React.useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: user.name || prev.name,
+        mobile: user.mobile || prev.mobile,
+        whatsapp: prev.whatsapp || user.mobile,
+        address: user.address || prev.address,
+        area: user.area || user.assignedArea || prev.area,
+      }));
+    }
+  }, [user]);
 
   React.useEffect(() => {
     if (preselectedProduct) {
@@ -47,50 +98,102 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     }
   }, [preselectedProduct]);
 
+  // Live calculation of drops and price matching backend logic
+  const planSummary = useMemo(() => {
+    const milk = Number(formData.milkQty) || 0;
+    const curd = Number(formData.curdQty) || 0;
+    const dailyCost = milk * 60 + (curd / 500) * 30;
+
+    let dropsCount = 30;
+    if (formData.frequency === 'alternate') {
+      dropsCount = 15;
+    } else if (formData.frequency === 'selected' || formData.frequency === 'weekdays') {
+      dropsCount = 22; // ~22 weekdays in 30 days
+    }
+
+    const totalAmount = Math.round(dailyCost * dropsCount);
+    return {
+      dailyCost,
+      dropsCount,
+      totalAmount,
+    };
+  }, [formData.milkQty, formData.curdQty, formData.frequency]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.mobile || !formData.address) {
-      alert('Please fill out Name, Mobile and Delivery Address');
+    if (user?.role !== 'customer') {
+      setPaymentError('Please sign in with a customer account before subscribing.');
       return;
     }
-
+    if (!formData.address.trim() || !formData.area.trim()) {
+      setPaymentError('Please enter your complete delivery address and locality.');
+      return;
+    }
+    setPaymentError('');
     setIsSubmitting(true);
     try {
-      const assignedBoy = deliveryBoys.find((b) => b.assignedArea === formData.area) || deliveryBoys[0];
+      const scriptLoaded = await loadRazorpay();
+      if (!scriptLoaded) throw new Error('Unable to load Razorpay checkout. Check your internet connection and try again.');
 
-      const customerPayload = {
-        name: formData.name,
-        mobile: formData.mobile,
-        whatsapp: formData.whatsapp || formData.mobile,
-        address: formData.address,
-        area: formData.area,
-        landmark: formData.landmark || '',
-        milkQty: Number(formData.milkQty),
-        milkUnit: 'L',
-        curdQty: Number(formData.curdQty),
-        curdUnit: 'g',
-        frequency: formData.frequency,
-        deliveryDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        deliveryBoyId: assignedBoy?.id || 'usr_boy_1',
-        paymentType: formData.paymentType,
-        paymentCycle: formData.paymentCycle,
-        currentBalance: 0,
-        notes: 'Signed up via Website Home Page',
-      };
+      const orderResponse = await fetch('/api/customers/me/subscription/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          address: formData.address.trim(),
+          area: formData.area.trim(),
+          landmark: formData.landmark.trim(),
+          whatsapp: formData.mobile || user.mobile,
+          milkQty: Number(formData.milkQty),
+          curdQty: Number(formData.curdQty),
+          frequency: formData.frequency,
+        }),
+      });
+      const orderData = await orderResponse.json();
+      if (!orderResponse.ok || !orderData.success) {
+        throw new Error(orderData.message || 'Could not prepare subscription payment.');
+      }
 
-      const result = await addCustomer(customerPayload);
-      setIsSuccess(true);
-      setCreatedInfo(result);
-      refreshAll?.();
-      notifyRealtimeSync?.();
+      const checkout = new window.Razorpay({
+        key: orderData.order.keyId,
+        amount: orderData.order.amount,
+        currency: orderData.order.currency,
+        name: 'Natural Milk Dairy',
+        description: '30-Day Fresh Morning Milk Delivery',
+        order_id: orderData.order.id,
+        prefill: { name: user.name, contact: user.mobile },
+        theme: { color: '#0d5c3a' },
+        handler: async (response) => {
+          try {
+            const verifyResponse = await fetch('/api/customers/me/subscription/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+              body: JSON.stringify(response),
+            });
+            const verifyData = await verifyResponse.json();
+            if (!verifyResponse.ok || !verifyData.success) {
+              throw new Error(verifyData.message || 'Payment could not be verified.');
+            }
+            setCreatedInfo(verifyData.subscription);
+            setIsSuccess(true);
+            refreshAll?.();
+            notifyRealtimeSync?.();
+          } catch (error) {
+            setPaymentError(error.message || 'Payment verification failed. Please contact support with your payment receipt.');
+          } finally {
+            setIsSubmitting(false);
+          }
+        },
+      });
+      checkout.on('payment.failed', (response) => {
+        setPaymentError(response.error?.description || 'Payment was not completed. You can try again.');
+        setIsSubmitting(false);
+      });
+      checkout.open();
+      setIsSubmitting(false);
     } catch (err) {
-      alert('Subscription saved! Deliveries will start tomorrow morning.');
-      setIsSuccess(true);
-      refreshAll?.();
-      notifyRealtimeSync?.();
-    } finally {
+      setPaymentError(err.message || 'Unable to start checkout. Please try again.');
       setIsSubmitting(false);
     }
   };
@@ -98,13 +201,17 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
   const handleClose = () => {
     setIsSuccess(false);
     setCreatedInfo(null);
+    setPaymentError('');
     onClose();
   };
+
+  // Get user initial for avatar badge
+  const userInitials = (formData.name || user?.name || 'U').charAt(0).toUpperCase();
 
   return (
     <div className="subscribe-fullpage-overlay" onClick={handleClose}>
       <div className="subscribe-fullpage-container" onClick={(e) => e.stopPropagation()}>
-        {/* Light Sticky Top Header */}
+        {/* Simple & Professional Header */}
         <header className="subscribe-fullpage-header">
           <button
             type="button"
@@ -117,13 +224,11 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           </button>
 
           <div className="subscribe-header-title-box">
-            <div className="subscribe-header-icon">
-              <Milk size={20} />
-            </div>
-            <div>
-              <h3>Start Morning Delivery</h3>
-              <p>Before 6:30 AM · Zero Deposit</p>
-            </div>
+            <h3 className="subscribe-header-title">Morning Milk Delivery</h3>
+            <p className="subscribe-header-subtitle">
+              <span className="subscribe-live-dot" />
+              Prepaid 30-day plan · Doorstep drop by 6:30 AM
+            </p>
           </div>
 
           <button
@@ -136,16 +241,16 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           </button>
         </header>
 
-        {/* Success View (Light Theme) */}
+        {/* Success View */}
         {isSuccess ? (
           <div className="subscribe-fullpage-body">
             <div className="subscribe-success-card">
               <div className="subscribe-success-icon">
-                <CheckCircle2 size={42} />
+                <CheckCircle2 size={40} />
               </div>
-              <h3 className="subscribe-success-title">Subscription Confirmed!</h3>
+              <h3 className="subscribe-success-title">Subscription Active!</h3>
               <p className="subscribe-success-intro">
-                Thank you, <strong>{formData.name}</strong>! Your fresh milk delivery plan is active and will begin tomorrow morning before 6:30 AM.
+                Thank you, <strong>{formData.name}</strong>. Your pure farm milk delivery starts tomorrow morning.
               </p>
 
               <div className="subscribe-success-summary">
@@ -162,16 +267,28 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 <div className="subscribe-summary-row">
                   <span>Daily Morning Plan</span>
                   <strong>
-                    {formData.milkQty}L Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency === 'daily' ? 'Every Morning' : formData.frequency})
+                    {formData.milkQty}L Fresh Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency === 'daily' ? 'Every Morning' : formData.frequency === 'alternate' ? 'Alternate Days' : 'Weekdays'})
                   </strong>
                 </div>
                 <div className="subscribe-summary-row">
-                  <span>Drop Timing</span>
-                  <strong style={{ color: '#16a34a' }}>5:00 AM – 6:30 AM (Silent Doorstep Drop)</strong>
+                  <span>Delivery Schedule</span>
+                  <strong className="text-emerald-700">5:00 AM – 6:30 AM (Silent Doorstep Drop)</strong>
                 </div>
                 <div className="subscribe-summary-row">
-                  <span>Packaging</span>
-                  <strong>Sanitized Glass Bottles (Cold-Chain 4°C)</strong>
+                  <span>Valid Through</span>
+                  <strong>
+                    {createdInfo?.endDate
+                      ? new Date(`${createdInfo.endDate}T00:00:00`).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : '30 Days From Start'}
+                  </strong>
+                </div>
+                <div className="subscribe-summary-row">
+                  <span>Packaging & Cold Chain</span>
+                  <strong>Sanitized Glass Bottles · Chilled at 4°C</strong>
                 </div>
               </div>
 
@@ -180,112 +297,104 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 className="subscribe-submit-btn"
                 onClick={handleClose}
               >
-                Done & Return Home
+                Done & Return to App
               </button>
             </div>
           </div>
         ) : (
-          /* Form View (Light Theme) */
+          /* Form View */
           <form className="subscribe-fullpage-body" onSubmit={handleSubmit}>
-            {/* Section 1: Customer Contact Details */}
+            {/* Produce Banner / Spotlight */}
+            <div className="subscribe-produce-banner">
+              <div className="subscribe-produce-thumb">
+                {preselectedProduct?.image ? (
+                  <img src={preselectedProduct.image} alt={preselectedProduct.name} />
+                ) : (
+                  <Milk size={24} className="text-emerald-700" />
+                )}
+              </div>
+              <div className="subscribe-produce-info">
+                <div className="subscribe-produce-badge">
+                  <Sparkles size={12} />
+                  <span>Farm Fresh · Morning Milked</span>
+                </div>
+                <h4 className="subscribe-produce-title">
+                  {preselectedProduct?.name || 'Pure Desi A2 Cow Milk'}
+                </h4>
+                <p className="subscribe-produce-meta">
+                  Milked 4:30 AM · Delivered within 3 hrs · ₹60/Litre
+                </p>
+              </div>
+            </div>
+
+            {/* Section 1: Verified Customer Card */}
             <div className="subscribe-card-section">
-              <span className="subscribe-section-label">
-                <User size={15} /> Personal Contact Details
-              </span>
-
-              <div className="subscribe-form-grid">
-                <div>
-                  <label className="subscribe-field-label">Full Name *</label>
-                  <div className="subscribe-input-wrap">
-                    <User size={16} className="subscribe-input-icon" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Ramesh Patel"
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="subscribe-input has-icon"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="subscribe-field-label">Mobile Number *</label>
-                  <div className="subscribe-input-wrap">
-                    <Phone size={16} className="subscribe-input-icon" />
-                    <input
-                      type="tel"
-                      required
-                      placeholder="9876543210"
-                      value={formData.mobile}
-                      onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                      className="subscribe-input has-icon"
-                    />
-                  </div>
-                </div>
+              <div className="subscribe-section-header">
+                <span className="subscribe-section-title">
+                  <User size={16} /> Customer Contact
+                </span>
+                <span className="subscribe-verified-tag">
+                  <ShieldCheck size={13} /> Verified
+                </span>
               </div>
 
-              <div className="subscribe-field-full">
-                <label className="subscribe-field-label">WhatsApp Number (Optional)</label>
-                <div className="subscribe-input-wrap">
-                  <Phone size={16} className="subscribe-input-icon" />
-                  <input
-                    type="tel"
-                    placeholder="Same as mobile if left blank"
-                    value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                    className="subscribe-input has-icon"
-                  />
+              <div className="subscribe-customer-badge">
+                <div className="subscribe-customer-avatar">{userInitials}</div>
+                <div className="subscribe-customer-meta">
+                  <div className="subscribe-customer-name">{formData.name || 'Valued Customer'}</div>
+                  <div className="subscribe-customer-phone">+91 {formData.mobile}</div>
                 </div>
               </div>
             </div>
 
             {/* Section 2: Doorstep Delivery Address */}
             <div className="subscribe-card-section">
-              <span className="subscribe-section-label">
-                <MapPin size={15} /> Doorstep Delivery Address
-              </span>
+              <div className="subscribe-section-header">
+                <span className="subscribe-section-title">
+                  <MapPin size={16} /> Delivery Address
+                </span>
+                <span className="subscribe-section-hint">Doorstep Drop</span>
+              </div>
 
-              <div className="subscribe-field-full">
+              <div className="subscribe-field-group">
                 <label className="subscribe-field-label">
-                  Complete Address (Door No, Flat, Wing, Society, Street) *
+                  Complete Address (Flat / House No., Society, Wing, Street) <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   required
                   rows={2}
-                  placeholder="Flat 402, Lotus Greens, Near Sai Mandir"
+                  placeholder="e.g. Flat 402, Lotus Greens, 4th Cross Road"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   className="subscribe-textarea"
                 />
               </div>
 
-              <div className="subscribe-form-grid">
+              <div className="subscribe-grid-2">
                 <div>
-                  <label className="subscribe-field-label">Delivery Area / Locality</label>
-                  <select
-                    value={formData.area}
-                    onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                    className="subscribe-select"
-                  >
-                    <option value="Andheri West">Andheri West</option>
-                    <option value="Andheri East">Andheri East</option>
-                    <option value="Bandra">Bandra</option>
-                    <option value="Juhu">Juhu</option>
-                    <option value="Goregaon">Goregaon</option>
-                    <option value="Powai">Powai</option>
-                    <option value="Borivali">Borivali</option>
-                    <option value="Dadar">Dadar</option>
-                    <option value="Thane">Thane</option>
-                    <option value="Navi Mumbai">Navi Mumbai</option>
-                  </select>
+                  <label className="subscribe-field-label">Delivery Locality / Area</label>
+                  <div className="subscribe-select-wrap">
+                    <select
+                      value={formData.area}
+                      onChange={(e) => setFormData({ ...formData, area: e.target.value })}
+                      className="subscribe-select"
+                    >
+                      {AVAILABLE_AREAS.map((area) => (
+                        <option key={area} value={area}>{area}</option>
+                      ))}
+                      {!AVAILABLE_AREAS.includes(formData.area) && formData.area && (
+                        <option value={formData.area}>{formData.area}</option>
+                      )}
+                    </select>
+                    <ChevronDown size={16} className="subscribe-select-chevron" />
+                  </div>
                 </div>
 
                 <div>
                   <label className="subscribe-field-label">Landmark / Gate Access</label>
                   <input
                     type="text"
-                    placeholder="e.g. Opposite City Park"
+                    placeholder="e.g. Near Sai Temple, Gate 2"
                     value={formData.landmark}
                     onChange={(e) => setFormData({ ...formData, landmark: e.target.value })}
                     className="subscribe-input"
@@ -294,79 +403,175 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
               </div>
             </div>
 
-            {/* Section 3: Daily Delivery Plan */}
+            {/* Section 3: Subscription Plan Customizer */}
             <div className="subscribe-card-section">
-              <span className="subscribe-section-label">
-                <Calendar size={15} /> Daily Milk & Curd Plan
-              </span>
+              <div className="subscribe-section-header">
+                <span className="subscribe-section-title">
+                  <Calendar size={16} /> Daily Morning Plan
+                </span>
+              </div>
 
-              <div className="subscribe-form-grid">
-                <div>
-                  <label className="subscribe-field-label">Daily Cow Milk Quantity</label>
-                  <select
-                    value={formData.milkQty}
-                    onChange={(e) => setFormData({ ...formData, milkQty: e.target.value })}
-                    className="subscribe-select"
-                  >
-                    <option value={0.5}>500 ml (Half Litre)</option>
-                    <option value={1}>1 Litre (Standard)</option>
-                    <option value={1.5}>1.5 Litres</option>
-                    <option value={2}>2 Litres (Family)</option>
-                    <option value={3}>3 Litres</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="subscribe-field-label">Daily Farm Curd (Dahi)</label>
-                  <select
-                    value={formData.curdQty}
-                    onChange={(e) => setFormData({ ...formData, curdQty: e.target.value })}
-                    className="subscribe-select"
-                  >
-                    <option value={0}>None</option>
-                    <option value={250}>250 grams</option>
-                    <option value={500}>500 grams (Standard)</option>
-                    <option value={1000}>1 Kg (Family)</option>
-                  </select>
+              {/* Milk Quantity Pill Selector */}
+              <div className="subscribe-field-group">
+                <label className="subscribe-field-label">
+                  Daily Cow Milk Quantity: <strong>{formData.milkQty} Litre{Number(formData.milkQty) > 1 ? 's' : ''}</strong>
+                </label>
+                <div className="subscribe-pills-row">
+                  {[
+                    { label: '500 ml', val: 0.5 },
+                    { label: '1 Litre', val: 1, badge: 'Popular' },
+                    { label: '1.5 L', val: 1.5 },
+                    { label: '2 Litres', val: 2 },
+                    { label: '3 Litres', val: 3 },
+                  ].map((item) => {
+                    const isSelected = Number(formData.milkQty) === item.val;
+                    return (
+                      <button
+                        key={item.val}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, milkQty: item.val })}
+                        className={`subscribe-pill-btn ${isSelected ? 'active' : ''}`}
+                      >
+                        {item.badge && <span className="subscribe-pill-subbadge">{item.badge}</span>}
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div>
+              {/* Curd Add-on Pill Selector */}
+              <div className="subscribe-field-group">
+                <label className="subscribe-field-label">
+                  Daily Farm Curd (Dahi) Add-on: <strong>{formData.curdQty > 0 ? `${formData.curdQty}g` : 'None'}</strong>
+                </label>
+                <div className="subscribe-pills-row">
+                  {[
+                    { label: 'None', val: 0 },
+                    { label: '250g', val: 250, price: '+₹15' },
+                    { label: '500g', val: 500, price: '+₹30' },
+                    { label: '1 Kg', val: 1000, price: '+₹60' },
+                  ].map((item) => {
+                    const isSelected = Number(formData.curdQty) === item.val;
+                    return (
+                      <button
+                        key={item.val}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, curdQty: item.val })}
+                        className={`subscribe-pill-btn ${isSelected ? 'active' : ''}`}
+                      >
+                        <span>{item.label}</span>
+                        {item.price && <small className="subscribe-pill-price">{item.price}</small>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Delivery Frequency Selector */}
+              <div className="subscribe-field-group">
                 <label className="subscribe-field-label">Delivery Schedule</label>
-                <select
-                  value={formData.frequency}
-                  onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-                  className="subscribe-select"
-                >
-                  <option value="daily">Every Morning (Daily)</option>
-                  <option value="alternate">Alternate Days (1 day gap)</option>
-                  <option value="selected">Weekdays Only (Mon-Fri)</option>
-                </select>
+                <div className="subscribe-freq-grid">
+                  {[
+                    { id: 'daily', title: 'Every Morning', desc: 'Daily · 30 Drops', tag: 'Best Value' },
+                    { id: 'alternate', title: 'Alternate Days', desc: '1 Day Gap · 15 Drops', tag: null },
+                    { id: 'selected', title: 'Weekdays Only', desc: 'Mon to Fri · 22 Drops', tag: null },
+                  ].map((item) => {
+                    const isSelected = formData.frequency === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, frequency: item.id })}
+                        className={`subscribe-freq-card ${isSelected ? 'active' : ''}`}
+                      >
+                        {item.tag && <span className="subscribe-freq-badge">{item.tag}</span>}
+                        <div className="subscribe-freq-title-row">
+                          <span className="subscribe-freq-title">{item.title}</span>
+                          {isSelected && <Check size={14} className="subscribe-freq-check" />}
+                        </div>
+                        <span className="subscribe-freq-desc">{item.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Delivery Guarantee Info Box (Light Mint) */}
-            <div className="subscribe-info-box">
-              <div className="subscribe-info-box-icon">
-                <Clock size={18} />
+            {/* Order Summary Breakdown & Transparency */}
+            <div className="subscribe-summary-box">
+              <div className="subscribe-summary-head">
+                <span>30-Day Plan Calculation</span>
+                <span className="subscribe-summary-pill">{planSummary.dropsCount} Morning Drops</span>
               </div>
-              <p>
-                Delivery starts tomorrow between <strong>5:00 AM – 6:30 AM</strong>. Silent doorstep drop in sanitized glass bottles. Pause or adjust quantity anytime before 8:00 PM.
-              </p>
+
+              <div className="subscribe-calc-list">
+                <div className="subscribe-calc-row">
+                  <span>Milk ({formData.milkQty}L × ₹60/L)</span>
+                  <strong>₹{Number(formData.milkQty) * 60}/drop</strong>
+                </div>
+                {Number(formData.curdQty) > 0 && (
+                  <div className="subscribe-calc-row">
+                    <span>Curd ({formData.curdQty}g)</span>
+                    <strong>₹{(Number(formData.curdQty) / 500) * 30}/drop</strong>
+                  </div>
+                )}
+                <div className="subscribe-calc-row">
+                  <span>Doorstep Drop (Before 6:30 AM)</span>
+                  <span className="subscribe-free-tag">FREE</span>
+                </div>
+              </div>
+
+              <div className="subscribe-total-row">
+                <div>
+                  <div className="subscribe-total-label">Total Prepaid Amount</div>
+                  <div className="subscribe-total-sub">₹{planSummary.dailyCost}/day × {planSummary.dropsCount} deliveries</div>
+                </div>
+                <div className="subscribe-total-price">₹{planSummary.totalAmount}</div>
+              </div>
+            </div>
+
+            {/* Delivery Guarantee Info Box */}
+            <div className="subscribe-guarantee-box">
+              <Truck size={18} className="subscribe-guarantee-icon" />
+              <div className="subscribe-guarantee-text">
+                <strong>Silent Doorstep Drop:</strong> Delivered daily between <strong>5:00 AM – 6:30 AM</strong> in insulated sanitized glass bottles. Pause, reschedule, or cancel anytime from your customer portal.
+              </div>
             </div>
 
             {/* Submit Action */}
-            <div>
+            <div className="subscribe-action-area">
+              {paymentError && (
+                <div className="subscribe-error-alert" role="alert">
+                  {paymentError}
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={isSubmitting}
                 className="subscribe-submit-btn"
               >
-                {isSubmitting ? 'Starting Subscription...' : 'Confirm Morning Subscription (Pay Monthly)'}
+                {isSubmitting ? (
+                  <>
+                    <span className="subscribe-spinner" />
+                    <span>Connecting to Razorpay...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={17} />
+                    <span>Pay ₹{planSummary.totalAmount} · Activate Delivery</span>
+                  </>
+                )}
               </button>
-              <p className="subscribe-footer-guarantee">
-                🌿 100% Raw A2 Gir Cow Milk · No advance deposit · Cancel or pause anytime
-              </p>
+
+              <div className="subscribe-footer-trust">
+                <span>🔒 256-Bit SSL Encrypted</span>
+                <span>•</span>
+                <span>Razorpay Secure</span>
+                <span>•</span>
+                <span>Money-back Guarantee</span>
+              </div>
             </div>
           </form>
         )}

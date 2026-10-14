@@ -44,7 +44,7 @@ router.get('/test', async (req, res) => {
  * Upload single image via multipart/form-data
  * POST /api/upload
  */
-router.post('/', upload.single('image'), async (req, res) => {
+router.post('/', verifyToken, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Please select an image file to upload' });
@@ -68,15 +68,14 @@ router.post('/', upload.single('image'), async (req, res) => {
     } catch (cloudErr) {
       console.warn('Cloudinary upload warning:', cloudErr.message);
 
-      // Save to client/public/uploads as reliable fallback
       const fs = require('fs');
       const path = require('path');
-      const uploadDir = path.join(__dirname, '../../client/public/uploads');
+      const uploadDir = path.join(__dirname, '../uploads');
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      const ext = req.file.mimetype.split('/')[1] || 'png';
+      const ext = (req.file.mimetype.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
       const filename = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
       const filePath = path.join(uploadDir, filename);
       fs.writeFileSync(filePath, req.file.buffer);

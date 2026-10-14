@@ -28,7 +28,7 @@ export default function CustomerList({
   onOpenPauseModal,
   onOpenTempQtyModal,
 }) {
-  const { customers, resumeDelivery, deliveryBoys, assignPartnerToCustomer, fetchDeliveryBoys } = useDairy();
+  const { customers, pauseDelivery, resumeDelivery, deliveryBoys, assignPartnerToCustomer, fetchDeliveryBoys } = useDairy();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
@@ -357,19 +357,72 @@ export default function CustomerList({
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
                       Subscription Plan
                     </span>
-                    <span
-                      style={{
-                        fontSize: '0.68rem',
-                        fontWeight: 600,
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: '#e2e8f0',
-                        color: '#334155',
-                        textTransform: 'capitalize',
-                      }}
-                    >
-                      {customer.deliveryPlan?.frequency || 'Daily'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 600,
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          background: '#e2e8f0',
+                          color: '#334155',
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {customer.deliveryPlan?.frequency || 'Daily'}
+                      </span>
+                      {isPaused ? (
+                        <button
+                          type="button"
+                          onClick={() => resumeDelivery(customer.id, { actor: 'Admin' })}
+                          style={{
+                            background: '#dcfce7',
+                            color: '#15803d',
+                            border: '1px solid #86efac',
+                            borderRadius: '4px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                          title="Start / Resume daily subscription"
+                        >
+                          <PlayCircle size={11} /> Start Sub
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const today = new Date().toISOString().split('T')[0];
+                            pauseDelivery(customer.id, {
+                              pauseFrom: today,
+                              pauseUntil: null,
+                              reason: 'Stopped by Admin',
+                              actor: 'Admin',
+                            });
+                          }}
+                          style={{
+                            background: '#fef3c7',
+                            color: '#b45309',
+                            border: '1px solid #fde68a',
+                            borderRadius: '4px',
+                            padding: '2px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                          title="Stop / Pause daily subscription"
+                        >
+                          <PauseCircle size={11} /> Stop Sub
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: '12px', fontSize: '0.84rem', fontWeight: 700, color: '#047857' }}>
@@ -378,6 +431,20 @@ export default function CustomerList({
                       <span>🥣 Curd: {customer.deliveryPlan?.curdQty} {customer.deliveryPlan?.curdUnit || 'g'}</span>
                     )}
                   </div>
+
+                  {customer.subscription?.status && (
+                    <div style={{ marginTop: '8px', fontSize: '0.76rem', color: '#334155', lineHeight: 1.5 }}>
+                      <strong>Subscription payment:</strong>{' '}
+                      {customer.subscription.status === 'active'
+                        ? `Paid ₹${Number(customer.subscription.amount || 0).toLocaleString('en-IN')} via Razorpay · through ${customer.subscription.endDate ? new Date(customer.subscription.endDate).toLocaleDateString('en-IN') : 'end date unavailable'}`
+                        : customer.subscription.status === 'pending_payment'
+                          ? 'Awaiting customer payment'
+                          : customer.subscription.status}
+                      {customer.subscription.status === 'active' && customer.subscription.paymentId && (
+                        <span> · Payment reference: {customer.subscription.paymentId}</span>
+                      )}
+                    </div>
+                  )}
 
                   {/* Interactive Delivery Partner Selector */}
                   <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
@@ -396,6 +463,7 @@ export default function CustomerList({
                       )}
                     </div>
                     <select
+                      disabled={customer.subscription?.status === 'pending_payment'}
                       value={
                         customer.deliveryPlan?.deliveryBoyId ||
                         (deliveryBoys || []).find((b) => b.name?.toLowerCase() === customer.deliveryPlan?.deliveryBoyName?.toLowerCase())?.id ||
@@ -429,6 +497,11 @@ export default function CustomerList({
                         </option>
                       ))}
                     </select>
+                    {customer.subscription?.status === 'pending_payment' && (
+                      <span style={{ fontSize: '0.72rem', color: '#92400e', fontWeight: 600 }}>
+                        Partner assignment is available after payment confirmation.
+                      </span>
+                    )}
                   </div>
                 </div>
 

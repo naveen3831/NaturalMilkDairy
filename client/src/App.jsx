@@ -15,6 +15,7 @@ import FloatingContactButton from './components/FloatingContactButton';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TodayDeliveries from './pages/admin/TodayDeliveries';
 import CustomerList from './pages/admin/CustomerList';
+import SubscriptionsPage from './pages/admin/SubscriptionsPage';
 import LedgerView from './pages/admin/LedgerView';
 import OutstandingReport from './pages/admin/OutstandingReport';
 import ProductsPricing from './pages/admin/ProductsPricing';
@@ -41,6 +42,7 @@ export default function App() {
     'dashboard',
     'deliveries',
     'customers',
+    'subscriptions',
     'ledger',
     'outstanding',
     'pricing',
@@ -61,6 +63,7 @@ export default function App() {
       const savedUser = JSON.parse(localStorage.getItem('nmd_user') || 'null');
       const savedAdminTab = localStorage.getItem('nmd_admin_tab');
       const savedGeneralTab = localStorage.getItem('nmd_current_tab');
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
 
       // 1. Direct portal links (from dispatch emails)
       if (portalParam === 'delivery' || tabParam === 'delivery') {
@@ -75,6 +78,25 @@ export default function App() {
           return 'customer-portal';
         }
         return 'login';
+      }
+
+      if (pathParts[0] === 'delivery') {
+        return savedUser?.role === 'delivery_boy' ? 'delivery-boy-app' : 'login';
+      }
+
+      if (pathParts[0] === 'customer') {
+        return savedUser?.role === 'customer' ? 'customer-portal' : 'login';
+      }
+
+      const directTab = pathParts[0];
+      const knownTabs = [
+        'home', 'products', 'story', 'faqs', 'contact', 'register',
+        'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
+        'subscriptions', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
+        'edit-delivery-boy', 'add-product', 'edit-product',
+      ];
+      if (pathParts.length === 1 && knownTabs.includes(directTab)) {
+        return directTab;
       }
 
       if (tabParam === 'login' || window.location.pathname === '/login') {
@@ -144,19 +166,93 @@ export default function App() {
     if (adminTabs.includes(activeTab)) {
       localStorage.setItem('nmd_admin_tab', activeTab);
     }
+    if (activeTab === 'customer-portal' && !window.location.pathname.startsWith('/customer/')) {
+      const savedCustomerPage = localStorage.getItem('nmd_customer_page');
+      const customerPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedCustomerPage)
+        ? savedCustomerPage
+        : 'dashboard';
+      window.history.replaceState({ nmdCustomerPage: true }, '', `/customer/${customerPage}`);
+    } else if (activeTab === 'delivery-boy-app' && !window.location.pathname.startsWith('/delivery/')) {
+      const savedDriverPage = localStorage.getItem('nmd_driver_tab');
+      const driverPage = ['deliveries', 'route', 'cash', 'profile'].includes(savedDriverPage)
+        ? savedDriverPage
+        : 'deliveries';
+      window.history.replaceState({ nmdDeliveryPage: true }, '', `/delivery/${driverPage}`);
+    }
   }, [activeTab]);
+
+  useEffect(() => {
+    const syncTabFromLocation = () => {
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      if (pathParts[0] === 'customer') {
+        setActiveTab(user?.role === 'customer' ? 'customer-portal' : 'login');
+        return;
+      }
+      if (pathParts[0] === 'delivery') {
+        setActiveTab(user?.role === 'delivery_boy' ? 'delivery-boy-app' : 'login');
+        return;
+      }
+      if (pathParts[0] === 'login' && user) {
+        setActiveTab(user.role === 'admin'
+          ? localStorage.getItem('nmd_admin_tab') || 'dashboard'
+          : user.role === 'delivery_boy'
+            ? 'delivery-boy-app'
+            : user.role === 'customer'
+              ? 'customer-portal'
+              : 'home');
+        return;
+      }
+      const pathTab = pathParts[0] || 'home';
+      const routeTabs = [
+        'home', 'products', 'story', 'faqs', 'contact', 'register',
+        'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
+        'subscriptions', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
+        'edit-delivery-boy', 'add-product', 'edit-product',
+      ];
+      if (pathParts.length <= 1 && routeTabs.includes(pathTab)) {
+        setActiveTab(pathTab);
+      }
+    };
+    window.addEventListener('popstate', syncTabFromLocation);
+    return () => window.removeEventListener('popstate', syncTabFromLocation);
+  }, [user]);
 
   // Whenever activeTab changes, automatically scroll to the starting top of the page
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   }, [activeTab]);
 
-  const navigateToTab = (tab) => {
+  const navigateToTab = (tab, optionsOrProductId = null) => {
+    const targetProductId = typeof optionsOrProductId === 'string'
+      ? optionsOrProductId
+      : (optionsOrProductId?.productId || (typeof optionsOrProductId === 'object' && (optionsOrProductId?.id || optionsOrProductId?._id || optionsOrProductId?.name)));
+
     if (tab === 'products') {
+      if (targetProductId) {
+        localStorage.setItem('nmd_selected_product_id', String(targetProductId));
+      } else if (!localStorage.getItem('nmd_selected_product_id')) {
+        window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+      }
+    } else {
       localStorage.removeItem('nmd_selected_product_id');
-      window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
+      localStorage.removeItem('nmd_selected_product_name');
+      localStorage.removeItem('nmd_selected_product_obj');
     }
+
     setActiveTab(tab);
+    const activeTargetId = targetProductId || (tab === 'products' ? localStorage.getItem('nmd_selected_product_id') : null);
+    const routePath = tab === 'customer-portal'
+      ? `/customer/${localStorage.getItem('nmd_customer_page') || 'dashboard'}`
+      : tab === 'delivery-boy-app'
+        ? `/delivery/${localStorage.getItem('nmd_driver_tab') || 'deliveries'}`
+        : tab === 'home' || tab === 'landing'
+          ? '/'
+          : tab === 'products' && activeTargetId
+            ? `/products?product=${encodeURIComponent(activeTargetId)}`
+            : `/${tab}`;
+    if (window.location.pathname + window.location.search !== routePath) {
+      window.history.pushState({ nmdPage: tab }, '', routePath);
+    }
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     setTimeout(() => {
       window.scrollTo(0, 0);
@@ -290,6 +386,10 @@ export default function App() {
               onOpenPauseModal={handleOpenPause}
               onOpenTempQtyModal={handleOpenTempQty}
             />
+          )}
+
+          {activeTab === 'subscriptions' && (
+            <SubscriptionsPage onSignIn={() => navigateToTab('login')} />
           )}
 
           {activeTab === 'ledger' && (

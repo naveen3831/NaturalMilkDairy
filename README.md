@@ -66,6 +66,9 @@ Built using the exact color palette and motifs from the official **Natural Milk 
 
 ## ⚡ Quick Start Instructions
 
+### Razorpay Subscription Checkout
+Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `server/.env` before starting the backend. Use Razorpay test credentials for development and live credentials only for a deployed production environment. The server verifies each payment signature and captured order before activating a 30-day prepaid subscription.
+
 ### 1. Install Dependencies
 Run in the root folder:
 ```bash

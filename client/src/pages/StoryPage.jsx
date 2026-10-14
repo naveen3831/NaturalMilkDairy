@@ -326,6 +326,124 @@ export default function StoryPage({ setActiveTab }) {
           ))}
         </div>
 
+        {/* Farm Story: Ethical Standards & Pure Process Showcase */}
+        <div style={{ margin: '70px 0' }}>
+          <div style={{ textAlign: 'center', marginBottom: '36px' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 14px',
+                borderRadius: '20px',
+                background: '#ecfdf5',
+                color: '#059669',
+                fontSize: '0.82rem',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.1em',
+                marginBottom: '10px',
+              }}
+            >
+              <HeartHandshake size={15} color="#059669" />
+              <span>Ethical Farm Standards</span>
+            </div>
+            <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.6rem)', color: '#0c2340', fontWeight: 900 }}>
+              Healthy, Happy Cows Make Naturally Sweeter Milk
+            </h2>
+            <p style={{ color: '#597361', maxWidth: '640px', margin: '8px auto 0 auto', fontSize: '1rem', lineHeight: 1.6 }}>
+              Unlike industrial dairy factories where cattle are confined to small stalls, our cows roam freely under natural sunlight and graze on organic clover.
+            </p>
+          </div>
+
+          {/* 3 Process Cards */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '26px',
+            }}
+          >
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '22px',
+                overflow: 'hidden',
+                border: '1.5px solid #e2ece3',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ height: '240px', overflow: 'hidden' }}>
+                <img
+                  src={CLOUDINARY_MEDIA.milkPour}
+                  alt="Fresh Whole Milk Pouring from Glass Bottle"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+              <div style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '1.25rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
+                  Taste Real Raw Sweetness
+                </h3>
+                <p style={{ color: '#597361', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
+                  Commercial pasteurized packet milk loses its natural enzymes. Our farm milk is chilled to 4°C immediately, preserving creamy, naturally sweet taste.
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '22px',
+                overflow: 'hidden',
+                border: '1.5px solid #e2ece3',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ height: '240px', overflow: 'hidden' }}>
+                <img
+                  src={CLOUDINARY_MEDIA.glassBottles}
+                  alt="Sterilized Glass Milk Bottles Lineup"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+              <div style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '1.25rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
+                  Sterilized Glass, Zero Plastic
+                </h3>
+                <p style={{ color: '#597361', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
+                  Hot milk in plastic pouches leaches phthalates and microplastics. We pack exclusively in food-grade, multi-stage sterilized glass bottles for absolute purity.
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '22px',
+                overflow: 'hidden',
+                border: '1.5px solid #e2ece3',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div style={{ height: '240px', overflow: 'hidden' }}>
+                <img
+                  src={CLOUDINARY_MEDIA.organicFarm}
+                  alt="Sunrise Organic Dairy Farm"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+              <div style={{ padding: '24px' }}>
+                <h3 style={{ fontSize: '1.25rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
+                  From Farm To Doorstep in 3 Hours
+                </h3>
+                <p style={{ color: '#597361', fontSize: '0.9rem', lineHeight: 1.6, margin: 0 }}>
+                  Milked at 4:30 AM, bottled by 5:15 AM, and delivered silently outside your door by 6:30 AM across Mumbai.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* 6. Comprehensive FAQs Section (Mobile App Only - Website has dedicated FAQs page) */}
         <section
           id="farm-faqs-section"

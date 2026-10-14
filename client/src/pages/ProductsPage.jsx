@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { getProductImage } from './admin/ProductsPricing';
@@ -6,6 +6,7 @@ import SubscribeModal from '../components/SubscribeModal';
 import ProductDetailsView from './ProductDetailsView';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+import { useAuth } from '../context/AuthContext';
 
 const DEFAULT_CATALOG = [
   {
@@ -108,67 +109,193 @@ const DEFAULT_CATALOG = [
   },
 ];
 
+const findMatchingProduct = (list, query, queryName = '') => {
+  if (!list || !list.length) return null;
+  const qStr = (query || '').toString().trim().toLowerCase();
+  const qNameStr = (queryName || '').toString().trim().toLowerCase();
+
+  // 1. Direct id / _id match
+  if (qStr) {
+    const byId = list.find((p) => 
+      (p.id && String(p.id).toLowerCase() === qStr) || 
+      (p._id && String(p._id).toLowerCase() === qStr)
+    );
+    if (byId && (!qNameStr || byId.name.trim().toLowerCase() === qNameStr)) {
+      return byId;
+    }
+  }
+
+  // 2. Exact name match
+  const searchName = qNameStr || qStr;
+  if (searchName) {
+    const byExactName = list.find(
+      (p) => p.name && p.name.trim().toLowerCase() === searchName
+    );
+    if (byExactName) return byExactName;
+  }
+
+  // 3. Normalized alphanumeric match
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normSearch = norm(searchName);
+  if (normSearch) {
+    const byNorm = list.find((p) => norm(p.name) === normSearch);
+    if (byNorm) return byNorm;
+
+    const byContains = list.find(
+      (p) =>
+        norm(p.name).includes(normSearch) ||
+        (normSearch.length > 4 && normSearch.includes(norm(p.name)))
+    );
+    if (byContains) return byContains;
+  }
+
+  // 4. Fallback ID match if found earlier
+  if (qStr) {
+    const byIdFallback = list.find((p) => 
+      (p.id && String(p.id).toLowerCase() === qStr) || 
+      (p._id && String(p._id).toLowerCase() === qStr)
+    );
+    if (byIdFallback) return byIdFallback;
+  }
+
+  return null;
+};
+
 export default function ProductsPage({ setActiveTab }) {
   const { products: dbProducts } = useDairy();
+  const { user } = useAuth();
   const [activeCategory, setActiveCategory] = useState('all');
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProductDetails, setSelectedProductDetails] = useState(null);
+  const lastTargetKeyRef = useRef(null);
 
-  // Live dynamic catalog from MongoDB Atlas & local database
-  const catalogProducts = (dbProducts && dbProducts.length > 0)
-    ? dbProducts
-        .filter((p) => p.status !== 'inactive')
-        .map((p) => {
-          const fallback = DEFAULT_CATALOG.find(
-            (def) => def.id === p.id || def.name.toLowerCase() === (p.name || '').toLowerCase()
-          );
-          return {
-            id: p.id,
-            name: p.name,
-            category: p.category || fallback?.category || 'milk',
-            desc: p.description || fallback?.desc || 'Pure unadulterated farm dairy produce delivered fresh every morning.',
-            price: `₹${p.price}`,
-            numericPrice: Number(p.price),
-            unit: p.unit?.startsWith('per') ? p.unit : `per ${p.unit || '1 Litre'}`,
-            badge: fallback?.badge || (p.category === 'milk' ? 'Farm Fresh' : 'Pure Dairy'),
-            tagColor: fallback?.tagColor || '#0d5c3a',
-            tagBg: fallback?.tagBg || '#eaf5ee',
-            fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
-            image: p.image || getProductImage(p),
-            images: Array.isArray(p.images) ? p.images : [],
-            features: fallback?.features || ['100% Unadulterated', 'Chilled to 4°C', 'Food-Grade Sealed'],
-          };
-        })
-    : DEFAULT_CATALOG;
+  // Live dynamic catalog from MongoDB Atlas & local database (memoized to keep stable reference)
+  const catalogProducts = useMemo(() => {
+    return (dbProducts && dbProducts.length > 0)
+      ? dbProducts
+          .filter((p) => p.status !== 'inactive')
+          .map((p) => {
+            const fallback = DEFAULT_CATALOG.find(
+              (def) => def.id === (p.id || p._id) || def.name.toLowerCase() === (p.name || '').toLowerCase()
+            );
+            return {
+              id: p.id || p._id,
+              name: p.name,
+              category: p.category || fallback?.category || 'milk',
+              desc: p.description || fallback?.desc || 'Pure unadulterated farm dairy produce delivered fresh every morning.',
+              price: `₹${p.price}`,
+              numericPrice: Number(p.price),
+              unit: p.unit?.startsWith('per') ? p.unit : `per ${p.unit || '1 Litre'}`,
+              badge: fallback?.badge || (p.category === 'milk' ? 'Farm Fresh' : 'Pure Dairy'),
+              tagColor: fallback?.tagColor || '#0d5c3a',
+              tagBg: fallback?.tagBg || '#eaf5ee',
+              fat: fallback?.fat || (p.category === 'milk' ? '4.2% Fat • 8.5% SNF' : '100% Pure'),
+              image: p.image || getProductImage(p),
+              images: Array.isArray(p.images) ? p.images : [],
+              features: fallback?.features || ['100% Unadulterated', 'Chilled to 4°C', 'Food-Grade Sealed'],
+            };
+          })
+      : DEFAULT_CATALOG;
+  }, [dbProducts]);
 
-  const filteredProducts =
-    activeCategory === 'all'
+  const filteredProducts = useMemo(() => {
+    return activeCategory === 'all'
       ? catalogProducts
       : catalogProducts.filter((p) => p.category === activeCategory);
+  }, [catalogProducts, activeCategory]);
 
   useEffect(() => {
     const handleReset = () => {
+      lastTargetKeyRef.current = null;
       setSelectedProductDetails(null);
       setActiveCategory('all');
+      localStorage.removeItem('nmd_selected_product_id');
+      localStorage.removeItem('nmd_selected_product_name');
+      localStorage.removeItem('nmd_selected_product_obj');
+      if (window.location.search.includes('product=') || window.location.search.includes('id=')) {
+        window.history.replaceState({ nmdPage: 'products' }, '', '/products');
+      }
       window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     };
-    window.addEventListener('nmd_reset_products_page', handleReset);
 
-    const targetProdId = localStorage.getItem('nmd_selected_product_id');
-    if (targetProdId && catalogProducts.length > 0) {
-      const found = catalogProducts.find(
-        (p) => p.id === targetProdId || p.name.toLowerCase() === targetProdId.toLowerCase()
-      );
-      if (found) {
-        setSelectedProductDetails(found);
+    const handleSelectEvent = (e) => {
+      const prod = e.detail?.product;
+      const id = e.detail?.id;
+      if (prod) {
+        lastTargetKeyRef.current = id || prod.id || prod.name;
+        setSelectedProductDetails(prod);
         window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (id && catalogProducts.length > 0) {
+        const found = findMatchingProduct(catalogProducts, id);
+        if (found) {
+          lastTargetKeyRef.current = id;
+          setSelectedProductDetails(found);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       }
-      localStorage.removeItem('nmd_selected_product_id');
+    };
+
+    window.addEventListener('nmd_reset_products_page', handleReset);
+    window.addEventListener('nmd_select_product', handleSelectEvent);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramProduct = urlParams.get('product') || urlParams.get('id');
+    const localId = localStorage.getItem('nmd_selected_product_id');
+    const localName = localStorage.getItem('nmd_selected_product_name');
+
+    const targetKey = paramProduct || localId;
+    if (targetKey && catalogProducts.length > 0) {
+      if (lastTargetKeyRef.current !== targetKey) {
+        const found = findMatchingProduct(catalogProducts, targetKey, localName);
+        if (found) {
+          lastTargetKeyRef.current = targetKey;
+          setSelectedProductDetails((prev) => {
+            if (prev && (prev.id === found.id || prev.name === found.name)) {
+              return prev;
+            }
+            return found;
+          });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
     }
 
-    return () => window.removeEventListener('nmd_reset_products_page', handleReset);
+    return () => {
+      window.removeEventListener('nmd_reset_products_page', handleReset);
+      window.removeEventListener('nmd_select_product', handleSelectEvent);
+    };
   }, [catalogProducts]);
+
+  useEffect(() => {
+    if (user?.role !== 'customer') return;
+    const pendingSubscription = localStorage.getItem('nmd_pending_subscription');
+    if (!pendingSubscription) return;
+    try {
+      const product = JSON.parse(pendingSubscription);
+      setSelectedProduct(product);
+      setSelectedProductDetails(product);
+      setIsSubscribeOpen(true);
+      localStorage.removeItem('nmd_pending_subscription');
+    } catch (error) {
+      localStorage.removeItem('nmd_pending_subscription');
+      console.error('Unable to restore subscription selection:', error);
+    }
+  }, [user]);
+
+  const handleStartSubscription = (product) => {
+    if (!user) {
+      localStorage.setItem('nmd_pending_subscription', JSON.stringify(product));
+      setActiveTab('login');
+      return;
+    }
+    if (user.role !== 'customer') {
+      window.alert('Please sign in with a customer account to start a subscription.');
+      return;
+    }
+    setSelectedProduct(product);
+    setIsSubscribeOpen(true);
+  };
 
   const handleSubscribe = (product) => {
     setSelectedProductDetails(product);
@@ -182,12 +309,18 @@ export default function ProductsPage({ setActiveTab }) {
         <ProductDetailsView
           product={selectedProductDetails}
           onBack={() => {
+            lastTargetKeyRef.current = null;
             setSelectedProductDetails(null);
+            localStorage.removeItem('nmd_selected_product_id');
+            localStorage.removeItem('nmd_selected_product_name');
+            localStorage.removeItem('nmd_selected_product_obj');
+            if (window.location.search.includes('product=') || window.location.search.includes('id=')) {
+              window.history.replaceState({ nmdPage: 'products' }, '', '/products');
+            }
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
           onSubscribe={(prodWithConfig) => {
-            setSelectedProduct(prodWithConfig);
-            setIsSubscribeOpen(true);
+            handleStartSubscription(prodWithConfig);
           }}
         />
 
@@ -320,6 +453,9 @@ export default function ProductsPage({ setActiveTab }) {
               className="dairy-product-card dairy-fade-in-up"
               onClick={() => {
                 setSelectedProductDetails(p);
+                const prodKey = p.id || p.name;
+                localStorage.setItem('nmd_selected_product_id', String(prodKey));
+                window.history.replaceState({ nmdPage: 'products' }, '', `/products?product=${encodeURIComponent(prodKey)}`);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
               role="button"
@@ -329,6 +465,9 @@ export default function ProductsPage({ setActiveTab }) {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
                   setSelectedProductDetails(p);
+                  const prodKey = p.id || p.name;
+                  localStorage.setItem('nmd_selected_product_id', String(prodKey));
+                  window.history.replaceState({ nmdPage: 'products' }, '', `/products?product=${encodeURIComponent(prodKey)}`);
                   window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
               }}

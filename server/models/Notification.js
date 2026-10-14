@@ -27,6 +27,7 @@ const notificationSchema = new mongoose.Schema(
         'delivery_completed',
         'delivery_missed',
         'payment_collected',
+        'subscription_created',
         'route_update',
         'system',
       ],

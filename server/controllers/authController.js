@@ -148,7 +148,7 @@ const login = async (req, res) => {
 
     if (foundCustomer) {
       const customerStatus = (foundCustomer.status || 'active').toLowerCase();
-      if (customerStatus === 'inactive') {
+      if (customerStatus === 'inactive' && foundCustomer.subscription?.status !== 'pending_payment') {
         return res.status(403).json({
           success: false,
           message: 'Your customer account is currently inactive. Please contact the dairy administrator.',
@@ -292,19 +292,6 @@ const register = async (req, res) => {
       const custCount = await Customer.countDocuments();
       const customerId = `CUST-${custCount + 101}`;
 
-      // Check if any active delivery boy covers this area
-      let firstBoy = null;
-      try {
-        firstBoy = await DeliveryBoy.findOne({
-          assignedArea: { $regex: new RegExp(`^${selectedArea.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}$`, 'i') },
-          status: 'active',
-        });
-      } catch (e) {
-        console.warn('Driver lookup note during registration:', e.message);
-      }
-
-      const weekdayDelivery = frequency === 'weekdays';
-
       const newCustomer = await Customer.create({
         customerId,
         name: cleanName,
@@ -312,22 +299,21 @@ const register = async (req, res) => {
         whatsapp: cleanMobile,
         address: cleanAddress,
         area: selectedArea,
-        status: 'active',
+        status: 'inactive',
+        subscription: { status: 'pending_payment' },
         deliveryPlan: {
-          milkQty: Number(milkQty) || 1,
+          milkQty: 0,
           milkUnit: 'L',
-          curdQty: Number(curdQty) || 0,
+          curdQty: 0,
           curdUnit: 'g',
-          frequency: weekdayDelivery ? 'selected' : (frequency || 'daily'),
-          deliveryDays: weekdayDelivery
-            ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
-            : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-          deliveryBoyId: firstBoy ? (firstBoy.id || firstBoy._id.toString()) : '',
-          deliveryBoyName: firstBoy ? firstBoy.name : '',
-          startDate: new Date(),
+          frequency: 'daily',
+          deliveryDays: [],
+          deliveryBoyId: '',
+          deliveryBoyName: '',
+          startDate: null,
         },
         paymentInfo: {
-          paymentType: 'credit',
+          paymentType: 'prepaid',
           paymentCycle: 'monthly',
         },
         currentBalance: 0,
@@ -350,14 +336,6 @@ const register = async (req, res) => {
         throw err;
       }
 
-      // Auto-generate today's delivery record in MongoDB so it is immediately visible to driver & admin
-      try {
-        const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
-        await ensureDeliveriesForDate(formatDate());
-      } catch (delivErr) {
-        console.warn('Auto ensure delivery error:', delivErr.message);
-      }
-
       await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
 
       const userPayload = {
@@ -365,7 +343,7 @@ const register = async (req, res) => {
         name: newCustomer.name,
         mobile: newCustomer.mobile,
         role: 'customer',
-        status: 'active',
+        status: 'inactive',
         customerId: newCustomer.customerId,
         area: newCustomer.area,
         address: newCustomer.address,

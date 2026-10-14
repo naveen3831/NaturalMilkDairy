@@ -20,9 +20,18 @@ const deliverySchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['credit', 'paid', 'advance', 'pending'], default: 'credit' },
   paymentAmount: { type: Number, default: 0 },
   paymentMethod: { type: String, enum: ['credit', 'cash', 'upi', 'advance', 'none'], default: 'credit' },
+  subscriptionEndDate: { type: Date, default: null },
+  subscriptionPaymentAmount: { type: Number, default: 0 },
+  subscriptionPaymentMethod: { type: String, default: '' },
+  subscriptionPaymentId: { type: String, default: '' },
   notes: { type: String, default: '' },
   proofImage: { type: String, default: '' },
   deliveredAt: { type: Date, default: null },
+  deletedForAdmin: { type: Boolean, default: false },
+  deletedForDriver: { type: Boolean, default: false },
+  deletedForCustomer: { type: Boolean, default: false },
+  deletedAt: { type: Date, default: null },
+  deletedBy: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
 });
 

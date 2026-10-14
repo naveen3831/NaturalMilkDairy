@@ -548,7 +548,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                   border: activeTab === 'deliveries' ? '1px solid #f5a623' : '1px solid transparent',
                 }}
               >
-                <Truck size={16} /> Today's Deliveries
+                <Truck size={16} /> Deliveries
               </button>
 
               <button

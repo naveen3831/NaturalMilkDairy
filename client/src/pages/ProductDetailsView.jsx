@@ -498,6 +498,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
 
             {/* 2. Professional & Simple Booking Card */}
             <div
+              className="product-booking-card"
               style={{
                 background: '#ffffff',
                 borderRadius: '22px',
@@ -507,6 +508,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
               }}
             >
               <h3
+                className="product-booking-heading"
                 style={{
                   fontSize: '1.1rem',
                   fontWeight: 900,
@@ -522,7 +524,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
               </h3>
 
               {/* Quantity Selector */}
-              <div style={{ marginBottom: '16px' }}>
+              <div className="product-booking-quantity" style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                     Daily Quantity
@@ -532,7 +534,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
                   </span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="product-booking-quantity-controls" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div
                     style={{
                       display: 'inline-flex',
@@ -596,7 +598,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
                   </div>
 
                   {/* Preset chips */}
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div className="product-booking-presets" style={{ display: 'flex', gap: '6px' }}>
                     {[1, 2, 3].map((val) => (
                       <button
                         key={val}
@@ -621,11 +623,11 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
               </div>
 
               {/* Delivery Frequency Selection */}
-              <div style={{ marginBottom: '18px' }}>
+              <div className="product-booking-frequency" style={{ marginBottom: '18px' }}>
                 <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
                   Delivery Frequency
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                <div className="product-booking-frequency-options" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                   {[
                     { id: 'daily', label: 'Daily', sub: 'Every morning' },
                     { id: 'alternate', label: 'Alternate', sub: 'Every 2nd day' },
@@ -657,7 +659,7 @@ export default function ProductDetailsView({ product, onBack, onSubscribe }) {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div className="product-booking-actions" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={handleBookNow}

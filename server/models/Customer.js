@@ -13,6 +13,13 @@ const customerSchema = new mongoose.Schema({
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
   status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'active' },
+  subscription: {
+    status: { type: String, enum: ['pending_payment', 'active', 'expired', 'cancelled', 'paused', 'stopped'], default: undefined },
+    startDate: { type: Date, default: null },
+    endDate: { type: Date, default: null },
+    amount: { type: Number, default: 0 },
+    paymentId: { type: String, default: '' },
+  },
   pauseFrom: { type: String, default: null }, // YYYY-MM-DD
   pauseUntil: { type: String, default: null }, // YYYY-MM-DD
   temporaryQty: {

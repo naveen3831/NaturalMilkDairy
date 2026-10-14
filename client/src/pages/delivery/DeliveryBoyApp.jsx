@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -52,13 +52,23 @@ import {
   Save,
   Settings,
   Heart,
+  Mail,
   EyeOff,
   Globe,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
+const getDeliveryRoute = () => {
+  const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
+  if (section !== 'delivery' || !['deliveries', 'route', 'cash', 'profile'].includes(page)) {
+    return null;
+  }
+  const profileViews = ['assigned-route', 'shift-schedule', 'vehicle', 'depot', 'supervisor', 'edit'];
+  return { page, detail: page === 'profile' && profileViews.includes(detail) ? detail : null };
+};
+
 export default function DeliveryBoyApp({ setActiveTab }) {
-  const { user, logout } = useAuth();
+  const { user, token, logout, getAuthHeaders } = useAuth();
   const {
     deliveries,
     selectedDate,
@@ -86,12 +96,46 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const boyId = user?.id || matchedBoy?.id || matchedBoy?._id || '';
   const boyName = user?.name || matchedBoy?.name || 'Delivery Partner';
   const boyArea = user?.assignedArea || matchedBoy?.assignedArea || 'Madhapur';
+  const [assignedCustomers, setAssignedCustomers] = useState([]);
+  const [assignedCustomersError, setAssignedCustomersError] = useState('');
+  const loadAssignedCustomers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/deliveries/assigned-customers', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Unable to load your assigned customers.');
+      }
+      setAssignedCustomers(Array.isArray(data.customers) ? data.customers : []);
+      setAssignedCustomersError('');
+    } catch (error) {
+      setAssignedCustomersError(error.message || 'Unable to load your assigned customers.');
+    }
+  }, [token]);
 
   // Navigation tab: 'deliveries' | 'route' | 'cash' | 'profile'
-  const [navTab, setNavTab] = useState('deliveries');
+  const [navTab, setNavTab] = useState(() => {
+    const savedTab = localStorage.getItem('nmd_driver_tab');
+    const validTab = ['deliveries', 'route', 'cash', 'profile'].includes(savedTab) ? savedTab : 'deliveries';
+    return getDeliveryRoute()?.page || validTab;
+  });
+  const [profileDetailView, setProfileDetailView] = useState(() => getDeliveryRoute()?.detail || null);
+
+  const setDeliveryPath = (path, replace = false) => {
+    if (window.location.pathname === path) return;
+    const updateHistory = replace ? 'replaceState' : 'pushState';
+    window.history[updateHistory]({ nmdDeliveryPage: true }, '', path);
+  };
 
   const handleNavChange = (tab) => {
+    try {
+      localStorage.setItem('nmd_driver_tab', tab);
+    } catch (e) {}
     setNavTab(tab);
+    setProfileDetailView(null);
+    setIsEditingProfile(false);
+    setDeliveryPath(`/delivery/${tab}`);
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     const mainEl = document.querySelector('.driver-main') || document.querySelector('.driver-layout-container') || document.querySelector('.driver-content');
     if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
@@ -128,9 +172,94 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [syncingNow, setSyncingNow] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showDeletePartnerModal, setShowDeletePartnerModal] = useState(false);
+  const [isDeletingPartner, setIsDeletingPartner] = useState(false);
+  const [deletePartnerError, setDeletePartnerError] = useState('');
+
+  const handleDeletePartnerAccount = async () => {
+    setIsDeletingPartner(true);
+    setDeletePartnerError('');
+    try {
+      const targetId = boyId || matchedBoy?._id || matchedBoy?.id || user?.id || user?.mobile || 'me';
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch(`/api/delivery-boys/${targetId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ actor: boyName || user?.name || 'Delivery Partner', boyId: targetId }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Unable to delete delivery partner account.');
+      }
+      setShowDeletePartnerModal(false);
+      localStorage.removeItem('nmd_jwt_token');
+      localStorage.removeItem('nmd_user');
+      alert('Your Delivery Partner account has been permanently deleted from our database.');
+      logout();
+      if (setActiveTab) setActiveTab('home');
+    } catch (err) {
+      setDeletePartnerError(err.message || 'Unable to delete delivery partner account.');
+    } finally {
+      setIsDeletingPartner(false);
+    }
+  };
 
   // Profile Editable States (Real data from authenticated user and MongoDB)
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(() => getDeliveryRoute()?.detail === 'edit');
+  const openProfileDetail = (view) => {
+    localStorage.setItem('nmd_driver_tab', 'profile');
+    setNavTab('profile');
+    setIsEditingProfile(false);
+    setProfileDetailView(view);
+    setDeliveryPath(`/delivery/profile/${view}`);
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+  const openEditProfile = () => {
+    localStorage.setItem('nmd_driver_tab', 'profile');
+    setNavTab('profile');
+    setProfileDetailView(null);
+    setIsEditingProfile(true);
+    setDeliveryPath('/delivery/profile/edit');
+  };
+  const backToDriverProfile = () => {
+    setProfileDetailView(null);
+    setIsEditingProfile(false);
+    setDeliveryPath('/delivery/profile', true);
+  };
+
+  useEffect(() => {
+    const syncDeliveryPage = () => {
+      const route = getDeliveryRoute();
+      if (!route) {
+        if (window.location.pathname.startsWith('/delivery/')) {
+          const savedTab = localStorage.getItem('nmd_driver_tab');
+          const fallbackTab = ['deliveries', 'route', 'cash', 'profile'].includes(savedTab)
+            ? savedTab
+            : 'deliveries';
+          setNavTab(fallbackTab);
+          setProfileDetailView(null);
+          setIsEditingProfile(false);
+          setDeliveryPath(`/delivery/${fallbackTab}`, true);
+        }
+        return;
+      }
+      localStorage.setItem('nmd_driver_tab', route.page);
+      setNavTab(route.page);
+      setProfileDetailView(route.detail === 'edit' ? null : route.detail);
+      setIsEditingProfile(route.detail === 'edit');
+      const canonicalPath = route.detail
+        ? `/delivery/profile/${route.detail}`
+        : `/delivery/${route.page}`;
+      setDeliveryPath(canonicalPath, true);
+    };
+    syncDeliveryPage();
+    window.addEventListener('popstate', syncDeliveryPage);
+    return () => window.removeEventListener('popstate', syncDeliveryPage);
+  }, []);
+
   const [profileName, setProfileName] = useState(boyName);
   const [profilePhone, setProfilePhone] = useState(user?.mobile || user?.phone || matchedBoy?.mobile || '');
   const [profileEmail, setProfileEmail] = useState(user?.email || matchedBoy?.email || '');
@@ -174,10 +303,19 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   // Delete & Notification Modals
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [profileFeedbackMsg, setProfileFeedbackMsg] = useState('');
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleSaveProfile = (e) => {
     if (e) e.preventDefault();
-    setIsEditingProfile(false);
+    backToDriverProfile();
     setProfileFeedbackMsg('Driver profile updated successfully!');
     setTimeout(() => setProfileFeedbackMsg(''), 3000);
   };
@@ -224,17 +362,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     fetchDeliveries(selectedDate, 'all', boyId);
   }, [selectedDate, boyId, fetchDeliveries]);
 
+  useEffect(() => {
+    loadAssignedCustomers();
+  }, [loadAssignedCustomers]);
+
   // Real-time synchronization for deliveries
   useEffect(() => {
     const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchDeliveries(selectedDate, 'all', boyId);
+      loadAssignedCustomers();
     });
     return unsub;
-  }, [wsSubscribe, selectedDate, boyId, fetchDeliveries]);
+  }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, loadAssignedCustomers]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchDeliveries(selectedDate, 'all', boyId);
+    await Promise.all([
+      fetchDeliveries(selectedDate, 'all', boyId),
+      loadAssignedCustomers(),
+    ]);
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
@@ -295,6 +441,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
   const totalRevenue = totalCashCollected + totalUpiCollected;
   const totalDrops = myDeliveries.length;
+  const completedCount = completedList.length;
   const progressPercent = totalDrops > 0 ? Math.round((completedList.length / totalDrops) * 100) : 0;
 
   const handlePhotoCapture = async (e) => {
@@ -311,6 +458,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
       const res = await fetch('/api/upload', {
         method: 'POST',
+        headers: { ...getAuthHeaders() },
         body: formData,
       });
 
@@ -318,19 +466,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       if (res.ok && data.success && data.url) {
         setHomeProofImage(data.url);
       } else {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setHomeProofImage(event.target.result);
-        };
-        reader.readAsDataURL(file);
+        throw new Error(data.message || 'The photo could not be stored. Please retry the upload.');
       }
     } catch (err) {
-      console.warn('Photo upload warning, falling back to local preview:', err);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setHomeProofImage(event.target.result);
-      };
-      reader.readAsDataURL(file);
+      setPhotoUploadError(err.message || 'The photo could not be stored. Please retry the upload.');
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -362,20 +501,19 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const handleConfirmDelivery = async () => {
     if (!activeItem) return;
 
-    if (!homeProofImage) {
-      setPhotoUploadError('Doorstep home photo is required. Please capture or upload the photo of the home before marking delivered.');
-      return;
-    }
-
-    await markDelivered(activeItem.id, {
+    const result = await markDelivered(activeItem.id, {
       actualMilk: Number(milkQty),
       actualCurd: Number(curdQty),
       paymentMethod: payMode,
       collectedAmount: payMode === 'cash' || payMode === 'upi' ? Number(collectedNow) : 0,
       notes: deliveryNote,
       actor: boyName,
-      proofImage: homeProofImage,
+      proofImage: homeProofImage || '',
     });
+    if (!result?.success) {
+      setPhotoUploadError(result?.message || 'Delivery could not be saved. Please try again.');
+      return;
+    }
 
     // Notify Admin of completed delivery
     sendNotification({
@@ -465,6 +603,54 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   ];
 
   const currentNav = navItems.find((n) => n.id === navTab) || navItems[0];
+  const profileDetailPages = {
+    'assigned-route': {
+      title: 'Assigned Delivery Route',
+      description: 'Your assigned territory and progress for today.',
+      rows: [
+        ['Delivery area', profileArea || boyArea],
+        ['Scheduled stops', `${totalDrops} customers`],
+        ['Stops remaining', `${pendingList.length}`],
+        ['Route status', pendingList.length > 0 ? 'In progress' : 'Completed'],
+      ],
+      action: 'route',
+    },
+    'shift-schedule': {
+      title: 'Shift Schedule',
+      description: 'Your work hours and morning delivery target.',
+      rows: [
+        ['Assigned shift', profileShift || 'Morning Dispatch'],
+        ['Operating hours', '5:00 AM – 7:30 AM'],
+        ['Delivery target', 'Complete doorstep drops before 6:30 AM'],
+      ],
+    },
+    vehicle: {
+      title: 'Delivery Vehicle',
+      description: 'Vehicle details currently assigned to your route.',
+      rows: [
+        ['Registration number', bikePlate || 'Not provided'],
+        ['Vehicle model', bikeModel || 'Not provided'],
+        ['Driving license', profileLicense || 'Not provided'],
+      ],
+    },
+    depot: {
+      title: 'Dispatch Hub & Depot',
+      description: 'Your assigned dispatch location.',
+      rows: [
+        ['Hub address', profileAddress || 'Not provided'],
+        ['Assigned area', profileArea || boyArea],
+      ],
+    },
+    supervisor: {
+      title: 'Hub Supervisor Hotline',
+      description: 'Contact the operations desk if you need route or delivery support.',
+      rows: [
+        ['Supervisor phone', profileEmergencyContact || 'Not provided'],
+      ],
+      phone: profileEmergencyContact,
+    },
+  };
+  const activeProfileDetail = profileDetailPages[profileDetailView];
 
   return (
     <div className="driver-layout-root" style={{ minHeight: '100vh', display: 'flex', background: '#f8fafc' }}>
@@ -1567,6 +1753,80 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <p>{boyArea} · {pendingList.length} remaining of {totalDrops} stops</p>
               </div>
 
+              <section
+                aria-label="Assigned customers"
+                style={{
+                  padding: '16px',
+                  background: '#ffffff',
+                  border: '1px solid #dbeafe',
+                  borderRadius: '14px',
+                  boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: assignedCustomers.length ? 12 : 0 }}>
+                  <div>
+                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>
+                      Assigned customers <span style={{ color: '#2563eb' }}>({assignedCustomers.length})</span>
+                    </h2>
+                    <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.78rem' }}>
+                      Admin route assignments, including upcoming subscription deliveries
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadAssignedCustomers}
+                    aria-label="Refresh assigned customers"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #dbeafe', borderRadius: 8, padding: '7px 10px', background: '#eff6ff', color: '#1d4ed8', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    <RefreshCw size={13} /> Refresh
+                  </button>
+                </div>
+                {assignedCustomersError && (
+                  <div role="alert" style={{ marginTop: 10, color: '#b91c1c', fontSize: '0.8rem' }}>{assignedCustomersError}</div>
+                )}
+                {!assignedCustomersError && assignedCustomers.length === 0 && (
+                  <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.8rem' }}>
+                    No customers have been assigned to your route yet.
+                  </p>
+                )}
+                {assignedCustomers.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10 }}>
+                    {assignedCustomers.map((customer) => {
+                      const plan = customer.deliveryPlan || {};
+                      const planText = [
+                        plan.milkQty ? `${plan.milkQty} L milk` : '',
+                        plan.curdQty ? `${plan.curdQty} g curd` : '',
+                      ].filter(Boolean).join(' + ') || 'Plan details pending';
+                      const nextDate = customer.nextDeliveryDate
+                        ? new Date(`${customer.nextDeliveryDate}T00:00:00`).toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                        : 'Schedule pending';
+                      return (
+                        <article key={customer.id} style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
+                            <strong style={{ color: '#0f172a', fontSize: '0.86rem' }}>{customer.name}</strong>
+                            <span style={{ color: '#475569', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{customer.customerId}</span>
+                          </div>
+                          <div style={{ marginTop: 6, color: '#475569', fontSize: '0.78rem' }}>{planText} · {plan.frequency || 'daily'}</div>
+                          <div style={{ marginTop: 5, color: '#64748b', fontSize: '0.76rem' }}>
+                            {customer.area || boyArea} · Next drop: <strong style={{ color: '#047857' }}>{nextDate}</strong>
+                          </div>
+                          <div style={{ marginTop: 4, color: '#64748b', fontSize: '0.76rem' }}>{customer.address || 'Address not provided'}</div>
+                          {customer.mobile && (
+                            <a href={`tel:${customer.mobile}`} style={{ display: 'inline-flex', marginTop: 6, color: '#2563eb', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
+                              {customer.mobile}
+                            </a>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
               {/* DESKTOP BANNER (Hidden on Mobile) */}
               <div
                 className="driver-desktop-banner"
@@ -1972,8 +2232,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             >
                               {isDone ? '✓ Completed' : isMissed ? '✕ Missed' : '○ Pending'}
                             </span>
-                            <div style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                              ₹{item.totalAmount}
+                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                              {item.subscriptionEndDate
+                                ? `Prepaid to ${new Date(item.subscriptionEndDate).toLocaleDateString('en-IN')}`
+                                : `₹${item.totalAmount}`}
                             </div>
                           </div>
                         </div>
@@ -2112,6 +2374,50 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             <Navigation size={13} />
                             <span>Map</span>
                           </a>
+
+                          {isDone && (
+                            <div
+                              style={{
+                                padding: '9px 12px',
+                                background: '#ecfdf5',
+                                border: '1px solid #a7f3d0',
+                                color: '#065f46',
+                                fontWeight: 700,
+                                fontSize: '0.82rem',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                gridColumn: 'span 2',
+                              }}
+                            >
+                              <CheckCircle2 size={15} color="#059669" />
+                              <span>Delivered</span>
+                            </div>
+                          )}
+
+                          {isMissed && (
+                            <div
+                              style={{
+                                padding: '9px 12px',
+                                background: '#fef2f2',
+                                border: '1px solid #fecaca',
+                                color: '#b91c1c',
+                                fontWeight: 700,
+                                fontSize: '0.82rem',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                gridColumn: 'span 2',
+                              }}
+                            >
+                              <XCircle size={15} color="#dc2626" />
+                              <span>Missed</span>
+                            </div>
+                          )}
 
                           {isPending && (
                             <>
@@ -2471,416 +2777,899 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* ========================================================= */}
           {/* TAB 4: DRIVER PROFILE                                     */}
           {/* ========================================================= */}
+          {/* ========================================================= */}
+          {/* TAB 4: DRIVER PROFILE                                     */}
+          {/* ========================================================= */}
           {navTab === 'profile' && (
-            <div className="modern-profile-container">
-              {/* FEEDBACK TOAST */}
-              {profileFeedbackMsg && (
+            profileDetailView ? (
+              <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
+                <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
+                  <button
+                    type="button"
+                    className="modern-profile-header-btn"
+                    onClick={backToDriverProfile}
+                    aria-label="Back to profile"
+                  >
+                    <ArrowLeft size={21} />
+                  </button>
+                  <div>
+                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
+                      {activeProfileDetail?.title || 'Profile details'}
+                    </h2>
+                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.84rem' }}>
+                      {activeProfileDetail?.description || 'Review your delivery partner information.'}
+                    </p>
+                  </div>
+                </header>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '6px 18px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
+                  {(activeProfileDetail?.rows || []).map(([label, value]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '18px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
+                      <span style={{ color: '#64748b', fontSize: '0.86rem' }}>{label}</span>
+                      <strong style={{ color: '#0f172a', fontSize: '0.88rem', textAlign: 'right', lineHeight: 1.5 }}>{value}</strong>
+                    </div>
+                  ))}
+                  {activeProfileDetail?.action === 'route' && (
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      style={{ margin: '14px 0 10px' }}
+                      onClick={() => handleNavChange('route')}
+                    >
+                      <Navigation size={15} />
+                      <span>Open route and stops</span>
+                    </button>
+                  )}
+                  {activeProfileDetail?.phone && (
+                    <a
+                      href={`tel:${activeProfileDetail.phone}`}
+                      className="profile-card-action-btn"
+                      style={{ margin: '14px 0 10px', textDecoration: 'none' }}
+                    >
+                      <PhoneCall size={15} />
+                      <span>Call supervisor</span>
+                    </a>
+                  )}
+                </div>
+              </section>
+            ) : isEditingProfile ? (
+              /* ── SCREEN: EDIT PARTNER PROFILE ── */
+              <div className="modern-profile-container">
+                <div className="modern-profile-header">
+                  <button
+                    type="button"
+                    className="modern-profile-header-btn"
+                    onClick={backToDriverProfile}
+                    aria-label="Back"
+                  >
+                    <ArrowLeft size={22} />
+                  </button>
+                  <h2 className="modern-profile-header-title">Edit Partner Profile</h2>
+                  <button
+                    type="submit"
+                    form="modern-driver-edit-form"
+                    className="modern-profile-header-btn is-save"
+                    aria-label="Save profile"
+                  >
+                    <Check size={24} strokeWidth={2.5} color="#10b981" />
+                  </button>
+                </div>
+
+                {/* Centered Avatar with Camera Badge */}
+                <div className="modern-edit-avatar-wrap">
+                  <div className="modern-profile-avatar-wrap">
+                    <div className="modern-profile-avatar-placeholder">
+                      {(profileName || boyName || 'D').charAt(0).toUpperCase()}
+                    </div>
+                    <button
+                      type="button"
+                      className="modern-profile-camera-badge"
+                      title="Change photo"
+                      aria-label="Change photo"
+                      onClick={() => {
+                        alert('Upload driver photo: connect your device camera or select from gallery.');
+                      }}
+                    >
+                      <Camera size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Delivery Partner Form Fields */}
+                <form id="modern-driver-edit-form" className="modern-edit-form" onSubmit={handleSaveProfile}>
+                  {/* Name */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Partner Full Name</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="Driver Name"
+                        value={profileName}
+                        required
+                        onChange={(e) => setProfileName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* E-mail address */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">E-mail address</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="email"
+                        className="modern-edit-input"
+                        placeholder="driver@naturalmilkdairy.com"
+                        value={profileEmail}
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* User name */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Partner Username / Handle</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="@routefleet"
+                        value={driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
+                        onChange={(e) => setDriverUsername(e.target.value.replace(/^@/, ''))}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Password */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Password</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type={showDriverPassword ? 'text' : 'password'}
+                        className="modern-edit-input"
+                        value={driverPassword}
+                        onChange={(e) => setDriverPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="modern-edit-icon-btn"
+                        onClick={() => setShowDriverPassword(!showDriverPassword)}
+                        aria-label={showDriverPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showDriverPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Phone number */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Phone number</label>
+                    <div className="modern-edit-input-container">
+                      <div className="modern-edit-phone-prefix">+91</div>
+                      <input
+                        type="tel"
+                        className="modern-edit-input"
+                        placeholder="9876543210"
+                        value={profilePhone}
+                        required
+                        onChange={(e) => setProfilePhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vehicle Number */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Vehicle Registration Number</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="TS09-AB-1234"
+                        value={bikePlate}
+                        onChange={(e) => setBikePlate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vehicle Model */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Vehicle Model / Type</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="Commercial Cargo EV / Hero Electric"
+                        value={bikeModel}
+                        onChange={(e) => setBikeModel(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Assigned Delivery Area */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Assigned Delivery Area / Route</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="Madhapur Sector 1"
+                        value={profileArea}
+                        onChange={(e) => setProfileArea(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dispatch Depot Address */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Dispatch Hub / Depot Address</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="text"
+                        className="modern-edit-input"
+                        placeholder="Madhapur Farm Dispatch Depot, Pillar 42"
+                        value={profileAddress}
+                        onChange={(e) => setProfileAddress(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Emergency Contact */}
+                  <div className="modern-edit-field">
+                    <label className="modern-edit-label">Hub Supervisor / Emergency Phone</label>
+                    <div className="modern-edit-input-container">
+                      <input
+                        type="tel"
+                        className="modern-edit-input"
+                        placeholder="Supervisor / Emergency Phone"
+                        value={profileEmergencyContact}
+                        onChange={(e) => setProfileEmergencyContact(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button type="submit" className="modern-edit-submit-btn">
+                    ✓ Save Partner Profile
+                  </button>
+                </form>
+              </div>
+            ) : isMobile ? (
+              /* ── SCREEN: MOBILE DRIVER PROFILE (ONLY DRIVER DATA) ── */
+              <div className="modern-profile-container">
+                {profileFeedbackMsg && (
+                  <div
+                    className="driver-profile-feedback"
+                    style={{
+                      padding: '12px 16px',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      borderRadius: '12px',
+                      color: '#065f46',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <CheckCircle2 size={16} color="#059669" />
+                    <span>{profileFeedbackMsg}</span>
+                  </div>
+                )}
+
+                {/* Header: Back Arrow, "Delivery Partner Profile", Settings Gear */}
+                <div className="modern-profile-header">
+                  <button
+                    type="button"
+                    className="modern-profile-header-btn"
+                    onClick={() => handleNavChange('deliveries')}
+                    aria-label="Back to deliveries"
+                  >
+                    <ArrowLeft size={22} />
+                  </button>
+                  <h2 className="modern-profile-header-title">Delivery Partner</h2>
+                  <div style={{ width: 40 }} />
+                </div>
+
+                {/* Identity: Avatar with Camera Badge + Name + Handle + Red Pill Button */}
+                <div className="modern-profile-identity">
+                  <div className="modern-profile-avatar-wrap">
+                    <div className="modern-profile-avatar-placeholder">
+                      {(profileName || boyName || 'D').charAt(0).toUpperCase()}
+                    </div>
+                    <button
+                      type="button"
+                      className="modern-profile-camera-badge"
+                      onClick={openEditProfile}
+                      title="Change photo"
+                      aria-label="Change photo"
+                    >
+                      <Camera size={13} />
+                    </button>
+                  </div>
+
+                  <div className="modern-profile-identity-info">
+                    <h3 className="modern-profile-name">{profileName || boyName || 'Delivery Partner'}</h3>
+                    <span className="modern-profile-handle">
+                      {driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="modern-profile-edit-btn"
+                      onClick={openEditProfile}
+                    >
+                      Edit Profile
+                    </button>
+                  </div>
+                </div>
+
+                {/* Delivery Partner Only Menu List */}
+                <div className="modern-profile-menu-list">
+                  {/* 1. Assigned Delivery Route */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('assigned-route')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><MapPin size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Assigned Delivery Route</span>
+                        <span className="modern-profile-menu-sub">{profileArea || boyArea || 'Madhapur Sector 1'} · Morning Route</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 2. Shift Schedule */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('shift-schedule')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><Clock size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Shift Schedule</span>
+                        <span className="modern-profile-menu-sub">{profileShift || 'Morning Dispatch'} · 5:00 AM – 7:30 AM</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                        Active Shift
+                      </span>
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 3. Delivery Vehicle */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('vehicle')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><Bike size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Delivery Vehicle</span>
+                        <span className="modern-profile-menu-sub">{bikePlate || 'TS09-AB-1234'} · {bikeModel || 'Commercial Cargo EV'}</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                        Verified
+                      </span>
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 4. Today's Route Progress */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => handleNavChange('deliveries')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><CheckCircle2 size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Today's Route Progress</span>
+                        <span className="modern-profile-menu-sub">{completedCount} of {totalDrops} Deliveries Completed ({pendingList.length} Left)</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 5. Cash in Hand to Deposit */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => handleNavChange('cash')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><Wallet size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Cash in Hand to Deposit</span>
+                        <span className="modern-profile-menu-sub">₹{totalCashCollected} to Hand Over · Shift Closeout</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: totalCashCollected > 0 ? '#059669' : '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                        ₹{totalCashCollected}
+                      </span>
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 6. Dispatch Depot */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('depot')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><Navigation size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Dispatch Hub & Depot</span>
+                        <span className="modern-profile-menu-sub">{profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 7. Hub Supervisor Hotline */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('supervisor')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><PhoneCall size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Hub Supervisor Hotline</span>
+                        <span className="modern-profile-menu-sub">{profileEmergencyContact || '+91 98765 43210'} · Direct Operations Desk</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 8. Log out */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row is-logout"
+                    onClick={() => setShowLogoutConfirm(true)}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
+                      <span className="modern-profile-menu-label">Log out</span>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+
+                  {/* 9. Delete Partner Account */}
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row is-delete"
+                    onClick={() => {
+                      setDeletePartnerError('');
+                      setShowDeletePartnerModal(true);
+                    }}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444' }}>
+                        <Trash2 size={20} color="#ef4444" />
+                      </span>
+                      <div>
+                        <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 700 }}>Delete Account</span>
+                        <span className="modern-profile-menu-sub">Permanently delete partner profile & credentials</span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right">
+                      <ChevronRight size={18} />
+                    </div>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── SCREEN: WEB / DESKTOP DRIVER PROFILE (ONLY DRIVER DATA) ── */
+              <div className="profile-desktop-wrapper">
+                {profileFeedbackMsg && (
+                  <div
+                    className="driver-profile-feedback"
+                    style={{
+                      padding: '14px 18px',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      borderRadius: '14px',
+                      color: '#065f46',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <CheckCircle2 size={18} color="#059669" />
+                    <span>{profileFeedbackMsg}</span>
+                  </div>
+                )}
+
+                {/* 1. Desktop Profile Hero Banner */}
+                <div className="profile-desktop-hero">
+                  <div className="profile-hero-left">
+                    <div className="profile-hero-avatar">
+                      {(profileName || boyName || 'D').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="profile-hero-info">
+                      <div className="profile-hero-name-row">
+                        <h2 className="profile-hero-name">{profileName || boyName || 'Delivery Partner'}</h2>
+                        <span className="profile-hero-handle">
+                          PARTNER ID: NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}
+                        </span>
+                        <span
+                          style={{
+                            padding: '3px 10px',
+                            borderRadius: '12px',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            background: isOnline ? '#ecfdf5' : '#fef2f2',
+                            color: isOnline ? '#065f46' : '#991b1b',
+                            border: `1px solid ${isOnline ? '#a7f3d0' : '#fecaca'}`,
+                          }}
+                        >
+                          {isOnline ? '🟢 On Duty · Active Route' : '🔴 Offline'}
+                        </span>
+                      </div>
+                      <div className="profile-hero-meta">
+                        <span className="profile-hero-meta-item">
+                          <Phone size={14} color="#059669" /> {profilePhone || user?.mobile || 'Not provided'}
+                        </span>
+                        {profileEmail && profileEmail !== 'Not provided' && (
+                          <span className="profile-hero-meta-item">
+                            <Mail size={14} color="#059669" /> {profileEmail}
+                          </span>
+                        )}
+                        <span className="profile-hero-meta-item">
+                          <MapPin size={14} color="#059669" /> Route: {profileArea || boyArea}
+                        </span>
+                        <span className="profile-hero-meta-item">
+                          <Bike size={14} color="#059669" /> {bikePlate || 'Fleet Vehicle'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="profile-hero-btn"
+                    onClick={openEditProfile}
+                  >
+                    <Edit2 size={16} />
+                    <span>Edit Partner Profile</span>
+                  </button>
+                </div>
+
+                {/* 2. Driver Operational Cards Grid */}
+                <div className="profile-desktop-grid">
+                  {/* Card 1: Assigned Delivery Route */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Assigned Delivery Route</h3>
+                          <p className="profile-card-desc">Morning sector territory coverage</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <MapPin size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Territory / Area</span>
+                          <span className="profile-card-data-val">{profileArea || boyArea}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Total Assigned Stops</span>
+                          <span className="profile-card-data-val">{totalDrops} Morning Customers</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Route Status</span>
+                          <span className="profile-card-data-val" style={{ color: pendingList.length > 0 ? '#d97706' : '#059669' }}>
+                            {pendingList.length > 0 ? `${pendingList.length} Stops Remaining` : '✓ All Stops Completed'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={() => handleNavChange('route')}
+                    >
+                      <Navigation size={15} />
+                      <span>View Route on Map</span>
+                    </button>
+                  </div>
+
+                  {/* Card 2: Shift Schedule & Duty Timing */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Shift Schedule & Timing</h3>
+                          <p className="profile-card-desc">Cold-chain morning delivery window</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <Clock size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Assigned Shift</span>
+                          <span className="profile-card-data-val">{profileShift || 'Early Morning Dispatch'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Operating Hours</span>
+                          <span className="profile-card-data-val">5:00 AM – 7:30 AM</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Doorstep Drop SLA</span>
+                          <span className="profile-card-data-val">Before 6:30 AM Mandatory</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={() => {
+                        alert('Cold-Chain Rule: 1. Keep milk at 4°C. 2. Collect empty glass bottles. 3. Complete doorstep drops before 6:30 AM. 4. Collect cash receipts.');
+                      }}
+                    >
+                      <Info size={15} />
+                      <span>Cold-Chain Protocol Guidelines</span>
+                    </button>
+                  </div>
+
+                  {/* Card 3: Fleet Vehicle Information */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Delivery Fleet Vehicle</h3>
+                          <p className="profile-card-desc">Inspected dairy transport equipment</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <Bike size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Registration Number</span>
+                          <span className="profile-card-data-val">{bikePlate || 'TS09-AB-1234'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Vehicle Model</span>
+                          <span className="profile-card-data-val">{bikeModel || 'Commercial Cargo EV'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Crates Capacity</span>
+                          <span className="profile-card-data-val">{bikeCratesCapacity || '4 Insulated Crates (120L)'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={openEditProfile}
+                    >
+                      <Edit2 size={15} />
+                      <span>Update Vehicle Details</span>
+                    </button>
+                  </div>
+
+                  {/* Card 4: Today's Route Performance */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Today's Route Progress</h3>
+                          <p className="profile-card-desc">Real-time doorstep deliveries status</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <CheckCircle2 size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Completed Drops</span>
+                          <span className="profile-card-data-val" style={{ color: '#059669', fontSize: '1rem' }}>
+                            {completedCount} of {totalDrops} Drops
+                          </span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Pending Stops</span>
+                          <span className="profile-card-data-val" style={{ color: pendingList.length > 0 ? '#d97706' : '#059669' }}>
+                            {pendingList.length} Stops Left
+                          </span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Completion Rate</span>
+                          <span className="profile-card-data-val">
+                            {totalDrops ? Math.round((completedCount / totalDrops) * 100) : 100}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={() => handleNavChange('deliveries')}
+                    >
+                      <Truck size={15} />
+                      <span>Open Deliveries List</span>
+                    </button>
+                  </div>
+
+                  {/* Card 5: Cash Collection & Settlement */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Cash in Hand to Deposit</h3>
+                          <p className="profile-card-desc">COD cash collections from customers</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <Wallet size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Cash Collected Today</span>
+                          <span className="profile-card-data-val" style={{ color: '#059669', fontSize: '1.05rem' }}>
+                            ₹{totalCashCollected}
+                          </span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Handover Policy</span>
+                          <span className="profile-card-data-val">Deposit with manager at shift close</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Settlement Status</span>
+                          <span className="profile-card-data-val" style={{ color: totalCashCollected > 0 ? '#d97706' : '#059669' }}>
+                            {totalCashCollected > 0 ? 'Pending Handover' : '✓ No Cash Pending'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={() => handleNavChange('cash')}
+                    >
+                      <Wallet size={15} />
+                      <span>Open Cash Register & Handover</span>
+                    </button>
+                  </div>
+
+                  {/* Card 6: Dispatch Depot & Hub Desk */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Dispatch Depot & Operations</h3>
+                          <p className="profile-card-desc">Central depot & supervisor hotline</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <Navigation size={22} />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Depot Address</span>
+                          <span className="profile-card-data-val">{profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Supervisor Phone</span>
+                          <a href={`tel:${profileEmergencyContact || '9876543210'}`} style={{ color: '#059669', fontWeight: 700, textDecoration: 'none' }}>
+                            {profileEmergencyContact || '+91 98765 43210'}
+                          </a>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Operations Hours</span>
+                          <span className="profile-card-data-val">4:30 AM – 9:00 AM Daily</span>
+                        </div>
+                      </div>
+                    </div>
+                    <a
+                      href={`tel:${profileEmergencyContact || '9876543210'}`}
+                      className="profile-card-action-btn"
+                    >
+                      <PhoneCall size={15} />
+                      <span>Call Hub Supervisor</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* 3. Account Actions Row: Logout */}
                 <div
-                  className="driver-profile-feedback"
                   style={{
-                    padding: '12px 16px',
-                    background: '#ecfdf5',
-                    border: '1px solid #a7f3d0',
-                    borderRadius: '12px',
-                    color: '#065f46',
-                    fontSize: '0.84rem',
-                    fontWeight: 700,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
-                    marginBottom: '16px',
+                    justifyContent: 'space-between',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '16px',
+                    padding: '16px 22px',
+                    marginTop: '8px',
+                    flexWrap: 'wrap',
+                    gap: '12px',
                   }}
                 >
-                  <CheckCircle2 size={16} color="#059669" />
-                  <span>{profileFeedbackMsg}</span>
-                </div>
-              )}
-
-              {!isEditingProfile ? (
-                /* ── SCREEN 1: MY PROFILE ── */
-                <>
-                  {/* Header: Back Arrow, "My Profile", Settings Gear */}
-                  <div className="modern-profile-header">
-                    <button
-                      type="button"
-                      className="modern-profile-header-btn"
-                      onClick={() => handleNavChange('deliveries')}
-                      aria-label="Back to deliveries"
-                    >
-                      <ArrowLeft size={22} />
-                    </button>
-                    <h2 className="modern-profile-header-title">My Profile</h2>
-                    <button
-                      type="button"
-                      className="modern-profile-header-btn"
-                      onClick={() => setIsEditingProfile(true)}
-                      aria-label="Settings / Edit profile"
-                    >
-                      <Settings size={22} />
-                    </button>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                      Delivery Partner Account Session
+                    </h4>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                      Sign out of your driver route account on this device.
+                    </p>
                   </div>
-
-                  {/* Identity: Avatar with Camera Badge + Name + Handle + Red Pill Button */}
-                  <div className="modern-profile-identity">
-                    <div className="modern-profile-avatar-wrap">
-                      <div className="modern-profile-avatar-placeholder">
-                        {(profileName || boyName || 'D').charAt(0).toUpperCase()}
-                      </div>
-                      <button
-                        type="button"
-                        className="modern-profile-camera-badge"
-                        onClick={() => setIsEditingProfile(true)}
-                        title="Change photo"
-                        aria-label="Change photo"
-                      >
-                        <Camera size={13} />
-                      </button>
-                    </div>
-
-                    <div className="modern-profile-identity-info">
-                      <h3 className="modern-profile-name">{profileName || boyName || 'Delivery Partner'}</h3>
-                      <span className="modern-profile-handle">
-                        {driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
-                      </span>
-                      <button
-                        type="button"
-                        className="modern-profile-edit-btn"
-                        onClick={() => setIsEditingProfile(true)}
-                      >
-                        Edit Profile
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Menu List matching reference layout */}
-                  <div className="modern-profile-menu-list">
-                    {/* Favourites */}
+                  <div style={{ display: 'flex', gap: '10px' }}>
                     <button
                       type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => setIsEditingProfile(true)}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><Heart size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Favourites</span>
-                          <span className="modern-profile-menu-sub">{profileArea || boyArea || 'Madhapur Sector'} Route</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Downloads */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => handleNavChange('deliveries')}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><FileText size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Downloads</span>
-                          <span className="modern-profile-menu-sub">Morning manifests & delivery proofs</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Language */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => setIsEditingProfile(true)}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><Globe size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Language</span>
-                          <span className="modern-profile-menu-sub">{profileShift} (5:00 AM - 7:30 AM)</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Location */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => setIsEditingProfile(true)}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><MapPin size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Location</span>
-                          <span className="modern-profile-menu-sub">{profileAddress || 'Madhapur Farm Dispatch Depot'}</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Subscription */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => setIsEditingProfile(true)}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><Bike size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Subscription</span>
-                          <span className="modern-profile-menu-sub">{bikePlate || 'Delivery Fleet Bike'} · {bikeModel || 'Commercial Cargo EV'}</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
-                          Verified
-                        </span>
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Clear cashe */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row"
                       onClick={() => {
-                        refreshAll?.();
-                        setProfileFeedbackMsg('App cache cleared and routes synchronized.');
-                        setTimeout(() => setProfileFeedbackMsg(''), 2500);
+                        setDeletePartnerError('');
+                        setShowDeletePartnerModal(true);
+                      }}
+                      style={{
+                        background: '#fff1f2',
+                        color: '#e11d48',
+                        border: '1px solid #fecdd3',
+                        borderRadius: '10px',
+                        padding: '9px 16px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
                       }}
                     >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><Trash2 size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Clear cashe</span>
-                          <span className="modern-profile-menu-sub">Sync with live customer orders & route</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
+                      <Trash2 size={15} />
+                      <span>Delete Account</span>
                     </button>
-
-                    {/* Clear history */}
                     <button
                       type="button"
-                      className="modern-profile-menu-row"
-                      onClick={() => {
-                        alert('4 Pure Farm Rules: 1. Keep milk at 4°C. 2. Collect empty glass bottles. 3. Finish deliveries before 6:30 AM. 4. Collect cash receipts.');
-                      }}
-                    >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><Clock size={20} /></span>
-                        <div>
-                          <span className="modern-profile-menu-label">Clear history</span>
-                          <span className="modern-profile-menu-sub">Cold-chain guidelines & bottle exchange</span>
-                        </div>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
-                    </button>
-
-                    {/* Log out */}
-                    <button
-                      type="button"
-                      className="modern-profile-menu-row is-logout"
                       onClick={() => setShowLogoutConfirm(true)}
+                      style={{
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        borderRadius: '10px',
+                        padding: '9px 18px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
                     >
-                      <div className="modern-profile-menu-left">
-                        <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
-                        <span className="modern-profile-menu-label">Log out</span>
-                      </div>
-                      <div className="modern-profile-menu-right">
-                        <ChevronRight size={18} />
-                      </div>
+                      <LogOut size={15} />
+                      <span>Log out</span>
                     </button>
                   </div>
-                </>
-              ) : (
-                /* ── SCREEN 2: EDIT PROFILE ── */
-                <>
-                  {/* Header: Back Arrow, "Edit Profile", Green Checkmark (Save) */}
-                  <div className="modern-profile-header">
-                    <button
-                      type="button"
-                      className="modern-profile-header-btn"
-                      onClick={() => setIsEditingProfile(false)}
-                      aria-label="Back"
-                    >
-                      <ArrowLeft size={22} />
-                    </button>
-                    <h2 className="modern-profile-header-title">Edit Profile</h2>
-                    <button
-                      type="submit"
-                      form="modern-driver-edit-form"
-                      className="modern-profile-header-btn is-save"
-                      aria-label="Save profile"
-                    >
-                      <Check size={24} strokeWidth={2.5} color="#10b981" />
-                    </button>
-                  </div>
-
-                  {/* Centered Avatar with Camera Badge */}
-                  <div className="modern-edit-avatar-wrap">
-                    <div className="modern-profile-avatar-wrap">
-                      <div className="modern-profile-avatar-placeholder">
-                        {(profileName || boyName || 'D').charAt(0).toUpperCase()}
-                      </div>
-                      <button
-                        type="button"
-                        className="modern-profile-camera-badge"
-                        title="Change photo"
-                        aria-label="Change photo"
-                        onClick={() => {
-                          alert('Upload driver photo feature: select from device camera or gallery.');
-                        }}
-                      >
-                        <Camera size={13} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Form fields matching reference design */}
-                  <form id="modern-driver-edit-form" className="modern-edit-form" onSubmit={handleSaveProfile}>
-                    {/* Name */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Name</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="text"
-                          className="modern-edit-input"
-                          placeholder="Charlotte king"
-                          value={profileName}
-                          required
-                          onChange={(e) => setProfileName(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* E mail address */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">E mail address</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="email"
-                          className="modern-edit-input"
-                          placeholder="@johnkgraphics.gmail.com"
-                          value={profileEmail}
-                          onChange={(e) => setProfileEmail(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* User name */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">User name</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="text"
-                          className="modern-edit-input"
-                          placeholder="@johnkgraphics"
-                          value={driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
-                          onChange={(e) => setDriverUsername(e.target.value.replace(/^@/, ''))}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Password */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Password</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type={showDriverPassword ? 'text' : 'password'}
-                          className="modern-edit-input"
-                          value={driverPassword}
-                          onChange={(e) => setDriverPassword(e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="modern-edit-icon-btn"
-                          onClick={() => setShowDriverPassword(!showDriverPassword)}
-                          aria-label={showDriverPassword ? 'Hide password' : 'Show password'}
-                        >
-                          {showDriverPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Phone number */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Phone number</label>
-                      <div className="modern-edit-input-container">
-                        <div className="modern-edit-phone-prefix">+91 ▼</div>
-                        <input
-                          type="tel"
-                          className="modern-edit-input"
-                          placeholder="6895312"
-                          value={profilePhone}
-                          required
-                          onChange={(e) => setProfilePhone(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Vehicle Number */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Vehicle Number</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="text"
-                          className="modern-edit-input"
-                          placeholder="TS09-AB-1234"
-                          value={bikePlate}
-                          onChange={(e) => setBikePlate(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Assigned Delivery Area */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Assigned Delivery Area</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="text"
-                          className="modern-edit-input"
-                          placeholder="Madhapur Sector 1"
-                          value={profileArea}
-                          onChange={(e) => setProfileArea(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Emergency Contact */}
-                    <div className="modern-edit-field">
-                      <label className="modern-edit-label">Emergency Contact</label>
-                      <div className="modern-edit-input-container">
-                        <input
-                          type="tel"
-                          className="modern-edit-input"
-                          placeholder="Supervisor / Emergency Phone"
-                          value={profileEmergencyContact}
-                          onChange={(e) => setProfileEmergencyContact(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Submit Button */}
-                    <button type="submit" className="modern-edit-submit-btn">
-                      ✓ Save Profile
-                    </button>
-                  </form>
-                </>
-              )}
-            </div>
+                </div>
+              </div>
+            )
           )}
         </div>
       </div>
@@ -3026,14 +3815,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   border: '1px solid #bbf7d0',
                 }}
               >
-                <span style={{ fontWeight: 700, color: '#065f46', fontSize: '0.88rem' }}>Order Total:</span>
-                <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#059669' }}>
-                  ₹{Number(milkQty) * 60 + (Number(curdQty) / 500) * 30}
+                <span style={{ fontWeight: 700, color: '#065f46', fontSize: '0.88rem' }}>
+                  {activeItem?.subscriptionEndDate ? 'Subscription payment:' : 'Order Total:'}
+                </span>
+                <span style={{ fontSize: activeItem?.subscriptionEndDate ? '0.92rem' : '1.35rem', fontWeight: 800, color: '#059669', textAlign: 'right' }}>
+                  {activeItem?.subscriptionEndDate
+                    ? `₹${Number(activeItem.subscriptionPaymentAmount || 0).toLocaleString('en-IN')} paid by ${activeItem.subscriptionPaymentMethod?.toUpperCase() || 'RAZORPAY'}${activeItem.subscriptionPaymentId ? ` · ref ${activeItem.subscriptionPaymentId.slice(-8)}` : ''}`
+                    : `₹${Number(milkQty) * 60 + (Number(curdQty) / 500) * 30}`}
                 </span>
               </div>
 
               {/* Payment Mode Selection */}
-              <div>
+              {activeItem?.subscriptionEndDate ? (
+                <p style={{ margin: 0, fontSize: '0.8rem', color: '#047857', fontWeight: 700 }}>
+                  This delivery is covered by the prepaid subscription through {new Date(activeItem.subscriptionEndDate).toLocaleDateString('en-IN')}. Do not collect payment.
+                </p>
+              ) : <div>
                 <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
                   Payment Method:
                 </label>
@@ -3062,7 +3859,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </button>
                   ))}
                 </div>
-              </div>
+              </div>}
 
               {/* Note */}
               <input
@@ -3464,6 +4261,198 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           </div>
         </div>
       )}
+      {/* Delivery Partner Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="modal-overlay" onClick={() => setShowLogoutConfirm(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '420px', padding: '26px 24px', borderRadius: '18px', textAlign: 'center' }}
+          >
+            <div
+              style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '50%',
+                background: '#fef3c7',
+                color: '#d97706',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px',
+              }}
+            >
+              <LogOut size={26} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+              Sign Out of Driver Route?
+            </h3>
+            <p style={{ fontSize: '0.88rem', color: '#64748b', margin: '0 0 22px 0', lineHeight: 1.5 }}>
+              Are you sure you want to sign out of your Natural Milk Dairy partner account?
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                  if (setActiveTab) setActiveTab('home');
+                }}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#059669',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Delivery Partner Account Confirmation Modal */}
+      {showDeletePartnerModal && (
+        <div className="modal-overlay" onClick={() => !isDeletingPartner && setShowDeletePartnerModal(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', padding: '28px 24px', borderRadius: '18px', textAlign: 'center' }}
+          >
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: '#fee2e2',
+                color: '#dc2626',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px',
+              }}
+            >
+              <Trash2 size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+              Delete Partner Account?
+            </h3>
+            <p style={{ fontSize: '0.86rem', color: '#64748b', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete your <strong>Natural Milk Dairy Partner</strong> account?
+            </p>
+            <div
+              style={{
+                background: '#fff1f2',
+                border: '1px solid #fecdd3',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                textAlign: 'left',
+                fontSize: '0.8rem',
+                color: '#9f1239',
+                lineHeight: 1.5,
+                marginBottom: '20px',
+              }}
+            >
+              <strong>⚠️ Permanent Database Action:</strong>
+              <div style={{ marginTop: '4px' }}>
+                • Your driver profile and credentials will be permanently erased.<br />
+                • Assigned delivery routes will be detached.<br />
+                • Handover records and route history will be removed.
+              </div>
+            </div>
+
+            {deletePartnerError && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '10px',
+                  color: '#dc2626',
+                  padding: '10px 12px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  marginBottom: '16px',
+                }}
+              >
+                {deletePartnerError}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <button
+                type="button"
+                disabled={isDeletingPartner}
+                onClick={() => setShowDeletePartnerModal(false)}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: isDeletingPartner ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingPartner}
+                onClick={handleDeletePartnerAccount}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: isDeletingPartner ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isDeletingPartner ? (
+                  <>
+                    <RefreshCw size={16} className="spin-animation" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    <span>Yes, Delete Account</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

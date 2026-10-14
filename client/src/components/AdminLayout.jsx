@@ -47,11 +47,11 @@ export default function AdminLayout({
     },
     {
       id: 'deliveries',
-      label: "Today's Deliveries",
+      label: 'Deliveries',
       icon: Truck,
       badge: summary.deliveriesCount ? `${summary.deliveriesCount}` : null,
       badgeColor: '#059669',
-      desc: 'Morning routes & drop fulfillment',
+      desc: 'Route fulfillment, tracking & schedules',
     },
     {
       id: 'customers',
@@ -60,6 +60,13 @@ export default function AdminLayout({
       badge: summary.totalCustomers ? `${summary.totalCustomers}` : null,
       badgeColor: '#2563eb',
       desc: 'Active accounts & subscriptions',
+    },
+    {
+      id: 'subscriptions',
+      label: 'Subscriptions',
+      icon: Wallet,
+      badge: null,
+      desc: 'Customer plans & payment records',
     },
     {
       id: 'ledger',

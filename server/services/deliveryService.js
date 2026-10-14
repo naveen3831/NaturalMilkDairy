@@ -22,6 +22,28 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
     const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
 
     for (const customer of customers) {
+      const subscription = customer.subscription;
+      if (subscription?.status === 'pending_payment' || subscription?.status === 'expired' ||
+          subscription?.status === 'cancelled') {
+        continue;
+      }
+      if (subscription?.status === 'active' && subscription.endDate &&
+          formatDate(new Date(subscription.endDate)) < dateStr) {
+        if (formatDate(new Date(subscription.endDate)) < formatDate() &&
+            dateStr >= formatDate()) {
+          await Customer.updateOne(
+            { _id: customer._id, 'subscription.status': 'active' },
+            { $set: { 'subscription.status': 'expired' } }
+          );
+        }
+        continue;
+      }
+      if (subscription?.status === 'active' && subscription.startDate &&
+          formatDate(new Date(subscription.startDate)) > dateStr &&
+          dateStr !== formatDate()) {
+        continue;
+      }
+
       // Check pause
       if (customer.status === 'paused') {
         continue;
@@ -91,6 +113,10 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
           paymentStatus: paymentType === 'prepaid' ? 'advance' : 'credit',
           paymentAmount: 0,
           paymentMethod: paymentType === 'prepaid' ? 'advance' : 'credit',
+          subscriptionEndDate: customer.subscription?.status === 'active' ? customer.subscription.endDate : null,
+          subscriptionPaymentAmount: customer.subscription?.status === 'active' ? customer.subscription.amount : 0,
+          subscriptionPaymentMethod: customer.subscription?.status === 'active' ? 'razorpay' : '',
+          subscriptionPaymentId: customer.subscription?.status === 'active' ? customer.subscription.paymentId : '',
           notes: customer.notes || '',
           deliveredAt: null,
           createdAt: new Date(),

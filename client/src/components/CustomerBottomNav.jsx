@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 export const CUSTOMER_PORTAL_ITEMS = [
-  { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+  { id: 'dashboard', label: 'Home', icon: Home },
   { id: 'subscription', label: 'Subscription', icon: CalendarDays },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'profile', label: 'Profile', icon: UserRound },

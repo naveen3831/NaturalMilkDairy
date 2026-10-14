@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -62,18 +62,37 @@ const formatProfileDate = (value) => {
   return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleDateString();
 };
 
+const getCustomerRoute = () => {
+  const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
+  if (section !== 'customer' || !['dashboard', 'subscription', 'deliveries', 'profile'].includes(page)) {
+    return null;
+  }
+  const profileViews = [
+    'personal-info', 'subscription', 'deliveries', 'wallet', 'pause', 'quantity',
+    'delivery-window', 'drop-instructions', 'support', 'about', 'delete-account',
+  ];
+  return {
+    page,
+    detail: page === 'profile' && profileViews.includes(detail) ? detail : null,
+  };
+};
+
 export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenTempQtyModal, onOpenPaymentModal }) {
   const { user, logout, setUser, getAuthHeaders } = useAuth();
-  const { customers, deliveries, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
+  const { customers, deliveries, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
   const { subscribe: wsSubscribe } = useWebSocket();
-  const [activePage, setActivePage] = useState(() => localStorage.getItem('nmd_customer_page') || 'dashboard');
+  const [activePage, setActivePage] = useState(() => {
+    const savedPage = localStorage.getItem('nmd_customer_page');
+    const validPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedPage) ? savedPage : 'dashboard';
+    return getCustomerRoute()?.page || validPage;
+  });
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState(null);
   const [ledgerCustomer, setLedgerCustomer] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
-  const [profileDetailView, setProfileDetailView] = useState(null);
+  const [profileDetailView, setProfileDetailView] = useState(() => getCustomerRoute()?.detail || null);
 
   const matchedCustomer = customers.find((customer) =>
     customer.mobile === user?.mobile
@@ -100,6 +119,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     .reverse();
   const isPaused = currentCustomer.status === 'paused';
   const balance = Number(currentCustomer.currentBalance) || 0;
+  const subscriptionThrough = currentCustomer.subscription?.endDate
+    ? new Date(currentCustomer.subscription.endDate)
+    : null;
+  const hasPaidSubscription = ['active', 'expired'].includes(currentCustomer.subscription?.status);
+  const subscriptionStatusLabel = currentCustomer.subscription?.status === 'pending_payment'
+    ? 'Payment pending'
+    : currentCustomer.subscription?.status === 'expired'
+      ? 'Expired'
+      : isPaused
+        ? 'Paused'
+        : currentCustomer.subscription?.status === 'active' || !currentCustomer.subscription?.status
+          ? 'Active'
+          : 'Not subscribed';
   const address = [currentCustomer.address, currentCustomer.area]
     .filter((part, index, parts) => part && parts.indexOf(part) === index)
     .join(', ');
@@ -110,7 +142,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const deliveryFrequency = String(currentCustomer.deliveryPlan?.frequency || 'daily');
   const currentPage = CUSTOMER_PORTAL_ITEMS.find((page) => page.id === activePage) || CUSTOMER_PORTAL_ITEMS[0];
   const customerLedgerId = matchedCustomer.customerId || matchedCustomer.id || user?.customerId || user?.id;
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(() => getCustomerRoute()?.detail === 'personal-info');
   const [profileForm, setProfileForm] = useState({});
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
@@ -136,6 +168,42 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    const syncCustomerPage = () => {
+      const route = getCustomerRoute();
+      if (!route) {
+        if (window.location.pathname.startsWith('/customer/')) {
+          const savedPage = localStorage.getItem('nmd_customer_page');
+          const fallbackPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedPage)
+            ? savedPage
+            : 'dashboard';
+          setActivePage(fallbackPage);
+          setProfileDetailView(null);
+          setIsEditingProfile(false);
+          setCustomerPath(`/customer/${fallbackPage}`, true);
+        }
+        return;
+      }
+      localStorage.setItem('nmd_customer_page', route.page);
+      setActivePage(route.page);
+      setProfileDetailView(route.detail);
+      setIsEditingProfile(route.detail === 'personal-info');
+      const canonicalPath = route.detail
+        ? `/customer/profile/${route.detail}`
+        : `/customer/${route.page}`;
+      setCustomerPath(canonicalPath, true);
+    };
+    syncCustomerPage();
+    window.addEventListener('popstate', syncCustomerPage);
+    return () => window.removeEventListener('popstate', syncCustomerPage);
+  }, []);
+
+  const setCustomerPath = (path, replace = false) => {
+    if (window.location.pathname === path) return;
+    const updateHistory = replace ? 'replaceState' : 'pushState';
+    window.history[updateHistory]({ nmdCustomerPage: true }, '', path);
+  };
+
   const openProfileDetail = (view) => {
     if (view === 'personal-info') {
       setProfileForm({
@@ -151,7 +219,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       setProfileMessage('');
       setIsEditingProfile(true);
     }
+    localStorage.setItem('nmd_customer_page', 'profile');
+    setActivePage('profile');
     setProfileDetailView(view);
+    setCustomerPath(`/customer/profile/${view}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -171,8 +242,24 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           });
         }
       })
-      .catch(() => {});
   }, [customerLedgerId]);
+
+  const handleDeleteUserHistory = async (entryId) => {
+    if (!entryId || !customerLedgerId) return;
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(customerLedgerId)}/history/${encodeURIComponent(entryId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLedgerEntries((prev) => prev.filter((e) => e.id !== entryId && e.rawItem?._id !== entryId));
+        reloadLedger();
+      }
+    } catch (e) {
+      console.warn('Delete history error:', e);
+    }
+  };
 
   // Keep ledgerCustomer live when matchedCustomer changes from DairyContext
   useEffect(() => {
@@ -260,13 +347,148 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
   };
 
+  const [customerSubscriptions, setCustomerSubscriptions] = useState([]);
+  const [selectedSubForDetails, setSelectedSubForDetails] = useState(null);
+  const [subToggling, setSubToggling] = useState(false);
+
+  const fetchCustomerSubscriptions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/subscriptions/my', {
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.subscriptions)) {
+          setCustomerSubscriptions(data.subscriptions);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch customer subscriptions:', e);
+    }
+  }, [getAuthHeaders]);
+
+  useEffect(() => {
+    fetchCustomerSubscriptions();
+  }, [fetchCustomerSubscriptions]);
+
+  const allCustomerSubscriptions = useMemo(() => {
+    const list = Array.isArray(customerSubscriptions) ? [...customerSubscriptions] : [];
+    const plan = currentCustomer.deliveryPlan || {};
+    const subInfo = currentCustomer.subscription || {};
+
+    if (list.length > 0) {
+      return list.map((item) => ({
+        ...item,
+        status: isPaused ? 'paused' : (item.status || 'active'),
+        deliveryBoyName: item.deliveryBoyName || plan.deliveryBoyName || '',
+        area: item.area || currentCustomer.area || '',
+        deliveryAddress: item.deliveryAddress || currentCustomer.address || '',
+      }));
+    }
+
+    const calculatedDailyCost = (Number(milkQuantity) || 1) * 60 + ((Number(curdQuantity) || 0) / 500) * 30;
+
+    return [{
+      _id: currentCustomer._id || currentCustomer.id || 'primary-plan',
+      id: currentCustomer.id || currentCustomer._id || 'primary-plan',
+      isPrimaryAccountPlan: true,
+      customerId: currentCustomer.customerId || 'CUST-101',
+      customerName: currentCustomer.name || user?.name || 'Customer',
+      status: isPaused ? 'paused' : (subInfo.status === 'expired' ? 'expired' : (currentCustomer.status === 'active' ? 'active' : 'paused')),
+      plan: {
+        milkQty: milkQuantity || 1,
+        milkUnit: milkUnit || 'L',
+        curdQty: curdQuantity || 0,
+        curdUnit: curdUnit || 'g',
+        frequency: plan.frequency || 'daily',
+        deliveryDays: plan.deliveryDays || [],
+      },
+      deliveryAddress: currentCustomer.address || 'Doorstep drop',
+      area: currentCustomer.area || 'Bangalore',
+      landmark: currentCustomer.landmark || '',
+      whatsapp: currentCustomer.whatsapp || currentCustomer.mobile || '',
+      startDate: subInfo.startDate || plan.startDate || currentCustomer.createdAt,
+      endDate: subInfo.endDate || subscriptionThrough,
+      amount: (subInfo.amount ? subInfo.amount * 100 : (calculatedDailyCost * 30 * 100)) || 180000,
+      providerPaymentId: subInfo.paymentId || '',
+      providerOrderId: '',
+      deliveryBoyName: plan.deliveryBoyName || '',
+    }];
+  }, [customerSubscriptions, currentCustomer, isPaused, milkQuantity, milkUnit, curdQuantity, curdUnit, subscriptionThrough, user?.name]);
+
+  const handleToggleCustomerSub = async (sub, targetAction) => {
+    setSubToggling(true);
+    try {
+      const custId = currentCustomer.id || currentCustomer._id || customerLedgerId;
+      const subId = sub._id || sub.id;
+
+      if (targetAction === 'stop') {
+        const today = new Date().toISOString().split('T')[0];
+        await pauseDelivery(custId, {
+          pauseFrom: today,
+          pauseUntil: null,
+          reason: 'Customer stopped subscription',
+          actor: user?.name || currentCustomer.name || 'Customer',
+        });
+        if (subId && subId.length === 24) {
+          try {
+            await fetch(`/api/subscriptions/${subId}/stop`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+              body: JSON.stringify({ action: 'stop', actor: user?.name || 'Customer' }),
+            });
+          } catch (e) {}
+        }
+        setProfileMessage('Your subscription has been stopped / paused. Daily morning deliveries are paused.');
+      } else {
+        await resumeDelivery(custId, { actor: user?.name || currentCustomer.name || 'Customer' });
+        if (subId && subId.length === 24) {
+          try {
+            await fetch(`/api/subscriptions/${subId}/start`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+              body: JSON.stringify({ action: 'start', actor: user?.name || 'Customer' }),
+            });
+          } catch (e) {}
+        }
+        setProfileMessage('Your subscription has been restarted! Daily doorstep delivery is active.');
+      }
+
+      refreshAll?.();
+      notifyRealtimeSync?.();
+      reloadLedger?.();
+      fetchCustomerSubscriptions();
+
+      if (selectedSubForDetails) {
+        setSelectedSubForDetails((prev) => prev ? {
+          ...prev,
+          status: targetAction === 'stop' ? 'paused' : 'active',
+        } : null);
+      }
+    } catch (e) {
+      console.error('Error toggling subscription:', e);
+      alert('Unable to update subscription. Please try again.');
+    } finally {
+      setSubToggling(false);
+    }
+  };
+
   const navigateToPage = (page) => {
     localStorage.setItem('nmd_customer_page', page);
     setActivePage(page);
     setProfileDetailView(null);
+    setIsEditingProfile(false);
+    setCustomerPath(`/customer/${page}`);
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     const mainEl = document.querySelector('.customer-dashboard-content') || document.querySelector('.customer-app-main');
     if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+
+  const backToProfile = () => {
+    setProfileDetailView(null);
+    setIsEditingProfile(false);
+    setCustomerPath('/customer/profile', true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const beginProfileEdit = () => {
@@ -322,6 +544,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       setTimeout(() => {
         setProfileDetailView(null);
+        setCustomerPath('/customer/profile', true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 1200);
     } catch (error) {
@@ -366,14 +589,22 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const deleteAccount = async (event) => {
-    event.preventDefault();
+    if (event && event.preventDefault) event.preventDefault();
     setDeletingAccount(true);
     setDeleteError('');
     try {
-      const response = await fetch('/api/customers/me/account', {
+      const token = localStorage.getItem('nmd_jwt_token');
+      const targetId = currentCustomer?._id || currentCustomer?.customerId || user?.id || 'me';
+      const response = await fetch(`/api/customers/${targetId}`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ confirmation: deleteConfirmation, password: deletePassword }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          actor: currentCustomer?.name || user?.name || 'Customer',
+          customerId: targetId,
+        }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -381,6 +612,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       }
       setShowDeleteConfirm(false);
       localStorage.removeItem('nmd_customer_page');
+      localStorage.removeItem('nmd_jwt_token');
+      localStorage.removeItem('nmd_user');
+      alert('Your customer account and all associated data have been permanently deleted from our database.');
       logout();
       setActiveTab('home');
     } catch (error) {
@@ -399,9 +633,21 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         </div>
         <span className={`customer-status-pill${isPaused ? ' is-paused' : ''}`}>
           <span />
-          {isPaused ? 'Paused' : 'Active'}
+          {isPaused ? 'Paused' : (currentCustomer.subscription?.status === 'active' ? 'Prepaid & active' : (currentCustomer.subscription?.status === 'expired' ? 'Renewal due' : 'Not subscribed'))}
         </span>
       </div>
+
+      {hasPaidSubscription && (
+        <div className="customer-plan-details" style={{ marginTop: '12px' }}>
+          <div>
+            <BadgeCheck size={17} aria-hidden="true" />
+            <span>
+              {currentCustomer.subscription?.status === 'active' ? 'Prepaid subscription through ' : 'Subscription ended '}
+              <strong>{subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) || 'date unavailable'}</strong>
+            </span>
+          </div>
+        </div>
+      )}
 
       <div className="customer-plan-quantities">
         <div className="customer-quantity-tile">
@@ -560,6 +806,574 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     </article>
   );
 
+  const toTitle = (str = '') => String(str || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const renderSubscriptionDetailsModal = () => {
+    if (!selectedSubForDetails) return null;
+    const sub = selectedSubForDetails;
+    const isSubActive = sub.status === 'active';
+    const isSubPaused = sub.status === 'paused' || sub.status === 'stopped';
+    const plan = sub.plan || {};
+    const planMilk = plan.milkQty || milkQuantity || 1;
+    const planMilkUnit = plan.milkUnit || milkUnit || 'L';
+    const planCurd = plan.curdQty || curdQuantity || 0;
+    const planCurdUnit = plan.curdUnit || curdUnit || 'g';
+    const freqLabel = plan.frequency === 'selected'
+      ? `Selected Days (${(plan.deliveryDays || []).join(', ')})`
+      : (plan.frequency === 'alternate' ? 'Alternate Days Delivery' : 'Everyday Morning Delivery');
+    const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Assigned Route Partner';
+    const dropAddress = sub.deliveryAddress || currentCustomer.address || 'Doorstep drop';
+    const areaName = sub.area || currentCustomer.area || '';
+    const landmarkName = sub.landmark || currentCustomer.landmark || '';
+    const phoneContact = sub.whatsapp || currentCustomer.whatsapp || currentCustomer.mobile || user?.mobile || '';
+
+    return (
+      <div
+        className="modal-overlay"
+        onClick={() => setSelectedSubForDetails(null)}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px',
+        }}
+      >
+        <div
+          className="modal-content"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            maxWidth: '560px',
+            width: '100%',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            borderRadius: '20px',
+            background: '#ffffff',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: '24px',
+            position: 'relative',
+          }}
+        >
+          {/* Modal Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px', marginBottom: '18px' }}>
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#059669', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+                <BadgeCheck size={14} />
+                <span>Subscription Details</span>
+              </div>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
+                Daily Farm Fresh Dairy Plan
+              </h3>
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Customer ID: <strong>{sub.customerId || currentCustomer.customerId || 'CUST-101'}</strong> · {sub._id && sub._id.length === 24 ? `Order ID: #${sub._id.slice(-6).toUpperCase()}` : 'Standard Daily Route'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSubForDetails(null)}
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: '1rem',
+              }}
+              title="Close"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Status Alert Banner */}
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: isSubActive ? '#ecfdf5' : '#fffbeb',
+              border: `1.5px solid ${isSubActive ? '#86efac' : '#fde68a'}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              marginBottom: '18px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <span
+                style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: isSubActive ? '#10b981' : '#f59e0b',
+                }}
+              />
+              <div>
+                <strong style={{ fontSize: '0.88rem', color: isSubActive ? '#065f46' : '#92400e', display: 'block' }}>
+                  {isSubActive ? 'Subscription is Active' : 'Subscription is Stopped / Paused'}
+                </strong>
+                <span style={{ fontSize: '0.74rem', color: isSubActive ? '#047857' : '#b45309' }}>
+                  {isSubActive ? 'Daily morning doorstep delivery is confirmed.' : 'Daily morning doorstep deliveries are temporarily on hold.'}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Stop/Start in banner */}
+            <button
+              type="button"
+              disabled={subToggling}
+              onClick={() => handleToggleCustomerSub(sub, isSubActive ? 'stop' : 'start')}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: 'none',
+                background: isSubActive ? '#b45309' : '#059669',
+                color: '#ffffff',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                cursor: subToggling ? 'wait' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                flexShrink: 0,
+              }}
+            >
+              {isSubActive ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
+              <span>{subToggling ? 'Updating...' : (isSubActive ? 'Stop Sub' : 'Start Sub')}</span>
+            </button>
+          </div>
+
+          {/* Section 1: Dairy Items */}
+          <div style={{ marginBottom: '16px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
+              Daily Dairy Quota
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block' }}>Fresh A2 Cow Milk</span>
+                <strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{planMilk} {planMilkUnit}</strong>
+                <span style={{ fontSize: '0.70rem', color: '#059669', display: 'block', marginTop: '2px' }}>Chilled Glass Bottle · 4°C</span>
+              </div>
+              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block' }}>Fresh Desi Curd / Dahi</span>
+                <strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{planCurd > 0 ? `${planCurd} ${planCurdUnit}` : 'None Included'}</strong>
+                <span style={{ fontSize: '0.70rem', color: '#059669', display: 'block', marginTop: '2px' }}>Traditional Clay Pot Set</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Schedule & Delivery Route */}
+          <div style={{ marginBottom: '16px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
+              Delivery Schedule & Drop Details
+            </span>
+            <div style={{ background: '#f8fafc', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Delivery Timing:</span>
+                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>5:00 AM – 6:30 AM (Early Morning)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Delivery Frequency:</span>
+                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>{freqLabel}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Assigned Partner:</span>
+                <strong style={{ color: '#059669', fontSize: '0.82rem' }}>{partnerName}</strong>
+              </div>
+              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
+                <span style={{ color: '#64748b', fontSize: '0.74rem', display: 'block', marginBottom: '2px' }}>Doorstep Drop Address:</span>
+                <div style={{ color: '#0f172a', fontSize: '0.82rem', fontWeight: 600 }}>
+                  {dropAddress} {areaName ? `· ${areaName}` : ''} {landmarkName ? `(Near ${landmarkName})` : ''}
+                </div>
+                {phoneContact && (
+                  <span style={{ color: '#64748b', fontSize: '0.74rem', marginTop: '2px', display: 'block' }}>
+                    Phone for drop updates: {phoneContact}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Billing & Validity */}
+          <div style={{ marginBottom: '20px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
+              Billing & Validity
+            </span>
+            <div style={{ background: '#f8fafc', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>Subscription Duration</span>
+                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>
+                  {formatProfileDate(sub.startDate)} – {formatProfileDate(sub.endDate || subscriptionThrough)}
+                </strong>
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>Payment Reference</span>
+                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>
+                  {sub.providerPaymentId || currentCustomer.subscription?.paymentId || 'Prepaid Account'}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Actions */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+            {isSubActive ? (
+              <button
+                type="button"
+                disabled={subToggling}
+                onClick={() => handleToggleCustomerSub(sub, 'stop')}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: '1.5px solid #fde68a',
+                  background: '#fffbeb',
+                  color: '#b45309',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  cursor: subToggling ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <PauseCircle size={16} />
+                <span>{subToggling ? 'Updating...' : 'Stop Subscription'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={subToggling}
+                onClick={() => handleToggleCustomerSub(sub, 'start')}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#059669',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  cursor: subToggling ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <PlayCircle size={16} />
+                <span>{subToggling ? 'Updating...' : 'Start Subscription'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSelectedSubForDetails(null)}
+              style={{
+                padding: '11px',
+                borderRadius: '10px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#475569',
+                fontWeight: 750,
+                fontSize: '0.86rem',
+                cursor: 'pointer',
+              }}
+            >
+              Close Details
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSubscriptionPage = () => {
+    return (
+      <section className="customer-dashboard-main customer-subscription-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Banner with stats */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)',
+            borderRadius: '18px',
+            padding: '24px',
+            color: '#ffffff',
+            boxShadow: '0 8px 24px rgba(13, 92, 58, 0.18)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px',
+          }}
+        >
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.18)', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '8px' }}>
+              <Sparkles size={12} />
+              <span>Doorstep Delivery Plans</span>
+            </div>
+            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 6px 0', color: '#ffffff' }}>
+              My Dairy Subscriptions
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.86rem', color: '#d1fae5', maxWidth: '520px', lineHeight: 1.5 }}>
+              Review your active daily morning milk drop, tap any card to view full delivery details, or stop & restart anytime.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '10px 16px', textAlign: 'center', minWidth: '100px' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>{allCustomerSubscriptions.length}</div>
+              <div style={{ fontSize: '0.70rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Total Plans</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '10px 16px', textAlign: 'center', minWidth: '100px' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>{milkQuantity} <span style={{ fontSize: '0.85rem' }}>{milkUnit}</span></div>
+              <div style={{ fontSize: '0.70rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Daily Milk</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Subscription Cards List */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+              Active & Scheduled Subscriptions
+            </h3>
+            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
+              Tap any card to view complete details
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+            {allCustomerSubscriptions.map((sub, index) => {
+              const isSubActive = sub.status === 'active';
+              const isSubPaused = sub.status === 'paused' || sub.status === 'stopped';
+              const plan = sub.plan || {};
+              const planMilk = plan.milkQty || milkQuantity || 1;
+              const planMilkUnit = plan.milkUnit || milkUnit || 'L';
+              const planCurd = plan.curdQty || curdQuantity || 0;
+              const planCurdUnit = plan.curdUnit || curdUnit || 'g';
+              const freqLabel = plan.frequency === 'selected'
+                ? `Days: ${(plan.deliveryDays || []).join(', ')}`
+                : (plan.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning');
+              const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Assigned Route Partner';
+
+              return (
+                <div
+                  key={sub._id || sub.id || index}
+                  onClick={() => setSelectedSubForDetails(sub)}
+                  style={{
+                    background: '#ffffff',
+                    border: isSubActive ? '1.5px solid #86efac' : isSubPaused ? '1.5px solid #fde68a' : '1.5px solid #e2e8f0',
+                    borderRadius: '18px',
+                    padding: '20px',
+                    boxShadow: '0 4px 18px rgba(15, 23, 42, 0.05)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: '16px',
+                    position: 'relative',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(15, 23, 42, 0.09)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 18px rgba(15, 23, 42, 0.05)';
+                  }}
+                >
+                  {/* Card Header */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '12px',
+                            background: isSubActive ? '#ecfdf5' : isSubPaused ? '#fffbeb' : '#f1f5f9',
+                            color: isSubActive ? '#059669' : isSubPaused ? '#d97706' : '#64748b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Milk size={22} />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                            Daily Farm Pure Milk Plan
+                          </h4>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                            ID: {sub.customerId || currentCustomer.customerId || 'CUST-101'} · {freqLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Status Pill */}
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          fontSize: '0.72rem',
+                          fontWeight: 750,
+                          background: isSubActive ? '#ecfdf5' : isSubPaused ? '#fffbeb' : '#f1f5f9',
+                          color: isSubActive ? '#047857' : isSubPaused ? '#b45309' : '#475569',
+                          border: `1px solid ${isSubActive ? '#a7f3d0' : isSubPaused ? '#fde68a' : '#e2e8f0'}`,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: '7px',
+                            height: '7px',
+                            borderRadius: '50%',
+                            background: isSubActive ? '#10b981' : isSubPaused ? '#f59e0b' : '#94a3b8',
+                          }}
+                        />
+                        {isSubActive ? 'Active' : isSubPaused ? 'Stopped' : toTitle(sub.status || 'Active')}
+                      </span>
+                    </div>
+
+                    {/* Quantity Chips */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                      <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                        <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Pure A2 Milk</span>
+                        <strong style={{ fontSize: '1rem', color: '#0f172a', fontWeight: 800 }}>{planMilk} <small style={{ fontSize: '0.76rem', color: '#059669' }}>{planMilkUnit}/day</small></strong>
+                      </div>
+                      <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                        <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Fresh Dahi/Curd</span>
+                        <strong style={{ fontSize: '1rem', color: '#0f172a', fontWeight: 800 }}>{planCurd > 0 ? `${planCurd} ` : 'None'}<small style={{ fontSize: '0.76rem', color: '#059669' }}>{planCurd > 0 ? planCurdUnit : ''}</small></strong>
+                      </div>
+                    </div>
+
+                    {/* Key Plan Details */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '0.80rem', color: '#475569' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock3 size={14} color="#059669" />
+                        <span>Morning Delivery: <strong>Before 6:30 AM</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Truck size={14} color="#059669" />
+                        <span>Partner: <strong>{partnerName}</strong></span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MapPin size={14} color="#059669" />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Drop: {sub.deliveryAddress || currentCustomer.address || 'Doorstep drop'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Bottom / Action Row */}
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      paddingTop: '14px',
+                      borderTop: '1px solid #f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubForDetails(sub)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#059669',
+                        fontSize: '0.78rem',
+                        fontWeight: 750,
+                        cursor: 'pointer',
+                        padding: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Eye size={14} />
+                      <span>View all details</span>
+                      <ChevronRight size={14} />
+                    </button>
+
+                    {/* Option to Stop or Start Subscription */}
+                    {isSubActive ? (
+                      <button
+                        type="button"
+                        disabled={subToggling}
+                        onClick={() => handleToggleCustomerSub(sub, 'stop')}
+                        style={{
+                          background: '#fffbeb',
+                          color: '#b45309',
+                          border: '1.5px solid #fde68a',
+                          padding: '7px 14px',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 750,
+                          cursor: subToggling ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 1px 2px rgba(180, 83, 9, 0.08)',
+                        }}
+                      >
+                        <PauseCircle size={14} />
+                        <span>{subToggling ? 'Updating...' : 'Stop Subscription'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={subToggling}
+                        onClick={() => handleToggleCustomerSub(sub, 'start')}
+                        style={{
+                          background: '#f0fdf4',
+                          color: '#15803d',
+                          border: '1.5px solid #86efac',
+                          padding: '7px 14px',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 750,
+                          cursor: subToggling ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 1px 2px rgba(21, 128, 61, 0.12)',
+                        }}
+                      >
+                        <PlayCircle size={14} />
+                        <span>{subToggling ? 'Updating...' : 'Start Subscription'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Quick Delivery Actions */}
+        {renderDeliveryActions()}
+      </section>
+    );
+  };
+
   const ledgerDeliveries = ledgerEntries
     .filter((entry) => entry.type === 'delivery')
     .map((entry) => ({
@@ -570,6 +1384,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       totalAmount: entry.amount,
       status: entry.status,
       paymentStatus: entry.paymentStatus,
+      proofImage: entry.proofImage,
+      subscriptionEndDate: entry.rawItem?.subscriptionEndDate,
+      subscriptionPaymentAmount: entry.rawItem?.subscriptionPaymentAmount,
     }))
     .reverse();
   const allCustomerDeliveries = ledgerDeliveries.length > 0 ? ledgerDeliveries : customerDeliveries;
@@ -605,9 +1422,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   <th>Date</th>
                   <th>Milk</th>
                   <th>Curd</th>
-                  <th>Amount</th>
+                  {!hasPaidSubscription && <th>Amount</th>}
                   <th>Delivery</th>
                   <th>Payment</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -616,7 +1434,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     <td><strong>{delivery.deliveryDate}</strong></td>
                     <td>{delivery.actualMilk} L</td>
                     <td>{delivery.actualCurd || 0} g</td>
-                    <td>₹{delivery.totalAmount}</td>
+                    {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
                     <td>
                       <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
                         {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
@@ -646,6 +1464,30 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                       <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : ' is-unpaid'}`}>
                         {delivery.paymentStatus || 'Unpaid'}
                       </span>
+                    </td>
+                    <td>
+                      {delivery.id && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUserHistory(delivery.id)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '4px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            borderRadius: '4px',
+                            transition: 'color 0.15s ease',
+                          }}
+                          title="Delete from your history"
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -738,13 +1580,15 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const totalDeliveries = ledgerEntries.filter((e) => e.type === 'delivery').length || customerDeliveries.length;
 
     let viewTitle = 'Profile Details';
-    if (profileDetailView === 'personal-info') viewTitle = 'Personal Details';
+    if (profileDetailView === 'account-details') viewTitle = 'Account Details';
+    else if (profileDetailView === 'personal-info') viewTitle = 'Personal Details';
     else if (profileDetailView === 'subscription') viewTitle = 'My Subscriptions';
     else if (profileDetailView === 'deliveries') viewTitle = 'Saved Deliveries';
     else if (profileDetailView === 'wallet') viewTitle = 'Refund Wallet & Balance';
     else if (profileDetailView === 'pause') viewTitle = 'Cancel / Pause Schedule';
     else if (profileDetailView === 'quantity') viewTitle = 'Update Quantity';
     else if (profileDetailView === 'delivery-window') viewTitle = 'Morning Delivery Window';
+    else if (profileDetailView === 'drop-instructions') viewTitle = 'Drop Instructions';
     else if (profileDetailView === 'support') viewTitle = '24/7 Helpline & Support';
     else if (profileDetailView === 'about') viewTitle = 'About Natural Milk Dairy';
     else if (profileDetailView === 'delete-account') viewTitle = 'Delete Account';
@@ -756,10 +1600,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             className="mobile-detail-back-button"
-            onClick={() => {
-              setProfileDetailView(null);
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            }}
+            onClick={backToProfile}
             aria-label="Back to Profile"
           >
             <ArrowLeft size={18} />
@@ -768,6 +1609,134 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <h2 className="mobile-detail-header-title">{viewTitle}</h2>
           <div className="mobile-detail-header-spacer" />
         </header>
+
+        {/* 0. COMPREHENSIVE ACCOUNT DETAILS VIEW */}
+        {profileDetailView === 'account-details' && (
+          <div className="mobile-detail-body">
+            {/* Identity Card */}
+            <div className="mobile-detail-card mobile-detail-user-card">
+              <div className="mobile-detail-user-head">
+                <div className="mobile-profile-avatar">{customerInitial}</div>
+                <div>
+                  <div className="mobile-detail-title-row">
+                    <h3>{customerName}</h3>
+                    <span className="mobile-detail-verified-badge">
+                      <BadgeCheck size={14} /> Verified Member
+                    </span>
+                  </div>
+                  <p className="mobile-detail-subtitle">Account ID: {customerId} · {subscriptionStatusLabel}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Account Credentials Card */}
+            <div className="mobile-detail-card">
+              <div className="mobile-detail-card-head">
+                <div className="mobile-detail-card-icon is-green">
+                  <UserRound size={18} />
+                </div>
+                <div>
+                  <h4>Account Credentials</h4>
+                  <p>Your verified customer ID and personal contact profile</p>
+                </div>
+              </div>
+
+              <div className="customer-profile-details" style={{ marginTop: '14px' }}>
+                <div><span>Account ID</span><strong>{customerId}</strong></div>
+                <div><span>Full Name</span><strong>{customerName}</strong></div>
+                <div><span>Mobile Phone</span><strong>{customerPhone}</strong></div>
+                <div><span>WhatsApp</span><strong>{customerWhatsapp}</strong></div>
+                <div className="is-wide"><span>Email Address</span><strong>{currentCustomer.email || user?.email || 'Not provided'}</strong></div>
+                <div><span>Account Status</span><strong style={{ color: isPaused ? '#b45309' : '#059669' }}>{subscriptionStatusLabel}</strong></div>
+                <div><span>Member Since</span><strong>{formatProfileDate(currentCustomer.createdAt || user?.createdAt)}</strong></div>
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <button
+                  type="button"
+                  className="customer-profile-primary-button"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => openProfileDetail('personal-info')}
+                >
+                  <Edit3 size={15} />
+                  <span>Edit Personal & Contact Info</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Doorstep Delivery Address Card */}
+            <div className="mobile-detail-card">
+              <div className="mobile-detail-card-head">
+                <div className="mobile-detail-card-icon is-green">
+                  <MapPin size={18} />
+                </div>
+                <div>
+                  <h4>Doorstep Delivery Address</h4>
+                  <p>Daily 5:00 AM – 6:30 AM drop location</p>
+                </div>
+              </div>
+
+              <div className="customer-profile-details" style={{ marginTop: '14px' }}>
+                <div className="is-wide"><span>Complete Address</span><strong>{customerAddress}</strong></div>
+                <div><span>Locality / Area</span><strong>{customerArea}</strong></div>
+                <div><span>Landmark / Gate</span><strong>{currentCustomer.landmark || 'None provided'}</strong></div>
+                <div><span>Assigned Specialist</span><strong>{currentCustomer.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Morning Route Specialist'}</strong></div>
+                <div><span>Drop Time Window</span><strong style={{ color: '#059669' }}>5:00 AM – 6:30 AM (Silent Drop)</strong></div>
+              </div>
+            </div>
+
+            {/* Milk Subscription Summary */}
+            <div className="mobile-detail-card">
+              <div className="mobile-detail-card-head">
+                <div className="mobile-detail-card-icon is-green">
+                  <Milk size={18} />
+                </div>
+                <div>
+                  <h4>Active Delivery Plan</h4>
+                  <p>Daily milk & curd drop configuration</p>
+                </div>
+              </div>
+
+              <div className="customer-profile-details" style={{ marginTop: '14px' }}>
+                <div><span>Daily Cow Milk</span><strong>{milkQuantity} {milkUnit}</strong></div>
+                <div><span>Daily Farm Curd</span><strong>{curdQuantity > 0 ? `${curdQuantity} ${curdUnit}` : 'None'}</strong></div>
+                <div><span>Delivery Schedule</span><strong style={{ textTransform: 'capitalize' }}>{deliveryFrequency}</strong></div>
+                {hasPaidSubscription ? (
+                  <div>
+                    <span>Subscription Through</span>
+                    <strong style={{ color: '#059669' }}>
+                      {subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'Renewal required'}
+                    </strong>
+                  </div>
+                ) : (
+                  <div><span>Wallet Balance</span><strong>₹{balance.toLocaleString('en-IN')}</strong></div>
+                )}
+              </div>
+
+              <div style={{ marginTop: '16px' }}>
+                <button
+                  type="button"
+                  className="customer-profile-secondary-button"
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={() => openProfileDetail('subscription')}
+                >
+                  <CalendarDays size={15} />
+                  <span>View Full Subscription & Pauses</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Back Button */}
+            <button
+              type="button"
+              className="customer-profile-secondary-button"
+              style={{ width: '100%', marginTop: '6px' }}
+              onClick={backToProfile}
+            >
+              Back to Profile
+            </button>
+          </div>
+        )}
 
         {/* 1. PERSONAL INFORMATION & ADDRESS */}
         {profileDetailView === 'personal-info' && (
@@ -886,10 +1855,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   <button
                     type="button"
                     className="customer-profile-secondary-button"
-                    onClick={() => {
-                      setProfileDetailView(null);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
+                    onClick={backToProfile}
                   >
                     Back to Profile
                   </button>
@@ -925,12 +1891,61 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <div className="mobile-detail-plan-banner">
                 <div>
                   <span className="mobile-detail-badge is-blue">
-                    {isPaused ? 'SUBSCRIPTION PAUSED' : 'ACTIVE SUBSCRIPTION'}
+                    {isPaused ? 'SUBSCRIPTION PAUSED' : currentCustomer.subscription?.status === 'expired' ? 'SUBSCRIPTION EXPIRED' : currentCustomer.subscription?.status === 'active' ? 'PREPAID SUBSCRIPTION' : 'NO ACTIVE SUBSCRIPTION'}
                   </span>
                   <h3 style={{ margin: '8px 0 4px', fontSize: '1.25rem', fontWeight: 800 }}>Daily Morning Plan</h3>
                   <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
-                    {isPaused ? 'Scheduled pause active. No billing for paused days.' : 'Delivered fresh before 6:30 AM every morning.'}
+                    {hasPaidSubscription
+                      ? `${currentCustomer.subscription?.status === 'expired' ? 'Ended' : 'Paid through'} ${subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) || 'date unavailable'}.`
+                      : isPaused ? 'Scheduled pause active.' : 'Choose a plan and complete payment to start deliveries.'}
                   </p>
+                  <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                    {isPaused ? (
+                      <button
+                        type="button"
+                        disabled={subToggling}
+                        onClick={() => handleToggleCustomerSub(allCustomerSubscriptions[0], 'start')}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '10px',
+                          background: '#059669',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 750,
+                          fontSize: '0.82rem',
+                          cursor: subToggling ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <PlayCircle size={15} />
+                        <span>{subToggling ? 'Updating...' : 'Start Subscription'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={subToggling}
+                        onClick={() => handleToggleCustomerSub(allCustomerSubscriptions[0], 'stop')}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '10px',
+                          background: '#fffbeb',
+                          color: '#b45309',
+                          border: '1.5px solid #fde68a',
+                          fontWeight: 750,
+                          fontSize: '0.82rem',
+                          cursor: subToggling ? 'wait' : 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        <PauseCircle size={15} />
+                        <span>{subToggling ? 'Updating...' : 'Stop Subscription'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className={`mobile-profile-status-dot${isPaused ? ' is-paused' : ''}`} style={{ width: '12px', height: '12px' }} />
               </div>
@@ -1131,9 +2146,31 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                           </div>
                         </div>
                       </div>
-                      <div className="mobile-detail-drop-right">
-                        <span>{drop.actualMilk || milkQuantity} {milkUnit}</span>
-                        <small>₹{drop.totalAmount || 85}</small>
+                      <div className="mobile-detail-drop-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div>
+                          <span>{drop.actualMilk || milkQuantity} {milkUnit}</span>
+                          <small>₹{drop.totalAmount || 85}</small>
+                        </div>
+                        {drop.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUserHistory(drop.id)}
+                            style={{
+                              background: '#fef2f2',
+                              border: '1px solid #fee2e2',
+                              borderRadius: '6px',
+                              padding: '5px',
+                              color: '#dc2626',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            title="Delete from your history"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1159,28 +2196,39 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <div className="mobile-detail-body">
             {/* Hero Balance Card */}
             <div className="mobile-detail-card mobile-detail-balance-hero">
-              <div className="mobile-detail-balance-eyebrow">
-                <Wallet size={16} /> <span>CURRENT OUTSTANDING BALANCE</span>
-              </div>
-              <div className="mobile-detail-balance-large">
-                ₹{balance.toLocaleString('en-IN')}
-              </div>
-              <p className="mobile-detail-balance-sub">
-                {balance <= 0 ? 'All caught up! Zero outstanding dues.' : 'Monthly billing balance due for morning deliveries.'}
-              </p>
-
-              <button
-                type="button"
-                className="mobile-detail-pay-now-btn"
-                onClick={() => onOpenPaymentModal?.(currentCustomer)}
-              >
-                <CreditCard size={18} />
-                <span>Pay Outstanding Bill via UPI / Card</span>
-              </button>
+              {hasPaidSubscription ? (
+                <>
+                  <div className="mobile-detail-balance-eyebrow">
+                    <Wallet size={16} /> <span>PREPAID SUBSCRIPTION</span>
+                  </div>
+                  <div className="mobile-detail-balance-large" style={{ fontSize: '1.35rem' }}>
+                    Active until {subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'renewal required'}
+                  </div>
+                  <p className="mobile-detail-balance-sub">Your scheduled deliveries are covered by your subscription.</p>
+                </>
+              ) : (
+                <>
+                  <div className="mobile-detail-balance-eyebrow">
+                    <Wallet size={16} /> <span>CURRENT OUTSTANDING BALANCE</span>
+                  </div>
+                  <div className="mobile-detail-balance-large">₹{balance.toLocaleString('en-IN')}</div>
+                  <p className="mobile-detail-balance-sub">
+                    {balance <= 0 ? 'All caught up! Zero outstanding dues.' : 'Monthly billing balance due for morning deliveries.'}
+                  </p>
+                  <button
+                    type="button"
+                    className="mobile-detail-pay-now-btn"
+                    onClick={() => onOpenPaymentModal?.(currentCustomer)}
+                  >
+                    <CreditCard size={18} />
+                    <span>Pay Outstanding Bill via UPI / Card</span>
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Financial Breakdown */}
-            <div className="mobile-detail-card">
+            {!hasPaidSubscription && <div className="mobile-detail-card">
               <h4 className="mobile-detail-subheading">Billing Breakdown</h4>
               <div className="mobile-detail-breakdown-list">
                 <div className="mobile-detail-breakdown-row">
@@ -1202,10 +2250,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   </strong>
                 </div>
               </div>
-            </div>
+            </div>}
 
             {/* Instant UPI Payment Box */}
-            <div className="mobile-detail-card">
+            {!hasPaidSubscription && <div className="mobile-detail-card">
               <h4 className="mobile-detail-subheading">Supported UPI Payment Methods</h4>
               <p style={{ margin: '0 0 14px', fontSize: '0.84rem', color: '#64748b' }}>
                 Instant settlement via Google Pay, PhonePe, Paytm, BHIM or NetBanking.
@@ -1223,10 +2271,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   Copy UPI
                 </button>
               </div>
-            </div>
+            </div>}
 
             {/* Transaction Ledger Table */}
-            <div className="mobile-detail-card">
+            {!hasPaidSubscription && <div className="mobile-detail-card">
               <h4 className="mobile-detail-subheading">Account Transaction Ledger</h4>
               {ledgerEntries.length === 0 ? (
                 <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
@@ -1250,7 +2298,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         )}
 
@@ -1486,6 +2534,49 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {profileDetailView === 'drop-instructions' && (
+          <div className="mobile-detail-body">
+            <div className="mobile-detail-card mobile-detail-highlight-card">
+              <div className="mobile-detail-plan-banner">
+                <div>
+                  <span className="mobile-detail-badge is-emerald">YOUR DELIVERY PREFERENCES</span>
+                  <h3 style={{ margin: '8px 0 4px', fontSize: '1.12rem', fontWeight: 800 }}>Where to leave your order</h3>
+                  <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
+                    Your delivery partner uses these details for a smooth, contact-free drop.
+                  </p>
+                </div>
+                <MapPin size={26} style={{ color: '#059669' }} />
+              </div>
+            </div>
+            <div className="mobile-detail-card">
+              <h4 className="mobile-detail-subheading">Delivery address</h4>
+              <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>{address || 'Add your delivery address to help your partner find you.'}</p>
+            </div>
+            <div className="mobile-detail-card">
+              <h4 className="mobile-detail-subheading">Doorstep instructions</h4>
+              <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
+                {currentCustomer.landmark || 'No additional instructions saved. Add a landmark, gate code, or preferred safe-drop location.'}
+              </p>
+              <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                Deliveries are normally placed at your doorstep during the morning delivery window. Your partner will follow the saved instructions above.
+              </p>
+            </div>
+            <div className="mobile-detail-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
+              <div>
+                <strong style={{ color: '#0f172a' }}>Need to update these details?</strong>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.82rem' }}>Keep your address and delivery notes current.</p>
+              </div>
+              <button
+                type="button"
+                className="customer-profile-primary-button"
+                onClick={() => openProfileDetail('personal-info')}
+              >
+                Edit delivery details
+              </button>
             </div>
           </div>
         )}
@@ -1802,7 +2893,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     type="button"
                     className="customer-profile-secondary-button"
                     disabled={deletingAccount}
-                    onClick={() => setProfileDetailView(null)}
+                    onClick={backToProfile}
                   >
                     Cancel
                   </button>
@@ -1822,37 +2913,28 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     );
   };
 
-  const renderModernCustomerProfile = () => {
+  const renderCustomerProfileMobile = () => {
     const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
     const customerName = currentCustomer.name || user?.name || 'Customer';
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
     const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
     const handleTag = `@${customerId.toLowerCase()}`;
+    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length;
 
     return (
       <div className="modern-profile-container">
-        {/* Top Header matching reference image: ←  My Profile  ⚙️ */}
+        {/* Top Header: ←  My Profile  ⚙️ */}
         <div className="modern-profile-header">
           <button
             type="button"
             className="modern-profile-header-btn"
-            onClick={() => {
-              setActivePage('dashboard');
-              setActiveTab('home');
-            }}
+            onClick={() => setActiveTab('home')}
             aria-label="Back to home"
           >
             <ArrowLeft size={22} />
           </button>
-          <h2 className="modern-profile-header-title">My Profile</h2>
-          <button
-            type="button"
-            className="modern-profile-header-btn"
-            onClick={() => openProfileDetail('personal-info')}
-            aria-label="Settings"
-          >
-            <Settings size={22} />
-          </button>
+          <h2 className="modern-profile-header-title">Customer Profile</h2>
+          <div style={{ width: 40 }} />
         </div>
 
         {/* FEEDBACK TOAST */}
@@ -1879,7 +2961,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
-        {/* Identity Section: Circular avatar with camera badge + Name + Handle + Red Pill Button */}
+        {/* Identity Section: Circular avatar + Name + Handle + Red Pill Button */}
         <div className="modern-profile-identity">
           <div className="modern-profile-avatar-wrap">
             <div className="modern-profile-avatar-placeholder">
@@ -1908,92 +2990,45 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </button>
           </div>
         </div>
-
-        {/* List of menu rows matching reference image layout */}
+        {/* Customer-Only Data Menu List */}
         <div className="modern-profile-menu-list">
-          {/* Favourites / Daily Milk Plan */}
+          {/* 1. Account Details */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('account-details')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><UserRound size={20} color="#059669" /></span>
+              <div>
+                <span className="modern-profile-menu-label">Account Details</span>
+                <span className="modern-profile-menu-sub">
+                  ID: {customerId} · {customerPhone}
+                </span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: isPaused ? '#b45309' : '#059669', background: isPaused ? '#fef3c7' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                {subscriptionStatusLabel}
+              </span>
+              <ChevronRight size={18} />
+            </div>
+          </button>
+          {/* 1. Daily Milk Subscription */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('subscription')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Heart size={20} /></span>
+              <span className="modern-profile-menu-icon"><Milk size={20} color="#059669" /></span>
               <div>
-                <span className="modern-profile-menu-label">Favourites</span>
-                <span className="modern-profile-menu-sub">{milkQuantity} {milkUnit} Daily Milk</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
-            </div>
-          </button>
-
-          {/* Downloads / Invoices & History */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => navigateToPage('deliveries')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><FileText size={20} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Downloads</span>
-                <span className="modern-profile-menu-sub">Delivery receipts & statements</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
-            </div>
-          </button>
-
-          {/* Language / Delivery Timing Preferences */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('delivery-window')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Clock3 size={20} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Delivery Window</span>
-                <span className="modern-profile-menu-sub">Before 6:30 AM early morning</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
-            </div>
-          </button>
-
-          {/* Location / Doorstep Address */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('personal-info')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><MapPin size={20} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Location</span>
-                <span className="modern-profile-menu-sub">{address || 'Doorstep Address'}</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
-            </div>
-          </button>
-
-          {/* Subscription / Vacation & Plan */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('pause')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><CalendarDays size={20} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Subscription</span>
-                <span className="modern-profile-menu-sub">{isPaused ? 'Paused for vacation' : 'Active doorstep delivery'}</span>
+                <span className="modern-profile-menu-label">My Milk Subscription</span>
+                <span className="modern-profile-menu-sub">
+                  {hasPaidSubscription
+                    ? `Prepaid through ${subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'date unavailable'}`
+                    : `${milkQuantity} ${milkUnit} Daily Fresh Milk`}
+                </span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
@@ -2004,22 +3039,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* Clear Cache / Refresh Data */}
+          {/* 2. Doorstep Delivery Address */}
           <button
             type="button"
             className="modern-profile-menu-row"
-            onClick={() => {
-              refreshAll?.();
-              reloadLedger();
-              setProfileMessage('App cache cleared and data reloaded.');
-              setTimeout(() => setProfileMessage(''), 2500);
-            }}
+            onClick={() => openProfileDetail('personal-info')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Trash2 size={20} /></span>
+              <span className="modern-profile-menu-icon"><MapPin size={20} color="#059669" /></span>
               <div>
-                <span className="modern-profile-menu-label">Clear cache</span>
-                <span className="modern-profile-menu-sub">Sync with live farm database</span>
+                <span className="modern-profile-menu-label">Delivery Address</span>
+                <span className="modern-profile-menu-sub">{address || 'Doorstep delivery address'}</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
@@ -2027,17 +3057,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* Clear History / About Farm */}
+          {/* 3. Delivery Timing Window */}
           <button
             type="button"
             className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('about')}
+            onClick={() => openProfileDetail('delivery-window')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Info size={20} /></span>
+              <span className="modern-profile-menu-icon"><Clock3 size={20} color="#059669" /></span>
               <div>
-                <span className="modern-profile-menu-label">About Us</span>
-                <span className="modern-profile-menu-sub">100% Pure A2 Gir Cow & Buffalo Milk</span>
+                <span className="modern-profile-menu-label">Delivery Window</span>
+                <span className="modern-profile-menu-sub">Before 6:30 AM early morning (Silent Drop)</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
@@ -2045,7 +3075,86 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* Log out (Red text & icon matching reference image) */}
+          {/* 4. Past Delivery Receipts & Invoices */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('deliveries')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><FileText size={20} color="#059669" /></span>
+              <div>
+                <span className="modern-profile-menu-label">Delivery Receipts & History</span>
+                <span className="modern-profile-menu-sub">{totalDeliveries} Drops Completed · Daily proof logs</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* 5. Billing & Wallet Balance */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('wallet')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Wallet size={20} color="#059669" /></span>
+              <div>
+                <span className="modern-profile-menu-label">{hasPaidSubscription ? 'Subscription Payment' : 'Billing & Wallet Balance'}</span>
+                <span className="modern-profile-menu-sub">
+                  {hasPaidSubscription
+                    ? `Prepaid through ${subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'date unavailable'}`
+                    : balance > 0 ? `₹${balance} Outstanding Due` : '₹0 · No dues pending'}
+                </span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: balance > 0 && !hasPaidSubscription ? '#b91c1c' : '#059669', background: balance > 0 && !hasPaidSubscription ? '#fee2e2' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+                {hasPaidSubscription ? 'Prepaid' : balance > 0 ? `₹${balance} Due` : 'Paid'}
+              </span>
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* 6. Doorstep Drop Instructions */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('drop-instructions')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><ShieldCheck size={20} color="#059669" /></span>
+              <div>
+                <span className="modern-profile-menu-label">Drop Instructions</span>
+                <span className="modern-profile-menu-sub">{currentCustomer.landmark || 'Doorstep placement, bell & gate codes'}</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* 7. Customer Care & WhatsApp */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('support')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><Headphones size={20} color="#059669" /></span>
+              <div>
+                <span className="modern-profile-menu-label">Customer Care & Helplines</span>
+                <span className="modern-profile-menu-sub">WhatsApp chat & 24/7 priority support</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
+
+          {/* 8. Log out */}
           <button
             type="button"
             className="modern-profile-menu-row is-logout"
@@ -2059,6 +3168,29 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <ChevronRight size={18} />
             </div>
           </button>
+
+          {/* 9. Delete Account Permanently */}
+          <button
+            type="button"
+            className="modern-profile-menu-row is-delete"
+            onClick={() => {
+              setDeleteError('');
+              setShowDeleteConfirm(true);
+            }}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444' }}>
+                <Trash2 size={20} color="#ef4444" />
+              </span>
+              <div>
+                <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 700 }}>Delete Account</span>
+                <span className="modern-profile-menu-sub">Permanently delete account & records</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={18} />
+            </div>
+          </button>
         </div>
       </div>
     );
@@ -2066,6 +3198,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderModernEditProfile = () => {
     const customerInitial = (profileForm.name || currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
+    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
     const handleTag = profileForm.username || (profileForm.name ? `@${profileForm.name.toLowerCase().replace(/\s+/g, '')}` : `@${customerId.toLowerCase()}`);
 
     return (
@@ -2075,10 +3208,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             className="modern-profile-header-btn"
-            onClick={() => {
-              setIsEditingProfile(false);
-              setProfileDetailView(null);
-            }}
+            onClick={backToProfile}
             aria-label="Back"
           >
             <ArrowLeft size={22} />
@@ -2273,6 +3403,20 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
 
+          {/* 8. Special Drop Instructions & Landmark */}
+          <div className="modern-edit-field">
+            <label className="modern-edit-label">Special Drop Instructions</label>
+            <div className="modern-edit-input-container">
+              <input
+                type="text"
+                className="modern-edit-input"
+                placeholder="Leave outside flat in milk bag, don't ring bell"
+                value={profileForm.landmark ?? ''}
+                onChange={(e) => setProfileForm((cur) => ({ ...cur, landmark: e.target.value }))}
+              />
+            </div>
+          </div>
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -2286,825 +3430,409 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     );
   };
 
-  const renderMobileProfile = () => {
+  const renderCustomerProfileWeb = () => {
     const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
     const customerName = currentCustomer.name || user?.name || 'Customer';
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
     const customerEmail = currentCustomer.email || user?.email || 'Not provided';
-    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur';
     const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
-    const customerAddress = currentCustomer.address || user?.address || 'Not provided';
-    const customerWhatsapp = currentCustomer.whatsapp || currentCustomer.mobile || user?.mobile || 'Not provided';
-    const totalDeliveries = ledgerEntries.filter((e) => e.type === 'delivery').length || customerDeliveries.length;
+    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length;
 
     return (
-      <div
-        className="driver-profile-page customer-profile-page"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          maxWidth: '880px',
-          margin: '0 auto',
-          width: '100%',
-        }}
-      >
-        {/* Page Heading matching driver mobile profile page */}
-        <div className="driver-profile-page-heading" style={{ padding: '4px 2px 2px' }}>
-          <h1 style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>My profile</h1>
-          <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0 }}>
-            Manage your personal details, subscription plan, and doorstep preferences.
-          </p>
-        </div>
-
-        {/* FEEDBACK TOAST */}
+      <div className="profile-desktop-wrapper">
+        {/* Feedback Messages */}
         {profileMessage && (
           <div
             className="driver-profile-feedback"
             style={{
-              padding: '12px 16px',
+              padding: '14px 18px',
               background: '#ecfdf5',
               border: '1px solid #a7f3d0',
-              borderRadius: '12px',
+              borderRadius: '14px',
               color: '#065f46',
-              fontSize: '0.84rem',
+              fontSize: '0.88rem',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              gap: '10px',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
             }}
           >
-            <CheckCircle2 size={16} color="#059669" />
+            <CheckCircle2 size={18} color="#059669" />
             <span>{profileMessage}</span>
           </div>
         )}
 
-        {/* 1. PRIMARY CUSTOMER PROFILE CARD WITH EDIT BUTTON RIGHT NEAR PROFILE */}
-        <div
-          className="driver-profile-primary-card"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-          }}
-        >
-          {/* Identity Row: Avatar, Name, and Quick Edit Button directly alongside avatar */}
-          <div
-            style={{
-              padding: '18px 18px 14px',
-              borderBottom: '1px solid #f1f5f9',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '12px',
-              background: '#ffffff',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div
-                style={{
-                  width: '54px',
-                  height: '54px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                  color: '#ffffff',
-                  fontSize: '1.4rem',
-                  fontWeight: 800,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 4px 12px rgba(5, 150, 105, 0.22)',
-                  flexShrink: 0,
-                }}
-              >
-                {customerInitial}
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h2 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                    {customerName}
-                  </h2>
-                  <span
-                    style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      background: isPaused ? '#f59e0b' : '#10b981',
-                      display: 'inline-block',
-                    }}
-                    title={isPaused ? 'Delivery paused' : 'Subscription active'}
-                  />
-                </div>
-                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '2px 0 6px 0' }}>
-                  {customerPhone} {customerEmail && customerEmail !== 'Not provided' ? `• ${customerEmail}` : ''}
-                </p>
+        {/* 1. Desktop Profile Hero Banner */}
+        <div className="profile-desktop-hero">
+          <div className="profile-hero-left">
+            <div className="profile-hero-avatar">
+              {customerInitial}
+            </div>
+            <div className="profile-hero-info">
+              <div className="profile-hero-name-row">
+                <h2 className="profile-hero-name">{customerName}</h2>
+                <span className="profile-hero-handle">ID: {customerId}</span>
                 <span
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '4px',
                     padding: '3px 10px',
                     borderRadius: '12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
                     background: isPaused ? '#fef3c7' : '#ecfdf5',
                     color: isPaused ? '#92400e' : '#065f46',
                     border: `1px solid ${isPaused ? '#fde68a' : '#a7f3d0'}`,
-                    fontSize: '0.74rem',
-                    fontWeight: 700,
                   }}
                 >
-                  {isPaused ? '⏸ Delivery Paused' : '✓ Subscription Active'}
+                  {isPaused ? '⏸ Delivery Paused' : '✓ Active Subscription'}
+                </span>
+              </div>
+              <div className="profile-hero-meta">
+                <span className="profile-hero-meta-item">
+                  <Phone size={14} color="#059669" /> {customerPhone}
+                </span>
+                {customerEmail && customerEmail !== 'Not provided' && (
+                  <span className="profile-hero-meta-item">
+                    <Mail size={14} color="#059669" /> {customerEmail}
+                  </span>
+                )}
+                <span className="profile-hero-meta-item">
+                  <MapPin size={14} color="#059669" /> {address || currentCustomer.area || 'Madhapur'}
                 </span>
               </div>
             </div>
+          </div>
 
-            {/* Direct Edit Button positioned near profile */}
+          <button
+            type="button"
+            className="profile-hero-btn"
+            onClick={() => openProfileDetail('personal-info')}
+          >
+            <Edit2 size={16} />
+            <span>Edit Profile</span>
+          </button>
+        </div>
+
+        {/* 2. Customer Data Responsive Cards Grid */}
+        <div className="profile-desktop-grid">
+          {/* Card 1: Daily Milk Subscription */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">My Milk Subscription</h3>
+                  <p className="profile-card-desc">Pure A2 Gir Cow & Buffalo Milk Plan</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <Milk size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Daily Quantity</span>
+                  <span className="profile-card-data-val">{milkQuantity} {milkUnit} Fresh Milk</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Delivery Schedule</span>
+                  <span className="profile-card-data-val" style={{ textTransform: 'capitalize' }}>{deliveryFrequency}</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Current Status</span>
+                  <span className="profile-card-data-val" style={{ color: isPaused ? '#d97706' : '#059669' }}>
+                    {isPaused ? 'Paused for Vacation' : 'Active Doorstep Drop'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <button
+                type="button"
+                className="profile-card-action-btn"
+                onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
+              >
+                {isPaused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}
+                <span>{isPaused ? 'Restart' : 'Pause / Vacation'}</span>
+              </button>
+              <button
+                type="button"
+                className="profile-card-action-btn"
+                onClick={() => onOpenTempQtyModal?.(currentCustomer)}
+              >
+                <RefreshCw size={15} />
+                <span>Change Qty</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Card 2: Doorstep Delivery Address */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">Delivery Address</h3>
+                  <p className="profile-card-desc">Morning delivery doorstep destination</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <MapPin size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">House / Flat</span>
+                  <span className="profile-card-data-val">{currentCustomer.address || 'Not specified'}</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Area / Locality</span>
+                  <span className="profile-card-data-val">{currentCustomer.area || 'Madhapur'}</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Drop Notes</span>
+                  <span className="profile-card-data-val">{currentCustomer.landmark || 'Deliver at doorstep milk bag'}</span>
+                </div>
+              </div>
+            </div>
             <button
               type="button"
+              className="profile-card-action-btn"
               onClick={() => openProfileDetail('personal-info')}
+            >
+              <Edit2 size={15} />
+              <span>Update Address & Instructions</span>
+            </button>
+          </div>
+
+          {/* Card 3: Early Morning Delivery Window */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">Delivery Window</h3>
+                  <p className="profile-card-desc">Silent early morning doorstep delivery</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <Clock3 size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Morning Slot</span>
+                  <span className="profile-card-data-val">5:00 AM – 6:30 AM</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Cold Chain</span>
+                  <span className="profile-card-data-val">Chilled at 4°C Raw Milk</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Bottle Return</span>
+                  <span className="profile-card-data-val">Rinsed glass bottle exchange</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="profile-card-action-btn"
+              onClick={() => openProfileDetail('delivery-window')}
+            >
+              <Info size={15} />
+              <span>View Timing & Bottle Exchange Rules</span>
+            </button>
+          </div>
+
+          {/* Card 4: Billing & Account Balance */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">Billing & Account Balance</h3>
+                  <p className="profile-card-desc">Current dues, ledger & payments</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <Wallet size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Current Balance</span>
+                  <span className="profile-card-data-val" style={{ color: balance > 0 ? '#dc2626' : '#059669', fontSize: '1rem' }}>
+                    {balance > 0 ? `₹${balance} Due` : '₹0 Outstanding (Good Standing)'}
+                  </span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Account Status</span>
+                  <span className="profile-card-data-val" style={{ color: balance > 0 ? '#b91c1c' : '#059669' }}>
+                    {balance > 0 ? 'Pending Payment' : '✓ All Clear'}
+                  </span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Payment Modes</span>
+                  <span className="profile-card-data-val">UPI, Google Pay, NetBanking</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: balance > 0 ? '1fr 1fr' : '1fr', gap: '8px' }}>
+              <button
+                type="button"
+                className="profile-card-action-btn"
+                onClick={() => openProfileDetail('wallet')}
+              >
+                <FileText size={15} />
+                <span>View Ledger Statement</span>
+              </button>
+              {balance > 0 && (
+                <button
+                  type="button"
+                  className="profile-card-action-btn"
+                  style={{ background: '#059669', color: '#ffffff', borderColor: '#059669' }}
+                  onClick={() => onOpenPaymentModal?.(currentCustomer, balance)}
+                >
+                  <CreditCard size={15} />
+                  <span>Pay ₹${balance}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Card 5: Delivery Receipts & History */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">Delivery Receipts</h3>
+                  <p className="profile-card-desc">Verified daily doorstep logs & proofs</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <FileText size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Total Drops Completed</span>
+                  <span className="profile-card-data-val">{totalDeliveries} Deliveries</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Verification Mode</span>
+                  <span className="profile-card-data-val">Photo Proof & App Check-in</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Download Receipts</span>
+                  <span className="profile-card-data-val">PDF & digital statements</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="profile-card-action-btn"
+              onClick={() => navigateToPage('deliveries')}
+            >
+              <Truck size={15} />
+              <span>View All Delivery Receipts</span>
+            </button>
+          </div>
+
+          {/* Card 6: Customer Care & Helplines */}
+          <div className="profile-desktop-card">
+            <div>
+              <div className="profile-card-header">
+                <div>
+                  <h3 className="profile-card-title">Customer Care & Helplines</h3>
+                  <p className="profile-card-desc">Instant customer assistance 24/7</p>
+                </div>
+                <div className="profile-card-icon-wrap">
+                  <Headphones size={22} />
+                </div>
+              </div>
+              <div className="profile-card-body">
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Dairy Helpline</span>
+                  <a href="tel:+919876543210" style={{ color: '#059669', fontWeight: 700, textDecoration: 'none' }}>
+                    +91 98765 43210
+                  </a>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">WhatsApp Priority</span>
+                  <span className="profile-card-data-val" style={{ color: '#059669' }}>Response within 5 mins</span>
+                </div>
+                <div className="profile-card-data-row">
+                  <span className="profile-card-data-label">Support Hours</span>
+                  <span className="profile-card-data-val">5:00 AM – 9:00 PM Daily</span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="profile-card-action-btn"
+              onClick={() => openProfileDetail('support')}
+            >
+              <MessageSquare size={15} />
+              <span>Open Support Desk</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Account Actions Row: Logout & Delete Account */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '16px 22px',
+            marginTop: '8px',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+              Account Session & Security
+            </h4>
+            <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+              Sign out from this device or manage account credentials.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
               style={{
-                background: '#f0fdf4',
-                color: '#059669',
-                border: '1px solid #bbf7d0',
-                borderRadius: '8px',
-                padding: '7px 14px',
-                fontSize: '0.78rem',
+                background: '#fff1f2',
+                color: '#e11d48',
+                border: '1px solid #fecdd3',
+                borderRadius: '10px',
+                padding: '9px 16px',
+                fontSize: '0.84rem',
                 fontWeight: 700,
                 cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                transition: 'all 0.15s ease',
               }}
             >
-              <Edit2 size={13} />
-              <span>Edit Profile</span>
+              <Trash2 size={15} />
+              <span>Delete Account</span>
             </button>
-          </div>
-
-          {/* Clean Summary Grid with User Data and Modules */}
-          <div
-            className="driver-profile-summary-grid"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: '10px',
-              padding: '16px 18px',
-            }}
-          >
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                Full name
-              </div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerName}</div>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                Mobile number
-              </div>
-              <a
-                href={`tel:${customerPhone}`}
-                style={{ fontSize: '0.94rem', fontWeight: 800, color: '#315a42', textDecoration: 'none' }}
-              >
-                {customerPhone}
-              </a>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                Email address
-              </div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', wordBreak: 'break-all' }}>{customerEmail}</div>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                City / Area
-              </div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerArea}</div>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                Customer ID
-              </div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#059669' }}>{customerId}</div>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px' }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                WhatsApp
-              </div>
-              <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>{customerWhatsapp}</div>
-            </div>
-
-            <div
-              className="driver-profile-summary-item"
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(true)}
               style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                background: '#fef2f2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
                 borderRadius: '10px',
-                padding: '12px',
-                gridColumn: '1 / -1',
-              }}
-            >
-              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', marginBottom: '3px' }}>
-                Doorstep delivery address
-              </div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a', lineHeight: 1.4 }}>{customerAddress}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. SUBSCRIPTIONS & BOOKINGS MODULE (MATCHING DRIVER BOOKINGS STYLE) */}
-        <div
-          onClick={() => openProfileDetail('subscription')}
-          className="driver-profile-bookings"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            padding: '16px 18px',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-                color: '#059669',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <CalendarDays size={22} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  My Subscriptions
-                </h3>
-                <span
-                  style={{
-                    background: '#ecfdf5',
-                    color: '#065f46',
-                    border: '1px solid #a7f3d0',
-                    borderRadius: '12px',
-                    padding: '2px 8px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                  }}
-                >
-                  {milkQuantity} {milkUnit} · {isPaused ? 'Paused' : 'Active'}
-                </span>
-              </div>
-              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
-                Daily milk plan & doorstep delivery schedule • Tap to view & edit
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#f0fdf4',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#059669',
-              flexShrink: 0,
-            }}
-          >
-            <ChevronRight size={18} />
-          </div>
-        </div>
-
-        {/* 3. SAVED DELIVERIES MODULE */}
-        <div
-          onClick={() => openProfileDetail('deliveries')}
-          className="driver-profile-bookings"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            padding: '16px 18px',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-                color: '#059669',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Truck size={22} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Saved Deliveries
-                </h3>
-                <span
-                  style={{
-                    background: '#ecfdf5',
-                    color: '#065f46',
-                    border: '1px solid #a7f3d0',
-                    borderRadius: '12px',
-                    padding: '2px 8px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                  }}
-                >
-                  {totalDeliveries} Drops Completed
-                </span>
-              </div>
-              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
-                Doorstep delivery history, proofs & timing logs • Tap to view all
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#f0fdf4',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#059669',
-              flexShrink: 0,
-            }}
-          >
-            <ChevronRight size={18} />
-          </div>
-        </div>
-
-        {/* 4. REFUND WALLET & BALANCE MODULE */}
-        <div
-          onClick={() => openProfileDetail('wallet')}
-          className="driver-profile-bookings"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            padding: '16px 18px',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            transition: 'all 0.15s ease',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div
-              style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
-                color: '#059669',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Wallet size={22} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Refund Wallet & Balance
-                </h3>
-                <span
-                  style={{
-                    background: balance > 0 ? '#fef2f2' : '#ecfdf5',
-                    color: balance > 0 ? '#dc2626' : '#065f46',
-                    border: `1px solid ${balance > 0 ? '#fecaca' : '#a7f3d0'}`,
-                    borderRadius: '12px',
-                    padding: '2px 8px',
-                    fontSize: '0.72rem',
-                    fontWeight: 800,
-                  }}
-                >
-                  ₹{balance.toLocaleString('en-IN')} Due
-                </span>
-              </div>
-              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
-                Outstanding dues, ledger statement & UPI payments • Tap to manage
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              background: '#f0fdf4',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#059669',
-              flexShrink: 0,
-            }}
-          >
-            <ChevronRight size={18} />
-          </div>
-        </div>
-
-        {/* 5. DELIVERY SCHEDULE & CONTROLS (MATCHING DRIVER BIKE & FLEET CARD) */}
-        <div
-          className="driver-profile-vehicle-card"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-          }}
-        >
-          <div
-            className="driver-profile-card-heading"
-            style={{
-              background: 'linear-gradient(90deg, #f0fdf4 0%, #ecfdf5 100%)',
-              borderBottom: '1px solid #e2e8f0',
-              padding: '12px 18px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Sliders size={18} color="#059669" />
-              <span
-                style={{
-                  fontSize: '0.82rem',
-                  fontWeight: 800,
-                  color: '#065f46',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                Delivery Schedule & Controls
-              </span>
-            </div>
-          </div>
-
-          <div style={{ padding: '16px 18px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
-              <div
-                onClick={() => openProfileDetail('pause')}
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <PauseCircle size={16} color="#059669" />
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Cancel / Pause</span>
-                  </div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#065f46', background: '#ecfdf5', padding: '2px 6px', borderRadius: '6px' }}>
-                    100% Free
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                  Set vacation dates without any cancellation fee
-                </p>
-              </div>
-
-              <div
-                onClick={() => openProfileDetail('quantity')}
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <RefreshCw size={16} color="#059669" />
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Update Quantity</span>
-                  </div>
-                  <ChevronRight size={14} color="#94a3b8" />
-                </div>
-                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                  Change tomorrow's milk quantity or extra packets
-                </p>
-              </div>
-
-              <div
-                onClick={() => openProfileDetail('delivery-window')}
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Clock3 size={16} color="#059669" />
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Delivery Window</span>
-                  </div>
-                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284c7', background: '#f0f9ff', padding: '2px 6px', borderRadius: '6px' }}>
-                    Before 6:30 AM
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                  Silent early morning doorstep delivery guarantee
-                </p>
-              </div>
-
-              <div
-                onClick={() => openProfileDetail('personal-info')}
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#059669')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <ShieldCheck size={16} color="#059669" />
-                    <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Drop Instructions</span>
-                  </div>
-                  <ChevronRight size={14} color="#94a3b8" />
-                </div>
-                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                  Gate codes, milk bag placement & special notes
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 6. SUPPORT & HELPLINES (MATCHING DRIVER SUPPORT CARD) */}
-        <div
-          className="driver-profile-support-card"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            padding: '18px 16px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-            <div
-              style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                background: '#eff6ff',
-                color: '#2563eb',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Headphones size={16} />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Customer Care & Helplines
-              </h3>
-              <p style={{ fontSize: '0.74rem', color: '#64748b', margin: 0 }}>
-                Instant contact for delivery timings, milk quality, or account help
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="driver-profile-support-grid"
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}
-          >
-            {/* Supervisor Hotline */}
-            <a
-              href="tel:9876543210"
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-                textDecoration: 'none',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Hub Care Hotline</span>
-                <PhoneCall size={16} color="#059669" />
-              </div>
-              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>+91 98765 43210</span>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                Delivery queries, address changes & urgent issues
-              </span>
-            </a>
-
-            {/* WhatsApp Support Desk */}
-            <a
-              href={`https://wa.me/919876543210?text=Hello%20Natural%20Milk%20Dairy%20Support,%20Customer%20${customerId}%20needs%20assistance.`}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
-                textDecoration: 'none',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>WhatsApp Desk</span>
-                <MessageCircle size={16} color="#059669" />
-              </div>
-              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>Chat with Support</span>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                Send doorstep delivery notes or feedback
-              </span>
-            </a>
-
-            {/* Farm Story & Purity */}
-            <div
-              onClick={() => openProfileDetail('about')}
-              style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px',
+                padding: '9px 18px',
+                fontSize: '0.84rem',
+                fontWeight: 700,
                 cursor: 'pointer',
-                transition: 'all 0.15s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>Our Farm Story</span>
-                <Info size={16} color="#059669" />
-              </div>
-              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 700 }}>100% Pure A2 Milk</span>
-              <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
-                Sterilized glass bottles & grass-fed farm promise
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 7. ACCOUNT ACTIONS (MATCHING DRIVER ACCOUNT ACTIONS CARD) */}
-        <div
-          className="driver-profile-account-actions"
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '16px',
-            padding: '18px 16px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          {/* Sign Out Button */}
-          <button
-            type="button"
-            onClick={() => setShowLogoutConfirm(true)}
-            style={{
-              width: '100%',
-              padding: '12px 18px',
-              borderRadius: '10px',
-              background: '#ffffff',
-              border: '1px solid #fecaca',
-              color: '#dc2626',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
-          >
-            <LogOut size={16} />
-            <span>Sign Out of Customer Account</span>
-          </button>
-
-          {/* Delete Account Button */}
-          <button
-            type="button"
-            onClick={() => openProfileDetail('delete-account')}
-            style={{
-              width: '100%',
-              padding: '12px 18px',
-              borderRadius: '10px',
-              background: '#fff1f2',
-              border: '1px solid #fecdd3',
-              color: '#e11d48',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              transition: 'all 0.15s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#ffe4e6')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#fff1f2')}
-          >
-            <Trash2 size={16} />
-            <span>Delete Customer Account</span>
-          </button>
-
-          <div style={{ textAlign: 'center', marginTop: '4px', fontSize: '0.72rem', color: '#94a3b8' }}>
-            Natural Milk Dairy — Hyderabad Direct Farm Delivery System
+              <LogOut size={15} />
+              <span>Log out</span>
+            </button>
           </div>
         </div>
       </div>
@@ -3118,18 +3846,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     if (profileDetailView) {
       return renderProfileDetailView();
     }
-    return renderModernCustomerProfile();
+    return isMobile ? renderCustomerProfileMobile() : renderCustomerProfileWeb();
   };
 
   const renderPage = () => {
-    if (activePage === 'subscription') {
-      return (
-        <section className="customer-dashboard-main customer-subscription-page">
-          {renderPlanCard()}
-          {renderDeliveryActions()}
-        </section>
-      );
-    }
+    if (activePage === 'subscription') return renderSubscriptionPage();
     if (activePage === 'deliveries') return renderDeliveryHistory('Your deliveries');
     if (activePage === 'profile') return renderProfile();
     return renderDashboard();
@@ -3141,9 +3862,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <button
           type="button"
           className="customer-app-brand customer-app-brand-btn"
-          onClick={() => { setActivePage('dashboard'); setActiveTab('home'); }}
-          aria-label="Go to home page"
-          title="Go to home page"
+          onClick={() => { navigateToPage('dashboard'); }}
+          aria-label="Go to customer dashboard"
+          title="Go to customer dashboard"
         >
           <span className="customer-app-logo">
             <img
@@ -3208,7 +3929,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             className="customer-app-header-title customer-app-header-brand-btn"
-            onClick={() => { setActivePage('dashboard'); setActiveTab('home'); }}
+            onClick={() => setActiveTab('home')}
             aria-label="Go to home"
             title="Go to home"
           >
@@ -3274,22 +3995,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {isMobile && (
         <CustomerBottomNav
-          className="customer-bottom-nav customer-home-bottom-nav"
-          ariaLabel="Main navigation"
-          items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage={activePage === 'profile' ? 'profile' : 'home'}
-          onNavigate={(page) => {
-            if (page === 'profile') {
-              navigateToPage('profile');
-            } else {
-              if (page === 'products') {
-                localStorage.removeItem('nmd_selected_product_id');
-                window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
-              }
-              setActiveTab(page);
-              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-            }
-          }}
+          className="customer-bottom-nav customer-portal-bottom-nav"
+          ariaLabel="Customer navigation"
+          items={CUSTOMER_PORTAL_ITEMS}
+          activePage={activePage}
+          onNavigate={navigateToPage}
         />
       )}
 
@@ -3370,125 +4080,124 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '440px', padding: '26px 24px', borderRadius: '18px' }}
+            style={{ maxWidth: '440px', padding: '28px 24px', borderRadius: '18px', textAlign: 'center' }}
           >
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <div
-                style={{
-                  width: '54px',
-                  height: '54px',
-                  borderRadius: '50%',
-                  background: '#fee2e2',
-                  color: '#dc2626',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '12px',
-                }}
-              >
-                <Trash2 size={26} />
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: '#fee2e2',
+                color: '#dc2626',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '14px',
+              }}
+            >
+              <Trash2 size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+              Delete Account Permanently?
+            </h3>
+            <p style={{ fontSize: '0.86rem', color: '#64748b', margin: '0 0 16px 0', lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete your <strong>Natural Milk Dairy</strong> customer account?
+            </p>
+            <div
+              style={{
+                background: '#fff1f2',
+                border: '1px solid #fecdd3',
+                borderRadius: '12px',
+                padding: '12px 14px',
+                textAlign: 'left',
+                fontSize: '0.8rem',
+                color: '#9f1239',
+                lineHeight: 1.5,
+                marginBottom: '20px',
+              }}
+            >
+              <strong>⚠️ Permanent Database Action:</strong>
+              <div style={{ marginTop: '4px' }}>
+                • All active subscriptions & deliveries will be cancelled.<br />
+                • Invoices, payment records, and proofs will be erased.<br />
+                • Your profile and login will be permanently removed from the database.
               </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', margin: '0 0 6px 0' }}>
-                Delete Account?
-              </h3>
-              <p style={{ fontSize: '0.84rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
-                This action is permanent and cannot be undone. All your milk subscriptions, delivery records, and profile details will be permanently removed.
-              </p>
             </div>
 
-            <form onSubmit={deleteAccount}>
-              {deleteError && (
-                <div className="mobile-profile-alert is-error" style={{ marginBottom: '14px' }}>
-                  <AlertCircle size={16} />
-                  <span>{deleteError}</span>
-                </div>
-              )}
-
-              <label style={{ display: 'block', marginBottom: '12px' }}>
-                <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                  Enter your password:
-                </span>
-                <input
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  placeholder="Your account password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  disabled={deletingAccount}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.88rem',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </label>
-
-              <label style={{ display: 'block', marginBottom: '18px' }}>
-                <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '5px' }}>
-                  Type <strong style={{ color: '#dc2626' }}>DELETE</strong> to confirm:
-                </span>
-                <input
-                  type="text"
-                  autoComplete="off"
-                  required
-                  placeholder="DELETE"
-                  value={deleteConfirmation}
-                  onChange={(e) => setDeleteConfirmation(e.target.value)}
-                  disabled={deletingAccount}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.88rem',
-                    boxSizing: 'border-box',
-                  }}
-                />
-              </label>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <button
-                  type="button"
-                  disabled={deletingAccount}
-                  onClick={() => setShowDeleteConfirm(false)}
-                  style={{
-                    padding: '11px',
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    color: '#475569',
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword}
-                  style={{
-                    padding: '11px',
-                    borderRadius: '10px',
-                    border: 'none',
-                    background: deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword ? '#fca5a5' : '#dc2626',
-                    color: '#ffffff',
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    cursor: deletingAccount || deleteConfirmation !== 'DELETE' || !deletePassword ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  {deletingAccount ? 'Deleting...' : 'Permanently Delete'}
-                </button>
+            {deleteError && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '10px',
+                  color: '#dc2626',
+                  padding: '10px 12px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  marginBottom: '16px',
+                }}
+              >
+                {deleteError}
               </div>
-            </form>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <button
+                type="button"
+                disabled={deletingAccount}
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: deletingAccount ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingAccount}
+                onClick={deleteAccount}
+                style={{
+                  padding: '11px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: deletingAccount ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                {deletingAccount ? (
+                  <>
+                    <RefreshCw size={16} className="spin-animation" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={16} />
+                    <span>Yes, Delete Account</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Subscription Details Modal */}
+      {selectedSubForDetails && renderSubscriptionDetailsModal()}
+
     </div>
   );
 }

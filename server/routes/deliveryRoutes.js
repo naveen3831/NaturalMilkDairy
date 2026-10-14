@@ -2,16 +2,21 @@ const express = require('express');
 const router = express.Router();
 const {
   getDeliveries,
+  getAssignedCustomers,
   markDelivered,
   markNotDelivered,
   batchSyncOfflineDeliveries,
   assignDelivery,
+  deleteDeliveryForAdminAndDriver,
 } = require('../controllers/deliveryController');
+const { verifyToken, requireDeliveryStaff, requireAdmin } = require('../middleware/authMiddleware');
 
+router.get('/assigned-customers', verifyToken, requireDeliveryStaff, getAssignedCustomers);
 router.get('/', getDeliveries);
-router.post('/:id/delivered', markDelivered);
-router.post('/:id/not-delivered', markNotDelivered);
-router.post('/offline-sync', batchSyncOfflineDeliveries);
-router.put('/:id/assign', assignDelivery);
+router.post('/:id/delivered', verifyToken, requireDeliveryStaff, markDelivered);
+router.post('/:id/not-delivered', verifyToken, requireDeliveryStaff, markNotDelivered);
+router.post('/offline-sync', verifyToken, requireDeliveryStaff, batchSyncOfflineDeliveries);
+router.put('/:id/assign', verifyToken, requireAdmin, assignDelivery);
+router.delete('/:id', verifyToken, requireAdmin, deleteDeliveryForAdminAndDriver);
 
 module.exports = router;
