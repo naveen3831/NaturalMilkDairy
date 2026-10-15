@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error('CRITICAL: JWT_SECRET is not configured in .env');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'natural_milk_dairy_super_secret_jwt_key_2026';
+if (!process.env.JWT_SECRET) {
+  console.warn('NOTICE: JWT_SECRET not found in environment, using default key.');
 }
 
 /**
@@ -11,14 +12,17 @@ if (!JWT_SECRET) {
  * @returns {string} - Signed JWT token
  */
 const generateToken = (user, expiresIn = '7d') => {
+  const userId = (user.id || user._id || '').toString();
   return jwt.sign(
     {
-      id: user.id || user._id,
-      name: user.name,
-      mobile: user.mobile,
-      email: user.email,
-      role: user.role,
-      assignedArea: user.assignedArea || user.area,
+      id: userId,
+      name: user.name || '',
+      mobile: user.mobile || '',
+      email: user.email || '',
+      role: user.role || 'customer',
+      assignedArea: user.assignedArea || user.area || '',
+      customerId: user.customerId || '',
+      boyId: user.boyId || (user.role === 'delivery_boy' ? userId : ''),
     },
     JWT_SECRET,
     { expiresIn }
@@ -33,16 +37,25 @@ const verifyToken = (req, res, next) => {
     const authHeader = req.headers.authorization || req.headers.Authorization;
     let token = null;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
+    if (authHeader && typeof authHeader === 'string') {
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+      } else {
+        token = authHeader.trim();
+      }
     } else if (req.headers['x-access-token']) {
-      token = req.headers['x-access-token'];
+      token = String(req.headers['x-access-token']).trim();
+    }
+
+    if (token && token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1).trim();
     }
 
     if (!token) {
       return res.status(401).json({
         success: false,
         message: 'Access denied. No authentication token provided.',
+        code: 'NO_TOKEN',
       });
     }
 
@@ -50,9 +63,13 @@ const verifyToken = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
+    const isExpired = err.name === 'TokenExpiredError';
     return res.status(401).json({
       success: false,
-      message: 'Invalid or expired JWT token. Please sign in again.',
+      message: isExpired
+        ? 'Session expired. Please sign in again.'
+        : 'Invalid or expired JWT token. Please sign in again.',
+      code: isExpired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN',
       error: err.message,
     });
   }
@@ -66,10 +83,18 @@ const optionalToken = (req, res, next) => {
     const authHeader = req.headers.authorization || req.headers.Authorization;
     let token = null;
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
+    if (authHeader && typeof authHeader === 'string') {
+      if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.slice(7).trim();
+      } else {
+        token = authHeader.trim();
+      }
     } else if (req.headers['x-access-token']) {
-      token = req.headers['x-access-token'];
+      token = String(req.headers['x-access-token']).trim();
+    }
+
+    if (token && token.startsWith('"') && token.endsWith('"')) {
+      token = token.slice(1, -1).trim();
     }
 
     if (token) {
@@ -114,6 +139,16 @@ const requireDeliveryStaff = (req, res, next) => {
   next();
 };
 
+const requireAuth = (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required. Please sign in.',
+    });
+  }
+  next();
+};
+
 module.exports = {
   generateToken,
   verifyToken,
@@ -121,5 +156,6 @@ module.exports = {
   requireAdmin,
   requireCustomer,
   requireDeliveryStaff,
+  requireAuth,
   JWT_SECRET,
 };

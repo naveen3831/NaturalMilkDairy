@@ -1,5 +1,6 @@
 const Customer = require('../models/Customer');
 const Delivery = require('../models/Delivery');
+const DeliveryLocation = require('../models/DeliveryLocation');
 
 const formatDate = (d = new Date()) => {
   const year = d.getFullYear();
@@ -19,9 +20,18 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
     const dayName = getDayName(targetDate);
     const dayNumber = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
 
+    // Fetch all active delivery locations configured by admin
+    const activeLocations = await DeliveryLocation.find({ isActive: true }).lean();
+    const activeLocationSet = new Set(activeLocations.map((l) => l.name.toLowerCase().trim()));
+
     const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
 
     for (const customer of customers) {
+      // Ensure partner only delivers to active serviceable locations configured by admin
+      const custArea = (customer.area || '').toLowerCase().trim();
+      if (activeLocationSet.size > 0 && custArea && !activeLocationSet.has(custArea)) {
+        continue;
+      }
       const subscription = customer.subscription;
       if (subscription?.status === 'pending_payment' || subscription?.status === 'expired' ||
           subscription?.status === 'cancelled') {
@@ -135,4 +145,22 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
   }
 };
 
-module.exports = { ensureDeliveriesForDate, formatDate, getDayName };
+const ensureDeliveriesForRange = async (startDateStr, endDateStr) => {
+  try {
+    if (!startDateStr || !endDateStr) return;
+    const start = new Date(startDateStr + 'T00:00:00');
+    const end = new Date(endDateStr + 'T00:00:00');
+    let cur = new Date(start);
+    let count = 0;
+    while (cur <= end && count < 60) {
+      await ensureDeliveriesForDate(formatDate(cur));
+      cur.setDate(cur.getDate() + 1);
+      count++;
+    }
+  } catch (err) {
+    console.error('ensureDeliveriesForRange note:', err.message);
+  }
+};
+
+module.exports = { ensureDeliveriesForDate, ensureDeliveriesForRange, formatDate, getDayName };
+

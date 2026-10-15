@@ -46,10 +46,12 @@ export default function RegisterPage({ setActiveTab }) {
         const data = await response.json();
         if (response.ok && data.success && Array.isArray(data.areas) && data.areas.length > 0) {
           if (isMounted) {
-            setDeliveryAreas(data.areas);
+            const list = Array.isArray(data.locations) && data.locations.length > 0 ? data.locations : data.areas;
+            setDeliveryAreas(list);
+            const firstArea = typeof list[0] === 'object' ? list[0].name : list[0];
             setFormData((current) => ({
               ...current,
-              area: current.area || data.areas[0],
+              area: current.area || firstArea,
             }));
           }
         }
@@ -545,9 +547,15 @@ export default function RegisterPage({ setActiveTab }) {
                       {!areasLoading && deliveryAreas.length === 0 && (
                         <option value="">No delivery areas currently available</option>
                       )}
-                      {deliveryAreas.map((area) => (
-                        <option key={area} value={area}>{area}</option>
-                      ))}
+                      {deliveryAreas.map((item) => {
+                        const areaName = typeof item === 'object' ? item.name : item;
+                        const pincode = typeof item === 'object' ? item.pincode : '';
+                        return (
+                          <option key={areaName} value={areaName}>
+                            {areaName} {pincode ? `(${pincode})` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                     {areasError && (
                       <div role="alert" style={{ color: '#b42318', fontSize: '0.82rem', marginTop: '6px' }}>

@@ -1,8 +1,25 @@
 const express = require('express');
 const router = express.Router();
-const { recordPayment, getAllPayments } = require('../controllers/paymentController');
+const {
+  recordPayment,
+  getAllPayments,
+  submitCashHandover,
+  getCashHandovers,
+  updateHandoverStatus,
+  deleteCashHandover,
+} = require('../controllers/paymentController');
 
-router.get('/', getAllPayments);
-router.post('/', recordPayment);
+const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+
+router.get('/', verifyToken, requireAdmin, getAllPayments);
+router.post('/', verifyToken, recordPayment);
+
+// Driver Cash Handover to Admin
+router.post('/handover', verifyToken, submitCashHandover);
+router.get('/handovers', verifyToken, getCashHandovers);
+router.put('/handovers/:id/status', verifyToken, requireAdmin, updateHandoverStatus);
+router.delete('/handovers/:id', verifyToken, requireAdmin, deleteCashHandover);
 
 module.exports = router;
+
+

@@ -147,13 +147,26 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
       >
         {/* Card 1: Total Customers */}
         <div
+          onClick={() => setActiveTab('customers')}
+          title="View Customer Directory"
           style={{
             background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(16, 185, 129, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#a7f3d0';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -167,21 +180,60 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>
             {summary.totalCustomers}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginTop: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveTab('subscriptions');
+            }}
+            title="View Active Subscriptions"
+            style={{
+              fontSize: '0.75rem',
+              color: '#059669',
+              fontWeight: 600,
+              marginTop: '8px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 6px',
+              marginLeft: '-6px',
+              borderRadius: '6px',
+              transition: 'background 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#ecfdf5';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-            {summary.activeCustomers} Active Subscriptions
+            <span>{summary.activeCustomers} Active Subscriptions</span>
+            <ArrowRight size={12} style={{ opacity: 0.6 }} />
           </div>
         </div>
 
         {/* Card 2: Today's Deliveries */}
         <div
+          onClick={() => setActiveTab('deliveries')}
+          title="View Today's Deliveries"
           style={{
             background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(37, 99, 235, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#bfdbfe';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -206,13 +258,26 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
 
         {/* Card 3: Today's Sales */}
         <div
+          onClick={() => setActiveTab('deliveries')}
+          title="View Today's Sales & Deliveries"
           style={{
             background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(245, 158, 11, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#fde68a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -233,13 +298,26 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
 
         {/* Card 4: Credit Added */}
         <div
+          onClick={() => setActiveTab('ledger')}
+          title="View Customer Ledgers"
           style={{
             background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(147, 51, 234, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#e9d5ff';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -260,13 +338,26 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
 
         {/* Card 5: Payments Collected */}
         <div
+          onClick={() => setActiveTab('payments')}
+          title="View Collections & Payments"
           style={{
             background: '#ffffff',
             border: '1px solid #e2e8f0',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(15, 118, 110, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#99f6e4';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -287,13 +378,26 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
 
         {/* Card 6: Total Outstanding */}
         <div
+          onClick={() => setActiveTab('outstanding')}
+          title="View Credit & Outstanding"
           style={{
             background: '#ffffff',
             border: '1px solid #fee2e2',
             borderRadius: '14px',
             padding: '18px 20px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-            transition: 'all 0.15s ease',
+            transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+            cursor: 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'translateY(-3px)';
+            e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(220, 38, 38, 0.15), 0 4px 8px -2px rgba(0,0,0,0.04)';
+            e.currentTarget.style.borderColor = '#fca5a5';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.02)';
+            e.currentTarget.style.borderColor = '#fee2e2';
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -308,7 +412,6 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
             ₹{summary.totalOutstanding.toLocaleString()}
           </div>
           <div
-            onClick={() => setActiveTab('outstanding')}
             style={{
               fontSize: '0.75rem',
               color: '#dc2626',
@@ -317,7 +420,6 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
               display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
-              cursor: 'pointer',
             }}
           >
             <span>View Pending Report</span>
@@ -328,17 +430,32 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
 
       {/* 3. Delivery Progress Bar */}
       <div
+        onClick={() => setActiveTab('deliveries')}
+        title="View Today's Deliveries"
         style={{
           background: '#ffffff',
           border: '1px solid #e2e8f0',
           borderRadius: '14px',
           padding: '20px 24px',
+          cursor: 'pointer',
+          transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 8px 20px -4px rgba(5, 150, 105, 0.12)';
+          e.currentTarget.style.borderColor = '#a7f3d0';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = 'none';
+          e.currentTarget.style.borderColor = '#e2e8f0';
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
           <div>
-            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a' }}>
-              Today's Delivery Fulfillment
+            <div style={{ fontSize: '0.98rem', fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>Today's Delivery Fulfillment</span>
+              <ArrowRight size={14} color="#059669" />
             </div>
             <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
               {summary.completed} of {summary.deliveriesCount} morning deliveries fulfilled
@@ -586,11 +703,27 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           {deliveryBoys.map((boy) => (
             <div
               key={boy.id}
+              onClick={() => setActiveTab('delivery-boys')}
+              title={`View ${boy.name}'s Route & Partner Details`}
               style={{
                 background: '#f8fafc',
                 border: '1px solid #e2e8f0',
                 borderRadius: '12px',
                 padding: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#ffffff';
+                e.currentTarget.style.borderColor = '#cbd5e1';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 16px -4px rgba(0,0,0,0.06)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -707,6 +840,8 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           {auditLogs.slice(0, 4).map((log) => (
             <div
               key={log.id}
+              onClick={() => setActiveTab('audit-logs')}
+              title="View full audit trail"
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -716,6 +851,16 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
                 borderRadius: '8px',
                 border: '1px solid #f1f5f9',
                 fontSize: '0.82rem',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#f1f5f9';
+                e.currentTarget.style.borderColor = '#cbd5e1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.borderColor = '#f1f5f9';
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

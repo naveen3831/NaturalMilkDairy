@@ -9,10 +9,10 @@ const {
   assignDelivery,
   deleteDeliveryForAdminAndDriver,
 } = require('../controllers/deliveryController');
-const { verifyToken, requireDeliveryStaff, requireAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken, requireDeliveryStaff, requireAdmin } = require('../middleware/authMiddleware');
 
 router.get('/assigned-customers', verifyToken, requireDeliveryStaff, getAssignedCustomers);
-router.get('/', getDeliveries);
+router.get('/', optionalToken, getDeliveries);
 router.post('/:id/delivered', verifyToken, requireDeliveryStaff, markDelivered);
 router.post('/:id/not-delivered', verifyToken, requireDeliveryStaff, markNotDelivered);
 router.post('/offline-sync', verifyToken, requireDeliveryStaff, batchSyncOfflineDeliveries);

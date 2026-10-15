@@ -15,6 +15,7 @@ const reportRoutes = require('./routes/reportRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const locationRoutes = require('./routes/locationRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -42,6 +43,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/locations', locationRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -25,6 +25,7 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
     deleteDeliveryBoy,
     reconcileCash,
     sendDeliveryBoyCredentials,
+    locations,
   } = useDairy();
 
   const [sendingEmailBoyId, setSendingEmailBoyId] = useState(null);
@@ -132,13 +133,20 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
     }
   };
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = async (force = false) => {
     if (!deletingBoy) return;
     setIsDeleting(true);
-    await deleteDeliveryBoy(deletingBoy.id, 'Admin');
+    const res = await deleteDeliveryBoy(deletingBoy.id, 'Admin', force);
     setIsDeleting(false);
-    showToast(`🗑️ Partner ${deletingBoy.name} removed from database.`);
-    setDeletingBoy(null);
+
+    if (res?.success) {
+      showToast(`🗑️ Partner ${deletingBoy.name} removed from database.`);
+      setDeletingBoy(null);
+    } else if (res?.hasCashInHand) {
+      showToast(`⚠️ Partner holds ₹${res.amount} cash in hand! Reconcile or confirm deletion.`);
+    } else {
+      showToast(`❌ ${res?.message || 'Failed to remove delivery partner.'}`);
+    }
   };
 
   const handleConfirmReconcile = async () => {
@@ -633,16 +641,20 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                   required
                 />
                 <datalist id="add-route-datalist">
-                  <option value="Andheri West" />
-                  <option value="Juhu" />
-                  <option value="Bandra West" />
-                  <option value="Powai" />
-                  <option value="Vile Parle" />
-                  <option value="Lokhandwala" />
-                  <option value="Versova" />
-                  <option value="Goregaon" />
-                  <option value="Santacruz" />
-                  <option value="Khar West" />
+                  {locations && locations.length > 0 ? (
+                    locations.filter((l) => l.isActive).map((l) => (
+                      <option key={l.id || l._id} value={l.name}>
+                        {l.name} {l.pincode ? `(${l.pincode})` : ''} • {l.city}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Madhapur" />
+                      <option value="Hitec City" />
+                      <option value="Gachibowli" />
+                      <option value="Kondapur" />
+                    </>
+                  )}
                 </datalist>
                 <span style={{ fontSize: '0.71rem', color: '#64748b', marginTop: '2px', display: 'block' }}>
                   Type any custom route, street, or colony name.
@@ -776,16 +788,20 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                     required
                   />
                   <datalist id="edit-route-datalist">
-                    <option value="Andheri West" />
-                    <option value="Juhu" />
-                    <option value="Bandra West" />
-                    <option value="Powai" />
-                    <option value="Vile Parle" />
-                    <option value="Lokhandwala" />
-                    <option value="Versova" />
-                    <option value="Goregaon" />
-                    <option value="Santacruz" />
-                    <option value="Khar West" />
+                    {locations && locations.length > 0 ? (
+                      locations.filter((l) => l.isActive).map((l) => (
+                        <option key={l.id || l._id} value={l.name}>
+                          {l.name} {l.pincode ? `(${l.pincode})` : ''} • {l.city}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="Madhapur" />
+                        <option value="Hitec City" />
+                        <option value="Gachibowli" />
+                        <option value="Kondapur" />
+                      </>
+                    )}
                   </datalist>
                 </div>
 
@@ -867,71 +883,186 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
       )}
 
       {/* 5. Delete Delivery Partner Confirmation Modal */}
-      {deletingBoy && (
-        <div className="modal-overlay" onClick={() => setDeletingBoy(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', borderRadius: '16px' }}>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  background: '#fef2f2',
-                  color: '#dc2626',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 12px auto',
-                }}
-              >
-                <AlertTriangle size={24} />
-              </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Delete Delivery Partner?
-              </h3>
-              <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '6px 0 0 0', lineHeight: 1.5 }}>
-                Are you sure you want to delete <strong>{deletingBoy.name}</strong> ({deletingBoy.mobile})? This driver will be permanently removed from MongoDB Atlas and route assignments.
-              </p>
-            </div>
+      {deletingBoy && (() => {
+        const cashCollected = Number(deletingBoy.todayCashCollected) || 0;
+        const upiCollected = Number(deletingBoy.todayUpiCollected) || 0;
+        const totalInHand = cashCollected + upiCollected;
+        const hasAmountInHand = totalInHand > 0;
 
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setDeletingBoy(null)}
-                style={{
-                  flex: 1,
-                  padding: '9px',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#64748b',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-                style={{
-                  flex: 1,
-                  padding: '9px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: isDeleting ? '#94a3b8' : '#dc2626',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  cursor: isDeleting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Partner'}
-              </button>
+        return (
+          <div className="modal-overlay" onClick={() => setDeletingBoy(null)}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
+              <div style={{ textAlign: 'center', marginBottom: hasAmountInHand ? '14px' : '16px' }}>
+                <div
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '12px',
+                    background: '#fef2f2',
+                    color: '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto 12px auto',
+                  }}
+                >
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Delete Delivery Partner?
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '6px 0 0 0', lineHeight: 1.5 }}>
+                  Are you sure you want to delete <strong>{deletingBoy.name}</strong> ({deletingBoy.mobile})? This driver will be permanently removed from MongoDB Atlas and route assignments.
+                </p>
+              </div>
+
+              {/* Show Cash in Hand details ONLY if there is amount in partner hand */}
+              {hasAmountInHand && (
+                <div
+                  style={{
+                    background: '#fffbeb',
+                    border: '1.5px solid #f59e0b',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 800, fontSize: '0.88rem', marginBottom: '8px' }}>
+                    <AlertTriangle size={18} />
+                    <span>Cash in Partner Hand Detected: ₹{totalInHand}</span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: '#78350f', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                    <strong>{deletingBoy.name}</strong> currently holds un-reconciled money in hand. You can reconcile this amount first or write it off.
+                  </p>
+                  <div style={{ background: '#ffffff', borderRadius: '8px', padding: '10px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-around', fontSize: '0.82rem' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ color: '#92400e', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>PHYSICAL CASH</span>
+                      <strong style={{ color: '#b45309', fontSize: '1rem' }}>₹{cashCollected}</strong>
+                    </div>
+                    <div style={{ width: '1px', background: '#fde68a' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ color: '#92400e', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>UPI COLLECTED</span>
+                      <strong style={{ color: '#059669', fontSize: '1rem' }}>₹{upiCollected}</strong>
+                    </div>
+                    <div style={{ width: '1px', background: '#fde68a' }} />
+                    <div style={{ textAlign: 'center' }}>
+                      <span style={{ color: '#92400e', display: 'block', fontSize: '0.72rem', fontWeight: 600 }}>TOTAL IN HAND</span>
+                      <strong style={{ color: '#dc2626', fontSize: '1rem' }}>₹{totalInHand}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {hasAmountInHand ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetBoy = deletingBoy;
+                        setDeletingBoy(null);
+                        setReconcilingBoy(targetBoy);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: '#059669',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        fontSize: '0.84rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Wallet size={15} />
+                      <span>Reconcile Cash First (Recommended)</span>
+                    </button>
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingBoy(null)}
+                        style={{
+                          flex: 1,
+                          padding: '9px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmDelete(true)}
+                        disabled={isDeleting}
+                        style={{
+                          flex: 1,
+                          padding: '9px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: isDeleting ? '#94a3b8' : '#dc2626',
+                          color: '#ffffff',
+                          fontWeight: 700,
+                          fontSize: '0.82rem',
+                          cursor: isDeleting ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {isDeleting ? 'Deleting...' : 'Force Delete & Write Off'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingBoy(null)}
+                      style={{
+                        flex: 1,
+                        padding: '9px',
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        background: '#ffffff',
+                        color: '#64748b',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleConfirmDelete(false)}
+                      disabled={isDeleting}
+                      style={{
+                        flex: 1,
+                        padding: '9px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        background: isDeleting ? '#94a3b8' : '#dc2626',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                        cursor: isDeleting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {isDeleting ? 'Deleting...' : 'Yes, Delete Partner'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 6. Reconcile Modal */}
       {reconcilingBoy && (

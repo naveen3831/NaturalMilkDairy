@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
+import { useWebSocket } from '../context/WebSocketContext';
 import {
   LayoutDashboard,
   Truck,
@@ -19,6 +20,9 @@ import {
   ChevronRight,
   Sparkles,
   Bell,
+  Receipt,
+  BadgeAlert,
+  MapPin,
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
@@ -30,10 +34,40 @@ export default function AdminLayout({
   onOpenAddCustomer,
   onOpenPaymentModal,
 }) {
-  const { user, logout } = useAuth();
+  const { user, token, logout } = useAuth();
   const { selectedDate, setSelectedDate, dashboardSummary } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
+  const { subscribe: wsSubscribe } = useWebSocket();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [pendingHandoversCount, setPendingHandoversCount] = useState(0);
+
+  // Fetch pending handovers count for the sidebar badge
+  const fetchPendingHandovers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payments/handovers?status=pending', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (data.success && typeof data.count === 'number') {
+        setPendingHandoversCount(data.count);
+      }
+    } catch (e) {}
+  }, [token]);
+
+  useEffect(() => {
+    fetchPendingHandovers();
+  }, [fetchPendingHandovers]);
+
+  // Real-time update for pending handover badge
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const unsub1 = wsSubscribe('CASH_HANDOVER_SUBMITTED', () => fetchPendingHandovers());
+    const unsub2 = wsSubscribe('CASH_HANDOVER_UPDATED', () => fetchPendingHandovers());
+    return () => {
+      if (typeof unsub1 === 'function') unsub1();
+      if (typeof unsub2 === 'function') unsub2();
+    };
+  }, [wsSubscribe, fetchPendingHandovers]);
 
   const summary = dashboardSummary || {};
 
@@ -69,6 +103,14 @@ export default function AdminLayout({
       desc: 'Customer plans & payment records',
     },
     {
+      id: 'payments',
+      label: 'Payments',
+      icon: CreditCard,
+      badge: pendingHandoversCount > 0 ? `${pendingHandoversCount} New` : null,
+      badgeColor: '#ea580c',
+      desc: 'Driver cash handovers & shift settlement',
+    },
+    {
       id: 'ledger',
       label: 'Customer Ledger',
       icon: FileText,
@@ -98,6 +140,13 @@ export default function AdminLayout({
       desc: 'Driver routes & cash audit',
     },
     {
+      id: 'locations',
+      label: 'Service Locations',
+      icon: MapPin,
+      badge: null,
+      desc: 'Authorized delivery zones & routes',
+    },
+    {
       id: 'audit-logs',
       label: 'Audit Trail',
       icon: ShieldCheck,
@@ -107,6 +156,20 @@ export default function AdminLayout({
   ];
 
   const currentNav = (() => {
+    if (activeTab === 'locations') {
+      return {
+        id: 'locations',
+        label: 'Service Locations & Addresses',
+        desc: 'Authorized delivery zones, customer subscription territory, and partner routes',
+      };
+    }
+    if (activeTab === 'payments') {
+      return {
+        id: 'payments',
+        label: 'Payments & Driver Handovers',
+        desc: 'Review driver shift cash deposits, verification, and payment receipts',
+      };
+    }
     if (activeTab === 'add-delivery-boy') {
       return {
         id: 'delivery-boys',
@@ -179,7 +242,12 @@ export default function AdminLayout({
           }}
         >
           <div
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('home');
+              }
+            }}
+            title="Go to Home Page"
             style={{
               display: 'flex',
               alignItems: 'center',

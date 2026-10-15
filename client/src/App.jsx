@@ -16,10 +16,12 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import TodayDeliveries from './pages/admin/TodayDeliveries';
 import CustomerList from './pages/admin/CustomerList';
 import SubscriptionsPage from './pages/admin/SubscriptionsPage';
+import PaymentsManager from './pages/admin/PaymentsManager';
 import LedgerView from './pages/admin/LedgerView';
 import OutstandingReport from './pages/admin/OutstandingReport';
 import ProductsPricing from './pages/admin/ProductsPricing';
 import DeliveryBoysManager from './pages/admin/DeliveryBoysManager';
+import LocationsManager from './pages/admin/LocationsManager';
 import AuditLogs from './pages/admin/AuditLogs';
 import AddDeliveryBoyPage from './pages/admin/AddDeliveryBoyPage';
 import EditDeliveryBoyPage from './pages/admin/EditDeliveryBoyPage';
@@ -43,10 +45,12 @@ export default function App() {
     'deliveries',
     'customers',
     'subscriptions',
+    'payments',
     'ledger',
     'outstanding',
     'pricing',
     'delivery-boys',
+    'locations',
     'audit-logs',
     'add-delivery-boy',
     'edit-delivery-boy',
@@ -92,7 +96,7 @@ export default function App() {
       const knownTabs = [
         'home', 'products', 'story', 'faqs', 'contact', 'register',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
+        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length === 1 && knownTabs.includes(directTab)) {
@@ -206,7 +210,7 @@ export default function App() {
       const routeTabs = [
         'home', 'products', 'story', 'faqs', 'contact', 'register',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
+        'subscriptions', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length <= 1 && routeTabs.includes(pathTab)) {
@@ -265,7 +269,8 @@ export default function App() {
     if (user?.role === 'admin') {
       const urlParams = new URLSearchParams(window.location.search);
       const isExplicitPortal = urlParams.get('portal') === 'delivery' || urlParams.get('portal') === 'customer';
-      if (!isExplicitPortal && !adminTabs.includes(activeTab) && activeTab !== 'login') {
+      const allowedAdminTabs = [...adminTabs, 'home', 'landing', 'products', 'story', 'faqs', 'contact', 'login'];
+      if (!isExplicitPortal && !allowedAdminTabs.includes(activeTab) && activeTab !== 'login') {
         const lastAdminTab = localStorage.getItem('nmd_admin_tab') || 'dashboard';
         setActiveTab(lastAdminTab);
       }
@@ -304,6 +309,7 @@ export default function App() {
 
   // Modal states
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [paymentCustomer, setPaymentCustomer] = useState(null);
   const [isPauseOpen, setIsPauseOpen] = useState(false);
@@ -315,6 +321,10 @@ export default function App() {
   const handleOpenLedger = (customerId) => {
     setSelectedLedgerCustomerId(customerId);
     setActiveTab('ledger');
+  };
+
+  const handleOpenEditCustomer = (customer) => {
+    setEditingCustomer(customer);
   };
 
   const handleOpenPayment = (customer = null) => {
@@ -332,7 +342,8 @@ export default function App() {
     setIsTempQtyOpen(true);
   };
 
-  const isAdminView = adminTabs.includes(activeTab) || user?.role === 'admin';
+  const publicTabsList = ['home', 'landing', 'products', 'story', 'faqs', 'contact'];
+  const isAdminView = adminTabs.includes(activeTab) || (user?.role === 'admin' && !publicTabsList.includes(activeTab));
 
   return (
     <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -381,7 +392,11 @@ export default function App() {
           {activeTab === 'customers' && (
             <CustomerList
               onSelectCustomerLedger={handleOpenLedger}
-              onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
+              onOpenAddCustomer={() => {
+                setEditingCustomer(null);
+                setIsAddCustomerOpen(true);
+              }}
+              onOpenEditCustomer={handleOpenEditCustomer}
               onOpenPaymentModal={handleOpenPayment}
               onOpenPauseModal={handleOpenPause}
               onOpenTempQtyModal={handleOpenTempQty}
@@ -390,6 +405,10 @@ export default function App() {
 
           {activeTab === 'subscriptions' && (
             <SubscriptionsPage onSignIn={() => navigateToTab('login')} />
+          )}
+
+          {activeTab === 'payments' && (
+            <PaymentsManager onOpenPaymentModal={handleOpenPayment} />
           )}
 
           {activeTab === 'ledger' && (
@@ -484,6 +503,8 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'locations' && <LocationsManager />}
+
           {activeTab === 'audit-logs' && <AuditLogs />}
         </AdminLayout>
       ) : activeTab === 'delivery-boy-app' ? (
@@ -550,8 +571,12 @@ export default function App() {
 
       {/* Global Modals */}
       <CustomerModal
-        isOpen={isAddCustomerOpen}
-        onClose={() => setIsAddCustomerOpen(false)}
+        isOpen={isAddCustomerOpen || Boolean(editingCustomer)}
+        customerToEdit={editingCustomer}
+        onClose={() => {
+          setIsAddCustomerOpen(false);
+          setEditingCustomer(null);
+        }}
       />
 
       <PaymentModal

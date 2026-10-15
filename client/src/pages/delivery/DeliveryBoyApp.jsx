@@ -55,15 +55,30 @@ import {
   Mail,
   EyeOff,
   Globe,
+  Users,
+  UserCheck,
+  UserPlus,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
 const getDeliveryRoute = () => {
   const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
-  if (section !== 'delivery' || !['deliveries', 'route', 'cash', 'profile'].includes(page)) {
+  if (section !== 'delivery' || !['deliveries', 'route', 'customers', 'cash', 'profile'].includes(page)) {
     return null;
   }
-  const profileViews = ['assigned-route', 'shift-schedule', 'vehicle', 'depot', 'supervisor', 'edit'];
+  const profileViews = [
+    'assigned-route',
+    'shift-schedule',
+    'vehicle',
+    'depot',
+    'supervisor',
+    'personal-details',
+    'contact-details',
+    'territory-details',
+    'edit',
+  ];
   return { page, detail: page === 'profile' && profileViews.includes(detail) ? detail : null };
 };
 
@@ -77,6 +92,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     markDelivered,
     markNotDelivered,
     deliveryBoys,
+    locations,
     isOnline,
     offlineQueue,
     syncOfflineQueue,
@@ -98,8 +114,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const boyArea = user?.assignedArea || matchedBoy?.assignedArea || 'Madhapur';
   const [assignedCustomers, setAssignedCustomers] = useState([]);
   const [assignedCustomersError, setAssignedCustomersError] = useState('');
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
   const loadAssignedCustomers = useCallback(async () => {
     try {
+      setIsLoadingCustomers(true);
       const response = await fetch('/api/deliveries/assigned-customers', {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -111,13 +129,251 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       setAssignedCustomersError('');
     } catch (error) {
       setAssignedCustomersError(error.message || 'Unable to load your assigned customers.');
+    } finally {
+      setIsLoadingCustomers(false);
     }
   }, [token]);
 
-  // Navigation tab: 'deliveries' | 'route' | 'cash' | 'profile'
+  // Customers Management Tab States (CRUD, Categories & Filtering)
+  const [customerCategory, setCustomerCategory] = useState('all'); // 'all' | 'assigned' | 'driver' | 'subscription'
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [deletingCustomer, setDeletingCustomer] = useState(null);
+  const [customerActionLoading, setCustomerActionLoading] = useState(false);
+  const [customerFormError, setCustomerFormError] = useState('');
+  const [customerSuccessBanner, setCustomerSuccessBanner] = useState('');
+
+  // Add / Edit form fields
+  const [custFormName, setCustFormName] = useState('');
+  const [custFormMobile, setCustFormMobile] = useState('');
+  const [custFormEmail, setCustFormEmail] = useState('');
+  const [custFormWhatsapp, setCustFormWhatsapp] = useState('');
+  const [custFormAddress, setCustFormAddress] = useState('');
+  const [custFormArea, setCustFormArea] = useState(boyArea || 'Madhapur');
+  const [custFormLandmark, setCustFormLandmark] = useState('');
+  const [custFormMilkQty, setCustFormMilkQty] = useState(1);
+  const [custFormCurdQty, setCustFormCurdQty] = useState(0);
+  const [custFormFrequency, setCustFormFrequency] = useState('daily');
+  const [custFormDays, setCustFormDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  const [custFormPaymentType, setCustFormPaymentType] = useState('credit');
+  const [custFormNotes, setCustFormNotes] = useState('');
+
+  const resetCustomerForm = () => {
+    setCustFormName('');
+    setCustFormMobile('');
+    setCustFormEmail('');
+    setCustFormWhatsapp('');
+    setCustFormAddress('');
+    setCustFormArea(boyArea || 'Madhapur');
+    setCustFormLandmark('');
+    setCustFormMilkQty(1);
+    setCustFormCurdQty(0);
+    setCustFormFrequency('daily');
+    setCustFormDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    setCustFormPaymentType('credit');
+    setCustFormNotes('');
+    setCustomerFormError('');
+  };
+
+  const openAddCustomer = () => {
+    resetCustomerForm();
+    setShowAddCustomerModal(true);
+    setEditingCustomer(null);
+  };
+
+  const openEditCustomer = (cust) => {
+    setCustomerFormError('');
+    setEditingCustomer(cust);
+    setShowAddCustomerModal(false);
+    setCustFormName(cust.name || '');
+    setCustFormMobile(cust.mobile || '');
+    setCustFormEmail(cust.email || '');
+    setCustFormWhatsapp(cust.whatsapp || cust.mobile || '');
+    setCustFormAddress(cust.address || '');
+    setCustFormArea(cust.area || boyArea || 'Madhapur');
+    setCustFormLandmark(cust.landmark || '');
+    setCustFormMilkQty(cust.deliveryPlan?.milkQty ?? 1);
+    setCustFormCurdQty(cust.deliveryPlan?.curdQty ?? 0);
+    setCustFormFrequency(cust.deliveryPlan?.frequency || 'daily');
+    setCustFormDays(cust.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    setCustFormPaymentType(cust.paymentInfo?.paymentType || 'credit');
+    setCustFormNotes(cust.notes || '');
+  };
+
+  const handleSaveCustomer = async (e) => {
+    if (e) e.preventDefault();
+    setCustomerFormError('');
+
+    if (!custFormName.trim()) {
+      setCustomerFormError('Please enter the customer name.');
+      return;
+    }
+    const cleanMobile = custFormMobile.trim().replace(/\D/g, '');
+    if (cleanMobile.length < 10) {
+      setCustomerFormError('Please provide a valid 10-digit mobile number.');
+      return;
+    }
+    if (!custFormAddress.trim()) {
+      setCustomerFormError('Please enter the delivery address.');
+      return;
+    }
+
+    setCustomerActionLoading(true);
+    try {
+      const isEditing = Boolean(editingCustomer);
+      const url = isEditing
+        ? `/api/customers/${editingCustomer.id || editingCustomer._id}`
+        : '/api/customers';
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const payload = isEditing ? {
+        name: custFormName.trim(),
+        mobile: cleanMobile,
+        email: custFormEmail.trim().toLowerCase(),
+        whatsapp: (custFormWhatsapp || cleanMobile).trim(),
+        address: custFormAddress.trim(),
+        area: custFormArea.trim() || boyArea || 'Madhapur',
+        landmark: custFormLandmark.trim(),
+        'deliveryPlan.milkQty': Number(custFormMilkQty) || 1,
+        'deliveryPlan.curdQty': Number(custFormCurdQty) || 0,
+        'deliveryPlan.frequency': custFormFrequency,
+        'deliveryPlan.deliveryDays': custFormDays,
+        'deliveryPlan.deliveryBoyId': boyId,
+        'deliveryPlan.deliveryBoyName': boyName,
+        'paymentInfo.paymentType': custFormPaymentType,
+        notes: custFormNotes.trim(),
+        actor: boyName,
+      } : {
+        name: custFormName.trim(),
+        mobile: cleanMobile,
+        email: custFormEmail.trim().toLowerCase(),
+        whatsapp: (custFormWhatsapp || cleanMobile).trim(),
+        address: custFormAddress.trim(),
+        area: custFormArea.trim() || boyArea || 'Madhapur',
+        landmark: custFormLandmark.trim(),
+        milkQty: Number(custFormMilkQty) || 1,
+        curdQty: Number(custFormCurdQty) || 0,
+        frequency: custFormFrequency,
+        deliveryDays: custFormDays,
+        deliveryBoyId: boyId,
+        deliveryBoyName: boyName,
+        paymentType: custFormPaymentType,
+        paymentCycle: 'monthly',
+        initialBalance: 0,
+        notes: custFormNotes.trim(),
+        actor: boyName,
+      };
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || `Failed to ${isEditing ? 'update' : 'add'} customer.`);
+      }
+
+      setCustomerSuccessBanner(
+        isEditing
+          ? `Customer ${custFormName} updated successfully.`
+          : `Customer ${custFormName} added to your route! Today's delivery scheduled.`
+      );
+      setTimeout(() => setCustomerSuccessBanner(''), 5000);
+      setShowAddCustomerModal(false);
+      setEditingCustomer(null);
+      resetCustomerForm();
+      await Promise.all([
+        loadAssignedCustomers(),
+        fetchDeliveries(selectedDate, 'all', boyId),
+      ]);
+    } catch (err) {
+      setCustomerFormError(err.message || 'Operation failed. Please try again.');
+    } finally {
+      setCustomerActionLoading(false);
+    }
+  };
+
+  const handleDeleteCustomer = async () => {
+    if (!deletingCustomer) return;
+    setCustomerActionLoading(true);
+    setCustomerFormError('');
+    try {
+      const res = await fetch(`/api/customers/${deletingCustomer.id || deletingCustomer._id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ actor: boyName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Unable to delete customer.');
+      }
+      setCustomerSuccessBanner(`Customer ${deletingCustomer.name} removed from your route.`);
+      setTimeout(() => setCustomerSuccessBanner(''), 4500);
+      setDeletingCustomer(null);
+      await Promise.all([
+        loadAssignedCustomers(),
+        fetchDeliveries(selectedDate, 'all', boyId),
+      ]);
+    } catch (err) {
+      alert(err.message || 'Failed to remove customer.');
+    } finally {
+      setCustomerActionLoading(false);
+    }
+  };
+
+  const handleToggleCustomerPause = async (cust) => {
+    try {
+      const isCurrentlyPaused = cust.status === 'paused';
+      const endpoint = isCurrentlyPaused ? 'resume' : 'pause';
+      const today = new Date();
+      const nextMonth = new Date(today);
+      nextMonth.setDate(today.getDate() + 30);
+      const formatDateStr = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+      const body = isCurrentlyPaused
+        ? { actor: boyName }
+        : {
+            pauseFrom: formatDateStr(today),
+            pauseUntil: formatDateStr(nextMonth),
+            reason: 'Paused by delivery partner',
+            actor: boyName,
+          };
+
+      const res = await fetch(`/api/customers/${cust.id || cust._id}/${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || `Failed to ${endpoint} delivery.`);
+      }
+      setCustomerSuccessBanner(`Customer ${cust.name} delivery ${isCurrentlyPaused ? 'resumed' : 'paused'}.`);
+      setTimeout(() => setCustomerSuccessBanner(''), 4500);
+      await Promise.all([
+        loadAssignedCustomers(),
+        fetchDeliveries(selectedDate, 'all', boyId),
+      ]);
+    } catch (err) {
+      alert(err.message || 'Error updating customer status');
+    }
+  };
+
+  // Navigation tab: 'deliveries' | 'route' | 'customers' | 'cash' | 'profile'
   const [navTab, setNavTab] = useState(() => {
     const savedTab = localStorage.getItem('nmd_driver_tab');
-    const validTab = ['deliveries', 'route', 'cash', 'profile'].includes(savedTab) ? savedTab : 'deliveries';
+    const validTab = ['deliveries', 'route', 'customers', 'cash', 'profile'].includes(savedTab) ? savedTab : 'deliveries';
     return getDeliveryRoute()?.page || validTab;
   });
   const [profileDetailView, setProfileDetailView] = useState(() => getDeliveryRoute()?.detail || null);
@@ -141,8 +397,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
-  // Filter for deliveries: 'all' | 'pending' | 'delivered' | 'not_delivered'
-  const [filterStatus, setFilterStatus] = useState('all');
+  // Filter for deliveries: 'pending' (first/default) | 'delivered' | 'not_delivered' | 'all' (last)
+  const [filterStatus, setFilterStatus] = useState('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -167,6 +423,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [missedReason, setMissedReason] = useState('Customer Not Home');
   const [missedNote, setMissedNote] = useState('');
 
+  // Route & Stops tab controls
+  const [routeFilter, setRouteFilter] = useState('all'); // 'all' | 'pending' | 'delivered' | 'subscriptions'
+  const [routeSearch, setRouteSearch] = useState('');
+
   // Profile tab interactive states
   const [copiedId, setCopiedId] = useState(false);
   const [syncingNow, setSyncingNow] = useState(false);
@@ -175,6 +435,124 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [showDeletePartnerModal, setShowDeletePartnerModal] = useState(false);
   const [isDeletingPartner, setIsDeletingPartner] = useState(false);
   const [deletePartnerError, setDeletePartnerError] = useState('');
+
+  // Cash Handover to Admin States
+  const [driverHandovers, setDriverHandovers] = useState([]);
+  const [isLoadingDriverHandovers, setIsLoadingDriverHandovers] = useState(false);
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
+  const [handoverAmount, setHandoverAmount] = useState('');
+  const [handoverMethod, setHandoverMethod] = useState('dairy_counter');
+  const [handoverNotes, setHandoverNotes] = useState('');
+  const [isSubmittingHandover, setIsSubmittingHandover] = useState(false);
+  const [handoverFeedback, setHandoverFeedback] = useState({ type: '', text: '' });
+
+  const loadDriverHandovers = useCallback(async () => {
+    try {
+      setIsLoadingDriverHandovers(true);
+      const token = localStorage.getItem('nmd_jwt_token');
+      const targetDriverId = boyId || user?.id || user?.mobile || '';
+      const res = await fetch(`/api/payments/handovers?driverId=${encodeURIComponent(targetDriverId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.handovers)) {
+        setDriverHandovers(data.handovers);
+      }
+    } catch (err) {
+      console.error('loadDriverHandovers error:', err);
+    } finally {
+      setIsLoadingDriverHandovers(false);
+    }
+  }, [boyId, user]);
+
+  useEffect(() => {
+    if (navTab === 'cash') {
+      loadDriverHandovers();
+    }
+  }, [navTab, loadDriverHandovers]);
+
+  // WebSocket listener for real-time handover updates
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const unsub1 = wsSubscribe('CASH_HANDOVER_UPDATED', () => loadDriverHandovers());
+    const unsub2 = wsSubscribe('CASH_HANDOVER_SUBMITTED', () => loadDriverHandovers());
+    return () => {
+      if (typeof unsub1 === 'function') unsub1();
+      if (typeof unsub2 === 'function') unsub2();
+    };
+  }, [wsSubscribe, loadDriverHandovers]);
+
+  const handleOpenHandoverModal = (availableCashAmt) => {
+    const totalHandedOver = driverHandovers
+      .filter((h) => h.status === 'accepted' || h.status === 'pending')
+      .reduce((sum, h) => sum + (h.amount || 0), 0);
+    const available = typeof availableCashAmt === 'number'
+      ? availableCashAmt
+      : Math.max(0, totalCashCollected - totalHandedOver);
+
+    if (available <= 0) {
+      setHandoverFeedback({
+        type: 'info',
+        text: 'All collected cash has already been handed over to Admin.',
+      });
+      setTimeout(() => setHandoverFeedback({ type: '', text: '' }), 4000);
+      return;
+    }
+
+    setHandoverAmount(String(available));
+    setHandoverMethod('dairy_counter');
+    setHandoverNotes('');
+    setHandoverFeedback({ type: '', text: '' });
+    setShowHandoverModal(true);
+  };
+
+  const handleSubmitHandover = async (e) => {
+    if (e) e.preventDefault();
+    const amt = Number(handoverAmount);
+    if (!amt || amt <= 0) {
+      setHandoverFeedback({ type: 'error', text: 'Please enter a valid amount to handover.' });
+      return;
+    }
+    setIsSubmittingHandover(true);
+    setHandoverFeedback({ type: '', text: '' });
+    try {
+      const token = localStorage.getItem('nmd_jwt_token');
+      const res = await fetch('/api/payments/handover', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          deliveryBoyId: boyId || user?.id || '',
+          deliveryBoyName: boyName || user?.name || 'Delivery Partner',
+          deliveryBoyMobile: user?.mobile || matchedBoy?.mobile || '',
+          assignedArea: boyArea || '',
+          amount: amt,
+          physicalCashCollected: totalCashCollected,
+          upiCollected: totalUpiCollected,
+          handoverMethod,
+          notes: handoverNotes.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowHandoverModal(false);
+        setHandoverFeedback({
+          type: 'success',
+          text: `Cash handover of ₹${amt} submitted! Waiting for Admin verification.`,
+        });
+        setTimeout(() => setHandoverFeedback({ type: '', text: '' }), 5000);
+        await loadDriverHandovers();
+      } else {
+        throw new Error(data.message || 'Failed to submit handover');
+      }
+    } catch (err) {
+      setHandoverFeedback({ type: 'error', text: err.message });
+    } finally {
+      setIsSubmittingHandover(false);
+    }
+  };
 
   const handleDeletePartnerAccount = async () => {
     setIsDeletingPartner(true);
@@ -236,7 +614,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       if (!route) {
         if (window.location.pathname.startsWith('/delivery/')) {
           const savedTab = localStorage.getItem('nmd_driver_tab');
-          const fallbackTab = ['deliveries', 'route', 'cash', 'profile'].includes(savedTab)
+          const fallbackTab = ['deliveries', 'route', 'customers', 'cash', 'profile'].includes(savedTab)
             ? savedTab
             : 'deliveries';
           setNavTab(fallbackTab);
@@ -366,13 +744,21 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     loadAssignedCustomers();
   }, [loadAssignedCustomers]);
 
-  // Real-time synchronization for deliveries
+  // Real-time synchronization for deliveries and customers
   useEffect(() => {
+    if (!wsSubscribe) return;
     const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchDeliveries(selectedDate, 'all', boyId);
       loadAssignedCustomers();
     });
-    return unsub;
+    const unsubCust = wsSubscribe('CUSTOMER_UPDATED', () => {
+      loadAssignedCustomers();
+      fetchDeliveries(selectedDate, 'all', boyId);
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+      if (typeof unsubCust === 'function') unsubCust();
+    };
   }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, loadAssignedCustomers]);
 
   const handleRefresh = async () => {
@@ -417,18 +803,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const effectivePending = pendingList;
   const effectiveDelivered = completedList;
 
-  // Filtered deliveries based on active status filter & search query
-  const displayedDeliveries = myDeliveries.filter((d) => {
-    if (filterStatus !== 'all' && d.status !== filterStatus) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = d.customerName?.toLowerCase().includes(q);
-      const matchAddr = d.customerAddress?.toLowerCase().includes(q);
-      const matchPhone = d.customerPhone?.toLowerCase().includes(q);
-      return matchName || matchAddr || matchPhone;
-    }
-    return true;
-  });
+  // Filtered deliveries based on active status filter & search query (Pending first)
+  const displayedDeliveries = myDeliveries
+    .filter((d) => {
+      if (filterStatus !== 'all' && d.status !== filterStatus) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchName = d.customerName?.toLowerCase().includes(q);
+        const matchAddr = d.customerAddress?.toLowerCase().includes(q);
+        const matchPhone = d.customerPhone?.toLowerCase().includes(q);
+        return matchName || matchAddr || matchPhone;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const order = { pending: 1, not_delivered: 2, delivered: 3 };
+      const diff = (order[a.status] || 99) - (order[b.status] || 99);
+      if (diff !== 0) return diff;
+      return (a.sequenceNumber || 0) - (b.sequenceNumber || 0);
+    });
 
   // Collections calculation
   const totalCashCollected = completedList
@@ -586,6 +979,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       desc: 'Sequence of addresses & map',
     },
     {
+      id: 'customers',
+      label: 'Customers',
+      icon: Users,
+      badge: assignedCustomers.length > 0 ? `${assignedCustomers.length}` : null,
+      badgeColor: '#059669',
+      desc: 'Route customers & subscription plans',
+    },
+    {
       id: 'cash',
       label: 'Cash Summary',
       icon: Wallet,
@@ -598,12 +999,46 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       label: 'Driver Profile',
       icon: User,
       badge: null,
-      desc: 'Route assignment & status',
+      desc: 'Partner profile & account details',
     },
   ];
 
   const currentNav = navItems.find((n) => n.id === navTab) || navItems[0];
   const profileDetailPages = {
+    'personal-details': {
+      title: 'Personal Information',
+      description: 'Your delivery partner identity and credentials.',
+      rows: [
+        ['Full name', profileName || boyName || 'Delivery Partner'],
+        ['Partner ID', `NMD-DRV-${(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}`],
+        ['Designation', 'Delivery Partner'],
+        ['Account status', isOnline ? 'On duty' : 'Offline'],
+        ['Blood group', profileBloodGroup || 'Not specified'],
+        ['Driving license', profileLicense || 'Not provided'],
+        ['Member since', profileJoiningDate || 'Active Partner'],
+      ],
+    },
+    'contact-details': {
+      title: 'Contact Information',
+      description: 'Your phone number and registered contact details.',
+      rows: [
+        ['Mobile number', profilePhone || user?.mobile || user?.phone || 'Not provided'],
+        ['Email address', profileEmail || user?.email || 'Not provided'],
+        ['Home address', profileAddress || 'Not provided'],
+        ['Emergency contact', profileEmergencyContact || 'Not provided'],
+      ],
+    },
+    'territory-details': {
+      title: 'Territory & Dispatch',
+      description: 'Your assigned area, shift and dispatch hub.',
+      rows: [
+        ['Assigned territory', profileArea || boyArea || 'Not provided'],
+        ['Assigned shift', profileShift || 'Morning Dispatch'],
+        ['Dispatch hub', profileAddress || 'Not provided'],
+        ['Supervisor hotline', profileEmergencyContact || 'Not provided'],
+      ],
+      phone: profileEmergencyContact,
+    },
     'assigned-route': {
       title: 'Assigned Delivery Route',
       description: 'Your assigned territory and progress for today.',
@@ -630,6 +1065,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       rows: [
         ['Registration number', bikePlate || 'Not provided'],
         ['Vehicle model', bikeModel || 'Not provided'],
+        ['Vehicle type', bikeType || 'Not provided'],
+        ['Crates capacity', bikeCratesCapacity || 'Not provided'],
         ['Driving license', profileLicense || 'Not provided'],
       ],
     },
@@ -653,7 +1090,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const activeProfileDetail = profileDetailPages[profileDetailView];
 
   return (
-    <div className="driver-layout-root" style={{ minHeight: '100vh', display: 'flex', background: '#f8fafc' }}>
+    <div className={`driver-layout-root ${navTab === 'profile' ? 'is-driver-profile' : ''}`} style={{ minHeight: '100vh', display: 'flex', background: '#f8fafc' }}>
       <style>{`
         .driver-layout-root {
           font-family: var(--font-main, 'Manrope', sans-serif);
@@ -864,6 +1301,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           .driver-mobile-header {
             display: flex !important;
           }
+          .driver-layout-root.is-driver-profile .driver-mobile-header {
+            display: none !important;
+          }
           .driver-mobile-shift-card {
             display: block !important;
           }
@@ -882,6 +1322,105 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           .driver-search-wrap {
             max-width: 100% !important;
             width: 100% !important;
+          }
+          /* Route & Stops Mobile View Redesign */
+          .driver-route-page {
+            gap: 10px !important;
+          }
+          .driver-route-header-banner {
+            padding: 12px 14px !important;
+            border-radius: 14px !important;
+            gap: 10px !important;
+          }
+          .driver-route-header-desc {
+            display: none !important;
+          }
+          .driver-route-header-actions {
+            width: 100% !important;
+            display: flex !important;
+            gap: 8px !important;
+          }
+          .driver-route-nav-btn {
+            flex: 1 !important;
+            justify-content: center !important;
+            padding: 10px 14px !important;
+            font-size: 0.84rem !important;
+          }
+          .driver-route-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .driver-route-kpi-card {
+            padding: 10px 12px !important;
+            border-radius: 12px !important;
+          }
+          .driver-route-kpi-val {
+            font-size: 1.25rem !important;
+            margin-top: 2px !important;
+          }
+          .driver-route-kpi-sub {
+            font-size: 0.68rem !important;
+            margin-top: 2px !important;
+          }
+          .driver-route-progress-card {
+            padding: 10px 12px !important;
+            border-radius: 12px !important;
+          }
+          .driver-route-filter-bar {
+            padding: 8px 10px !important;
+            border-radius: 12px !important;
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 8px !important;
+          }
+          .driver-route-filter-scroll {
+            display: flex !important;
+            gap: 6px !important;
+            overflow-x: auto !important;
+            padding-bottom: 2px !important;
+            scrollbar-width: none !important;
+            width: 100% !important;
+          }
+          .driver-route-filter-scroll::-webkit-scrollbar {
+            display: none !important;
+          }
+          .driver-route-search-wrap {
+            width: 100% !important;
+            max-width: 100% !important;
+          }
+          .driver-route-stop-card {
+            padding: 14px 14px !important;
+            border-radius: 14px !important;
+          }
+          /* Customer Page 2 Cards Per Row on Mobile */
+          .driver-customers-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 8px !important;
+          }
+          .driver-customers-stat {
+            padding: 10px 10px !important;
+            border-radius: 12px !important;
+            gap: 8px !important;
+            align-items: center !important;
+          }
+          .driver-customers-stat-icon {
+            width: 34px !important;
+            height: 34px !important;
+            border-radius: 8px !important;
+            flex-shrink: 0 !important;
+          }
+          .driver-customers-stat-icon svg {
+            width: 17px !important;
+            height: 17px !important;
+          }
+          .driver-customers-stat-val {
+            font-size: 1.15rem !important;
+            line-height: 1.1 !important;
+          }
+          .driver-customers-stat-label {
+            font-size: 0.67rem !important;
+            line-height: 1.15 !important;
+            word-break: break-word !important;
           }
           .driver-modal-sheet {
             max-width: 100vw !important;
@@ -1338,7 +1877,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       <aside className="driver-admin-sidebar">
         {/* Brand Header */}
         <div className="driver-sidebar-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
+            onClick={() => {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('home');
+              }
+            }}
+            title="Go to Home Page"
+            style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}
+          >
             <div className="driver-sidebar-logo-box">
               <img
                 src={CLOUDINARY_MEDIA?.logo || '/logo.png'}
@@ -1753,80 +2300,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <p>{boyArea} · {pendingList.length} remaining of {totalDrops} stops</p>
               </div>
 
-              <section
-                aria-label="Assigned customers"
-                style={{
-                  padding: '16px',
-                  background: '#ffffff',
-                  border: '1px solid #dbeafe',
-                  borderRadius: '14px',
-                  boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: assignedCustomers.length ? 12 : 0 }}>
-                  <div>
-                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>
-                      Assigned customers <span style={{ color: '#2563eb' }}>({assignedCustomers.length})</span>
-                    </h2>
-                    <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.78rem' }}>
-                      Admin route assignments, including upcoming subscription deliveries
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={loadAssignedCustomers}
-                    aria-label="Refresh assigned customers"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, border: '1px solid #dbeafe', borderRadius: 8, padding: '7px 10px', background: '#eff6ff', color: '#1d4ed8', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer' }}
-                  >
-                    <RefreshCw size={13} /> Refresh
-                  </button>
-                </div>
-                {assignedCustomersError && (
-                  <div role="alert" style={{ marginTop: 10, color: '#b91c1c', fontSize: '0.8rem' }}>{assignedCustomersError}</div>
-                )}
-                {!assignedCustomersError && assignedCustomers.length === 0 && (
-                  <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.8rem' }}>
-                    No customers have been assigned to your route yet.
-                  </p>
-                )}
-                {assignedCustomers.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 260px), 1fr))', gap: 10 }}>
-                    {assignedCustomers.map((customer) => {
-                      const plan = customer.deliveryPlan || {};
-                      const planText = [
-                        plan.milkQty ? `${plan.milkQty} L milk` : '',
-                        plan.curdQty ? `${plan.curdQty} g curd` : '',
-                      ].filter(Boolean).join(' + ') || 'Plan details pending';
-                      const nextDate = customer.nextDeliveryDate
-                        ? new Date(`${customer.nextDeliveryDate}T00:00:00`).toLocaleDateString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })
-                        : 'Schedule pending';
-                      return (
-                        <article key={customer.id} style={{ padding: '12px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-                            <strong style={{ color: '#0f172a', fontSize: '0.86rem' }}>{customer.name}</strong>
-                            <span style={{ color: '#475569', fontSize: '0.72rem', whiteSpace: 'nowrap' }}>{customer.customerId}</span>
-                          </div>
-                          <div style={{ marginTop: 6, color: '#475569', fontSize: '0.78rem' }}>{planText} · {plan.frequency || 'daily'}</div>
-                          <div style={{ marginTop: 5, color: '#64748b', fontSize: '0.76rem' }}>
-                            {customer.area || boyArea} · Next drop: <strong style={{ color: '#047857' }}>{nextDate}</strong>
-                          </div>
-                          <div style={{ marginTop: 4, color: '#64748b', fontSize: '0.76rem' }}>{customer.address || 'Address not provided'}</div>
-                          {customer.mobile && (
-                            <a href={`tel:${customer.mobile}`} style={{ display: 'inline-flex', marginTop: 6, color: '#2563eb', fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none' }}>
-                              {customer.mobile}
-                            </a>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
               {/* DESKTOP BANNER (Hidden on Mobile) */}
               <div
                 className="driver-desktop-banner"
@@ -2047,10 +2520,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 {/* Horizontal Scrollable Filter Tabs */}
                 <div className="driver-filter-scroll-container">
                   {[
-                    { id: 'all', label: `All (${totalDrops})` },
                     { id: 'pending', label: `Pending (${pendingList.length})` },
                     { id: 'delivered', label: `Delivered (${completedList.length})` },
                     { id: 'not_delivered', label: `Not Done (${missedList.length})` },
+                    { id: 'all', label: `All (${totalDrops})` },
                   ].map((btn) => {
                     const isSelected = filterStatus === btn.id;
                     return (
@@ -2170,13 +2643,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       <div
                         key={item.id}
                         className={`driver-mobile-card ${isDone ? 'is-done' : ''} ${isMissed ? 'is-missed' : ''} ${isPending ? 'is-pending' : ''}`}
-                        style={{
-                          borderLeft: isDone
-                            ? '4px solid #059669'
-                            : isMissed
-                            ? '4px solid #dc2626'
-                            : '4px solid #f59e0b',
-                        }}
                       >
                         {/* Header: Stop Sequence, Name & Status */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -2539,238 +3005,2442 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           )}
 
           {/* ========================================================= */}
-          {/* TAB 2: ROUTE STOPS                                        */}
+          {/* TAB 2: ROUTE & STOPS (REDESIGNED WEB & MOBILE)            */}
           {/* ========================================================= */}
-          {navTab === 'route' && (
-            <div
-              style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '16px',
-                padding: '20px 16px',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <div>
-                  <h3 style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                    Route Delivery Sequence
-                  </h3>
-                  <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '3px 0 0 0' }}>
-                    {myDeliveries.length} planned stops in {boyArea}
-                  </p>
-                </div>
-              </div>
+          {navTab === 'route' && (() => {
+            // Rich Route Statistics
+            const totalPlannedMilk = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedMilk) || 0), 0);
+            const totalPlannedCurd = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedCurd) || 0), 0);
+            const subscriptionsList = myDeliveries.filter((d) => Boolean(d.subscriptionEndDate) || d.paymentMethod === 'prepaid');
+            const totalCashDue = myDeliveries
+              .filter((d) => d.status === 'pending' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid')
+              .reduce((sum, d) => sum + (Number(d.totalAmount) || 0), 0);
+            const nextPending = myDeliveries.find((d) => d.status === 'pending');
 
-              {myDeliveries.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
-                  No stops assigned on this route today.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {myDeliveries.map((item, index) => (
-                    <div
-                      key={item.id}
+            // Filter & Search stops
+            const filteredStops = myDeliveries.filter((d) => {
+              if (routeFilter === 'pending' && d.status !== 'pending') return false;
+              if (routeFilter === 'delivered' && d.status !== 'delivered') return false;
+              if (routeFilter === 'subscriptions' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid') return false;
+              if (routeSearch.trim()) {
+                const q = routeSearch.toLowerCase();
+                const matchName = d.customerName?.toLowerCase().includes(q);
+                const matchAddr = d.customerAddress?.toLowerCase().includes(q);
+                const matchPhone = d.customerPhone?.toLowerCase().includes(q);
+                const matchId = d.customerId?.toLowerCase().includes(q);
+                return matchName || matchAddr || matchPhone || matchId;
+              }
+              return true;
+            });
+
+            // Map navigation link for next pending stop or route territory
+            const firstPendingDestination = nextPending?.customerAddress || boyArea || 'Madhapur';
+            const googleNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(firstPendingDestination)}`;
+
+            return (
+              <div className="driver-route-page" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '16px' }}>
+                {/* 1. Header Banner */}
+                <div
+                  className="driver-route-header-banner"
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: isMobile ? '14px' : '16px',
+                    padding: isMobile ? '12px 14px' : '18px 20px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    gap: isMobile ? '10px' : '14px',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: '999px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          background: '#ecfdf5',
+                          color: '#065f46',
+                          border: '1px solid #a7f3d0',
+                        }}
+                      >
+                        <MapPin size={11} /> {boyArea || 'Madhapur'} Route
+                      </span>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: '999px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #bfdbfe',
+                        }}
+                      >
+                        <Clock size={11} /> 05:00 – 07:30 AM
+                      </span>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: '999px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          background: '#f8fafc',
+                          color: '#475569',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <Calendar size={11} /> {selectedDate}
+                      </span>
+                    </div>
+
+                    <h1 className="driver-route-header-title" style={{ fontSize: isMobile ? '1.12rem' : '1.28rem', fontWeight: 800, color: '#0f172a', margin: '2px 0 0 0' }}>
+                      Today’s Route
+                    </h1>
+                    <p className="driver-route-header-desc" style={{ color: '#64748b', fontSize: '0.84rem', margin: '3px 0 0 0', lineHeight: 1.45 }}>
+                      {myDeliveries.length} planned stops in {boyArea || 'your assigned area'}.
+                    </p>
+                  </div>
+
+                  <div className="driver-route-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <a
+                      href={googleNavUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="driver-route-nav-btn"
                       style={{
-                        display: 'flex',
+                        display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: isMobile ? '10px 14px' : '9px 14px',
                         borderRadius: '10px',
+                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                        color: '#ffffff',
+                        fontSize: '0.84rem',
+                        fontWeight: 800,
+                        textDecoration: 'none',
+                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.22)',
+                        cursor: 'pointer',
+                        flex: isMobile ? '1' : 'initial',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <span
+                      <Navigation size={15} />
+                      <span>Start GPS Navigation</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={handleRefresh}
+                      title="Refresh Stops"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        padding: isMobile ? '10px 12px' : '9px 12px',
+                        borderRadius: '10px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#475569',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <RefreshCw size={14} className={isRefreshing ? 'spin-animation' : ''} />
+                      {!isMobile && <span>Refresh</span>}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Route Metrics Overview (2x2 Grid on Mobile, 4-in-a-row on Desktop) */}
+                <div
+                  className="driver-route-kpi-grid"
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: isMobile ? '8px' : '12px',
+                  }}
+                >
+                  {/* Stops Card */}
+                  <div
+                    className="driver-route-kpi-card driver-route-metric-stops"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: isMobile ? '12px' : '14px',
+                      padding: isMobile ? '10px 12px' : '14px 16px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
+                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Total stops</span>
+                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <MapPin size={isMobile ? 13 : 16} />
+                      </div>
+                    </div>
+                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
+                      {myDeliveries.length}
+                    </div>
+                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {boyArea || 'Madhapur'} sequence
+                    </div>
+                  </div>
+
+                  {/* Pending Drops */}
+                  <div
+                    className="driver-route-kpi-card driver-route-metric-remaining"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: isMobile ? '12px' : '14px',
+                      padding: isMobile ? '10px 12px' : '14px 16px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
+                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Remaining</span>
+                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Clock size={isMobile ? 13 : 16} />
+                      </div>
+                    </div>
+                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: pendingList.length > 0 ? '#d97706' : '#059669', lineHeight: 1.1 }}>
+                      {pendingList.length}
+                    </div>
+                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {completedList.length} done ({progressPercent}%)
+                    </div>
+                  </div>
+
+                  {/* Milk Volume */}
+                  <div
+                    className="driver-route-kpi-card driver-route-metric-load"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: isMobile ? '12px' : '14px',
+                      padding: isMobile ? '10px 12px' : '14px 16px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
+                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Milk load</span>
+                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Truck size={isMobile ? 13 : 16} />
+                      </div>
+                    </div>
+                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
+                      {totalPlannedMilk} L
+                    </div>
+                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {totalPlannedCurd > 0 ? `+ ${totalPlannedCurd}g Curd` : 'Fresh Cow Milk'}
+                    </div>
+                  </div>
+
+                  {/* Prepaid & Collections */}
+                  <div
+                    className="driver-route-kpi-card driver-route-metric-collections"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: isMobile ? '12px' : '14px',
+                      padding: isMobile ? '10px 12px' : '14px 16px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
+                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Collections</span>
+                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Wallet size={isMobile ? 13 : 16} />
+                      </div>
+                    </div>
+                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
+                      ₹{totalCashDue}
+                    </div>
+                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {subscriptionsList.length} Prepaid Sub{subscriptionsList.length !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Route Progress Bar */}
+                <div
+                  className="driver-route-progress-card"
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: isMobile ? '12px' : '14px',
+                    padding: isMobile ? '10px 12px' : '12px 16px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ fontSize: isMobile ? '0.78rem' : '0.82rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <CheckCircle2 size={isMobile ? 14 : 16} color="#059669" />
+                      <span>Route progress</span>
+                    </div>
+                    <span style={{ fontSize: isMobile ? '0.76rem' : '0.8rem', fontWeight: 800, color: '#059669' }}>
+                      {progressPercent}% Complete
+                    </span>
+                  </div>
+                  <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        width: `${progressPercent}%`,
+                        background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
+                        borderRadius: '999px',
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '0.72rem', color: '#64748b' }}>
+                    <span>{completedList.length} drops finished</span>
+                    <span>{nextPending ? `Next: #${myDeliveries.indexOf(nextPending) + 1} ${nextPending.customerName}` : 'All drops completed! 🎉'}</span>
+                  </div>
+                </div>
+
+                {/* 4. Filter Tabs & Search Controls */}
+                <div
+                  className="driver-route-filter-bar"
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: isMobile ? '12px' : '14px',
+                    padding: isMobile ? '8px 10px' : '10px 14px',
+                    display: 'flex',
+                    flexDirection: isMobile ? 'column' : 'row',
+                    alignItems: isMobile ? 'stretch' : 'center',
+                    justifyContent: 'space-between',
+                    gap: isMobile ? '8px' : '10px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  {/* Category Pills (Horizontal Scroll on Mobile) */}
+                  <div
+                    className="driver-route-filter-scroll"
+                    style={{
+                      display: 'flex',
+                      gap: '6px',
+                      overflowX: 'auto',
+                      paddingBottom: '2px',
+                      scrollbarWidth: 'none',
+                      WebkitOverflowScrolling: 'touch',
+                      width: isMobile ? '100%' : 'auto',
+                    }}
+                  >
+                    {[
+                      { id: 'pending', label: `Pending (${pendingList.length})` },
+                      { id: 'delivered', label: `Completed (${completedList.length})` },
+                      { id: 'subscriptions', label: `Prepaid (${subscriptionsList.length})` },
+                      { id: 'all', label: `All Stops (${myDeliveries.length})` },
+                    ].map((btn) => {
+                      const isSel = routeFilter === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => setRouteFilter(btn.id)}
                           style={{
-                            width: '26px',
-                            height: '26px',
-                            borderRadius: '50%',
-                            background: item.status === 'delivered' ? '#dcfce7' : '#e2e8f0',
-                            color: item.status === 'delivered' ? '#059669' : '#334155',
-                            fontSize: '0.76rem',
-                            fontWeight: 800,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                            padding: isMobile ? '5px 11px' : '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: isMobile ? '0.74rem' : '0.78rem',
+                            fontWeight: isSel ? 800 : 600,
+                            border: '1px solid',
+                            borderColor: isSel ? '#059669' : '#cbd5e1',
+                            background: isSel ? '#ecfdf5' : '#ffffff',
+                            color: isSel ? '#065f46' : '#475569',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.15s ease',
                             flexShrink: 0,
                           }}
                         >
-                          {index + 1}
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {item.customerName}
-                          </div>
-                          <div style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {item.customerAddress}
-                          </div>
-                        </div>
-                      </div>
+                          {btn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669' }}>
-                          {item.plannedMilk}L
-                        </span>
-                        <a
-                          href={`https://maps.google.com/?q=${encodeURIComponent(
-                            item.customerAddress || item.customerName
-                          )}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                  {/* Search Bar */}
+                  <div
+                    className="driver-route-search-wrap"
+                    style={{
+                      position: 'relative',
+                      minWidth: isMobile ? '100%' : '180px',
+                      flex: isMobile ? 'initial' : '1',
+                      maxWidth: isMobile ? '100%' : '300px',
+                      width: isMobile ? '100%' : 'auto',
+                    }}
+                  >
+                    <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
+                    <input
+                      type="text"
+                      placeholder="Search stop, flat, street, phone..."
+                      value={routeSearch}
+                      onChange={(e) => setRouteSearch(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px 6px 30px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        fontSize: '0.82rem',
+                        color: '#0f172a',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 5. Route Stops Sequence List */}
+                {filteredStops.length === 0 ? (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '48px 24px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '50%',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        color: '#94a3b8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        margin: '0 auto 12px auto',
+                      }}
+                    >
+                      <MapPin size={24} />
+                    </div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+                      No Matching Stops Found
+                    </h3>
+                    <p style={{ color: '#64748b', fontSize: '0.82rem', maxWidth: '340px', margin: '0 auto 14px auto' }}>
+                      {routeSearch.trim() ? `No route stops match "${routeSearch}".` : 'No stops in this filter category.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setRouteFilter('all'); setRouteSearch(''); }}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#059669',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Reset Filter
+                    </button>
+                  </div>
+                ) : (
+                  <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {filteredStops.map((item) => {
+                      const originalIndex = myDeliveries.indexOf(item);
+                      const isDone = item.status === 'delivered';
+                      const isMissed = item.status === 'not_delivered';
+                      const isPending = item.status === 'pending';
+
+                      // Enrich with assignedCustomers record
+                      const customerInfo = (assignedCustomers || []).find(
+                        (c) => c.customerId === item.customerId ||
+                               c.mobile === item.customerPhone ||
+                               c._id === item.customerId ||
+                               c.id === item.customerId
+                      );
+
+                      const isSubscription = Boolean(item.subscriptionEndDate) ||
+                        customerInfo?.subscription?.status === 'active' ||
+                        item.paymentMethod === 'prepaid';
+
+                      const subDateText = item.subscriptionEndDate
+                        ? new Date(item.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : customerInfo?.subscription?.endDate
+                        ? new Date(customerInfo.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '';
+
+                      const customerPhone = item.customerPhone || customerInfo?.mobile || '';
+                      const doorstepAddress = item.customerAddress || customerInfo?.address || 'Doorstep Delivery';
+                      const landmark = item.landmark || customerInfo?.landmark || '';
+                      const specialNotes = item.deliveryNotes || customerInfo?.deliveryNotes || customerInfo?.notes || '';
+                      const mapAddress = `${doorstepAddress}, ${item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}`;
+                      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
+
+                      return (
+                        <div
+                          key={item.id || item._id}
+                          className={`driver-route-stop-card ${isDone ? 'is-delivered' : isMissed ? 'is-skipped' : 'is-pending'}`}
                           style={{
-                            padding: '5px 8px',
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: '6px',
-                            color: '#2563eb',
-                            fontSize: '0.72rem',
-                            fontWeight: 600,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            textDecoration: 'none',
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: isMobile ? '14px' : '16px',
+                            padding: isMobile ? '12px 14px' : '16px 18px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                            transition: 'all 0.15s ease',
                           }}
                         >
-                          <Navigation size={11} /> Map
-                        </a>
-                      </div>
-                    </div>
-                  ))}
+                          {/* Top Row: Stop Badge, Customer Name, Status & Price */}
+                          <div className="driver-route-stop-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0, flex: '1' }}>
+                              {/* Sequence Badge */}
+                              <div
+                                className="driver-route-stop-number"
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '10px',
+                                  background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#eff6ff',
+                                  color: isDone ? '#059669' : isMissed ? '#dc2626' : '#2563eb',
+                                  border: isDone ? '1px solid #bbf7d0' : isMissed ? '1px solid #fecaca' : '1px solid #bfdbfe',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.84rem',
+                                  fontWeight: 800,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                #{originalIndex + 1}
+                              </div>
+
+                              <div className="driver-route-customer">
+                                <div className="driver-route-customer-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                                    {item.customerName}
+                                  </h3>
+                                  {(item.customerId || customerInfo?.customerId) && (
+                                    <span
+                                      className="driver-route-customer-id"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 700,
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        background: '#f1f5f9',
+                                        color: '#475569',
+                                        border: '1px solid #e2e8f0',
+                                      }}
+                                    >
+                                      {item.customerId || customerInfo?.customerId}
+                                    </span>
+                                  )}
+                                  {isSubscription && (
+                                    <span
+                                      className="driver-route-subscription-tag"
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        padding: '2px 7px',
+                                        borderRadius: '4px',
+                                        background: '#fffbeb',
+                                        color: '#b45309',
+                                        border: '1px solid #fde68a',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px',
+                                      }}
+                                    >
+                                      <Sparkles size={11} /> Prepaid Sub
+                                    </span>
+                                  )}
+                                </div>
+
+                                {customerPhone && (
+                                  <a
+                                    href={`tel:${customerPhone}`}
+                                    className="driver-route-customer-phone"
+                                    style={{
+                                      fontSize: '0.78rem',
+                                      color: '#2563eb',
+                                      fontWeight: 600,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      marginTop: '3px',
+                                      textDecoration: 'none',
+                                    }}
+                                  >
+                                    <Phone size={12} /> {customerPhone}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Status Tag */}
+                            <div className="driver-route-stop-status" style={{ textAlign: 'right', flexShrink: 0 }}>
+                              <span
+                                className="driver-route-stop-status-badge"
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '3px 9px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
+                                  color: isDone ? '#059669' : isMissed ? '#dc2626' : '#b45309',
+                                  border: isDone ? '1px solid #bbf7d0' : isMissed ? '1px solid #fecaca' : '1px solid #fde68a',
+                                }}
+                              >
+                                {isDone ? '✓ Delivered' : isMissed ? '✕ Skipped' : '○ Pending Drop'}
+                              </span>
+
+                              <div className="driver-route-stop-amount" style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                                {isSubscription
+                                  ? subDateText ? `Prepaid to ${subDateText}` : 'Active Prepaid'
+                                  : `₹${item.totalAmount}`}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Middle: Doorstep Address & Landmark */}
+                          <div
+                            className="driver-route-stop-address"
+                            style={{
+                              marginTop: '12px',
+                              padding: '10px 12px',
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '10px',
+                              fontSize: '0.82rem',
+                              color: '#334155',
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                              <MapPin size={15} color="#059669" style={{ marginTop: '2px', flexShrink: 0 }} />
+                              <div>
+                                <strong>{doorstepAddress}</strong>
+                                {landmark && (
+                                  <div className="driver-route-landmark" style={{ color: '#64748b', fontSize: '0.76rem', marginTop: '2px' }}>
+                                    🏛️ Landmark: {landmark}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Product Pills & Delivery Info */}
+                          <div className="driver-route-stop-products" style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span
+                              className="driver-route-product-pill is-milk"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '3px 9px',
+                                borderRadius: '6px',
+                                background: '#ecfdf5',
+                                border: '1px solid #bbf7d0',
+                                color: '#065f46',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              🥛 {item.actualMilk || item.plannedMilk || 1}L Daily Milk
+                            </span>
+
+                            {(item.plannedCurd > 0 || customerInfo?.deliveryPlan?.curdQty > 0) && (
+                              <span
+                                className="driver-route-product-pill is-curd"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 9px',
+                                  borderRadius: '6px',
+                                  background: '#eff6ff',
+                                  border: '1px solid #bfdbfe',
+                                  color: '#1d4ed8',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                🥣 {item.actualCurd || item.plannedCurd || customerInfo?.deliveryPlan?.curdQty}g Curd
+                              </span>
+                            )}
+
+                            <span
+                              className="driver-route-product-pill is-frequency"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '3px 9px',
+                                borderRadius: '6px',
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                color: '#475569',
+                                fontSize: '0.76rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              <Calendar size={12} /> {customerInfo?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Everyday Morning'}
+                            </span>
+
+                            {isDone && item.deliveredAt && (
+                              <span
+                                className="driver-route-product-pill is-completed-at"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  background: '#f0fdf4',
+                                  color: '#047857',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                <Clock size={12} /> Completed: {new Date(item.deliveredAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Doorstep Instructions / Special Notes */}
+                          {specialNotes && (
+                            <div
+                              className="driver-route-stop-note"
+                              style={{
+                                marginTop: '10px',
+                                padding: '8px 12px',
+                                background: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                borderRadius: '8px',
+                                color: '#92400e',
+                                fontSize: '0.76rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                              }}
+                            >
+                              <Bell size={13} color="#d97706" style={{ flexShrink: 0 }} />
+                              <span><strong>Doorstep Note:</strong> {specialNotes}</span>
+                            </div>
+                          )}
+
+                          {/* Bottom Action Strip: Call, WhatsApp, Map, Confirm Delivery */}
+                          <div
+                            className="driver-route-stop-actions"
+                            style={{
+                              marginTop: '12px',
+                              paddingTop: '12px',
+                              borderTop: '1px solid #f1f5f9',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '8px',
+                            }}
+                          >
+                            {/* Contact Links */}
+                            <div className="driver-route-contact-actions" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {customerPhone && (
+                                <a
+                                  href={`tel:${customerPhone}`}
+                                  className="driver-route-action-link is-call"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '6px 11px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#0f172a',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                  }}
+                                >
+                                  <Phone size={13} color="#059669" />
+                                  <span>Call</span>
+                                </a>
+                              )}
+
+                              {customerPhone && (
+                                <a
+                                  href={`https://wa.me/91${customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${item.customerName}, your fresh milk delivery from Natural Milk Dairy is arriving at your doorstep!`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="driver-route-action-link is-whatsapp"
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '6px 11px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #bbf7d0',
+                                    background: '#f0fdf4',
+                                    color: '#166534',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    textDecoration: 'none',
+                                  }}
+                                >
+                                  <MessageCircle size={13} color="#16a34a" />
+                                  <span>WhatsApp</span>
+                                </a>
+                              )}
+
+                              <a
+                                href={mapUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="driver-route-action-link is-navigate"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '6px 11px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #bfdbfe',
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 700,
+                                  textDecoration: 'none',
+                                }}
+                              >
+                                <Navigation size={13} color="#2563eb" />
+                                <span>Navigate</span>
+                              </a>
+                            </div>
+
+                            {/* Status Quick Action Buttons */}
+                            <div className="driver-route-delivery-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                              {isPending && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openNotDeliveredModal(item)}
+                                    className="driver-route-action-button is-skip"
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: '8px',
+                                      border: '1px solid #fecaca',
+                                      background: '#fff1f2',
+                                      color: '#b91c1c',
+                                      fontSize: '0.76rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    ✕ Skip
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openDeliverModal(item)}
+                                    className="driver-route-action-button is-deliver"
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '5px',
+                                      padding: '6px 14px',
+                                      borderRadius: '8px',
+                                      border: 'none',
+                                      background: '#059669',
+                                      color: '#ffffff',
+                                      fontSize: '0.76rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
+                                    }}
+                                  >
+                                    <Check size={14} />
+                                    <span>Mark Delivered</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {isDone && (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    background: '#ecfdf5',
+                                    color: '#047857',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  <CheckCheck size={14} />
+                                  <span>Drop Finished</span>
+                                </span>
+                              )}
+
+                              {isMissed && (
+                                <button
+                                  type="button"
+                                  onClick={() => openDeliverModal(item)}
+                                  className="driver-route-action-button is-retry"
+                                  style={{
+                                    padding: '5px 10px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#334155',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Retry Drop
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ========================================================= */}
+          {/* TAB: ROUTE CUSTOMERS & SUBSCRIPTIONS (CRUD)              */}
+          {/* ========================================================= */}
+          {navTab === 'customers' && (
+            <div className="driver-customers-page" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* 1. Header Banner & Actions */}
+              <div
+                className="driver-customers-header"
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '18px 20px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                      Route Customers & Subscriptions
+                    </h3>
+                    <span
+                      style={{
+                        background: '#ecfdf5',
+                        color: '#059669',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        border: '1px solid #a7f3d0',
+                      }}
+                    >
+                      {assignedCustomers.length} Total
+                    </span>
+                  </div>
+                  <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
+                    Doorstep deliveries, subscriber plans, and customer management across {boyArea}
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={loadAssignedCustomers}
+                    disabled={isLoadingCustomers}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '8px 14px',
+                      borderRadius: '9px',
+                      border: '1px solid #e2e8f0',
+                      background: '#ffffff',
+                      color: '#475569',
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      cursor: isLoadingCustomers ? 'wait' : 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <RefreshCw size={14} className={isLoadingCustomers ? 'spin-animation' : ''} />
+                    <span>Refresh</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={openAddCustomer}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '8px 16px',
+                      borderRadius: '9px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #059669, #047857)',
+                      color: '#ffffff',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(5,150,105,0.2)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <UserPlus size={16} />
+                    <span>Add Customer</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Success Notification Alert */}
+              {customerSuccessBanner && (
+                <div
+                  className="driver-customers-stats"
+                  style={{
+                    background: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    color: '#065f46',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 1px 3px rgba(5,150,105,0.08)',
+                  }}
+                >
+                  <CheckCircle2 size={18} color="#059669" />
+                  <span>{customerSuccessBanner}</span>
                 </div>
               )}
+
+              {/* 2. KPI Summary Cards Strip (4 Metrics) */}
+              <div
+                className="driver-customers-stat-grid"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '12px',
+                }}
+              >
+                {[
+                  {
+                    label: 'Total Route Customers',
+                    value: assignedCustomers.length,
+                    icon: Users,
+                    color: '#2563eb',
+                    bg: '#eff6ff',
+                  },
+                  {
+                    label: 'Active Subscriptions',
+                    value: assignedCustomers.filter((c) => c.subscription?.status === 'active' || c.paymentInfo?.paymentType === 'prepaid').length,
+                    icon: Award,
+                    color: '#7c3aed',
+                    bg: '#f5f3ff',
+                  },
+                  {
+                    label: 'Created by You',
+                    value: assignedCustomers.filter((c) => c.createdBy === 'driver' || c.createdByDriverId === boyId).length,
+                    icon: UserCheck,
+                    color: '#059669',
+                    bg: '#ecfdf5',
+                  },
+                  {
+                    label: 'Daily Milk Planned',
+                    value: `${assignedCustomers.reduce((sum, c) => sum + (c.deliveryPlan?.milkQty || 0), 0)} L`,
+                    icon: Truck,
+                    color: '#0284c7',
+                    bg: '#f0f9ff',
+                  },
+                ].map((stat, idx) => {
+                  const Icon = stat.icon;
+                  return (
+                    <div
+                      key={idx}
+                      className="driver-customers-stat"
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '14px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                        minWidth: 0,
+                      }}
+                    >
+                      <div
+                        className="driver-customers-stat-icon"
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '10px',
+                          background: stat.bg,
+                          color: stat.color,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon size={20} />
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                        <div
+                          className="driver-customers-stat-val"
+                          style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.15 }}
+                        >
+                          {stat.value}
+                        </div>
+                        <div
+                          className="driver-customers-stat-label"
+                          style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}
+                          title={stat.label}
+                        >
+                          {stat.label}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 3. Category Filter & Search Strip */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '14px',
+                  padding: '12px 16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '12px',
+                }}
+              >
+                {/* Category Chips */}
+                <div className="driver-customers-category-list" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { id: 'all', label: 'All Customers', count: assignedCustomers.length },
+                    {
+                      id: 'assigned',
+                      label: 'Assigned by Admin',
+                      count: assignedCustomers.filter((c) => c.createdBy !== 'driver' && c.createdByDriverId !== boyId).length,
+                    },
+                    {
+                      id: 'driver',
+                      label: 'Created by Driver',
+                      count: assignedCustomers.filter((c) => c.createdBy === 'driver' || c.createdByDriverId === boyId).length,
+                    },
+                    {
+                      id: 'subscription',
+                      label: 'Subscriptions',
+                      count: assignedCustomers.filter((c) => c.subscription?.status === 'active' || c.paymentInfo?.paymentType === 'prepaid').length,
+                    },
+                  ].map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCustomerCategory(cat.id)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        border: '1px solid',
+                        borderColor: customerCategory === cat.id ? '#059669' : '#e2e8f0',
+                        background: customerCategory === cat.id ? '#ecfdf5' : '#ffffff',
+                        color: customerCategory === cat.id ? '#065f46' : '#64748b',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <span>{cat.label}</span>
+                      <span
+                        style={{
+                          background: customerCategory === cat.id ? '#059669' : '#f1f5f9',
+                          color: customerCategory === cat.id ? '#ffffff' : '#64748b',
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          padding: '1px 6px',
+                          borderRadius: '999px',
+                        }}
+                      >
+                        {cat.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search Box */}
+                <div style={{ position: 'relative', minWidth: '240px', flex: '1 1 240px' }}>
+                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '10px' }} />
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    placeholder="Search by customer, phone, address, ID..."
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      paddingLeft: '34px',
+                      paddingRight: '12px',
+                      paddingTop: '7px',
+                      paddingBottom: '7px',
+                      fontSize: '0.82rem',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      color: '#0f172a',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* 4. Customer Cards Grid / List */}
+              {(() => {
+                const filtered = assignedCustomers.filter((c) => {
+                  const isDriverCreated = c.createdBy === 'driver' || (c.createdByDriverId && c.createdByDriverId === boyId);
+                  const hasSub = c.subscription?.status === 'active' || (c.subscription?.endDate && new Date(c.subscription.endDate) >= new Date()) || c.paymentInfo?.paymentType === 'prepaid';
+
+                  if (customerCategory === 'assigned' && isDriverCreated) return false;
+                  if (customerCategory === 'driver' && !isDriverCreated) return false;
+                  if (customerCategory === 'subscription' && !hasSub) return false;
+
+                  if (customerSearch) {
+                    const q = customerSearch.trim().toLowerCase();
+                    const matchName = (c.name || '').toLowerCase().includes(q);
+                    const matchMobile = (c.mobile || '').includes(q);
+                    const matchAddress = (c.address || '').toLowerCase().includes(q);
+                    const matchArea = (c.area || '').toLowerCase().includes(q);
+                    const matchId = (c.customerId || '').toLowerCase().includes(q);
+                    if (!matchName && !matchMobile && !matchAddress && !matchArea && !matchId) {
+                      return false;
+                    }
+                  }
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div
+                      className="driver-customers-grid"
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '48px 20px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <Users size={40} color="#94a3b8" style={{ margin: '0 auto 12px auto' }} />
+                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+                        No customers match this category
+                      </h4>
+                      <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 16px 0' }}>
+                        {customerSearch ? 'Try a different search term.' : 'You can add new customers on your route anytime.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={openAddCustomer}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#059669',
+                          color: '#ffffff',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <UserPlus size={15} /> Add First Customer
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))',
+                      gap: '14px',
+                    }}
+                  >
+                    {filtered.map((cust) => {
+                      const isDriverCreated = cust.createdBy === 'driver' || (cust.createdByDriverId && cust.createdByDriverId === boyId);
+                      const hasActiveSub = cust.subscription?.status === 'active' || (cust.subscription?.endDate && new Date(cust.subscription.endDate) >= new Date());
+                      const isPrepaid = cust.paymentInfo?.paymentType === 'prepaid' || cust.subscription?.amount > 0;
+                      const plan = cust.deliveryPlan || {};
+
+                      return (
+                        <div
+                          key={cust.id || cust._id}
+                          className="driver-customer-card"
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '14px',
+                            padding: '16px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div>
+                            {/* Card Header: Avatar, Name, ID & Badges */}
+                            <div className="driver-customer-card-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div
+                                  style={{
+                                    width: '38px',
+                                    height: '38px',
+                                    borderRadius: '50%',
+                                    background: isDriverCreated ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                                    color: '#ffffff',
+                                    fontWeight: 800,
+                                    fontSize: '0.95rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {(cust.name || 'C').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
+                                    {cust.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                                    {cust.customerId || `#${(cust.id || '').slice(-6)}`}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Status Pill */}
+                              <span
+                                className="driver-customer-status"
+                                style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  borderRadius: '999px',
+                                  background: cust.status === 'paused' ? '#fef3c7' : '#dcfce7',
+                                  color: cust.status === 'paused' ? '#92400e' : '#166534',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {cust.status === 'paused' ? '⏸ Paused' : '✓ Active'}
+                              </span>
+                            </div>
+
+                            {/* Category Badges Strip */}
+                            <div className="driver-customer-badges" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                              {hasActiveSub && (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: '#f5f3ff',
+                                    color: '#7c3aed',
+                                    border: '1px solid #ddd6fe',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                >
+                                  ★ 30-Day Subscription
+                                </span>
+                              )}
+                              {isDriverCreated ? (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: '#ecfdf5',
+                                    color: '#059669',
+                                    border: '1px solid #a7f3d0',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                >
+                                  👤 Added by Driver
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '6px',
+                                    background: '#eff6ff',
+                                    color: '#2563eb',
+                                    border: '1px solid #bfdbfe',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                >
+                                  🏢 Admin Assigned
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Address & Territory */}
+                            <div
+                              className="driver-customer-address"
+                              style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '6px',
+                                fontSize: '0.78rem',
+                                color: '#475569',
+                                marginBottom: '8px',
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              <MapPin size={14} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
+                              <div>
+                                <span>{cust.address}</span>
+                                {cust.area && <span style={{ fontWeight: 600, color: '#0f172a' }}> • {cust.area}</span>}
+                                {cust.landmark && <span style={{ color: '#64748b' }}> (Near {cust.landmark})</span>}
+                              </div>
+                            </div>
+
+                            {/* Delivery Plan & Frequency */}
+                            <div
+                              className="driver-customer-plan"
+                              style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '10px',
+                                padding: '8px 10px',
+                                marginBottom: '8px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                                gap: '6px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Truck size={14} color="#059669" />
+                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                                  {plan.milkQty || 1}L {plan.milkUnit || 'L'} Milk
+                                  {plan.curdQty > 0 ? ` + ${plan.curdQty}g Curd` : ''}
+                                </span>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  color: '#059669',
+                                  background: '#ffffff',
+                                  padding: '2px 6px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                  textTransform: 'capitalize',
+                                }}
+                              >
+                                {plan.frequency || 'Daily'}
+                              </span>
+                            </div>
+
+                            {/* Subscription / Payment Meta */}
+                            {hasActiveSub && cust.subscription?.endDate && (
+                              <div
+                                className="driver-customer-subscription"
+                                style={{
+                                  background: '#faf5ff',
+                                  border: '1px solid #f3e8ff',
+                                  borderRadius: '8px',
+                                  padding: '6px 10px',
+                                  fontSize: '0.74rem',
+                                  color: '#6b21a8',
+                                  marginBottom: '8px',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                }}
+                              >
+                                <span>Valid through:</span>
+                                <strong>
+                                  {new Date(cust.subscription.endDate).toLocaleDateString('en-IN', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                  })}
+                                </strong>
+                              </div>
+                            )}
+
+                            {/* Contact & Balance Info */}
+                            <div
+                              className="driver-customer-contact-summary"
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                fontSize: '0.76rem',
+                                color: '#64748b',
+                                marginBottom: '4px',
+                              }}
+                            >
+                              <div>
+                                <span>Phone: </span>
+                                <strong style={{ color: '#0f172a' }}>{cust.mobile}</strong>
+                              </div>
+                              <div>
+                                <span>Payment: </span>
+                                <strong style={{ color: isPrepaid ? '#059669' : '#d97706' }}>
+                                  {isPrepaid ? 'Prepaid' : 'Monthly Credit'}
+                                </strong>
+                              </div>
+                            </div>
+
+                            {cust.notes && (
+                              <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>
+                                💬 "{cust.notes}"
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Card Footer Actions (CRUD) */}
+                          <div
+                            className="driver-customer-card-footer"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              paddingTop: '10px',
+                              borderTop: '1px solid #f1f5f9',
+                              gap: '6px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div className="driver-customer-contact-actions" style={{ display: 'flex', gap: '5px' }}>
+                              <a
+                                href={`tel:${cust.mobile}`}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                  background: '#ffffff',
+                                  color: '#059669',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  textDecoration: 'none',
+                                }}
+                                title="Call customer"
+                              >
+                                <Phone size={12} /> Call
+                              </a>
+                              <a
+                                href={`https://wa.me/91${cust.mobile.replace(/\D/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #bbf7d0',
+                                  background: '#f0fdf4',
+                                  color: '#16a34a',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  textDecoration: 'none',
+                                }}
+                                title="WhatsApp chat"
+                              >
+                                <MessageCircle size={12} /> WhatsApp
+                              </a>
+                            </div>
+
+                            <div className="driver-customer-management-actions" style={{ display: 'flex', gap: '5px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCustomerPause(cust)}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                  background: cust.status === 'paused' ? '#ecfdf5' : '#fffbeb',
+                                  color: cust.status === 'paused' ? '#059669' : '#b45309',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                                title={cust.status === 'paused' ? 'Resume delivery drops' : 'Pause customer deliveries'}
+                              >
+                                {cust.status === 'paused' ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
+                                <span>{cust.status === 'paused' ? 'Resume' : 'Pause'}</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openEditCustomer(cust)}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #e2e8f0',
+                                  background: '#ffffff',
+                                  color: '#2563eb',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                                title="Edit customer details & plan"
+                              >
+                                <Edit2 size={12} /> Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDeletingCustomer(cust)}
+                                style={{
+                                  padding: '5px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fee2e2',
+                                  background: '#fff1f2',
+                                  color: '#dc2626',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                                title="Remove customer from route"
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
           {/* ========================================================= */}
-          {/* TAB 3: CASH SUMMARY                                       */}
+          {/* TAB: CASH SUMMARY & HANDOVER TO ADMIN                      */}
           {/* ========================================================= */}
           {navTab === 'cash' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Feedback Alert Banner */}
+              {handoverFeedback.text && (
+                <div
+                  style={{
+                    background: handoverFeedback.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                    border: handoverFeedback.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fecaca',
+                    color: handoverFeedback.type === 'success' ? '#065f46' : '#991b1b',
+                    padding: '12px 16px',
+                    borderRadius: '12px',
+                    fontSize: '0.86rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                  }}
+                >
+                  {handoverFeedback.type === 'success' ? (
+                    <CheckCircle2 size={18} color="#059669" />
+                  ) : (
+                    <AlertCircle size={18} color="#dc2626" />
+                  )}
+                  <span>{handoverFeedback.text}</span>
+                </div>
+              )}
+
+              {/* Main Cash Collection Summary Card */}
               <div
                 style={{
                   background: '#ffffff',
                   border: '1px solid #e2e8f0',
                   borderRadius: '16px',
-                  padding: '20px 16px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  padding: '18px 16px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                 }}
               >
-                <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: '0 0 14px 0' }}>
-                  Today's Route Cash Collection
-                </h3>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    gap: '10px',
-                    marginBottom: '14px',
-                  }}
-                >
-                  {/* Physical Cash Card */}
-                  <div
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      padding: '14px',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      💵 Physical Cash Collected
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#059669', marginTop: '3px' }}>
-                      ₹{totalCashCollected.toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
-                      To deposit at dairy counter
-                    </div>
-                  </div>
-
-                  {/* UPI Direct Card */}
-                  <div
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      padding: '14px',
-                    }}
-                  >
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                      📱 UPI Direct Received
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#2563eb', marginTop: '3px' }}>
-                      ₹{totalUpiCollected.toLocaleString()}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px' }}>
-                      Credited to Dairy account
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Collection Highlight */}
-                <div
-                  style={{
-                    background: '#f0fdf4',
-                    border: '1.5px solid #bbf7d0',
-                    borderRadius: '14px',
-                    padding: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <div>
-                    <div
-                      style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        color: '#059669',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.04em',
-                      }}
-                    >
-                      TOTAL RECONCILIATION
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
-                      ₹{totalRevenue.toLocaleString()}
+                    <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                      Today's Route Cash Collection
+                    </h3>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
+                      Reconcile shift collections and handover physical cash to admin
                     </div>
                   </div>
-                  <div
+                  <button
+                    type="button"
+                    onClick={loadDriverHandovers}
+                    title="Refresh Status"
                     style={{
-                      width: '44px',
-                      height: '44px',
-                      borderRadius: '10px',
-                      background: '#dcfce7',
-                      color: '#059669',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      color: '#64748b',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
+                      gap: '4px',
                     }}
                   >
-                    <Wallet size={24} />
-                  </div>
+                    <RefreshCw size={13} className={isLoadingDriverHandovers ? 'spin' : ''} />
+                    <span>Sync</span>
+                  </button>
                 </div>
 
-                {/* Deposit Instruction Card */}
+                {/* Cash Metrics & Handover State Calculation */}
+                {(() => {
+                  // Calculate total cash already handed over or pending handover today
+                  const totalHandedOver = driverHandovers
+                    .filter((h) => h.status === 'accepted' || h.status === 'pending')
+                    .reduce((sum, h) => sum + (h.amount || 0), 0);
+
+                  // Physical cash remaining in hand that can still be handed over
+                  const remainingCashInHand = Math.max(0, totalCashCollected - totalHandedOver);
+                  const pendingHandover = driverHandovers.find((h) => h.status === 'pending');
+                  const acceptedHandover = driverHandovers.find((h) => h.status === 'accepted');
+
+                  return (
+                    <>
+                      {/* 2-Column Responsive Collection Metric Cards */}
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                          gap: '10px',
+                          marginBottom: '12px',
+                        }}
+                      >
+                        {/* Physical Cash Card - Shows remaining cash in hand (0 if already handed over) */}
+                        <div
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            padding: '12px',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                            💵 Physical Cash
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '1.45rem',
+                              fontWeight: 800,
+                              color: remainingCashInHand > 0 ? '#059669' : '#0f172a',
+                              marginTop: '3px',
+                              lineHeight: 1.15,
+                            }}
+                          >
+                            ₹{remainingCashInHand.toLocaleString()}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '0.67rem',
+                              color: remainingCashInHand > 0 ? '#64748b' : '#059669',
+                              marginTop: '3px',
+                              fontWeight: remainingCashInHand === 0 ? 700 : 400,
+                            }}
+                          >
+                            {remainingCashInHand > 0 ? 'To deposit at counter' : '✓ All cash handed over'}
+                          </div>
+                        </div>
+
+                        {/* UPI Direct Card */}
+                        <div
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            padding: '12px',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                            📱 UPI Direct
+                          </div>
+                          <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#2563eb', marginTop: '3px', lineHeight: 1.15 }}>
+                            ₹{totalUpiCollected.toLocaleString()}
+                          </div>
+                          <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '3px' }}>
+                            Direct in Dairy account
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Total Reconciliation Bar */}
+                      <div
+                        style={{
+                          background: '#f0fdf4',
+                          border: '1.5px solid #bbf7d0',
+                          borderRadius: '12px',
+                          padding: '12px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                              color: '#059669',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            TOTAL ROUTE TURNOVER
+                          </div>
+                          <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', marginTop: '2px', lineHeight: 1.1 }}>
+                            ₹{totalRevenue.toLocaleString()}
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            width: '38px',
+                            height: '38px',
+                            borderRadius: '9px',
+                            background: '#dcfce7',
+                            color: '#059669',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Wallet size={20} />
+                        </div>
+                      </div>
+
+                      {/* Active Status Card: Pending Verification */}
+                      {pendingHandover && (
+                        <div
+                          style={{
+                            marginTop: '14px',
+                            background: '#fff7ed',
+                            border: '1.5px solid #fdba74',
+                            borderRadius: '12px',
+                            padding: '14px',
+                            boxShadow: '0 2px 8px rgba(234, 88, 12, 0.08)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                background: '#ffedd5',
+                                color: '#c2410c',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                padding: '3px 8px',
+                                borderRadius: '999px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '50%',
+                                  background: '#ea580c',
+                                }}
+                              />
+                              Pending Admin Verification
+                            </span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c2410c' }}>
+                              ₹{pendingHandover.amount}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: '#9a3412', marginTop: '6px', lineHeight: 1.45 }}>
+                            Handover submitted at{' '}
+                            <strong>
+                              {new Date(pendingHandover.handoverDate || pendingHandover.createdAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </strong>
+                            . Please proceed to the dairy counter to deposit physical notes with the manager.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Active Status Card: Verified & Accepted */}
+                      {!pendingHandover && acceptedHandover && (
+                        <div
+                          style={{
+                            marginTop: '14px',
+                            background: '#ecfdf5',
+                            border: '1.5px solid #a7f3d0',
+                            borderRadius: '12px',
+                            padding: '14px',
+                            boxShadow: '0 2px 8px rgba(5, 150, 105, 0.06)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                background: '#dcfce7',
+                                color: '#065f46',
+                                fontSize: '0.72rem',
+                                fontWeight: 800,
+                                padding: '3px 8px',
+                                borderRadius: '999px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                              }}
+                            >
+                              <CheckCircle2 size={13} color="#059669" />
+                              Shift Cash Handover Verified
+                            </span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
+                              ₹{acceptedHandover.amount}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: '#065f46', marginTop: '6px' }}>
+                            Verified & signed off by{' '}
+                            <strong>{acceptedHandover.verifiedBy || 'Dairy Admin'}</strong>. Shift audit cleared!
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Handover Action Hero Button - ONLY SHOWN IF CASH AVAILABLE (>0) AND NO PENDING HANDOVER */}
+                      {remainingCashInHand > 0 && !pendingHandover && (
+                        <div style={{ marginTop: '14px' }}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHandoverModal(remainingCashInHand)}
+                            style={{
+                              width: '100%',
+                              padding: '13px 18px',
+                              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '12px',
+                              fontSize: '0.92rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px',
+                              boxShadow: '0 3px 12px rgba(5, 150, 105, 0.3)',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <Wallet size={18} />
+                            <span>Handover Amount to Admin (₹{remainingCashInHand})</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Instruction / Status Notice */}
+                      <div
+                        style={{
+                          marginTop: '12px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '10px',
+                          padding: '10px 12px',
+                          fontSize: '0.75rem',
+                          color: '#64748b',
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {remainingCashInHand > 0 ? (
+                          <>
+                            💡 <strong>Deposit Instruction:</strong> Click the button above to request handover of{' '}
+                            <strong style={{ color: '#059669' }}>₹{remainingCashInHand}</strong>. Your submission will immediately appear in the Admin Dashboard Payments sidebar for live verification.
+                          </>
+                        ) : pendingHandover ? (
+                          <>
+                            ⏳ <strong>Verification in Progress:</strong> Your handover of{' '}
+                            <strong style={{ color: '#ea580c' }}>₹{pendingHandover.amount}</strong> is awaiting admin verification. Please deposit physical cash notes at the counter.
+                          </>
+                        ) : (
+                          <>
+                            ✅ <strong>Settlement Cleared:</strong> All physical cash collections for today's deliveries have been handed over to Admin. Remaining cash in hand is <strong style={{ color: '#059669' }}>₹0</strong>.
+                          </>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Recent Handovers History */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '16px',
+                  padding: '18px 16px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                    Recent Cash Handovers
+                  </h4>
+                  <span
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                    }}
+                  >
+                    {driverHandovers.length} records
+                  </span>
+                </div>
+
+                {isLoadingDriverHandovers ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: '#64748b', fontSize: '0.82rem' }}>
+                    Loading handover history...
+                  </div>
+                ) : driverHandovers.length === 0 ? (
+                  <div
+                    style={{
+                      padding: '24px 12px',
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                      fontSize: '0.82rem',
+                      background: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px dashed #e2e8f0',
+                    }}
+                  >
+                    No cash handovers recorded yet for your shift.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {driverHandovers.slice(0, 5).map((h, i) => {
+                      const isPending = h.status === 'pending';
+                      const isAccepted = h.status === 'accepted';
+                      const isRejected = h.status === 'rejected';
+
+                      return (
+                        <div
+                          key={h.id || h._id || i}
+                          style={{
+                            padding: '10px 12px',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                          }}
+                        >
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                                ₹{h.amount}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  padding: '1px 6px',
+                                  borderRadius: '5px',
+                                  background: '#e2e8f0',
+                                  color: '#475569',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {h.handoverMethod === 'dairy_counter'
+                                  ? 'Counter'
+                                  : h.handoverMethod === 'bank_deposit'
+                                  ? 'Bank Safe'
+                                  : 'UPI to Admin'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
+                              {new Date(h.handoverDate || h.createdAt).toLocaleDateString()} at{' '}
+                              {new Date(h.handoverDate || h.createdAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                            {h.notes && (
+                              <div style={{ fontSize: '0.7rem', color: '#475569', fontStyle: 'italic', marginTop: '2px' }}>
+                                “{h.notes}”
+                              </div>
+                            )}
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            {isPending && (
+                              <span
+                                style={{
+                                  background: '#fff7ed',
+                                  color: '#c2410c',
+                                  border: '1px solid #ffedd5',
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ea580c' }} />
+                                Pending
+                              </span>
+                            )}
+                            {isAccepted && (
+                              <span
+                                style={{
+                                  background: '#ecfdf5',
+                                  color: '#065f46',
+                                  border: '1px solid #a7f3d0',
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <Check size={11} color="#059669" />
+                                Accepted
+                              </span>
+                            )}
+                            {isRejected && (
+                              <span
+                                style={{
+                                  background: '#fef2f2',
+                                  color: '#991b1b',
+                                  border: '1px solid #fecaca',
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <X size={11} color="#dc2626" />
+                                Rejected
+                              </span>
+                            )}
+                            {h.verifiedBy && (
+                              <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>
+                                by {h.verifiedBy}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Handover Submission Modal Sheet */}
+              {showHandoverModal && (
                 <div
+                  className="modal-overlay"
+                  onClick={() => setShowHandoverModal(false)}
                   style={{
-                    marginTop: '14px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    padding: '12px',
-                    fontSize: '0.8rem',
-                    color: '#475569',
-                    lineHeight: 1.45,
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                    padding: '16px',
                   }}
                 >
-                  💡 <strong>Deposit Notice:</strong> Hand over the physical cash of{' '}
-                  <strong style={{ color: '#059669' }}>₹{totalCashCollected}</strong> to the dairy manager at the end of your shift for closing out the route audit.
+                  <div
+                    className="modal-content"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '16px',
+                      maxWidth: '460px',
+                      width: '100%',
+                      padding: '22px',
+                      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+                      maxHeight: '90vh',
+                      overflowY: 'auto',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '9px',
+                            background: '#dcfce7',
+                            color: '#059669',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Wallet size={18} />
+                        </div>
+                        <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
+                          Handover Cash to Admin
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowHandoverModal(false)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                      >
+                        <X size={20} />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSubmitHandover}>
+                      {/* Amount Field */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
+                            Amount to Handover (₹) *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setHandoverAmount(String(totalCashCollected))}
+                            style={{
+                              background: '#eff6ff',
+                              color: '#2563eb',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Set Full Cash (₹{totalCashCollected})
+                          </button>
+                        </div>
+                        <div style={{ position: 'relative' }}>
+                          <span
+                            style={{
+                              position: 'absolute',
+                              left: '12px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: '1.2rem',
+                              fontWeight: 800,
+                              color: '#059669',
+                            }}
+                          >
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100000"
+                            required
+                            value={handoverAmount}
+                            onChange={(e) => setHandoverAmount(e.target.value)}
+                            placeholder="e.g. 105"
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px 10px 32px',
+                              borderRadius: '10px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '1.15rem',
+                              fontWeight: 800,
+                              color: '#0f172a',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Method Selector */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Handover Method
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                          {[
+                            { id: 'dairy_counter', label: '💵 Counter', desc: 'At Dairy' },
+                            { id: 'bank_deposit', label: '🏦 Bank Safe', desc: 'Safe Box' },
+                            { id: 'upi_to_admin', label: '📱 Admin UPI', desc: 'Direct QR' },
+                          ].map((m) => {
+                            const isSel = handoverMethod === m.id;
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setHandoverMethod(m.id)}
+                                style={{
+                                  padding: '9px 6px',
+                                  borderRadius: '9px',
+                                  border: isSel ? '2px solid #059669' : '1px solid #e2e8f0',
+                                  background: isSel ? '#f0fdf4' : '#ffffff',
+                                  color: isSel ? '#065f46' : '#475569',
+                                  cursor: 'pointer',
+                                  textAlign: 'center',
+                                }}
+                              >
+                                <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>{m.label}</div>
+                                <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>{m.desc}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Optional Note */}
+                      <div style={{ marginBottom: '18px' }}>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Shift Notes / Remarks (Optional)
+                        </label>
+                        <input
+                          type="text"
+                          value={handoverNotes}
+                          onChange={(e) => setHandoverNotes(e.target.value)}
+                          placeholder="e.g., Morning route cash deposit with counter supervisor"
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '9px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.84rem',
+                            outline: 'none',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      {/* Submit & Cancel Buttons */}
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowHandoverModal(false)}
+                          style={{
+                            flex: 1,
+                            padding: '11px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#475569',
+                            fontSize: '0.86rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmittingHandover}
+                          style={{
+                            flex: 2,
+                            padding: '11px',
+                            borderRadius: '10px',
+                            border: 'none',
+                            background: '#059669',
+                            color: '#ffffff',
+                            fontSize: '0.88rem',
+                            fontWeight: 800,
+                            cursor: isSubmittingHandover ? 'not-allowed' : 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+                            opacity: isSubmittingHandover ? 0.75 : 1,
+                          }}
+                        >
+                          <Check size={16} />
+                          <span>{isSubmittingHandover ? 'Submitting...' : `Confirm Handover (₹${handoverAmount || '0'})`}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -3033,8 +5703,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </form>
               </div>
             ) : isMobile ? (
-              /* ── SCREEN: MOBILE DRIVER PROFILE (ONLY DRIVER DATA) ── */
-              <div className="modern-profile-container">
+              /* ── SCREEN: MOBILE DRIVER PROFILE (PURE PROFILE DETAILS ONLY) ── */
+              <div className="modern-profile-container driver-profile-mobile">
                 {profileFeedbackMsg && (
                   <div
                     className="driver-profile-feedback"
@@ -3057,7 +5727,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 )}
 
-                {/* Header: Back Arrow, "Delivery Partner Profile", Settings Gear */}
+                {/* Mobile Header: Back Arrow, "Driver Profile", Edit Icon */}
                 <div className="modern-profile-header">
                   <button
                     type="button"
@@ -3067,84 +5737,110 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   >
                     <ArrowLeft size={22} />
                   </button>
-                  <h2 className="modern-profile-header-title">Delivery Partner</h2>
+                  <h2 className="modern-profile-header-title">Driver Profile</h2>
                   <div style={{ width: 40 }} />
                 </div>
 
-                {/* Identity: Avatar with Camera Badge + Name + Handle + Red Pill Button */}
-                <div className="modern-profile-identity">
-                  <div className="modern-profile-avatar-wrap">
-                    <div className="modern-profile-avatar-placeholder">
+                {/* Identity Card */}
+                <div
+                  className="modern-profile-identity profile-driver-mobile-identity"
+                >
+                  <div className="modern-profile-avatar-wrap" style={{ position: 'relative' }}>
+                    <div
+                      className="modern-profile-avatar-placeholder"
+                      style={{
+                        width: '74px',
+                        height: '74px',
+                        fontSize: '1.9rem',
+                        fontWeight: 800,
+                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+                        color: '#ffffff',
+                        boxShadow: '0 4px 12px rgba(5,150,105,0.25)',
+                      }}
+                    >
                       {(profileName || boyName || 'D').charAt(0).toUpperCase()}
                     </div>
                     <button
                       type="button"
                       className="modern-profile-camera-badge"
                       onClick={openEditProfile}
-                      title="Change photo"
-                      aria-label="Change photo"
+                      title="Edit photo"
+                      aria-label="Edit photo"
+                      style={{ bottom: 0, right: 0 }}
                     >
                       <Camera size={13} />
                     </button>
                   </div>
 
                   <div className="modern-profile-identity-info">
-                    <h3 className="modern-profile-name">{profileName || boyName || 'Delivery Partner'}</h3>
+                    <h3 className="modern-profile-name">
+                      {profileName || boyName || 'Delivery Partner'}
+                    </h3>
                     <span className="modern-profile-handle">
-                      {driverUsername ? `@${driverUsername}` : `@${(profileArea || 'routefleet').toLowerCase().replace(/\s+/g, '')}`}
+                      NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'} · {isOnline ? 'On duty' : 'Offline'}
                     </span>
                     <button
                       type="button"
-                      className="modern-profile-edit-btn"
                       onClick={openEditProfile}
+                      className="modern-profile-edit-btn"
                     >
                       Edit Profile
                     </button>
                   </div>
                 </div>
 
-                {/* Delivery Partner Only Menu List */}
                 <div className="modern-profile-menu-list">
-                  {/* 1. Assigned Delivery Route */}
                   <button
                     type="button"
                     className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('assigned-route')}
+                    onClick={() => openProfileDetail('personal-details')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><User size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Personal Information</span>
+                        <span className="modern-profile-menu-sub">
+                          Partner ID: NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'} · {isOnline ? 'On duty' : 'Offline'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('contact-details')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><PhoneCall size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Contact Information</span>
+                        <span className="modern-profile-menu-sub">
+                          {profilePhone || user?.mobile || user?.phone || 'Phone not provided'} · {profileEmail || user?.email || 'Email not provided'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('territory-details')}
                   >
                     <div className="modern-profile-menu-left">
                       <span className="modern-profile-menu-icon"><MapPin size={20} color="#059669" /></span>
                       <div>
-                        <span className="modern-profile-menu-label">Assigned Delivery Route</span>
-                        <span className="modern-profile-menu-sub">{profileArea || boyArea || 'Madhapur Sector 1'} · Morning Route</span>
+                        <span className="modern-profile-menu-label">Territory & Dispatch</span>
+                        <span className="modern-profile-menu-sub">
+                          {profileArea || boyArea || 'Area not assigned'} · {profileShift || 'Morning Dispatch'}
+                        </span>
                       </div>
                     </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
-                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
                   </button>
 
-                  {/* 2. Shift Schedule */}
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('shift-schedule')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Clock size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Shift Schedule</span>
-                        <span className="modern-profile-menu-sub">{profileShift || 'Morning Dispatch'} · 5:00 AM – 7:30 AM</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right">
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
-                        Active Shift
-                      </span>
-                      <ChevronRight size={18} />
-                    </div>
-                  </button>
-
-                  {/* 3. Delivery Vehicle */}
                   <button
                     type="button"
                     className="modern-profile-menu-row"
@@ -3153,94 +5849,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     <div className="modern-profile-menu-left">
                       <span className="modern-profile-menu-icon"><Bike size={20} color="#059669" /></span>
                       <div>
-                        <span className="modern-profile-menu-label">Delivery Vehicle</span>
-                        <span className="modern-profile-menu-sub">{bikePlate || 'TS09-AB-1234'} · {bikeModel || 'Commercial Cargo EV'}</span>
+                        <span className="modern-profile-menu-label">Vehicle & Equipment</span>
+                        <span className="modern-profile-menu-sub">
+                          {bikePlate || 'Vehicle not assigned'} · {bikeModel || bikeType || 'Details not provided'}
+                        </span>
                       </div>
                     </div>
-                    <div className="modern-profile-menu-right">
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
-                        Verified
-                      </span>
-                      <ChevronRight size={18} />
-                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
                   </button>
 
-                  {/* 4. Today's Route Progress */}
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => handleNavChange('deliveries')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><CheckCircle2 size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Today's Route Progress</span>
-                        <span className="modern-profile-menu-sub">{completedCount} of {totalDrops} Deliveries Completed ({pendingList.length} Left)</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
-                    </div>
-                  </button>
-
-                  {/* 5. Cash in Hand to Deposit */}
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => handleNavChange('cash')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Wallet size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Cash in Hand to Deposit</span>
-                        <span className="modern-profile-menu-sub">₹{totalCashCollected} to Hand Over · Shift Closeout</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right">
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: totalCashCollected > 0 ? '#059669' : '#64748b', background: '#f8fafc', padding: '3px 8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                        ₹{totalCashCollected}
-                      </span>
-                      <ChevronRight size={18} />
-                    </div>
-                  </button>
-
-                  {/* 6. Dispatch Depot */}
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('depot')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Navigation size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Dispatch Hub & Depot</span>
-                        <span className="modern-profile-menu-sub">{profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
-                    </div>
-                  </button>
-
-                  {/* 7. Hub Supervisor Hotline */}
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('supervisor')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><PhoneCall size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Hub Supervisor Hotline</span>
-                        <span className="modern-profile-menu-sub">{profileEmergencyContact || '+91 98765 43210'} · Direct Operations Desk</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
-                    </div>
-                  </button>
-
-                  {/* 8. Log out */}
                   <button
                     type="button"
                     className="modern-profile-menu-row is-logout"
@@ -3250,12 +5867,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
                       <span className="modern-profile-menu-label">Log out</span>
                     </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
-                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
                   </button>
 
-                  {/* 9. Delete Partner Account */}
                   <button
                     type="button"
                     className="modern-profile-menu-row is-delete"
@@ -3265,23 +5879,230 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     }}
                   >
                     <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444' }}>
-                        <Trash2 size={20} color="#ef4444" />
-                      </span>
+                      <span className="modern-profile-menu-icon"><Trash2 size={20} color="#ef4444" /></span>
                       <div>
-                        <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 700 }}>Delete Account</span>
-                        <span className="modern-profile-menu-sub">Permanently delete partner profile & credentials</span>
+                        <span className="modern-profile-menu-label">Delete Partner Account</span>
+                        <span className="modern-profile-menu-sub">Permanently remove your account and profile</span>
                       </div>
                     </div>
-                    <div className="modern-profile-menu-right">
-                      <ChevronRight size={18} />
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
+                  </button>
+                </div>
+
+                {/* Section 1: Personal & Identity Details */}
+                <div className="profile-section-card" style={{ marginBottom: '14px' }}>
+                  <div className="profile-section-header">
+                    <div>
+                      <h4 className="profile-section-title">
+                        <User size={18} color="#059669" /> Personal Information
+                      </h4>
+                      <p className="profile-section-subtitle">Identity & verified credentials</p>
                     </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Full Name</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileName || boyName || 'Delivery Partner'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Partner ID</span>
+                      <span style={{ fontWeight: 700, color: '#059669' }}>
+                        NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Designation</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>Delivery Partner</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Blood Group</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileBloodGroup || 'Not Specified'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Driving License</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileLicense || 'Not provided'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Member Since</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileJoiningDate || 'Active Partner'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Contact & Communication */}
+                <div className="profile-section-card" style={{ marginBottom: '14px' }}>
+                  <div className="profile-section-header">
+                    <div>
+                      <h4 className="profile-section-title">
+                        <PhoneCall size={18} color="#059669" /> Contact Information
+                      </h4>
+                      <p className="profile-section-subtitle">Phone, email & residential address</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Mobile Number</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profilePhone || user?.mobile || user?.phone || 'Not provided'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Email Address</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a', wordBreak: 'break-all' }}>
+                        {profileEmail || user?.email || 'Not provided'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Home Address</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>
+                        {profileAddress || 'Not provided'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Emergency Contact</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right' }}>
+                        {profileEmergencyContact || 'Not provided'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Assigned Territory & Hub */}
+                <div className="profile-section-card profile-driver-operations-card" style={{ marginBottom: '14px' }}>
+                  <div className="profile-section-header">
+                    <div>
+                      <h4 className="profile-section-title">
+                        <MapPin size={18} color="#059669" /> Territory & Hub Profile
+                      </h4>
+                      <p className="profile-section-subtitle">Stationed sector & supervisor hotline</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Assigned Territory</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileArea || boyArea || 'Madhapur'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Shift Window</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileShift || 'Morning Dispatch (5:00 AM – 7:30 AM)'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Dispatch Hub</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>
+                        {profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Supervisor Hotline</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileEmergencyContact || '+91 98765 43210'}</span>
+                        <a
+                          href={`tel:${profileEmergencyContact || '9876543210'}`}
+                          className="profile-contact-chip"
+                          aria-label="Call Supervisor"
+                        >
+                          <Phone size={12} /> Call
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Vehicle & Transport Details */}
+                <div className="profile-section-card profile-driver-operations-card" style={{ marginBottom: '14px' }}>
+                  <div className="profile-section-header">
+                    <div>
+                      <h4 className="profile-section-title">
+                        <Bike size={18} color="#059669" /> Vehicle & Equipment Profile
+                      </h4>
+                      <p className="profile-section-subtitle">Fleet vehicle and insulated crates allocation</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Registration Number</span>
+                      <span style={{ fontWeight: 700, color: '#059669' }}>{bikePlate || 'AP40DT9792'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Vehicle Model</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeModel || 'Commercial Cargo EV'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Vehicle Type</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeType || 'Insulated Milk Carrier EV'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Crates Capacity</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeCratesCapacity || '4 Insulated Crates (120L)'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
+                      <span style={{ color: '#64748b' }}>Driving License</span>
+                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileLicense || 'Verified Partner License'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 5: Account & Session Actions */}
+                <div
+                  className="profile-driver-account-actions"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginTop: '6px',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowLogoutConfirm(true)}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      border: '1px solid #fecaca',
+                      borderRadius: '12px',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <LogOut size={16} />
+                    <span>Log Out</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletePartnerError('');
+                      setShowDeletePartnerModal(true);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '11px 16px',
+                      background: 'transparent',
+                      color: '#94a3b8',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '12px',
+                      fontSize: '0.82rem',
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Trash2 size={15} color="#ef4444" />
+                    <span style={{ color: '#ef4444' }}>Delete Partner Account</span>
                   </button>
                 </div>
               </div>
             ) : (
-              /* ── SCREEN: WEB / DESKTOP DRIVER PROFILE (ONLY DRIVER DATA) ── */
-              <div className="profile-desktop-wrapper">
+              /* ── SCREEN: WEB / DESKTOP DRIVER PROFILE (PURE PROFILE DETAILS ONLY) ── */
+              <div className="profile-desktop-wrapper driver-profile-view">
                 {profileFeedbackMsg && (
                   <div
                     className="driver-profile-feedback"
@@ -3327,7 +6148,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             border: `1px solid ${isOnline ? '#a7f3d0' : '#fecaca'}`,
                           }}
                         >
-                          {isOnline ? '🟢 On Duty · Active Route' : '🔴 Offline'}
+                          {isOnline ? '🟢 On Duty · Active Partner' : '🔴 Offline'}
                         </span>
                       </div>
                       <div className="profile-hero-meta">
@@ -3339,130 +6160,231 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             <Mail size={14} color="#059669" /> {profileEmail}
                           </span>
                         )}
-                        <span className="profile-hero-meta-item">
-                          <MapPin size={14} color="#059669" /> Route: {profileArea || boyArea}
-                        </span>
-                        <span className="profile-hero-meta-item">
-                          <Bike size={14} color="#059669" /> {bikePlate || 'Fleet Vehicle'}
-                        </span>
                       </div>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="profile-hero-btn"
-                    onClick={openEditProfile}
-                  >
-                    <Edit2 size={16} />
-                    <span>Edit Partner Profile</span>
-                  </button>
-                </div>
-
-                {/* 2. Driver Operational Cards Grid */}
-                <div className="profile-desktop-grid">
-                  {/* Card 1: Assigned Delivery Route */}
-                  <div className="profile-desktop-card">
-                    <div>
-                      <div className="profile-card-header">
-                        <div>
-                          <h3 className="profile-card-title">Assigned Delivery Route</h3>
-                          <p className="profile-card-desc">Morning sector territory coverage</p>
-                        </div>
-                        <div className="profile-card-icon-wrap">
-                          <MapPin size={22} />
-                        </div>
-                      </div>
-                      <div className="profile-card-body">
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Territory / Area</span>
-                          <span className="profile-card-data-val">{profileArea || boyArea}</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Total Assigned Stops</span>
-                          <span className="profile-card-data-val">{totalDrops} Morning Customers</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Route Status</span>
-                          <span className="profile-card-data-val" style={{ color: pendingList.length > 0 ? '#d97706' : '#059669' }}>
-                            {pendingList.length > 0 ? `${pendingList.length} Stops Remaining` : '✓ All Stops Completed'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button
                       type="button"
-                      className="profile-card-action-btn"
-                      onClick={() => handleNavChange('route')}
+                      className="profile-hero-btn"
+                      onClick={openEditProfile}
                     >
-                      <Navigation size={15} />
-                      <span>View Route on Map</span>
+                      <Edit2 size={16} />
+                      <span>Edit Partner Profile</span>
                     </button>
-                  </div>
-
-                  {/* Card 2: Shift Schedule & Duty Timing */}
-                  <div className="profile-desktop-card">
-                    <div>
-                      <div className="profile-card-header">
-                        <div>
-                          <h3 className="profile-card-title">Shift Schedule & Timing</h3>
-                          <p className="profile-card-desc">Cold-chain morning delivery window</p>
-                        </div>
-                        <div className="profile-card-icon-wrap">
-                          <Clock size={22} />
-                        </div>
-                      </div>
-                      <div className="profile-card-body">
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Assigned Shift</span>
-                          <span className="profile-card-data-val">{profileShift || 'Early Morning Dispatch'}</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Operating Hours</span>
-                          <span className="profile-card-data-val">5:00 AM – 7:30 AM</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Doorstep Drop SLA</span>
-                          <span className="profile-card-data-val">Before 6:30 AM Mandatory</span>
-                        </div>
-                      </div>
-                    </div>
                     <button
                       type="button"
-                      className="profile-card-action-btn"
-                      onClick={() => {
-                        alert('Cold-Chain Rule: 1. Keep milk at 4°C. 2. Collect empty glass bottles. 3. Complete doorstep drops before 6:30 AM. 4. Collect cash receipts.');
+                      className="profile-driver-account-action"
+                      onClick={() => setShowLogoutConfirm(true)}
+                      style={{
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        borderRadius: '12px',
+                        padding: '10px 18px',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
                       }}
                     >
-                      <Info size={15} />
-                      <span>Cold-Chain Protocol Guidelines</span>
+                      <LogOut size={16} />
+                      <span>Log out</span>
                     </button>
                   </div>
+                </div>
 
-                  {/* Card 3: Fleet Vehicle Information */}
+                {/* 2. Driver Pure Profile Details Grid (2x2) */}
+                <div className="profile-desktop-grid driver-profile-details-grid">
+                  {/* Card 1: Partner Personal & Identity Details */}
                   <div className="profile-desktop-card">
                     <div>
                       <div className="profile-card-header">
                         <div>
-                          <h3 className="profile-card-title">Delivery Fleet Vehicle</h3>
-                          <p className="profile-card-desc">Inspected dairy transport equipment</p>
+                          <h3 className="profile-card-title">Personal Details</h3>
+                          <p className="profile-card-desc">Driver identity & employment credentials</p>
                         </div>
                         <div className="profile-card-icon-wrap">
-                          <Bike size={22} />
+                          <User size={22} color="#059669" />
                         </div>
                       </div>
                       <div className="profile-card-body">
                         <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Registration Number</span>
-                          <span className="profile-card-data-val">{bikePlate || 'TS09-AB-1234'}</span>
+                          <span className="profile-card-data-label">Full Name</span>
+                          <span className="profile-card-data-val">{profileName || boyName || 'Delivery Partner'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Partner ID</span>
+                          <span className="profile-card-data-val" style={{ color: '#059669' }}>
+                            NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}
+                          </span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Designation</span>
+                          <span className="profile-card-data-val">Natural Milk Dairy Delivery Partner</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Blood Group</span>
+                          <span className="profile-card-data-val">{profileBloodGroup || 'Not Specified'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Driving License</span>
+                          <span className="profile-card-data-val">{profileLicense || 'Not provided'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Partner Since</span>
+                          <span className="profile-card-data-val">{profileJoiningDate || 'Active Partner'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={openEditProfile}
+                    >
+                      <Edit2 size={15} />
+                      <span>Edit Personal Information</span>
+                    </button>
+                  </div>
+
+                  {/* Card 2: Contact & Communication Information */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Contact Information</h3>
+                          <p className="profile-card-desc">Driver phone, email & residential address</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <PhoneCall size={22} color="#059669" />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Primary Mobile</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="profile-card-data-val">{profilePhone || user?.mobile || user?.phone || 'Not provided'}</span>
+                          </div>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Email Address</span>
+                          <span className="profile-card-data-val">{profileEmail || user?.email || 'Not provided'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Residential / Base Address</span>
+                          <span className="profile-card-data-val" style={{ maxWidth: '60%', textAlign: 'right' }}>
+                            {profileAddress || 'Not provided'}
+                          </span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Emergency Contact</span>
+                          <span className="profile-card-data-val">{profileEmergencyContact || 'Not provided'}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="profile-card-action-btn"
+                      onClick={openEditProfile}
+                    >
+                      <Edit2 size={15} />
+                      <span>Update Contact Details</span>
+                    </button>
+                  </div>
+
+                  {/* Card 3: Route & Dispatch Hub Profile */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Territory & Dispatch Hub</h3>
+                          <p className="profile-card-desc">Designated operating sector & hub center</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <MapPin size={22} color="#059669" />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Assigned Sector</span>
+                          <span className="profile-card-data-val">{profileArea || boyArea || 'Madhapur'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Assigned Shift</span>
+                          <span className="profile-card-data-val">{profileShift || 'Morning Dispatch (5:00 AM – 7:30 AM)'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Dispatch Center Hub</span>
+                          <span className="profile-card-data-val">{profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Operations Supervisor</span>
+                          <span className="profile-card-data-val">Madhapur Field Operations Desk</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Supervisor Hotline</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span className="profile-card-data-val">{profileEmergencyContact || '+91 98765 43210'}</span>
+                            <a
+                              href={`tel:${profileEmergencyContact || '9876543210'}`}
+                              className="profile-contact-chip"
+                              title="Call supervisor"
+                            >
+                              <Phone size={11} /> Call Desk
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <a
+                      href={`tel:${profileEmergencyContact || '9876543210'}`}
+                      className="profile-card-action-btn"
+                    >
+                      <PhoneCall size={15} />
+                      <span>Call Operations Desk</span>
+                    </a>
+                  </div>
+
+                  {/* Card 4: Fleet Vehicle & Transport Equipment */}
+                  <div className="profile-desktop-card">
+                    <div>
+                      <div className="profile-card-header">
+                        <div>
+                          <h3 className="profile-card-title">Vehicle & Equipment Profile</h3>
+                          <p className="profile-card-desc">Allocated delivery vehicle & dairy gear</p>
+                        </div>
+                        <div className="profile-card-icon-wrap">
+                          <Bike size={22} color="#059669" />
+                        </div>
+                      </div>
+                      <div className="profile-card-body">
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Registration Plate</span>
+                          <span className="profile-card-data-val" style={{ color: '#059669' }}>{bikePlate || 'AP40DT9792'}</span>
                         </div>
                         <div className="profile-card-data-row">
                           <span className="profile-card-data-label">Vehicle Model</span>
                           <span className="profile-card-data-val">{bikeModel || 'Commercial Cargo EV'}</span>
                         </div>
                         <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Crates Capacity</span>
-                          <span className="profile-card-data-val">{bikeCratesCapacity || '4 Insulated Crates (120L)'}</span>
+                          <span className="profile-card-data-label">Vehicle Type</span>
+                          <span className="profile-card-data-val">{bikeType || 'Insulated Milk Carrier EV'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Equipment Allocated</span>
+                          <span className="profile-card-data-val">{bikeCratesCapacity || '4 Insulated Dairy Crates (120L)'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Driving License</span>
+                          <span className="profile-card-data-val">{profileLicense || 'Verified Partner License'}</span>
+                        </div>
+                        <div className="profile-card-data-row">
+                          <span className="profile-card-data-label">Fleet Compliance</span>
+                          <span className="profile-card-data-val" style={{ color: '#059669' }}>✓ Inspected & Sanitized</span>
                         </div>
                       </div>
                     </div>
@@ -3475,154 +6397,92 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       <span>Update Vehicle Details</span>
                     </button>
                   </div>
-
-                  {/* Card 4: Today's Route Performance */}
-                  <div className="profile-desktop-card">
-                    <div>
-                      <div className="profile-card-header">
-                        <div>
-                          <h3 className="profile-card-title">Today's Route Progress</h3>
-                          <p className="profile-card-desc">Real-time doorstep deliveries status</p>
-                        </div>
-                        <div className="profile-card-icon-wrap">
-                          <CheckCircle2 size={22} />
-                        </div>
-                      </div>
-                      <div className="profile-card-body">
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Completed Drops</span>
-                          <span className="profile-card-data-val" style={{ color: '#059669', fontSize: '1rem' }}>
-                            {completedCount} of {totalDrops} Drops
-                          </span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Pending Stops</span>
-                          <span className="profile-card-data-val" style={{ color: pendingList.length > 0 ? '#d97706' : '#059669' }}>
-                            {pendingList.length} Stops Left
-                          </span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Completion Rate</span>
-                          <span className="profile-card-data-val">
-                            {totalDrops ? Math.round((completedCount / totalDrops) * 100) : 100}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="profile-card-action-btn"
-                      onClick={() => handleNavChange('deliveries')}
-                    >
-                      <Truck size={15} />
-                      <span>Open Deliveries List</span>
-                    </button>
-                  </div>
-
-                  {/* Card 5: Cash Collection & Settlement */}
-                  <div className="profile-desktop-card">
-                    <div>
-                      <div className="profile-card-header">
-                        <div>
-                          <h3 className="profile-card-title">Cash in Hand to Deposit</h3>
-                          <p className="profile-card-desc">COD cash collections from customers</p>
-                        </div>
-                        <div className="profile-card-icon-wrap">
-                          <Wallet size={22} />
-                        </div>
-                      </div>
-                      <div className="profile-card-body">
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Cash Collected Today</span>
-                          <span className="profile-card-data-val" style={{ color: '#059669', fontSize: '1.05rem' }}>
-                            ₹{totalCashCollected}
-                          </span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Handover Policy</span>
-                          <span className="profile-card-data-val">Deposit with manager at shift close</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Settlement Status</span>
-                          <span className="profile-card-data-val" style={{ color: totalCashCollected > 0 ? '#d97706' : '#059669' }}>
-                            {totalCashCollected > 0 ? 'Pending Handover' : '✓ No Cash Pending'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="profile-card-action-btn"
-                      onClick={() => handleNavChange('cash')}
-                    >
-                      <Wallet size={15} />
-                      <span>Open Cash Register & Handover</span>
-                    </button>
-                  </div>
-
-                  {/* Card 6: Dispatch Depot & Hub Desk */}
-                  <div className="profile-desktop-card">
-                    <div>
-                      <div className="profile-card-header">
-                        <div>
-                          <h3 className="profile-card-title">Dispatch Depot & Operations</h3>
-                          <p className="profile-card-desc">Central depot & supervisor hotline</p>
-                        </div>
-                        <div className="profile-card-icon-wrap">
-                          <Navigation size={22} />
-                        </div>
-                      </div>
-                      <div className="profile-card-body">
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Depot Address</span>
-                          <span className="profile-card-data-val">{profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}</span>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Supervisor Phone</span>
-                          <a href={`tel:${profileEmergencyContact || '9876543210'}`} style={{ color: '#059669', fontWeight: 700, textDecoration: 'none' }}>
-                            {profileEmergencyContact || '+91 98765 43210'}
-                          </a>
-                        </div>
-                        <div className="profile-card-data-row">
-                          <span className="profile-card-data-label">Operations Hours</span>
-                          <span className="profile-card-data-val">4:30 AM – 9:00 AM Daily</span>
-                        </div>
-                      </div>
-                    </div>
-                    <a
-                      href={`tel:${profileEmergencyContact || '9876543210'}`}
-                      className="profile-card-action-btn"
-                    >
-                      <PhoneCall size={15} />
-                      <span>Call Hub Supervisor</span>
-                    </a>
-                  </div>
                 </div>
 
-                {/* 3. Account Actions Row: Logout */}
+                {/* 3. Account Security & Session Management Card */}
                 <div
+                  className="profile-driver-account-actions"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
-                    borderRadius: '16px',
-                    padding: '16px 22px',
-                    marginTop: '8px',
+                    borderRadius: '18px',
+                    padding: '20px 24px',
+                    marginTop: '4px',
                     flexWrap: 'wrap',
-                    gap: '12px',
+                    gap: '16px',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.02)',
                   }}
                 >
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
-                      Delivery Partner Account Session
-                    </h4>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-                      Sign out of your driver route account on this device.
-                    </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div
+                      style={{
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#0284c7',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Shield size={22} color="#0284c7" />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
+                        Partner Account & Session Security
+                      </h4>
+                      <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                        Authenticated as <strong>{profileName || boyName || 'Delivery Partner'}</strong> · Role-verified driver session
+                      </p>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={openEditProfile}
+                      style={{
+                        background: '#f0fdf4',
+                        color: '#059669',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: '10px',
+                        padding: '10px 18px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Edit2 size={15} />
+                      <span>Edit Profile</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoutConfirm(true)}
+                      style={{
+                        background: '#fef2f2',
+                        color: '#dc2626',
+                        border: '1px solid #fecaca',
+                        borderRadius: '10px',
+                        padding: '10px 18px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <LogOut size={15} />
+                      <span>Log out</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -3634,7 +6494,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         color: '#e11d48',
                         border: '1px solid #fecdd3',
                         borderRadius: '10px',
-                        padding: '9px 16px',
+                        padding: '10px 16px',
                         fontSize: '0.84rem',
                         fontWeight: 700,
                         cursor: 'pointer',
@@ -3645,26 +6505,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     >
                       <Trash2 size={15} />
                       <span>Delete Account</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowLogoutConfirm(true)}
-                      style={{
-                        background: '#fef2f2',
-                        color: '#dc2626',
-                        border: '1px solid #fecaca',
-                        borderRadius: '10px',
-                        padding: '9px 18px',
-                        fontSize: '0.84rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <LogOut size={15} />
-                      <span>Log out</span>
                     </button>
                   </div>
                 </div>
@@ -3697,6 +6537,18 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         >
           <ListOrdered size={20} />
           <span>Route</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleNavChange('customers')}
+          className={`driver-bottom-tab ${navTab === 'customers' ? 'active' : ''}`}
+        >
+          <Users size={20} />
+          <span>Customers</span>
+          {assignedCustomers.length > 0 && (
+            <span className="driver-bottom-badge">{assignedCustomers.length}</span>
+          )}
         </button>
 
         <button
@@ -4445,6 +7297,631 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   <>
                     <Trash2 size={16} />
                     <span>Yes, Delete Account</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 5. ADD / EDIT CUSTOMER MODAL (FULL CRUD)                      */}
+      {/* ============================================================ */}
+      {(showAddCustomerModal || editingCustomer) && (
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            if (!customerActionLoading) {
+              setShowAddCustomerModal(false);
+              setEditingCustomer(null);
+            }
+          }}
+          style={{ zIndex: 1100 }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '520px',
+              width: '94%',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              borderRadius: '18px',
+              padding: '24px',
+              background: '#ffffff',
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  {editingCustomer ? 'Edit Route Customer' : 'Add New Route Customer'}
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                  {editingCustomer
+                    ? `Updating details for ${editingCustomer.name} (${editingCustomer.customerId})`
+                    : `Add a doorstep delivery customer in your assigned territory (${boyArea})`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddCustomerModal(false);
+                  setEditingCustomer(null);
+                }}
+                disabled={customerActionLoading}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.3rem',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {customerFormError && (
+              <div
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  color: '#b91c1c',
+                  padding: '10px 14px',
+                  borderRadius: '10px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{customerFormError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveCustomer} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Customer Name */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Full Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={custFormName}
+                  onChange={(e) => setCustFormName(e.target.value)}
+                  placeholder="e.g. Ramesh Kumar"
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.86rem',
+                    color: '#0f172a',
+                  }}
+                />
+              </div>
+
+              {/* Mobile & WhatsApp */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Mobile Number (10 digits) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    maxLength={10}
+                    value={custFormMobile}
+                    onChange={(e) => setCustFormMobile(e.target.value)}
+                    placeholder="9876543210"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    WhatsApp (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={custFormWhatsapp}
+                    onChange={(e) => setCustFormWhatsapp(e.target.value)}
+                    placeholder="Same as mobile if blank"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Delivery Address */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Doorstep Delivery Address *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={custFormAddress}
+                  onChange={(e) => setCustFormAddress(e.target.value)}
+                  placeholder="Flat / House No, Building, Street"
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.86rem',
+                    color: '#0f172a',
+                  }}
+                />
+              </div>
+
+              {/* Area & Landmark */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Service Area / Zone *
+                  </label>
+                  <select
+                    value={custFormArea}
+                    onChange={(e) => setCustFormArea(e.target.value)}
+                    required
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                    }}
+                  >
+                    {locations && locations.length > 0 ? (
+                      locations.filter((l) => l.isActive).map((l) => (
+                        <option key={l.id || l._id} value={l.name}>
+                          {l.name} {l.pincode ? `(${l.pincode})` : ''} {boyArea && l.name.toLowerCase() === boyArea.toLowerCase() ? '• Assigned' : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={boyArea || 'Madhapur'}>{boyArea || 'Madhapur'}</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Landmark (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={custFormLandmark}
+                    onChange={(e) => setCustFormLandmark(e.target.value)}
+                    placeholder="Near Pillar 24"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Daily Delivery Plan: Milk & Curd */}
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Truck size={15} color="#059669" />
+                  <span>Daily Delivery Quantity</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                      Milk Quantity (Liters)
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                      {[0.5, 1, 1.5, 2].map((qty) => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setCustFormMilkQty(qty)}
+                          style={{
+                            flex: 1,
+                            padding: '4px 2px',
+                            borderRadius: '6px',
+                            border: '1px solid',
+                            borderColor: custFormMilkQty === qty ? '#059669' : '#cbd5e1',
+                            background: custFormMilkQty === qty ? '#ecfdf5' : '#ffffff',
+                            color: custFormMilkQty === qty ? '#065f46' : '#334155',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {qty}L
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="20"
+                      value={custFormMilkQty}
+                      onChange={(e) => setCustFormMilkQty(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.84rem',
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                      Curd Quantity (Grams)
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                      {[0, 250, 500].map((qty) => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => setCustFormCurdQty(qty)}
+                          style={{
+                            flex: 1,
+                            padding: '4px 2px',
+                            borderRadius: '6px',
+                            border: '1px solid',
+                            borderColor: custFormCurdQty === qty ? '#059669' : '#cbd5e1',
+                            background: custFormCurdQty === qty ? '#ecfdf5' : '#ffffff',
+                            color: custFormCurdQty === qty ? '#065f46' : '#334155',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {qty === 0 ? 'None' : `${qty}g`}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      step="250"
+                      min="0"
+                      max="5000"
+                      value={custFormCurdQty}
+                      onChange={(e) => setCustFormCurdQty(Number(e.target.value))}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.84rem',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Frequency */}
+                <div style={{ marginTop: '10px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                    Delivery Frequency
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {[
+                      { id: 'daily', label: 'Everyday' },
+                      { id: 'alternate', label: 'Alternate Days' },
+                      { id: 'selected', label: 'Custom Days' },
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setCustFormFrequency(f.id)}
+                        style={{
+                          flex: 1,
+                          padding: '6px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid',
+                          borderColor: custFormFrequency === f.id ? '#059669' : '#cbd5e1',
+                          background: custFormFrequency === f.id ? '#ecfdf5' : '#ffffff',
+                          color: custFormFrequency === f.id ? '#065f46' : '#475569',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom days checkboxes */}
+                {custFormFrequency === 'selected' && (
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => {
+                      const isSel = custFormDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            if (isSel) {
+                              if (custFormDays.length > 1) setCustFormDays(custFormDays.filter((d) => d !== day));
+                            } else {
+                              setCustFormDays([...custFormDays, day]);
+                            }
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            border: '1px solid',
+                            borderColor: isSel ? '#059669' : '#cbd5e1',
+                            background: isSel ? '#059669' : '#ffffff',
+                            color: isSel ? '#ffffff' : '#475569',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Type */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Billing & Payment Type
+                </label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { id: 'credit', label: 'Monthly Credit (Postpaid)' },
+                    { id: 'prepaid', label: 'Prepaid (Advance)' },
+                    { id: 'cod', label: 'Cash on Delivery' },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setCustFormPaymentType(p.id)}
+                      style={{
+                        flex: 1,
+                        padding: '7px 8px',
+                        borderRadius: '8px',
+                        border: '1px solid',
+                        borderColor: custFormPaymentType === p.id ? '#059669' : '#cbd5e1',
+                        background: custFormPaymentType === p.id ? '#ecfdf5' : '#ffffff',
+                        color: custFormPaymentType === p.id ? '#065f46' : '#475569',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Notes / Special Instructions */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Delivery Instructions / Doorstep Notes
+                </label>
+                <input
+                  type="text"
+                  value={custFormNotes}
+                  onChange={(e) => setCustFormNotes(e.target.value)}
+                  placeholder="e.g. Leave bottle in basket near gate, don't ring bell"
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.84rem',
+                    color: '#0f172a',
+                  }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  disabled={customerActionLoading}
+                  onClick={() => {
+                    setShowAddCustomerModal(false);
+                    setEditingCustomer(null);
+                  }}
+                  style={{
+                    padding: '11px',
+                    borderRadius: '10px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontSize: '0.86rem',
+                    fontWeight: 700,
+                    cursor: customerActionLoading ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={customerActionLoading}
+                  style={{
+                    padding: '11px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: 'linear-gradient(135deg, #059669, #047857)',
+                    color: '#ffffff',
+                    fontSize: '0.86rem',
+                    fontWeight: 700,
+                    cursor: customerActionLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 4px rgba(5,150,105,0.2)',
+                  }}
+                >
+                  {customerActionLoading ? (
+                    <>
+                      <RefreshCw size={15} className="spin-animation" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      <span>{editingCustomer ? 'Update Customer' : 'Add Customer to Route'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 6. DELETE CUSTOMER CONFIRMATION MODAL                        */}
+      {/* ============================================================ */}
+      {deletingCustomer && (
+        <div className="modal-overlay" onClick={() => !customerActionLoading && setDeletingCustomer(null)} style={{ zIndex: 1100 }}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '420px', padding: '24px', borderRadius: '18px', textAlign: 'center', background: '#ffffff' }}
+          >
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: '#fee2e2',
+                color: '#dc2626',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '12px',
+              }}
+            >
+              <Trash2 size={24} />
+            </div>
+
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+              Remove Customer from Route?
+            </h3>
+            <p style={{ fontSize: '0.86rem', color: '#64748b', margin: '0 0 14px 0', lineHeight: 1.5 }}>
+              Are you sure you want to remove <strong>{deletingCustomer.name}</strong> ({deletingCustomer.customerId || deletingCustomer.mobile})?
+            </p>
+
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                textAlign: 'left',
+                fontSize: '0.78rem',
+                color: '#475569',
+                marginBottom: '18px',
+              }}
+            >
+              <div>📍 <strong>Address:</strong> {deletingCustomer.address}</div>
+              <div style={{ marginTop: '3px' }}>🥛 <strong>Plan:</strong> {deletingCustomer.deliveryPlan?.milkQty || 1}L Daily Milk</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={customerActionLoading}
+                onClick={() => setDeletingCustomer(null)}
+                style={{
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '0.86rem',
+                  fontWeight: 700,
+                  cursor: customerActionLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Keep Customer
+              </button>
+
+              <button
+                type="button"
+                disabled={customerActionLoading}
+                onClick={handleDeleteCustomer}
+                style={{
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '0.86rem',
+                  fontWeight: 700,
+                  cursor: customerActionLoading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                {customerActionLoading ? (
+                  <>
+                    <RefreshCw size={15} className="spin-animation" />
+                    <span>Removing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={15} />
+                    <span>Yes, Remove</span>
                   </>
                 )}
               </button>

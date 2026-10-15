@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Delivery = require('../models/Delivery');
 const Payment = require('../models/Payment');
 const DeliveryBoy = require('../models/DeliveryBoy');
+const DeliveryLocation = require('../models/DeliveryLocation');
 const Notification = require('../models/Notification');
 const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
@@ -173,11 +174,52 @@ const createCustomer = async (req, res) => {
       }
     }
 
-    // Find driver name if assigned
+    // Find driver name if assigned or if created by driver
     let boyName = '';
-    if (deliveryBoyId) {
+    let finalDeliveryBoyId = deliveryBoyId || '';
+    const isDriver = req.user?.role === 'delivery_boy';
+
+    // Validate that the requested delivery area is an active serviceable location
+    const targetArea = (area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur')).trim();
+    const validLocation = await DeliveryLocation.findOne({
+      name: { $regex: new RegExp(`^${targetArea}$`, 'i') },
+      isActive: true,
+    });
+
+    if (!validLocation) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery location "${targetArea}" is not currently in our serviceable zones. Please select an active location configured by admin.`,
+      });
+    }
+
+    // If created by a delivery driver, ensure they only create accounts in their assigned territory
+    if (isDriver) {
+      const driverRecord = await DeliveryBoy.findOne({
+        $or: [
+          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+          ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+        ],
+      }).lean();
+      const driverAssignedArea = (driverRecord?.assignedArea || req.user.assignedArea || '').trim();
+      if (
+        driverAssignedArea &&
+        driverAssignedArea.toLowerCase() !== 'all dairy routes' &&
+        driverAssignedArea.toLowerCase() !== validLocation.name.toLowerCase()
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: `As a delivery partner assigned to "${driverAssignedArea}", you can only create accounts within your assigned location.`,
+        });
+      }
+    }
+
+    if (isDriver && !finalDeliveryBoyId) {
+      finalDeliveryBoyId = req.user.id || req.user.boyId || '';
+      boyName = req.user.name || 'Delivery Partner';
+    } else if (finalDeliveryBoyId) {
       const boy = await DeliveryBoy.findOne(
-        deliveryBoyId.length === 24 ? { _id: deliveryBoyId } : { mobile: deliveryBoyId }
+        finalDeliveryBoyId.length === 24 ? { _id: finalDeliveryBoyId } : { mobile: finalDeliveryBoyId }
       ).lean();
       if (boy) boyName = boy.name;
     }
@@ -193,7 +235,7 @@ const createCustomer = async (req, res) => {
       password: customerPassword,
       whatsapp: (whatsapp || cleanMobile).trim(),
       address: address.trim(),
-      area: area || 'Andheri West',
+      area: area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur'),
       landmark: landmark || '',
       latitude: 19.12 + Math.random() * 0.04,
       longitude: 72.82 + Math.random() * 0.04,
@@ -208,7 +250,7 @@ const createCustomer = async (req, res) => {
         curdUnit: curdUnit || 'g',
         frequency: frequency || 'daily',
         deliveryDays: deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        deliveryBoyId: deliveryBoyId || '',
+        deliveryBoyId: finalDeliveryBoyId,
         deliveryBoyName: boyName,
         startDate: new Date(),
       },
@@ -217,6 +259,9 @@ const createCustomer = async (req, res) => {
         paymentCycle: paymentCycle || 'monthly',
       },
       currentBalance: Number(initialBalance) || 0,
+      createdBy: isDriver ? 'driver' : (req.body.createdBy || 'admin'),
+      createdByDriverId: isDriver ? (req.user.id || req.user.boyId || '') : (req.body.createdByDriverId || ''),
+      createdByDriverName: isDriver ? (req.user.name || '') : (req.body.createdByDriverName || ''),
       notes: notes || '',
       createdAt: new Date(),
     });
@@ -255,6 +300,31 @@ const createCustomer = async (req, res) => {
       }
     }
 
+    // Instant notification for delivery partner
+    if (finalDeliveryBoyId || isDriver) {
+      try {
+        await Notification.create({
+          recipientRole: 'delivery_boy',
+          recipientId: finalDeliveryBoyId || '',
+          title: '📦 New Customer Assigned',
+          message: `${isDriver ? 'You' : 'Admin'} enrolled customer ${cleanName} (${newCustomer.deliveryPlan.milkQty}L Milk daily) in ${newCustomer.area || 'Madhapur'}.`,
+          type: 'delivery_assigned',
+          data: {
+            customerId: newCustomer.customerId,
+            customerName: cleanName,
+            customerAddress: newCustomer.address,
+            customerPhone: cleanMobile,
+            deliveryBoyId: finalDeliveryBoyId,
+            deliveryBoyName: boyName,
+            milkQty: newCustomer.deliveryPlan.milkQty,
+          },
+        });
+      } catch (notifErr) {
+        console.warn('Driver customer creation notification error:', notifErr.message);
+      }
+    }
+
+    await ensureDeliveriesForDate(formatDate());
     broadcast('CUSTOMER_UPDATED', { customerId: newCustomer.customerId });
     broadcast('DELIVERY_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
@@ -320,17 +390,61 @@ const updateCustomer = async (req, res) => {
       if (boy) boyName = boy.name;
     }
 
+    if (req.body.area) {
+      const validLoc = await DeliveryLocation.findOne({
+        name: { $regex: new RegExp(`^${req.body.area.trim()}$`, 'i') },
+        isActive: true,
+      });
+      if (!validLoc) {
+        return res.status(400).json({
+          success: false,
+          message: `Delivery location "${req.body.area}" is not currently an active serviceable location.`,
+        });
+      }
+      req.body.area = validLoc.name;
+    }
+
     const updateData = { ...req.body };
+    if (req.body.milkQty !== undefined) {
+      updateData['deliveryPlan.milkQty'] = Number(req.body.milkQty);
+    }
+    if (req.body.milkUnit !== undefined) {
+      updateData['deliveryPlan.milkUnit'] = req.body.milkUnit;
+    }
+    if (req.body.curdQty !== undefined) {
+      updateData['deliveryPlan.curdQty'] = Number(req.body.curdQty);
+    }
+    if (req.body.curdUnit !== undefined) {
+      updateData['deliveryPlan.curdUnit'] = req.body.curdUnit;
+    }
+    if (req.body.frequency !== undefined) {
+      updateData['deliveryPlan.frequency'] = req.body.frequency;
+    }
+    if (req.body.deliveryBoyId !== undefined) {
+      updateData['deliveryPlan.deliveryBoyId'] = req.body.deliveryBoyId;
+    }
     if (boyName) {
       updateData['deliveryPlan.deliveryBoyName'] = boyName;
+    }
+    if (req.body.paymentType !== undefined) {
+      updateData['paymentInfo.paymentType'] = req.body.paymentType;
+    }
+    if (req.body.paymentCycle !== undefined) {
+      updateData['paymentInfo.paymentCycle'] = req.body.paymentCycle;
     }
 
     const updated = await Customer.findOneAndUpdate(query, { $set: updateData }, { new: true });
 
-    if (req.body.password && req.body.password.trim()) {
+    // Sync auth User record
+    const userUpdate = {};
+    if (req.body.name) userUpdate.name = req.body.name.trim();
+    if (req.body.email) userUpdate.email = req.body.email.trim().toLowerCase();
+    if (req.body.mobile) userUpdate.mobile = req.body.mobile.trim();
+    if (req.body.password && req.body.password.trim()) userUpdate.password = req.body.password.trim();
+    if (Object.keys(userUpdate).length > 0) {
       await User.findOneAndUpdate(
-        { mobile: updated.mobile },
-        { $set: { password: req.body.password.trim() } }
+        { $or: [{ mobile: existingCust.mobile }, { mobile: updated.mobile }] },
+        { $set: userUpdate }
       );
     }
 
@@ -408,6 +522,25 @@ const pauseDelivery = async (req, res) => {
       'customer'
     );
 
+    // Notify delivery partner
+    if (customer.deliveryPlan?.deliveryBoyId) {
+      try {
+        await Notification.create({
+          recipientRole: 'delivery_boy',
+          recipientId: customer.deliveryPlan.deliveryBoyId,
+          title: '⏸️ Customer Delivery Paused',
+          message: `${customer.name} paused deliveries ${pauseFrom ? `from ${pauseFrom}` : ''} ${pauseUntil ? `to ${pauseUntil}` : ''}.${reason ? ' Reason: ' + reason : ''}`,
+          type: 'route_update',
+          data: {
+            customerId: customer.customerId,
+            customerName: customer.name,
+            pauseFrom,
+            pauseUntil,
+          },
+        });
+      } catch (e) {}
+    }
+
     broadcast('CUSTOMER_UPDATED', { id });
     broadcast('DELIVERY_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
@@ -471,6 +604,23 @@ const resumeDelivery = async (req, res) => {
       }
     );
     await ensureDeliveriesForDate(today);
+
+    // Notify delivery partner
+    if (customer.deliveryPlan?.deliveryBoyId) {
+      try {
+        await Notification.create({
+          recipientRole: 'delivery_boy',
+          recipientId: customer.deliveryPlan.deliveryBoyId,
+          title: '▶️ Customer Delivery Resumed',
+          message: `${customer.name} has resumed daily milk deliveries on your route.`,
+          type: 'route_update',
+          data: {
+            customerId: customer.customerId,
+            customerName: customer.name,
+          },
+        });
+      } catch (e) {}
+    }
 
     await recordAudit('Customer Delivery Resumed', actor || 'Admin', `Resumed active delivery for ${customer.name}`, 'customer');
 

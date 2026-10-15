@@ -7,9 +7,11 @@ const {
   getAuditLogs,
 } = require('../controllers/reportController');
 
-router.get('/dashboard', getDashboardSummary);
-router.get('/pending-credit', getPendingCreditReport);
-router.get('/statement', getCustomerStatement);
-router.get('/audit-logs', getAuditLogs);
+const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+
+router.get('/dashboard', verifyToken, requireAdmin, getDashboardSummary);
+router.get('/pending-credit', verifyToken, requireAdmin, getPendingCreditReport);
+router.get('/statement', verifyToken, getCustomerStatement);
+router.get('/audit-logs', verifyToken, requireAdmin, getAuditLogs);
 
 module.exports = router;

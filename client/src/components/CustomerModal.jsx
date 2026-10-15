@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../context/DairyContext';
-import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles } from 'lucide-react';
+import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles, Edit3 } from 'lucide-react';
 
-export default function CustomerModal({ isOpen, onClose }) {
-  const { addCustomer, deliveryBoys } = useDairy();
+export default function CustomerModal({ isOpen, onClose, customerToEdit = null, customer = null }) {
+  const { addCustomer, updateCustomer, deliveryBoys, locations } = useDairy();
+  const targetCustomer = customerToEdit || customer;
+  const isEditMode = Boolean(targetCustomer);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -11,19 +13,64 @@ export default function CustomerModal({ isOpen, onClose }) {
   const [mobile, setMobile] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [address, setAddress] = useState('');
-  const [area, setArea] = useState('Andheri West');
+  const [area, setArea] = useState('Madhapur');
   const [landmark, setLandmark] = useState('');
+  const [status, setStatus] = useState('active');
   const [milkQty, setMilkQty] = useState(1);
   const [milkUnit, setMilkUnit] = useState('L');
-  const [curdQty, setCurdQty] = useState(500);
+  const [curdQty, setCurdQty] = useState(0);
   const [curdUnit, setCurdUnit] = useState('g');
   const [frequency, setFrequency] = useState('daily');
-  const [deliveryBoyId, setDeliveryBoyId] = useState(deliveryBoys[0]?.id || '');
+  const [deliveryBoyId, setDeliveryBoyId] = useState('');
   const [paymentType, setPaymentType] = useState('credit');
   const [paymentCycle, setPaymentCycle] = useState('monthly');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    if (targetCustomer) {
+      setName(targetCustomer.name || '');
+      setEmail(targetCustomer.email || '');
+      setPassword('');
+      setMobile(targetCustomer.mobile || '');
+      setWhatsapp(targetCustomer.whatsapp || targetCustomer.mobile || '');
+      setAddress(targetCustomer.address || '');
+      setArea(targetCustomer.area || 'Madhapur');
+      setLandmark(targetCustomer.landmark || '');
+      setStatus(targetCustomer.status || 'active');
+      setMilkQty(targetCustomer.deliveryPlan?.milkQty ?? 1);
+      setMilkUnit(targetCustomer.deliveryPlan?.milkUnit || 'L');
+      setCurdQty(targetCustomer.deliveryPlan?.curdQty ?? 0);
+      setCurdUnit(targetCustomer.deliveryPlan?.curdUnit || 'g');
+      setFrequency(targetCustomer.deliveryPlan?.frequency || 'daily');
+      setDeliveryBoyId(targetCustomer.deliveryPlan?.deliveryBoyId || '');
+      setPaymentType(targetCustomer.paymentInfo?.paymentType || 'credit');
+      setPaymentCycle(targetCustomer.paymentInfo?.paymentCycle || 'monthly');
+      setNotes(targetCustomer.notes || '');
+    } else {
+      setName('');
+      setEmail('');
+      setPassword('');
+      setMobile('');
+      setWhatsapp('');
+      setAddress('');
+      const firstActiveLoc = locations.find((l) => l.isActive)?.name || 'Madhapur';
+      setArea(firstActiveLoc);
+      setLandmark('');
+      setStatus('active');
+      setMilkQty(1);
+      setMilkUnit('L');
+      setCurdQty(0);
+      setCurdUnit('g');
+      setFrequency('daily');
+      setDeliveryBoyId(deliveryBoys[0]?.id || deliveryBoys[0]?._id || '');
+      setPaymentType('credit');
+      setPaymentCycle('monthly');
+      setNotes('');
+    }
+    setErrorMessage('');
+  }, [targetCustomer, isOpen, deliveryBoys, locations]);
 
   if (!isOpen) return null;
 
@@ -33,40 +80,77 @@ export default function CustomerModal({ isOpen, onClose }) {
     if (!name || !mobile || !address) return;
 
     setIsSubmitting(true);
-    const res = await addCustomer({
-      name,
-      email: email.trim(),
-      password: password.trim(),
-      mobile: mobile.trim(),
-      whatsapp: whatsapp || mobile,
-      address,
-      area,
-      landmark,
-      milkQty: Number(milkQty),
-      milkUnit,
-      curdQty: Number(curdQty),
-      curdUnit,
-      frequency,
-      deliveryBoyId,
-      paymentType,
-      paymentCycle,
-      notes,
-      actor: 'Admin',
-    });
-    setIsSubmitting(false);
 
-    if (!res || !res.success) {
-      setErrorMessage(res?.message || 'Failed to add customer. Please check phone number and email.');
-      return;
+    if (isEditMode) {
+      const updatePayload = {
+        name: name.trim(),
+        email: email.trim(),
+        mobile: mobile.trim(),
+        whatsapp: whatsapp ? whatsapp.trim() : mobile.trim(),
+        address: address.trim(),
+        area: area.trim(),
+        landmark: landmark.trim(),
+        status,
+        milkQty: Number(milkQty),
+        milkUnit,
+        curdQty: Number(curdQty),
+        curdUnit,
+        frequency,
+        deliveryBoyId,
+        paymentType,
+        paymentCycle,
+        notes: notes.trim(),
+        actor: 'Admin',
+      };
+      if (password && password.trim()) {
+        updatePayload.password = password.trim();
+      }
+
+      const res = await updateCustomer(targetCustomer.id || targetCustomer._id, updatePayload);
+      setIsSubmitting(false);
+
+      if (!res || !res.success) {
+        setErrorMessage(res?.message || 'Failed to update customer details.');
+        return;
+      }
+      onClose();
+    } else {
+      const res = await addCustomer({
+        name: name.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        mobile: mobile.trim(),
+        whatsapp: whatsapp ? whatsapp.trim() : mobile.trim(),
+        address: address.trim(),
+        area: area.trim(),
+        landmark: landmark.trim(),
+        status,
+        milkQty: Number(milkQty),
+        milkUnit,
+        curdQty: Number(curdQty),
+        curdUnit,
+        frequency,
+        deliveryBoyId,
+        paymentType,
+        paymentCycle,
+        notes: notes.trim(),
+        actor: 'Admin',
+      });
+      setIsSubmitting(false);
+
+      if (!res || !res.success) {
+        setErrorMessage(res?.message || 'Failed to add customer. Please check phone number and email.');
+        return;
+      }
+
+      setName('');
+      setEmail('');
+      setPassword('');
+      setMobile('');
+      setWhatsapp('');
+      setAddress('');
+      onClose();
     }
-
-    setName('');
-    setEmail('');
-    setPassword('');
-    setMobile('');
-    setWhatsapp('');
-    setAddress('');
-    onClose();
   };
 
   return (
@@ -74,9 +158,14 @@ export default function CustomerModal({ isOpen, onClose }) {
       <div className="modal-content customer-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', borderRadius: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Add New Customer</h3>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {isEditMode ? <Edit3 size={20} color="#2563eb" /> : <Sparkles size={20} color="#059669" />}
+              <span>{isEditMode ? `Edit Customer (${targetCustomer.customerId || targetCustomer.name})` : 'Add New Customer'}</span>
+            </h3>
             <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-              Create customer profile and automatically send login credentials via email
+              {isEditMode
+                ? `Update personal details, delivery quotas, and subscription route for ${targetCustomer.name}`
+                : 'Create customer profile and automatically send login credentials via email'}
             </p>
           </div>
           <button onClick={onClose} style={{ border: 'none', background: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}>✕</button>
@@ -147,11 +236,11 @@ export default function CustomerModal({ isOpen, onClose }) {
             <div>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
                 <Lock size={13} />
-                <span>Portal Password (Optional)</span>
+                <span>{isEditMode ? 'Change Password (Optional)' : 'Portal Password (Optional)'}</span>
               </label>
               <input
                 type="text"
-                placeholder="Leave blank for auto-generated"
+                placeholder={isEditMode ? 'Leave blank to keep current' : 'Leave blank for auto-generated'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
@@ -172,14 +261,52 @@ export default function CustomerModal({ isOpen, onClose }) {
             </div>
 
             <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                <MapPin size={12} color="#059669" />
+                <span>Service Location / Area *</span>
+              </label>
+              <select
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '8px 12px', fontSize: '0.84rem', width: '100%', background: '#ffffff' }}
+                required
+              >
+                {locations.filter((l) => l.isActive).map((l) => (
+                  <option key={l.id || l._id} value={l.name}>
+                    {l.name} {l.pincode ? `(PIN: ${l.pincode})` : ''} • {l.city}
+                  </option>
+                ))}
+                {/* Fallback if editing older customer whose area is not in active locations */}
+                {area && !locations.some((l) => l.isActive && l.name.toLowerCase() === area.toLowerCase()) && (
+                  <option value={area}>{area} (Current)</option>
+                )}
+              </select>
+            </div>
+
+            <div>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '3px' }}>
-                Area / Locality
+                Account Status
+              </label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem', background: '#ffffff', width: '100%' }}
+              >
+                <option value="active">Active (Deliveries Running)</option>
+                <option value="paused">Paused (Deliveries Suspended)</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '3px' }}>
+                Landmark
               </label>
               <input
                 type="text"
-                placeholder="e.g. Andheri West"
-                value={area}
-                onChange={(e) => setArea(e.target.value)}
+                placeholder="e.g. Near Metro Station / Opp. Bank"
+                value={landmark}
+                onChange={(e) => setLandmark(e.target.value)}
                 style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
               />
             </div>
@@ -195,19 +322,6 @@ export default function CustomerModal({ isOpen, onClose }) {
                 onChange={(e) => setAddress(e.target.value)}
                 style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
                 required
-              />
-            </div>
-
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '3px' }}>
-                Landmark
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. Near Metro Station / Opp. Bank"
-                value={landmark}
-                onChange={(e) => setLandmark(e.target.value)}
-                style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
               />
             </div>
           </div>
@@ -269,7 +383,7 @@ export default function CustomerModal({ isOpen, onClose }) {
                   onChange={(e) => setDeliveryBoyId(e.target.value)}
                   style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
                 >
-                  <option value="">Select Delivery Partner</option>
+                  <option value="">Choose Delivery Partner (Unassigned)</option>
                   {(deliveryBoys || [])
                     .filter((b) => b.status !== 'inactive')
                     .map((b) => (
@@ -358,13 +472,15 @@ export default function CustomerModal({ isOpen, onClose }) {
                 padding: '10px',
                 borderRadius: '8px',
                 border: 'none',
-                background: '#059669',
+                background: isEditMode ? '#2563eb' : '#059669',
                 color: '#ffffff',
                 fontWeight: 600,
                 cursor: 'pointer',
               }}
             >
-              {isSubmitting ? 'Saving & Sending Email...' : 'Save & Send Credentials Email'}
+              {isSubmitting
+                ? (isEditMode ? 'Saving Changes...' : 'Saving & Sending Email...')
+                : (isEditMode ? 'Save & Update Customer' : 'Save & Send Credentials Email')}
             </button>
           </div>
         </form>

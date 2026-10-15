@@ -1,12 +1,16 @@
 const User = require('../models/User');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const Delivery = require('../models/Delivery');
+const Customer = require('../models/Customer');
+const DeliveryLocation = require('../models/DeliveryLocation');
+const CashHandover = require('../models/CashHandover');
 const { recordAudit } = require('../services/auditService');
 const { formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
 
 const getDeliveryBoys = async (req, res) => {
   try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     const today = formatDate();
     const [boys, deliveries, users] = await Promise.all([
       DeliveryBoy.find({}).lean(),
@@ -336,73 +340,163 @@ const updateDeliveryBoy = async (req, res) => {
 const deleteDeliveryBoy = async (req, res) => {
   try {
     const { id } = req.params;
-    const { actor, boyId } = req.body || {};
+    const { actor, boyId, force } = req.body || {};
 
     let boy = null;
     const targetId = (id === 'me' || !id) ? (req.user?.id || boyId) : id;
 
+    // 1. Try to find the delivery boy in DeliveryBoy collection
     if (targetId && targetId.length === 24) {
       try {
-        boy = await DeliveryBoy.findByIdAndDelete(targetId);
+        boy = await DeliveryBoy.findById(targetId);
       } catch (e) {
         boy = null;
       }
     }
     if (!boy && targetId) {
-      boy = await DeliveryBoy.findOneAndDelete({
+      boy = await DeliveryBoy.findOne({
         $or: [{ mobile: targetId }, { email: targetId }, { name: targetId }],
       });
     }
-    if (!boy && req.user) {
-      boy = await DeliveryBoy.findOneAndDelete({
-        $or: [
-          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
-          ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
-          ...(req.user.email ? [{ email: req.user.email }] : []),
-        ],
+
+    // 2. If not found in DeliveryBoy, search in User collection (role: 'delivery_boy')
+    if (!boy && targetId && targetId.length === 24) {
+      try {
+        const user = await User.findById(targetId);
+        if (user && user.role === 'delivery_boy') {
+          const dbBoy = await DeliveryBoy.findOne({ mobile: user.mobile });
+          boy = dbBoy || {
+            _id: user._id,
+            name: user.name,
+            mobile: user.mobile,
+            email: user.email || '',
+            todayCashCollected: 0,
+            todayUpiCollected: 0,
+          };
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (!boy && targetId) {
+      const user = await User.findOne({
+        role: 'delivery_boy',
+        $or: [{ mobile: targetId }, { email: targetId }, { name: targetId }],
       });
+      if (user) {
+        const dbBoy = await DeliveryBoy.findOne({ mobile: user.mobile });
+        boy = dbBoy || {
+          _id: user._id,
+          name: user.name,
+          mobile: user.mobile,
+          email: user.email || '',
+          todayCashCollected: 0,
+          todayUpiCollected: 0,
+        };
+      }
     }
 
     if (!boy) {
       return res.status(404).json({ success: false, message: 'Delivery partner not found in database.' });
     }
 
-    // Permanently remove matching User accounts from database
+    // 3. Check if partner has any amount in hand (cash collected / unreconciled)
+    const cashCollected = Number(boy.todayCashCollected || 0);
+    const upiCollected = Number(boy.todayUpiCollected || 0);
+    const totalCashInHand = cashCollected + upiCollected;
+
+    if (totalCashInHand > 0 && !force) {
+      return res.status(400).json({
+        success: false,
+        hasCashInHand: true,
+        amount: totalCashInHand,
+        cash: cashCollected,
+        upi: upiCollected,
+        message: `Delivery partner "${boy.name}" currently holds ₹${totalCashInHand} (Cash: ₹${cashCollected}, UPI: ₹${upiCollected}) in partner hand. Please reconcile cash first or confirm deletion.`,
+      });
+    }
+
+    // 4. Delete from DeliveryBoy collection
+    await DeliveryBoy.deleteMany({
+      $or: [
+        ...(boy._id && boy._id.toString().length === 24 ? [{ _id: boy._id }] : []),
+        ...(boy.mobile ? [{ mobile: boy.mobile }] : []),
+        ...(boy.name ? [{ name: boy.name }] : []),
+      ],
+    });
+
+    // 5. Permanently remove matching User accounts from database
     await User.deleteMany({
       $or: [
-        { mobile: boy.mobile },
+        ...(boy.mobile ? [{ mobile: boy.mobile }] : []),
         ...(boy.email ? [{ email: boy.email }] : []),
         { name: boy.name, role: 'delivery_boy' },
       ],
     });
 
-    // Unassign customers assigned to this partner
+    // 6. Unassign customers assigned to this partner
     await Customer.updateMany(
       {
         $or: [
-          { deliveryBoyId: boy._id.toString() },
+          { 'deliveryPlan.deliveryBoyId': boy._id ? boy._id.toString() : '' },
+          { 'deliveryPlan.deliveryBoyId': boy.mobile },
+          { 'deliveryPlan.deliveryBoyName': boy.name },
+          { deliveryBoyId: boy._id ? boy._id.toString() : '' },
           { deliveryBoyId: boy.mobile },
           { deliveryBoyName: boy.name },
         ],
       },
-      { $set: { deliveryBoyId: '', deliveryBoyName: 'Unassigned' } }
+      {
+        $set: {
+          'deliveryPlan.deliveryBoyId': '',
+          'deliveryPlan.deliveryBoyName': 'Unassigned',
+          deliveryBoyId: '',
+          deliveryBoyName: 'Unassigned',
+        },
+      }
     );
+
+    // 7. Unassign from serviceable delivery locations
+    await DeliveryLocation.updateMany(
+      {
+        $or: [
+          { assignedPartnerId: boy._id ? boy._id.toString() : '' },
+          { assignedPartnerId: boy.mobile },
+          { assignedPartnerName: boy.name },
+        ],
+      },
+      {
+        $set: {
+          assignedPartnerId: '',
+          assignedPartnerName: '',
+        },
+      }
+    );
+
+    // 8. Clean up any pending cash handovers for this driver
+    await CashHandover.deleteMany({
+      $or: [
+        ...(boy._id ? [{ deliveryBoyId: boy._id.toString() }] : []),
+        ...(boy.mobile ? [{ deliveryBoyMobile: boy.mobile }] : []),
+      ],
+    });
 
     await recordAudit(
       'Delivery Partner Account Permanently Deleted',
       actor || boy.name || 'Delivery Partner',
-      `Permanently removed delivery partner "${boy.name}" (${boy.mobile}) from database`,
+      `Permanently removed delivery partner "${boy.name}" (${boy.mobile}) from database${totalCashInHand > 0 ? ` (Wrote off/Settled ₹${totalCashInHand} in hand)` : ''}`,
       'system'
     );
 
     broadcast('DELIVERY_BOY_UPDATED', {});
     broadcast('CUSTOMER_UPDATED', {});
+    broadcast('LOCATION_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,
       message: `Delivery partner account "${boy.name}" permanently deleted from database.`,
-      id: boy._id,
+      id: boy._id ? boy._id.toString() : '',
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

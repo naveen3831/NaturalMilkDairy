@@ -5,7 +5,7 @@ const User = require('../models/User');
 const Payment = require('../models/Payment');
 const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
-const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
+const { ensureDeliveriesForDate, ensureDeliveriesForRange, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
 
 const isPersistedProof = (proofImage) => {
@@ -46,6 +46,7 @@ const getDeliveries = async (req, res) => {
     const { status, deliveryBoyId, search, range = 'today', startDate, endDate } = req.query;
     const requestedDate = req.query.date;
     const todayStr = formatDate();
+    const targetDate = requestedDate || todayStr;
 
     // Auto-generate scheduled deliveries in MongoDB for today
     await ensureDeliveriesForDate(todayStr);
@@ -75,6 +76,7 @@ const getDeliveries = async (req, res) => {
 
       const startStr = formatDate(monday);
       const endStr = formatDate(sunday);
+      await ensureDeliveriesForRange(startStr, endStr);
       filter.deliveryDate = { $gte: startStr, $lte: endStr };
     } else if (range === 'monthly') {
       const now = new Date();
@@ -83,11 +85,12 @@ const getDeliveries = async (req, res) => {
 
       const startStr = formatDate(firstDay);
       const endStr = formatDate(lastDay);
+      await ensureDeliveriesForRange(startStr, endStr);
       filter.deliveryDate = { $gte: startStr, $lte: endStr };
     } else if (startDate && endDate) {
+      await ensureDeliveriesForRange(startDate, endDate);
       filter.deliveryDate = { $gte: startDate, $lte: endDate };
     } else {
-      const targetDate = requestedDate || todayStr;
       filter.deliveryDate = targetDate;
     }
 
@@ -144,7 +147,7 @@ const getDeliveries = async (req, res) => {
 
     return res.json({
       success: true,
-      date,
+      date: targetDate,
       summary: { total, delivered, pending, notDelivered },
       deliveries: list.map((d) => ({
         ...d,
@@ -181,14 +184,15 @@ const getAssignedCustomers = async (req, res) => {
     const assignmentFilters = [];
     if (partnerIds.size) assignmentFilters.push({ 'deliveryPlan.deliveryBoyId': { $in: [...partnerIds] } });
     if (partnerNames.size) assignmentFilters.push({ 'deliveryPlan.deliveryBoyName': { $in: [...partnerNames] } });
+    if (partnerIds.size) assignmentFilters.push({ createdByDriverId: { $in: [...partnerIds] } });
     if (!assignmentFilters.length) {
       return res.json({ success: true, customers: [] });
     }
 
     const customers = await Customer.find({
-      status: { $nin: ['inactive', 'paused'] },
+      status: { $ne: 'inactive' },
       $or: assignmentFilters,
-    }).sort({ name: 1 }).lean();
+    }).sort({ createdAt: -1, name: 1 }).lean();
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -207,8 +211,8 @@ const getAssignedCustomers = async (req, res) => {
         const dayNumber = Math.floor(scheduledDate.getTime() / (24 * 60 * 60 * 1000));
         const startsInTime = !startDate || formatDate(new Date(startDate)) <= scheduledDay;
         const endsInTime = !endDate || formatDate(new Date(endDate)) >= scheduledDay;
-        const isPaused = customer.pauseFrom && customer.pauseUntil &&
-          scheduledDay >= customer.pauseFrom && scheduledDay <= customer.pauseUntil;
+        const isPaused = customer.status === 'paused' || (customer.pauseFrom && customer.pauseUntil &&
+          scheduledDay >= customer.pauseFrom && scheduledDay <= customer.pauseUntil);
         const matchesFrequency = plan.frequency === 'alternate'
           ? dayNumber % 2 === 0
           : ['selected', 'custom'].includes(plan.frequency)
@@ -225,14 +229,29 @@ const getAssignedCustomers = async (req, res) => {
         id: customer._id.toString(),
         customerId: customer.customerId,
         name: customer.name,
+        email: customer.email || '',
         mobile: customer.mobile,
+        whatsapp: customer.whatsapp || customer.mobile,
         address: customer.address,
         area: customer.area,
+        landmark: customer.landmark || '',
+        status: customer.status || 'active',
+        pauseFrom: customer.pauseFrom || null,
+        pauseUntil: customer.pauseUntil || null,
+        currentBalance: customer.currentBalance || 0,
+        paymentInfo: customer.paymentInfo || {},
+        createdBy: customer.createdBy || 'admin',
+        createdByDriverId: customer.createdByDriverId || '',
+        createdByDriverName: customer.createdByDriverName || '',
+        notes: customer.notes || '',
+        createdAt: customer.createdAt,
         deliveryPlan: plan,
         subscription: {
           status: subscription.status || '',
           startDate: subscription.startDate || null,
           endDate: subscription.endDate || null,
+          amount: subscription.amount || 0,
+          paymentId: subscription.paymentId || '',
         },
         nextDeliveryDate,
       };

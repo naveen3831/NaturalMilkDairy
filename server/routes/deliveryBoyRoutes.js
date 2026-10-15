@@ -8,14 +8,14 @@ const {
   reconcileCash,
   sendDeliveryBoyCredentials,
 } = require('../controllers/deliveryBoyController');
-const { optionalToken } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken, requireAdmin } = require('../middleware/authMiddleware');
 
-router.get('/', getDeliveryBoys);
-router.post('/', addDeliveryBoy);
-router.put('/:id', updateDeliveryBoy);
-router.delete('/me/account', optionalToken, deleteDeliveryBoy);
-router.delete('/:id', optionalToken, deleteDeliveryBoy);
-router.post('/:id/reconcile', reconcileCash);
-router.post('/:id/send-credentials', sendDeliveryBoyCredentials);
+router.get('/', optionalToken, getDeliveryBoys);
+router.post('/', verifyToken, requireAdmin, addDeliveryBoy);
+router.put('/:id', verifyToken, requireAdmin, updateDeliveryBoy);
+router.delete('/me/account', verifyToken, deleteDeliveryBoy);
+router.delete('/:id', verifyToken, requireAdmin, deleteDeliveryBoy);
+router.post('/:id/reconcile', verifyToken, requireAdmin, reconcileCash);
+router.post('/:id/send-credentials', verifyToken, requireAdmin, sendDeliveryBoyCredentials);
 
 module.exports = router;

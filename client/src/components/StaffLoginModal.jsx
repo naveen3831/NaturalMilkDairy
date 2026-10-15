@@ -10,25 +10,25 @@ export default function StaffLoginModal({ isOpen, onClose, onLoginSuccess }) {
 
   if (!isOpen) return null;
 
-  const handleQuickSelect = (userId, targetTab) => {
-    switchUser(userId);
+  const handleQuickSelect = async (userId, targetTab) => {
+    await switchUser(userId);
     onLoginSuccess(targetTab);
     onClose();
   };
 
-  const handleManualSubmit = (e) => {
+  const handleManualSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const user = login(mobile, password);
-    if (user) {
-      if (user.role === 'admin') {
+    const res = await login(mobile, password);
+    if (res && res.success && res.user) {
+      if (res.user.role === 'admin') {
         onLoginSuccess('dashboard');
       } else {
         onLoginSuccess('delivery-boy-app');
       }
       onClose();
     } else {
-      setError('Invalid mobile number or password. Or click a quick login option below.');
+      setError(res?.message || 'Invalid mobile number or password. Or click a quick login option below.');
     }
   };
 

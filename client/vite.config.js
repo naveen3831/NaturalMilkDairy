@@ -23,6 +23,14 @@ export default defineConfig({
         target: 'ws://127.0.0.1:5000',
         ws: true,
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET') {
+              return;
+            }
+            console.warn('[vite-proxy-ws]', err.message);
+          });
+        },
       },
     },
   },

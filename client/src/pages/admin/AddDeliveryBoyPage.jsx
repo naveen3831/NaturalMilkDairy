@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }) {
-  const { addDeliveryBoy, deliveryBoys } = useDairy();
+  const { addDeliveryBoy, deliveryBoys, locations } = useDairy();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -541,17 +541,20 @@ export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }
                   }}
                 />
                 <datalist id="new-partner-routes">
-                  <option value="Andheri West" />
-                  <option value="Juhu" />
-                  <option value="Bandra West" />
-                  <option value="Powai" />
-                  <option value="Vile Parle" />
-                  <option value="Lokhandwala" />
-                  <option value="Versova" />
-                  <option value="Goregaon" />
-                  <option value="Madhapur" />
-                  <option value="Santacruz" />
-                  <option value="Khar West" />
+                  {locations && locations.length > 0 ? (
+                    locations.filter((l) => l.isActive).map((l) => (
+                      <option key={l.id || l._id} value={l.name}>
+                        {l.name} {l.pincode ? `(${l.pincode})` : ''} • {l.city}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Madhapur" />
+                      <option value="Hitec City" />
+                      <option value="Gachibowli" />
+                      <option value="Kondapur" />
+                    </>
+                  )}
                 </datalist>
               </div>
               <span style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '4px', display: 'block' }}>

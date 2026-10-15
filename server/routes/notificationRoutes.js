@@ -9,11 +9,13 @@ const {
   deleteNotification,
 } = require('../controllers/notificationController');
 
-router.get('/', getNotifications);
-router.post('/', createNotification);
-router.put('/:id/read', markAsRead);
-router.put('/read-all', markAllAsRead);
-router.delete('/clear-all', clearAll);
-router.delete('/:id', deleteNotification);
+const { optionalToken } = require('../middleware/authMiddleware');
+
+router.get('/', optionalToken, getNotifications);
+router.post('/', optionalToken, createNotification);
+router.put('/:id/read', optionalToken, markAsRead);
+router.put('/read-all', optionalToken, markAllAsRead);
+router.delete('/clear-all', optionalToken, clearAll);
+router.delete('/:id', optionalToken, deleteNotification);
 
 module.exports = router;

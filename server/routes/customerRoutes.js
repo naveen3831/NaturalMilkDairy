@@ -17,25 +17,25 @@ const {
   deleteCustomerHistoryEntry,
   clearCustomerHistory,
 } = require('../controllers/customerController');
-const { verifyToken, optionalToken, requireCustomer } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken, requireCustomer, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 const { createOrder, verifyPayment } = require('../controllers/subscriptionController');
 
 router.post('/me/subscription/order', verifyToken, requireCustomer, createOrder);
 router.post('/me/subscription/verify', verifyToken, requireCustomer, verifyPayment);
 router.put('/me/profile', verifyToken, requireCustomer, updateOwnCustomerProfile);
-router.delete('/me/account', optionalToken, deleteOwnCustomerAccount);
-router.get('/', getCustomers);
-router.get('/:id', getCustomerById);
-router.post('/', createCustomer);
-router.put('/:id', updateCustomer);
-router.delete('/:id', optionalToken, deleteCustomer);
-router.put('/:id/assign-partner', assignPartner);
-router.post('/:id/pause', pauseDelivery);
-router.post('/:id/resume', resumeDelivery);
-router.post('/:id/temp-qty', setTemporaryQty);
-router.get('/:id/ledger', getCustomerLedger);
-router.delete('/:id/history/:entryId', deleteCustomerHistoryEntry);
-router.delete('/:id/history', clearCustomerHistory);
-router.post('/:id/send-credentials', sendCustomerCredentials);
+router.delete('/me/account', verifyToken, deleteOwnCustomerAccount);
+router.get('/', optionalToken, getCustomers);
+router.get('/:id', optionalToken, getCustomerById);
+router.post('/', verifyToken, requireDeliveryStaff, createCustomer);
+router.put('/:id', verifyToken, requireDeliveryStaff, updateCustomer);
+router.delete('/:id', verifyToken, requireDeliveryStaff, deleteCustomer);
+router.put('/:id/assign-partner', verifyToken, requireAdmin, assignPartner);
+router.post('/:id/pause', verifyToken, pauseDelivery);
+router.post('/:id/resume', verifyToken, resumeDelivery);
+router.post('/:id/temp-qty', verifyToken, setTemporaryQty);
+router.get('/:id/ledger', optionalToken, getCustomerLedger);
+router.delete('/:id/history/:entryId', verifyToken, requireAdmin, deleteCustomerHistoryEntry);
+router.delete('/:id/history', verifyToken, requireAdmin, clearCustomerHistory);
+router.post('/:id/send-credentials', verifyToken, requireAdmin, sendCustomerCredentials);
 
 module.exports = router;

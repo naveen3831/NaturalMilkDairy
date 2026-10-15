@@ -19,20 +19,66 @@ import {
   Zap,
   Truck,
   CheckCircle2,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
+import CustomerModal from '../../components/CustomerModal';
 
 export default function CustomerList({
   onSelectCustomerLedger,
   onOpenAddCustomer,
+  onOpenEditCustomer,
   onOpenPaymentModal,
   onOpenPauseModal,
   onOpenTempQtyModal,
 }) {
-  const { customers, pauseDelivery, resumeDelivery, deliveryBoys, assignPartnerToCustomer, fetchDeliveryBoys } = useDairy();
+  const {
+    customers,
+    pauseDelivery,
+    resumeDelivery,
+    deliveryBoys,
+    assignPartnerToCustomer,
+    fetchDeliveryBoys,
+    deleteCustomer,
+    refreshAll,
+  } = useDairy();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [areaFilter, setAreaFilter] = useState('all');
   const [partnerMsg, setPartnerMsg] = useState('');
+  const [deleteMsg, setDeleteMsg] = useState('');
+  const [deletingCustomer, setDeletingCustomer] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [internalEditingCustomer, setInternalEditingCustomer] = useState(null);
+
+  const handleEditCustomer = (customer) => {
+    if (onOpenEditCustomer) {
+      onOpenEditCustomer(customer);
+    } else {
+      setInternalEditingCustomer(customer);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deletingCustomer) return;
+    setIsDeleting(true);
+    try {
+      const targetId = deletingCustomer.id || deletingCustomer._id || deletingCustomer.customerId;
+      const res = await deleteCustomer(targetId, 'Admin');
+      if (res && res.success) {
+        setDeleteMsg(`Customer "${deletingCustomer.name}" (${deletingCustomer.customerId}) was permanently deleted.`);
+        setTimeout(() => setDeleteMsg(''), 4500);
+        setDeletingCustomer(null);
+        if (refreshAll) refreshAll();
+      } else {
+        alert(res?.message || 'Failed to delete customer.');
+      }
+    } catch (err) {
+      alert(err.message || 'Error occurred while deleting customer.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     if (fetchDeliveryBoys) {
@@ -141,6 +187,28 @@ export default function CustomerList({
         >
           <CheckCircle2 size={18} color="#059669" />
           <span>{partnerMsg}</span>
+        </div>
+      )}
+
+      {/* Delete Feedback Banner */}
+      {deleteMsg && (
+        <div
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#991b1b',
+            padding: '12px 18px',
+            borderRadius: '12px',
+            fontSize: '0.86rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 2px 5px rgba(220, 38, 38, 0.1)',
+          }}
+        >
+          <Trash2 size={18} color="#dc2626" />
+          <span>{deleteMsg}</span>
         </div>
       )}
 
@@ -293,6 +361,7 @@ export default function CustomerList({
                           background: '#fef2f2',
                           color: '#dc2626',
                           border: '1px solid #fee2e2',
+                          display: 'inline-block',
                         }}
                       >
                         ₹{bal.toLocaleString()} Due
@@ -308,6 +377,7 @@ export default function CustomerList({
                           background: '#eff6ff',
                           color: '#1d4ed8',
                           border: '1px solid #dbeafe',
+                          display: 'inline-block',
                         }}
                       >
                         ₹{Math.abs(bal).toLocaleString()} Advance
@@ -323,6 +393,7 @@ export default function CustomerList({
                           background: '#ecfdf5',
                           color: '#059669',
                           border: '1px solid #d1fae5',
+                          display: 'inline-block',
                         }}
                       >
                         ₹0 Clear
@@ -559,103 +630,323 @@ export default function CustomerList({
               </div>
 
               {/* Action Buttons Hub */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, 1fr)',
-                  gap: '6px',
-                  paddingTop: '12px',
-                  borderTop: '1px solid #f1f5f9',
-                }}
-              >
-                <button
-                  onClick={() => onSelectCustomerLedger(customer.id)}
+              <div style={{ paddingTop: '12px', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {/* Row 1: Daily Customer Operations */}
+                <div
                   style={{
-                    padding: '6px',
-                    background: '#eff6ff',
-                    border: '1px solid #dbeafe',
-                    color: '#1d4ed8',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '6px',
                   }}
                 >
-                  <BookOpen size={12} />
-                  <span>Ledger</span>
-                </button>
+                  <button
+                    onClick={() => onSelectCustomerLedger(customer.id)}
+                    style={{
+                      padding: '6px',
+                      background: '#eff6ff',
+                      border: '1px solid #dbeafe',
+                      color: '#1d4ed8',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.74rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <BookOpen size={12} />
+                    <span>Ledger</span>
+                  </button>
 
-                <button
-                  onClick={() => onOpenPaymentModal && onOpenPaymentModal(customer)}
-                  style={{
-                    padding: '6px',
-                    background: '#ecfdf5',
-                    border: '1px solid #d1fae5',
-                    color: '#047857',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <DollarSign size={12} />
-                  <span>Pay</span>
-                </button>
+                  <button
+                    onClick={() => onOpenPaymentModal && onOpenPaymentModal(customer)}
+                    style={{
+                      padding: '6px',
+                      background: '#ecfdf5',
+                      border: '1px solid #d1fae5',
+                      color: '#047857',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.74rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <DollarSign size={12} />
+                    <span>Pay</span>
+                  </button>
 
-                <button
-                  onClick={() => onOpenPauseModal && onOpenPauseModal(customer)}
-                  style={{
-                    padding: '6px',
-                    background: '#fffbeb',
-                    border: '1px solid #fef3c7',
-                    color: '#b45309',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <PauseCircle size={12} />
-                  <span>Pause</span>
-                </button>
+                  <button
+                    onClick={() => onOpenPauseModal && onOpenPauseModal(customer)}
+                    style={{
+                      padding: '6px',
+                      background: '#fffbeb',
+                      border: '1px solid #fef3c7',
+                      color: '#b45309',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.74rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <PauseCircle size={12} />
+                    <span>Pause</span>
+                  </button>
 
-                <button
-                  onClick={() => onOpenTempQtyModal && onOpenTempQtyModal(customer)}
-                  style={{
-                    padding: '6px',
-                    background: '#f5f3ff',
-                    border: '1px solid #ede9fe',
-                    color: '#6d28d9',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                    fontSize: '0.74rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                  }}
-                >
-                  <Zap size={12} />
-                  <span>Qty</span>
-                </button>
+                  <button
+                    onClick={() => onOpenTempQtyModal && onOpenTempQtyModal(customer)}
+                    style={{
+                      padding: '6px',
+                      background: '#f5f3ff',
+                      border: '1px solid #ede9fe',
+                      color: '#6d28d9',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.74rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Zap size={12} />
+                    <span>Qty</span>
+                  </button>
+                </div>
+
+                {/* Row 2: Customer Account Management (CRUD) */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleEditCustomer(customer)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 12px',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      color: '#1e293b',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#edf2f7';
+                      e.currentTarget.style.borderColor = '#94a3b8';
+                      e.currentTarget.style.color = '#0f172a';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#f8fafc';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                      e.currentTarget.style.color = '#1e293b';
+                    }}
+                  >
+                    <Edit size={12} />
+                    <span>Edit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeletingCustomer(customer)}
+                    title="Delete Customer Account"
+                    style={{
+                      padding: '7px 14px',
+                      background: '#fef2f2',
+                      border: '1px solid #fee2e2',
+                      borderRadius: '6px',
+                      color: '#dc2626',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#fee2e2';
+                      e.currentTarget.style.borderColor = '#fca5a5';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#fef2f2';
+                      e.currentTarget.style.borderColor = '#fee2e2';
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deletingCustomer && (
+        <div
+          className="modal-overlay"
+          onClick={() => !isDeleting && setDeletingCustomer(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1200,
+            padding: '16px',
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '460px',
+              width: '100%',
+              borderRadius: '16px',
+              padding: '24px',
+              background: '#ffffff',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+              <div
+                style={{
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '12px',
+                  background: '#fef2f2',
+                  color: '#dc2626',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Delete Customer Account
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  Permanent CRUD Delete Action
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: '#334155', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+              Are you sure you want to permanently delete customer{' '}
+              <strong style={{ color: '#0f172a' }}>{deletingCustomer.name}</strong> (
+              <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{deletingCustomer.customerId}</span>
+              )?
+            </p>
+
+            <div
+              style={{
+                background: '#fffbeb',
+                border: '1px solid #fef3c7',
+                borderRadius: '8px',
+                padding: '10px 14px',
+                fontSize: '0.78rem',
+                color: '#92400e',
+                marginBottom: '18px',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+              }}
+            >
+              <AlertTriangle size={16} color="#d97706" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                This action will delete the customer profile, login credentials, and all associated active delivery routes.
+                {deletingCustomer.currentBalance !== 0 && (
+                  <div style={{ marginTop: '4px', fontWeight: 700, color: '#b45309' }}>
+                    Note: Customer currently has a balance of ₹{deletingCustomer.currentBalance}.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeletingCustomer(null)}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#64748b',
+                  fontWeight: 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteConfirm}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'background 0.15s ease',
+                }}
+              >
+                {isDeleting ? (
+                  <span>Deleting...</span>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fallback Internal Edit Modal */}
+      {internalEditingCustomer && (
+        <CustomerModal
+          isOpen={Boolean(internalEditingCustomer)}
+          customerToEdit={internalEditingCustomer}
+          onClose={() => setInternalEditingCustomer(null)}
+        />
+      )}
     </div>
   );
 }

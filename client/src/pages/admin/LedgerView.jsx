@@ -25,6 +25,10 @@ import {
   Wallet,
   CheckCircle2,
   Package,
+  MessageSquare,
+  Plus,
+  Camera,
+  Sparkles,
 } from 'lucide-react';
 
 export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onSelectCustomer }) {
@@ -41,15 +45,6 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
       setActiveCustomerId(customerId);
     }
   }, [customerId]);
-
-  // Handle screen resize default view preference
-  useEffect(() => {
-    const handleResize = () => {
-      // only update if user hasn't explicitly toggled, or keep responsive
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
 
   // Set default customer if none selected
   useEffect(() => {
@@ -154,14 +149,14 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
             className="ledger-back-btn"
             title="Return to Customer Directory"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={15} />
             <span>Directory</span>
           </button>
 
           {/* Customer Selector Dropdown */}
           {customers && customers.length > 0 && (
             <div className="ledger-customer-selector">
-              <Users size={16} className="ledger-select-icon" />
+              <User size={15} className="ledger-select-icon" />
               <select
                 value={activeCustomerId || ''}
                 onChange={handleCustomerChange}
@@ -192,7 +187,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                 className="ledger-action-btn ledger-action-whatsapp"
                 title="Send WhatsApp Statement"
               >
-                <Send size={15} />
+                <MessageSquare size={14} />
                 <span>WhatsApp</span>
               </a>
             )}
@@ -203,7 +198,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
               className="ledger-action-btn ledger-action-print"
               title="Print Passbook / Statement"
             >
-              <Printer size={15} />
+              <Printer size={14} />
               <span>Print</span>
             </button>
 
@@ -213,7 +208,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
               className="ledger-action-btn ledger-action-pay"
               title="Record Payment Collection"
             >
-              <DollarSign size={15} />
+              <Plus size={14} />
               <span>Record Pay</span>
             </button>
           </div>
@@ -222,12 +217,12 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
 
       {/* Loading state */}
       {loading && (
-        <div className="ledger-card-panel" style={{ textAlign: 'center', padding: '60px 20px' }}>
-          <BookOpen size={36} color="#059669" style={{ margin: '0 auto 12px auto' }} />
-          <h3 style={{ color: '#0f172a', fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
+        <div className="ledger-card-panel" style={{ textAlign: 'center', padding: '50px 20px' }}>
+          <BookOpen size={32} color="#059669" style={{ margin: '0 auto 10px auto' }} />
+          <h3 style={{ color: '#0f172a', fontSize: '0.98rem', margin: 0, fontWeight: 700 }}>
             Loading Customer Passbook...
           </h3>
-          <p style={{ color: '#64748b', fontSize: '0.82rem', marginTop: '6px' }}>
+          <p style={{ color: '#64748b', fontSize: '0.80rem', marginTop: '4px' }}>
             Fetching transactions, deliveries, and payment balances
           </p>
         </div>
@@ -236,11 +231,11 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
       {/* Empty / Not Found state */}
       {!loading && (!ledgerData || !customer) && (
         <div className="ledger-card-panel" style={{ textAlign: 'center', padding: '48px 20px' }}>
-          <Users size={36} color="#94a3b8" style={{ margin: '0 auto 12px auto' }} />
-          <h3 style={{ color: '#0f172a', fontSize: '1.05rem', margin: 0, fontWeight: 700 }}>
+          <Users size={32} color="#94a3b8" style={{ margin: '0 auto 10px auto' }} />
+          <h3 style={{ color: '#0f172a', fontSize: '0.98rem', margin: 0, fontWeight: 700 }}>
             {(!customers || customers.length === 0) ? 'No Customers in Directory Yet' : 'Select a Customer to View Ledger'}
           </h3>
-          <p style={{ color: '#64748b', fontSize: '0.86rem', marginTop: '6px' }}>
+          <p style={{ color: '#64748b', fontSize: '0.82rem', marginTop: '4px', maxWidth: '420px', margin: '4px auto 0' }}>
             {(!customers || customers.length === 0)
               ? 'Add customers from the directory to start tracking delivery passbooks and payments.'
               : 'Choose any customer from the dropdown above to inspect their passbook history.'}
@@ -249,7 +244,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
             type="button"
             onClick={onBack}
             className="ledger-back-btn"
-            style={{ marginTop: '16px' }}
+            style={{ marginTop: '16px', display: 'inline-flex' }}
           >
             Back to Directory
           </button>
@@ -268,36 +263,35 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                 </div>
 
                 <div className="ledger-profile-details">
-                  <div className="ledger-badge-row">
+                  <div className="ledger-header-row">
+                    <h1 className="ledger-name-title">
+                      {customer.name}
+                    </h1>
                     <span className="ledger-id-tag">
                       {customer.customerId}
                     </span>
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
-                      Customer Passbook
-                    </span>
                   </div>
-
-                  <h1 className="ledger-name-title">
-                    {customer.name}
-                  </h1>
+                  <div className="ledger-passbook-subtitle">
+                    Customer Passbook & Ledger
+                  </div>
 
                   <div className="ledger-chips-row">
                     {(customer.mobile || customer.email) && (
                       <span className="ledger-chip">
-                        <Phone size={13} color="#059669" />
+                        <Phone size={12} className="ledger-chip-icon" />
                         <span>{customer.mobile || customer.email}</span>
                       </span>
                     )}
 
                     {(customer.address || customer.area) && (
                       <span className="ledger-chip">
-                        <MapPin size={13} color="#059669" />
-                        <span>{customer.address || ''} {customer.area ? `(${customer.area})` : ''}</span>
+                        <MapPin size={12} className="ledger-chip-icon" />
+                        <span>{customer.address ? `${customer.address} ` : ''}{customer.area ? `(${customer.area})` : ''}</span>
                       </span>
                     )}
 
                     <span className="ledger-chip">
-                      <Milk size={13} color="#059669" />
+                      <Milk size={12} className="ledger-chip-icon" />
                       <span>{customer.deliveryPlan?.milkQty || 1}L Milk • {customer.deliveryPlan?.frequency || 'daily'}</span>
                     </span>
                   </div>
@@ -306,54 +300,77 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
 
               {/* Account Balance Box */}
               <div className={`ledger-balance-box ${isPending ? 'pending' : isAdvance ? 'advance' : 'settled'}`}>
-                <div>
-                  <div className="ledger-balance-label">
-                    Current Ledger Status
-                  </div>
-                  <div className="ledger-balance-amount">
-                    {isPending && `₹${outstanding.toLocaleString()} Due`}
-                    {isAdvance && `₹${Math.abs(outstanding).toLocaleString()} Advance`}
-                    {!isPending && !isAdvance && `₹0 Settled`}
-                  </div>
+                <div className="ledger-balance-label">
+                  Current Ledger Status
                 </div>
-                {(!isPending && !isAdvance) && (
-                  <CheckCircle2 size={24} color="#059669" style={{ opacity: 0.8 }} />
-                )}
+                <div className="ledger-balance-amount">
+                  {isPending && `₹${outstanding.toLocaleString()}`}
+                  {isAdvance && `₹${Math.abs(outstanding).toLocaleString()}`}
+                  {!isPending && !isAdvance && `₹0`}
+                </div>
+                <div className="ledger-balance-badge">
+                  {isPending && (
+                    <>
+                      <AlertCircle size={12} />
+                      <span>Payment Due</span>
+                    </>
+                  )}
+                  {isAdvance && (
+                    <>
+                      <Sparkles size={12} />
+                      <span>Advance Credit</span>
+                    </>
+                  )}
+                  {!isPending && !isAdvance && (
+                    <>
+                      <CheckCircle2 size={12} />
+                      <span>Settled</span>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Monthly Totals Grid */}
             <div className="ledger-metrics-grid">
               <div className="ledger-metric-card">
-                <div className="ledger-metric-label">
-                  <Milk size={14} color="#059669" />
-                  <span>Milk Delivered</span>
+                <div className="ledger-metric-header">
+                  <span className="ledger-metric-label">Milk Delivered</span>
+                  <div className="ledger-metric-icon-wrap milk">
+                    <Milk size={14} />
+                  </div>
                 </div>
-                <div className="ledger-metric-val green">{totalMilkDelivered}</div>
+                <div className="ledger-metric-val">{totalMilkDelivered}</div>
               </div>
 
               <div className="ledger-metric-card">
-                <div className="ledger-metric-label">
-                  <Package size={14} color="#0284c7" />
-                  <span>Curd Delivered</span>
+                <div className="ledger-metric-header">
+                  <span className="ledger-metric-label">Curd Delivered</span>
+                  <div className="ledger-metric-icon-wrap curd">
+                    <Package size={14} />
+                  </div>
                 </div>
-                <div className="ledger-metric-val green">{totalCurdDelivered}</div>
+                <div className="ledger-metric-val">{totalCurdDelivered}</div>
               </div>
 
               <div className="ledger-metric-card">
-                <div className="ledger-metric-label">
-                  <FileText size={14} color="#64748b" />
-                  <span>Gross Deliveries</span>
+                <div className="ledger-metric-header">
+                  <span className="ledger-metric-label">Gross Deliveries</span>
+                  <div className="ledger-metric-icon-wrap gross">
+                    <FileText size={14} />
+                  </div>
                 </div>
                 <div className="ledger-metric-val">₹{grossBill.toLocaleString()}</div>
               </div>
 
               <div className="ledger-metric-card">
-                <div className="ledger-metric-label">
-                  <Wallet size={14} color="#059669" />
-                  <span>Total Payments</span>
+                <div className="ledger-metric-header">
+                  <span className="ledger-metric-label">Total Payments</span>
+                  <div className="ledger-metric-icon-wrap payments">
+                    <Wallet size={14} />
+                  </div>
                 </div>
-                <div className="ledger-metric-val green">₹{totalPaid.toLocaleString()}</div>
+                <div className="ledger-metric-val">₹{totalPaid.toLocaleString()}</div>
               </div>
             </div>
 
@@ -361,15 +378,15 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
             {pendingCount > 0 && (
               <div className="ledger-route-banner">
                 <div>
-                  <div style={{ fontSize: '0.70rem', color: '#b45309', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    🚚 Today's Scheduled Route
+                  <div style={{ fontSize: '0.70rem', color: '#b45309', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    🚚 Today's Scheduled Delivery
                   </div>
-                  <div style={{ fontSize: '1.12rem', fontWeight: 800, color: '#d97706', marginTop: '2px' }}>
-                    {pendingMilkQty} L (₹{pendingTotalAmount})
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#d97706', marginTop: '2px' }}>
+                    {pendingMilkQty} L Milk (₹{pendingTotalAmount})
                   </div>
                 </div>
-                <span style={{ fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: '8px', fontWeight: 700 }}>
-                  Awaiting Fulfillment
+                <span style={{ fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+                  Awaiting Delivery Partner
                 </span>
               </div>
             )}
@@ -378,29 +395,20 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
           {/* 3. Chronological Transactions Section */}
           <div className="ledger-card-panel" style={{ overflow: 'hidden' }}>
             <div className="ledger-tx-header">
-              <div>
-                <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="ledger-tx-title-area">
+                <h2 className="ledger-tx-title">
                   <span>Passbook & Transactions</span>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                  <span className="ledger-count-pill">
                     {ledgerEntries.length} Records
                   </span>
                 </h2>
-                <p style={{ fontSize: '0.74rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  Formula: Outstanding = Total Deliveries − Total Collections
+                <p className="ledger-tx-subtitle">
+                  Chronological audit trail of daily milk drops, payments, and account balance
                 </p>
               </div>
 
               {/* View Toggle */}
               <div className="ledger-view-toggle">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('cards')}
-                  className={`ledger-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
-                  title="Card View (Mobile Optimized)"
-                >
-                  <LayoutGrid size={14} />
-                  <span>Cards</span>
-                </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
@@ -410,6 +418,15 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                   <TableIcon size={14} />
                   <span>Table</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cards')}
+                  className={`ledger-toggle-btn ${viewMode === 'cards' ? 'active' : ''}`}
+                  title="Card View (Mobile Optimized)"
+                >
+                  <LayoutGrid size={14} />
+                  <span>Cards</span>
+                </button>
               </div>
             </div>
 
@@ -417,8 +434,14 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
             {viewMode === 'cards' && (
               <div className="ledger-mobile-cards">
                 {ledgerEntries.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '36px', color: '#64748b', fontSize: '0.86rem' }}>
-                    No ledger entries found for this customer yet.
+                  <div className="ledger-empty-state">
+                    <div className="ledger-empty-icon">
+                      <FileText size={20} />
+                    </div>
+                    <h3 className="ledger-empty-title">No Ledger Entries Found</h3>
+                    <p className="ledger-empty-desc">
+                      Deliveries and payments recorded for {customer.name} will appear here.
+                    </p>
                   </div>
                 ) : (
                   ledgerEntries.map((entry) => {
@@ -426,16 +449,11 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                     const isMissed = entry.status === 'not_delivered';
                     const isPendingEntry = entry.status === 'pending';
 
-                    const cardTypeClass = isPay
-                      ? 'payment'
-                      : isMissed
-                      ? 'missed'
-                      : isPendingEntry
-                      ? 'pending'
-                      : 'delivered';
-
                     return (
-                      <div key={entry.id} className={`ledger-card-item ${cardTypeClass}`}>
+                      <div
+                        key={entry.id}
+                        className={`ledger-card-item ${isPay ? 'payment' : isMissed ? 'missed' : isPendingEntry ? 'pending' : 'delivered'}`}
+                      >
                         {/* Top Row: Date & Status Badge */}
                         <div className="ledger-card-row-top">
                           <span className="ledger-card-date">
@@ -444,31 +462,15 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                           </span>
 
                           <span
-                            className="ledger-card-badge"
-                            style={{
-                              background: isPay
-                                ? '#dcfce7'
-                                : isMissed
-                                ? '#fee2e2'
-                                : isPendingEntry
-                                ? '#fef3c7'
-                                : '#eff6ff',
-                              color: isPay
-                                ? '#166534'
-                                : isMissed
-                                ? '#991b1b'
-                                : isPendingEntry
-                                ? '#b45309'
-                                : '#1e40af',
-                            }}
+                            className={`ledger-status-tag ${isPay ? 'payment' : isMissed ? 'missed' : isPendingEntry ? 'pending' : 'delivered'}`}
                           >
                             {isPay
-                              ? '💵 Payment Received'
+                              ? 'Payment'
                               : isMissed
-                              ? '❌ Missed Delivery'
+                              ? 'Missed'
                               : isPendingEntry
-                              ? '⏳ Pending Delivery'
-                              : '🥛 Delivered'}
+                              ? 'Scheduled'
+                              : 'Delivered'}
                           </span>
                         </div>
 
@@ -483,7 +485,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                             ) : (
                               <span>
                                 {entry.milk ? `${entry.milk} Milk` : 'Milk'}
-                                {entry.curd && entry.curd !== '0 Kg' && entry.curd !== '0.00 Kg'
+                                {entry.curd && entry.curd !== '0' && entry.curd !== '0 Kg' && entry.curd !== '0.00 Kg'
                                   ? ` + ${entry.curd} Curd`
                                   : ''}
                               </span>
@@ -507,7 +509,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                               : isMissed
                               ? '₹0'
                               : isPendingEntry
-                              ? `₹${entry.amount} (Pending)`
+                              ? `₹${entry.amount}`
                               : `+ ₹${entry.amount}`}
                           </div>
                         </div>
@@ -521,10 +523,11 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                                 href={entry.proofImage}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                style={{ color: '#059669', fontWeight: 700, textDecoration: 'none', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bbf7d0' }}
+                                className="ledger-proof-link"
                                 title="View doorstep delivery photo"
                               >
-                                📷 Proof
+                                <Camera size={11} />
+                                <span>Proof</span>
                               </a>
                             )}
                           </span>
@@ -551,25 +554,33 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
 
             {/* B. SPREADSHEET TABLE VIEW */}
             {viewMode === 'table' && (
-              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+              <div className="ledger-table-wrap">
+                <table className="ledger-table">
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                      <th style={{ padding: '12px 16px' }}>Date</th>
-                      <th style={{ padding: '12px 16px' }}>Type / Status</th>
-                      <th style={{ padding: '12px 16px' }}>Milk</th>
-                      <th style={{ padding: '12px 16px' }}>Curd</th>
-                      <th style={{ padding: '12px 16px' }}>Amount (₹)</th>
-                      <th style={{ padding: '12px 16px' }}>Payment / Notes</th>
-                      <th style={{ padding: '12px 16px' }}>Fulfilled By</th>
-                      <th style={{ padding: '12px 16px', textAlign: 'right' }}>Running Balance</th>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type / Status</th>
+                      <th>Milk</th>
+                      <th>Curd</th>
+                      <th>Amount (₹)</th>
+                      <th>Payment / Notes</th>
+                      <th>Fulfilled By</th>
+                      <th style={{ textAlign: 'right' }}>Running Balance</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ledgerEntries.length === 0 ? (
                       <tr>
-                        <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
-                          No ledger entries found for this customer yet.
+                        <td colSpan="8">
+                          <div className="ledger-empty-state">
+                            <div className="ledger-empty-icon">
+                              <FileText size={20} />
+                            </div>
+                            <h3 className="ledger-empty-title">No Ledger Entries Recorded Yet</h3>
+                            <p className="ledger-empty-desc">
+                              Deliveries and payment collections for {customer.name} will appear here in chronological order.
+                            </p>
+                          </div>
                         </td>
                       </tr>
                     ) : (
@@ -579,64 +590,64 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                         const isPendingEntry = entry.status === 'pending';
 
                         return (
-                          <tr
-                            key={entry.id}
-                            style={{
-                              borderBottom: '1px solid #f1f5f9',
-                              background: isPay ? '#f0fdf4' : isMissed ? '#fff1f2' : isPendingEntry ? '#fffdf7' : '#ffffff',
-                            }}
-                          >
-                            <td style={{ padding: '12px 16px', fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                          <tr key={entry.id}>
+                            <td style={{ fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>
                               {entry.date}
                             </td>
-                            <td style={{ padding: '12px 16px' }}>
-                              {isPay ? (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#dcfce7', color: '#166534' }}>
-                                  Payment
-                                </span>
-                              ) : isMissed ? (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#fee2e2', color: '#991b1b' }}>
-                                  Missed
-                                </span>
-                              ) : isPendingEntry ? (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#fef3c7', color: '#b45309' }}>
-                                  Pending Delivery
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 7px', borderRadius: '4px', background: '#eff6ff', color: '#1e40af' }}>
-                                  Delivered
-                                </span>
-                              )}
+                            <td>
+                              <span
+                                className={`ledger-status-tag ${isPay ? 'payment' : isMissed ? 'missed' : isPendingEntry ? 'pending' : 'delivered'}`}
+                              >
+                                {isPay
+                                  ? 'Payment'
+                                  : isMissed
+                                  ? 'Missed'
+                                  : isPendingEntry
+                                  ? 'Scheduled'
+                                  : 'Delivered'}
+                              </span>
                             </td>
-                            <td style={{ padding: '12px 16px' }}>{entry.milk}</td>
-                            <td style={{ padding: '12px 16px' }}>{entry.curd}</td>
+                            <td>{entry.milk || '-'}</td>
+                            <td>{entry.curd && entry.curd !== '0' && entry.curd !== '0 Kg' && entry.curd !== '0.00 Kg' ? entry.curd : '-'}</td>
                             <td
                               style={{
-                                padding: '12px 16px',
                                 fontWeight: 700,
                                 color: isPay ? '#059669' : isMissed ? '#dc2626' : isPendingEntry ? '#b45309' : '#0f172a',
                               }}
                             >
-                              {isPay ? `- ₹${entry.paidAmount}` : isMissed ? '₹0' : isPendingEntry ? `₹${entry.amount} (Pending)` : `+ ₹${entry.amount}`}
+                              {isPay ? `- ₹${entry.paidAmount}` : isMissed ? '₹0' : isPendingEntry ? `₹${entry.amount}` : `+ ₹${entry.amount}`}
                             </td>
-                            <td style={{ padding: '12px 16px' }}>
+                            <td>
                               <div style={{ fontWeight: 600, color: '#334155' }}>
-                                {entry.paymentMethod}
+                                {entry.paymentMethod || '-'}
                               </div>
                               {entry.notes && (
-                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
                                   {entry.notes}
                                 </div>
                               )}
                             </td>
-                            <td style={{ padding: '12px 16px', color: '#64748b' }}>
-                              {entry.deliveryBoyName || 'Admin'}
+                            <td>
+                              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                <span>{entry.deliveryBoyName || 'Admin'}</span>
+                                {entry.proofImage && (
+                                  <a
+                                    href={entry.proofImage}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ledger-proof-link"
+                                    title="View doorstep delivery photo"
+                                  >
+                                    <Camera size={11} />
+                                    <span>Proof</span>
+                                  </a>
+                                )}
+                              </div>
                             </td>
                             <td
                               style={{
-                                padding: '12px 16px',
                                 textAlign: 'right',
-                                fontWeight: 800,
+                                fontWeight: 700,
                                 color: entry.balance > 0 ? '#dc2626' : entry.balance < 0 ? '#2563eb' : '#059669',
                               }}
                             >

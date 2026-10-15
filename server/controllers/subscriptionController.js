@@ -348,6 +348,31 @@ const verifyPayment = async (req, res) => {
       },
     });
 
+    // Notify delivery partner about new active subscription
+    const deliveryPartnerId = customer.deliveryPlan?.deliveryBoyId || '';
+    try {
+      await Notification.create({
+        recipientRole: 'delivery_boy',
+        recipientId: deliveryPartnerId,
+        title: '🌟 New Active Subscription',
+        message: `${customer.name} (${customer.deliveryPlan?.milkQty || 1}L Daily Milk, ${customer.area || 'Madhapur'}) has started an active prepaid subscription through ${toDateString(subscription.endDate)}.`,
+        type: 'subscription_created',
+        data: {
+          customerId: customer.customerId,
+          customerName: customer.name,
+          customerPhone: customer.mobile,
+          customerAddress: customer.address,
+          area: customer.area,
+          milkQty: customer.deliveryPlan?.milkQty || 1,
+          subscriptionId: subscription._id.toString(),
+          deliveryBoyId: deliveryPartnerId,
+          endDate: toDateString(subscription.endDate),
+        },
+      });
+    } catch (dbNotifErr) {
+      console.warn('Driver subscription notification note:', dbNotifErr.message);
+    }
+
     await ensureDeliveriesForDate(formatDate(addDays(subscription.startDate, 0)));
     broadcast('CUSTOMER_UPDATED', { id: customer._id.toString() });
     broadcast('DELIVERY_UPDATED', {});
@@ -538,6 +563,26 @@ const toggleSubscriptionStatus = async (req, res) => {
           }
         );
         await ensureDeliveriesForDate(today);
+      }
+
+      // Notify delivery partner about subscription state toggle
+      const deliveryPartnerId = customer?.deliveryPlan?.deliveryBoyId || '';
+      try {
+        await Notification.create({
+          recipientRole: 'delivery_boy',
+          recipientId: deliveryPartnerId,
+          title: isStopping ? '⏸️ Subscription Paused' : '▶️ Subscription Resumed',
+          message: `${customer.name}'s daily subscription was ${isStopping ? 'paused' : 'resumed'}.${reason ? ' Reason: ' + reason : ''}`,
+          type: 'route_update',
+          data: {
+            customerId: customer.customerId,
+            customerName: customer.name,
+            status: newSubStatus,
+            deliveryBoyId: deliveryPartnerId,
+          },
+        });
+      } catch (subNotifErr) {
+        console.warn('Driver toggle subscription notification note:', subNotifErr.message);
       }
 
       broadcast('CUSTOMER_UPDATED', { id: customer._id.toString() });

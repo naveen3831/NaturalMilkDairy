@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, onDeleted }) {
-  const { deliveryBoys, updateDeliveryBoy, deleteDeliveryBoy, sendDeliveryBoyCredentials } = useDairy();
+  const { deliveryBoys, updateDeliveryBoy, deleteDeliveryBoy, sendDeliveryBoyCredentials, locations } = useDairy();
 
   // Find partner
   const boy = deliveryBoys.find(
@@ -184,16 +184,22 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (force = false) => {
     setIsDeleting(true);
     try {
-      await deleteDeliveryBoy(boy.id, 'Admin');
+      const res = await deleteDeliveryBoy(boy.id, 'Admin', force);
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
-      if (onDeleted) {
-        onDeleted(`Delivery partner ${boy.name} deleted from database.`);
-      } else if (onBack) {
-        onBack();
+      if (res?.success) {
+        setShowDeleteConfirm(false);
+        if (onDeleted) {
+          onDeleted(`Delivery partner ${boy.name} deleted from database.`);
+        } else if (onBack) {
+          onBack();
+        }
+      } else if (res?.hasCashInHand) {
+        setErrorMessage(`⚠️ Partner holds ₹${res.amount} cash in hand! Reconcile or force delete.`);
+      } else {
+        setErrorMessage(res?.message || 'Failed to delete partner.');
       }
     } catch (err) {
       setIsDeleting(false);
@@ -609,16 +615,20 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                   }}
                 />
                 <datalist id="edit-partner-routes">
-                  <option value="Andheri West" />
-                  <option value="Juhu" />
-                  <option value="Bandra West" />
-                  <option value="Powai" />
-                  <option value="Vile Parle" />
-                  <option value="Lokhandwala" />
-                  <option value="Versova" />
-                  <option value="Goregaon" />
-                  <option value="Santacruz" />
-                  <option value="Khar West" />
+                  {locations && locations.length > 0 ? (
+                    locations.filter((l) => l.isActive).map((l) => (
+                      <option key={l.id || l._id} value={l.name}>
+                        {l.name} {l.pincode ? `(${l.pincode})` : ''} • {l.city}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="Madhapur" />
+                      <option value="Hitec City" />
+                      <option value="Gachibowli" />
+                      <option value="Kondapur" />
+                    </>
+                  )}
                 </datalist>
               </div>
             </div>
@@ -788,6 +798,53 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               Are you sure you want to permanently delete <strong>{boy.name}</strong> ({boy.mobile}) from the system and MongoDB Atlas?
             </p>
 
+            {/* If partner has amount in hand, show it to admin */}
+            {(() => {
+              const cashCollected = Number(boy.todayCashCollected) || 0;
+              const upiCollected = Number(boy.todayUpiCollected) || 0;
+              const totalInHand = cashCollected + upiCollected;
+              const hasAmountInHand = totalInHand > 0;
+
+              if (hasAmountInHand) {
+                return (
+                  <div
+                    style={{
+                      background: '#fffbeb',
+                      border: '1.5px solid #f59e0b',
+                      borderRadius: '12px',
+                      padding: '12px',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 800, fontSize: '0.85rem', marginBottom: '6px' }}>
+                      <AlertTriangle size={16} />
+                      <span>Cash in Partner Hand Detected: ₹{totalInHand}</span>
+                    </div>
+                    <p style={{ fontSize: '0.76rem', color: '#78350f', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                      Partner currently holds un-reconciled money in hand.
+                    </p>
+                    <div style={{ background: '#ffffff', borderRadius: '8px', padding: '8px', border: '1px solid #fde68a', display: 'flex', justifyContent: 'space-around', fontSize: '0.8rem' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <span style={{ color: '#92400e', display: 'block', fontSize: '0.7rem', fontWeight: 600 }}>CASH</span>
+                        <strong style={{ color: '#b45309' }}>₹{cashCollected}</strong>
+                      </div>
+                      <div style={{ width: '1px', background: '#fde68a' }} />
+                      <div style={{ textAlign: 'center' }}>
+                        <span style={{ color: '#92400e', display: 'block', fontSize: '0.7rem', fontWeight: 600 }}>UPI</span>
+                        <strong style={{ color: '#059669' }}>₹{upiCollected}</strong>
+                      </div>
+                      <div style={{ width: '1px', background: '#fde68a' }} />
+                      <div style={{ textAlign: 'center' }}>
+                        <span style={{ color: '#92400e', display: 'block', fontSize: '0.7rem', fontWeight: 600 }}>TOTAL</span>
+                        <strong style={{ color: '#dc2626' }}>₹{totalInHand}</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
@@ -808,7 +865,10 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               </button>
               <button
                 type="button"
-                onClick={handleDelete}
+                onClick={() => {
+                  const hasCash = ((Number(boy.todayCashCollected) || 0) + (Number(boy.todayUpiCollected) || 0)) > 0;
+                  handleDelete(hasCash);
+                }}
                 disabled={isDeleting}
                 style={{
                   flex: 1,
@@ -827,7 +887,13 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                 }}
               >
                 {isDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
-                <span>{isDeleting ? 'Deleting...' : 'Yes, Delete'}</span>
+                <span>
+                  {isDeleting
+                    ? 'Deleting...'
+                    : ((Number(boy.todayCashCollected) || 0) + (Number(boy.todayUpiCollected) || 0)) > 0
+                    ? 'Force Delete'
+                    : 'Yes, Delete'}
+                </span>
               </button>
             </div>
           </div>

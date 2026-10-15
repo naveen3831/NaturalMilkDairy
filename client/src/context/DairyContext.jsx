@@ -12,6 +12,7 @@ export const DairyProvider = ({ children }) => {
   const [deliverySummary, setDeliverySummary] = useState({ total: 0, delivered: 0, pending: 0, notDelivered: 0 });
   const [products, setProducts] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
+  const [locations, setLocations] = useState([]);
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [pendingCredit, setPendingCredit] = useState({ totalOutstanding: 0, customers: [] });
   const [auditLogs, setAuditLogs] = useState([]);
@@ -51,7 +52,9 @@ export const DairyProvider = ({ children }) => {
   // Fetch Dashboard Summary
   const fetchDashboard = useCallback(async (date = selectedDate) => {
     try {
-      const res = await fetch(`/api/reports/dashboard?date=${date}`);
+      const res = await fetch(`/api/reports/dashboard?date=${date}`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setDashboardSummary(data.summary);
@@ -59,7 +62,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Dashboard fetch error:', err);
     }
-  }, [selectedDate]);
+  }, [selectedDate, getAuthHeaders]);
 
   // Fetch Deliveries
   const fetchDeliveries = useCallback(async (date = selectedDate, status = 'all', boyId = 'all', range = 'today') => {
@@ -78,7 +81,9 @@ export const DairyProvider = ({ children }) => {
         params.set('range', 'today');
         params.set('date', date || selectedDate);
       }
-      const res = await fetch(`/api/deliveries?${params.toString()}`);
+      const res = await fetch(`/api/deliveries?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setDeliveries(data.deliveries);
@@ -87,12 +92,14 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Deliveries fetch error:', err);
     }
-  }, [selectedDate]);
+  }, [selectedDate, getAuthHeaders]);
 
   // Fetch Customers
   const fetchCustomers = useCallback(async (search = '', status = 'all') => {
     try {
-      const res = await fetch(`/api/customers?search=${encodeURIComponent(search)}&status=${status}`);
+      const res = await fetch(`/api/customers?search=${encodeURIComponent(search)}&status=${status}`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setCustomers(data.customers);
@@ -100,12 +107,14 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Customers fetch error:', err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Fetch Products
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await fetch('/api/products');
+      const res = await fetch('/api/products', {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setProducts(data.products);
@@ -113,12 +122,14 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Products fetch error:', err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Fetch Delivery Boys
   const fetchDeliveryBoys = useCallback(async () => {
     try {
-      const res = await fetch('/api/delivery-boys');
+      const res = await fetch('/api/delivery-boys', {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setDeliveryBoys(data.deliveryBoys);
@@ -126,12 +137,14 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Delivery boys fetch error:', err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Fetch Pending Credit Report
   const fetchPendingCredit = useCallback(async (sortBy = 'highest') => {
     try {
-      const res = await fetch(`/api/reports/pending-credit?sortBy=${sortBy}`);
+      const res = await fetch(`/api/reports/pending-credit?sortBy=${sortBy}`, {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setPendingCredit({ totalOutstanding: data.totalOutstanding, customers: data.customers });
@@ -139,12 +152,14 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Pending credit fetch error:', err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   // Fetch Audit Logs
   const fetchAuditLogs = useCallback(async () => {
     try {
-      const res = await fetch('/api/reports/audit-logs');
+      const res = await fetch('/api/reports/audit-logs', {
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (data.success) {
         setAuditLogs(data.logs);
@@ -152,7 +167,22 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Audit logs fetch error:', err);
     }
-  }, []);
+  }, [getAuthHeaders]);
+
+  // Fetch Service Locations
+  const fetchLocations = useCallback(async () => {
+    try {
+      const res = await fetch('/api/locations', {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.locations)) {
+        setLocations(data.locations);
+      }
+    } catch (err) {
+      console.warn('Locations fetch error:', err);
+    }
+  }, [getAuthHeaders]);
 
   // Reload everything
   const refreshAll = useCallback(() => {
@@ -161,9 +191,10 @@ export const DairyProvider = ({ children }) => {
     fetchCustomers();
     fetchProducts();
     fetchDeliveryBoys();
+    fetchLocations();
     fetchPendingCredit();
     fetchAuditLogs();
-  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPendingCredit, fetchAuditLogs]);
+  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchPendingCredit, fetchAuditLogs]);
 
   // Real-time synchronization notifier (broadcasts to all open tabs and windows)
   const notifyRealtimeSync = useCallback(() => {
@@ -237,14 +268,19 @@ export const DairyProvider = ({ children }) => {
       fetchDeliveryBoys();
     });
 
+    const unsubLocation = wsSubscribe('LOCATION_UPDATED', () => {
+      fetchLocations();
+    });
+
     return () => {
       unsubDelivery();
       unsubCustomer();
       unsubPayment();
       unsubProduct();
       unsubDriver();
+      unsubLocation();
     };
-  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys]);
+  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations]);
 
   // Mark Delivery as Delivered
   const markDelivered = async (id, payload) => {
@@ -369,7 +405,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch('/api/payments', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -387,7 +423,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch('/api/customers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -407,7 +443,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -427,7 +463,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${customerId}/assign-partner`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -447,7 +483,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${id}/pause`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -466,7 +502,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${id}/resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload || {}),
       });
       const data = await res.json();
@@ -485,7 +521,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${id}/temp-qty`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -504,7 +540,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/products/${id}/price`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ price, actor }),
       });
       const data = await res.json();
@@ -521,12 +557,11 @@ export const DairyProvider = ({ children }) => {
   // Add Product
   const addProduct = async (payload) => {
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch('/api/products', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(payload),
       });
@@ -543,12 +578,11 @@ export const DairyProvider = ({ children }) => {
   // Update Product (all fields including image, status, etc.)
   const updateProduct = async (id, payload) => {
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/products/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
         body: JSON.stringify(payload),
       });
@@ -565,12 +599,11 @@ export const DairyProvider = ({ children }) => {
   // Delete Product
   const deleteProduct = async (id, actor = 'Admin') => {
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/products/${id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({ actor }),
       });
@@ -592,11 +625,10 @@ export const DairyProvider = ({ children }) => {
       formData.append('image', file);
       formData.append('folder', 'natural-milk-dairy');
 
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch('/api/upload', {
         method: 'POST',
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
         body: formData,
       });
@@ -612,7 +644,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch('/api/delivery-boys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -631,7 +663,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/delivery-boys/${boyId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -647,21 +679,22 @@ export const DairyProvider = ({ children }) => {
   };
 
   // Delete Delivery Boy
-  const deleteDeliveryBoy = async (boyId, actor = 'Admin') => {
+  const deleteDeliveryBoy = async (boyId, actor = 'Admin', force = false) => {
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/delivery-boys/${boyId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
-        body: JSON.stringify({ actor }),
+        body: JSON.stringify({ actor, force }),
       });
       const data = await res.json();
       if (data.success) {
+        setDeliveryBoys((prev) => prev.filter((b) => b.id !== boyId && b._id !== boyId && b.mobile !== boyId));
         fetchDeliveryBoys();
         fetchAuditLogs();
+        notifyRealtimeSync();
       }
       return data;
     } catch (err) {
@@ -673,12 +706,11 @@ export const DairyProvider = ({ children }) => {
   // Delete Customer Permanently
   const deleteCustomer = async (customerId, actor = 'Customer') => {
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/customers/${customerId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...getAuthHeaders(),
         },
         body: JSON.stringify({ actor }),
       });
@@ -700,7 +732,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/delivery-boys/${boyId}/reconcile`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -716,7 +748,9 @@ export const DairyProvider = ({ children }) => {
   // Fetch Customer Ledger
   const getCustomerLedger = async (customerId) => {
     try {
-      const res = await fetch(`/api/customers/${customerId}/ledger`);
+      const res = await fetch(`/api/customers/${customerId}/ledger`, {
+        headers: getAuthHeaders(),
+      });
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -727,7 +761,9 @@ export const DairyProvider = ({ children }) => {
   // Fetch Monthly Statement
   const getCustomerStatement = async (customerId, month) => {
     try {
-      const res = await fetch(`/api/reports/statement?customerId=${customerId}&month=${month || '2026-10'}`);
+      const res = await fetch(`/api/reports/statement?customerId=${customerId}&month=${month || '2026-10'}`, {
+        headers: getAuthHeaders(),
+      });
       return await res.json();
     } catch (err) {
       console.error(err);
@@ -740,7 +776,7 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/delivery-boys/${boyId}/send-credentials`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ actor }),
       });
       const data = await res.json();
@@ -759,12 +795,71 @@ export const DairyProvider = ({ children }) => {
     try {
       const res = await fetch(`/api/customers/${customerId}/send-credentials`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ actor }),
       });
       const data = await res.json();
       if (data.success) {
         fetchAuditLogs();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Add Service Location
+  const addLocation = async (locData) => {
+    try {
+      const res = await fetch('/api/locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(locData),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchLocations();
+        notifyRealtimeSync();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Update Service Location
+  const updateLocation = async (id, locData) => {
+    try {
+      const res = await fetch(`/api/locations/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(locData),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchLocations();
+        notifyRealtimeSync();
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      return { success: false, message: err.message };
+    }
+  };
+
+  // Delete / Deactivate Service Location
+  const deleteLocation = async (id) => {
+    try {
+      const res = await fetch(`/api/locations/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchLocations();
+        notifyRealtimeSync();
       }
       return data;
     } catch (err) {
@@ -825,6 +920,11 @@ export const DairyProvider = ({ children }) => {
         sendCustomerCredentials,
         getCustomerLedger,
         getCustomerStatement,
+        locations,
+        fetchLocations,
+        addLocation,
+        updateLocation,
+        deleteLocation,
       }}
     >
       {children}

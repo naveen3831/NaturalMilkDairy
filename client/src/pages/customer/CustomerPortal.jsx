@@ -115,7 +115,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const currentCustomer = ledgerCustomer || matchedCustomer;
 
   const customerDeliveries = deliveries
-    .filter((delivery) => delivery.customerId === currentCustomer.id || delivery.customerName === currentCustomer.name)
+    .filter((delivery) =>
+      delivery.customerId === currentCustomer.id ||
+      delivery.customerId === currentCustomer.customerId ||
+      (delivery.customerPhone && delivery.customerPhone === currentCustomer.mobile) ||
+      (delivery.customerName && currentCustomer.name && delivery.customerName.toLowerCase() === currentCustomer.name.toLowerCase())
+    )
     .reverse();
   const isPaused = currentCustomer.status === 'paused';
   const balance = Number(currentCustomer.currentBalance) || 0;
@@ -140,7 +145,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const curdQuantity = currentCustomer.deliveryPlan?.curdQty ?? 0;
   const curdUnit = currentCustomer.deliveryPlan?.curdUnit || 'g';
   const deliveryFrequency = String(currentCustomer.deliveryPlan?.frequency || 'daily');
-  const currentPage = CUSTOMER_PORTAL_ITEMS.find((page) => page.id === activePage) || CUSTOMER_PORTAL_ITEMS[0];
+  const currentPage = CUSTOMER_PORTAL_ITEMS.find((page) => page.id === activePage)
+    || CUSTOMER_PORTAL_ITEMS.find((page) => page.id === 'dashboard')
+    || CUSTOMER_PORTAL_ITEMS[0];
   const customerLedgerId = matchedCustomer.customerId || matchedCustomer.id || user?.customerId || user?.id;
   const [isEditingProfile, setIsEditingProfile] = useState(() => getCustomerRoute()?.detail === 'personal-info');
   const [profileForm, setProfileForm] = useState({});
@@ -173,6 +180,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       const route = getCustomerRoute();
       if (!route) {
         if (window.location.pathname.startsWith('/customer/')) {
+          const [sec, pg] = window.location.pathname.split('/').filter(Boolean);
+          if (sec === 'customer' && pg === 'home') {
+            navigateToPage('home');
+            return;
+          }
           const savedPage = localStorage.getItem('nmd_customer_page');
           const fallbackPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedPage)
             ? savedPage
@@ -228,7 +240,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const reloadLedger = useCallback(() => {
     if (!customerLedgerId) return;
-    fetch(`/api/customers/${encodeURIComponent(customerLedgerId)}/ledger`)
+    fetch(`/api/customers/${encodeURIComponent(customerLedgerId)}/ledger`, {
+      headers: getAuthHeaders ? getAuthHeaders() : {},
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -242,7 +256,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           });
         }
       })
-  }, [customerLedgerId]);
+  }, [customerLedgerId, getAuthHeaders]);
 
   const handleDeleteUserHistory = async (entryId) => {
     if (!entryId || !customerLedgerId) return;
@@ -302,7 +316,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     setLedgerLoading(true);
     setLedgerError('');
 
-    fetch(`/api/customers/${encodeURIComponent(customerLedgerId)}/ledger`, { signal: controller.signal })
+    fetch(`/api/customers/${encodeURIComponent(customerLedgerId)}/ledger`, {
+      signal: controller.signal,
+      headers: getAuthHeaders ? getAuthHeaders() : {},
+    })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok || !data.success) {
@@ -474,6 +491,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const navigateToPage = (page) => {
+    if (page === 'home') {
+      if (typeof setActiveTab === 'function') {
+        setActiveTab('home');
+      } else {
+        window.location.href = '/';
+      }
+      return;
+    }
     localStorage.setItem('nmd_customer_page', page);
     setActivePage(page);
     setProfileDetailView(null);
@@ -3862,9 +3887,15 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <button
           type="button"
           className="customer-app-brand customer-app-brand-btn"
-          onClick={() => { navigateToPage('dashboard'); }}
-          aria-label="Go to customer dashboard"
-          title="Go to customer dashboard"
+          onClick={() => {
+            if (typeof setActiveTab === 'function') {
+              setActiveTab('home');
+            } else {
+              window.location.href = '/';
+            }
+          }}
+          aria-label="Go to home page"
+          title="Go to home page"
         >
           <span className="customer-app-logo">
             <img
@@ -3884,6 +3915,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <CustomerBottomNav
             className="customer-sidebar-nav"
             activePage={activePage}
+            items={CUSTOMER_PORTAL_ITEMS}
             onNavigate={navigateToPage}
           />
         </div>
@@ -3925,22 +3957,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       </aside>
 
       <div className="customer-app-main">
-        <header className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}>
-          <button
-            type="button"
-            className="customer-app-header-title customer-app-header-brand-btn"
-            onClick={() => setActiveTab('home')}
-            aria-label="Go to home"
-            title="Go to home"
-          >
-            <span className="customer-app-header-logo">
-              <img src={CLOUDINARY_MEDIA.logo} alt="" onError={(event) => { event.currentTarget.src = '/logo.png'; }} />
-            </span>
-            <span className="customer-app-header-copy">
-              <strong>Natural Milk Dairy</strong>
-              <small>Customer portal · {user?.name || currentCustomer.name}</small>
-            </span>
-          </button>
+        <header
+          className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}
+          style={{ justifyContent: 'flex-end' }}
+        >
           <div className="customer-app-header-actions">
             <button
               type="button"
@@ -3979,7 +3999,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div className="customer-page-heading">
               <div>
                 <span className="customer-section-kicker">CUSTOMER PORTAL · ID {currentCustomer.customerId || 'CUST-101'}</span>
-                <h1>{activePage === 'profile' ? 'Profile & Settings' : currentPage.label}</h1>
+                <h1>{activePage === 'profile' ? 'Profile & Settings' : (activePage === 'dashboard' ? 'Dashboard' : currentPage.label)}</h1>
                 <p>
                   {activePage === 'dashboard' && 'Your daily essentials, all in one place.'}
                   {activePage === 'subscription' && 'Review your plan and manage your upcoming delivery.'}
@@ -3996,10 +4016,23 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       {isMobile && (
         <CustomerBottomNav
           className="customer-bottom-nav customer-portal-bottom-nav"
-          ariaLabel="Customer navigation"
-          items={CUSTOMER_PORTAL_ITEMS}
-          activePage={activePage}
-          onNavigate={navigateToPage}
+          ariaLabel="Main navigation"
+          items={CUSTOMER_HOME_NAV_ITEMS}
+          activePage="profile"
+          onNavigate={(page) => {
+            if (page === 'profile') {
+              navigateToPage('profile');
+              setProfileDetailView(null);
+              setIsEditingProfile(false);
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+              return;
+            }
+            if (typeof setActiveTab === 'function') {
+              setActiveTab(page);
+            } else {
+              window.location.href = page === 'home' ? '/' : `/${page}`;
+            }
+          }}
         />
       )}
 

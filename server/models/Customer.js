@@ -43,6 +43,9 @@ const customerSchema = new mongoose.Schema({
     paymentCycle: { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'monthly' },
   },
   currentBalance: { type: Number, default: 0 }, // >0 pending credit, <0 advance
+  createdBy: { type: String, enum: ['admin', 'driver', 'self'], default: 'admin' },
+  createdByDriverId: { type: String, default: '' },
+  createdByDriverName: { type: String, default: '' },
   notes: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
 });

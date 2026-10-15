@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
+import { useWebSocket } from '../../context/WebSocketContext';
 import {
   Truck,
   CheckCircle,
@@ -31,6 +32,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     deleteDelivery,
     deliveryBoys,
   } = useDairy();
+  const { subscribe: wsSubscribe } = useWebSocket();
   const [timeRange, setTimeRange] = useState('today');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
@@ -56,6 +58,17 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   useEffect(() => {
     fetchDeliveries(selectedDate, statusFilter, boyFilter, timeRange);
   }, [selectedDate, statusFilter, boyFilter, timeRange, fetchDeliveries]);
+
+  // Real-time synchronization when delivery status or schedule changes
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
+      fetchDeliveries(selectedDate, statusFilter, boyFilter, timeRange);
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [wsSubscribe, selectedDate, statusFilter, boyFilter, timeRange, fetchDeliveries]);
 
   const openDeliveredModal = (item) => {
     setDeliveringItem(item);

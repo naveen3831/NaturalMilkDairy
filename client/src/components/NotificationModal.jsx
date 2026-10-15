@@ -63,7 +63,8 @@ export default function NotificationModal() {
         item.type === 'delivery_assigned' ||
         item.type === 'delivery_completed' ||
         item.type === 'delivery_missed' ||
-        item.type === 'route_update'
+        item.type === 'route_update' ||
+        item.type === 'subscription_created'
       );
     }
     if (activeTab === 'system') {
@@ -98,6 +99,15 @@ export default function NotificationModal() {
           tag: 'DISPATCH',
           tagColor: '#1d4ed8',
           tagBg: '#dbeafe',
+        };
+      case 'subscription_created':
+        return {
+          icon: <Sparkles size={17} color="#d97706" />,
+          bg: '#fffbeb',
+          border: '#fde68a',
+          tag: 'SUBSCRIPTION',
+          tagColor: '#b45309',
+          tagBg: '#fef3c7',
         };
       case 'delivery_completed':
         return {

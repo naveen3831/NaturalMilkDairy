@@ -5,7 +5,7 @@ import { useWebSocket } from './WebSocketContext';
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const { user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
   const { subscribe: wsSubscribe } = useWebSocket();
   // Intelligently identify current active portal / role
   const currentRole = user?.role || (
@@ -130,7 +130,9 @@ export function NotificationProvider({ children }) {
   // Fetch notifications for active user role
   const fetchNotifications = useCallback(async () => {
     try {
-      const res = await fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`);
+      const res = await fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`, {
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
       const data = await res.json();
       if (data.success && Array.isArray(data.notifications) && data.notifications.length > 0) {
         setNotifications(data.notifications);
@@ -155,7 +157,7 @@ export function NotificationProvider({ children }) {
     const initial = getInitialFallbackNotifications(currentRole);
     setNotifications(initial);
     setUnreadCount(initial.filter((n) => !n.isRead).length);
-  }, [currentRole, currentUserId, getInitialFallbackNotifications]);
+  }, [currentRole, currentUserId, getInitialFallbackNotifications, getAuthHeaders]);
 
   useEffect(() => {
     fetchNotifications();
@@ -200,7 +202,7 @@ export function NotificationProvider({ children }) {
     try {
       await fetch('/api/notifications', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify(newNotif),
       });
     } catch (e) {
@@ -214,7 +216,10 @@ export function NotificationProvider({ children }) {
       prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
     );
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: 'PUT' });
+      await fetch(`/api/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
     } catch (e) {}
   };
 
@@ -225,7 +230,7 @@ export function NotificationProvider({ children }) {
     try {
       await fetch('/api/notifications/read-all', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
         body: JSON.stringify({ role: currentRole, userId: currentUserId }),
       });
     } catch (e) {}
@@ -240,7 +245,10 @@ export function NotificationProvider({ children }) {
       return updated;
     });
     try {
-      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      await fetch(`/api/notifications/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
     } catch (e) {}
   };
 
@@ -252,6 +260,7 @@ export function NotificationProvider({ children }) {
     try {
       await fetch(`/api/notifications/clear-all?role=${currentRole}&userId=${currentUserId}`, {
         method: 'DELETE',
+        headers: getAuthHeaders ? getAuthHeaders() : {},
       });
     } catch (e) {}
   };
