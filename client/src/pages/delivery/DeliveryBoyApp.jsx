@@ -60,6 +60,7 @@ import {
   UserPlus,
   PauseCircle,
   PlayCircle,
+  Send,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
@@ -140,9 +141,107 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [deletingCustomer, setDeletingCustomer] = useState(null);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [selectedRouteStop, setSelectedRouteStop] = useState(null);
   const [customerActionLoading, setCustomerActionLoading] = useState(false);
   const [customerFormError, setCustomerFormError] = useState('');
   const [customerSuccessBanner, setCustomerSuccessBanner] = useState('');
+
+  // Partner Help & Support / Message Admin states
+  const [supportCategory, setSupportCategory] = useState('Route & Delivery');
+  const [supportPriority, setSupportPriority] = useState('normal'); // 'normal' | 'high' | 'urgent'
+  const [supportText, setSupportText] = useState('');
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSuccessMsg, setSupportSuccessMsg] = useState('');
+  const [supportHistory, setSupportHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`nmd_driver_support_history_${boyId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const handleSendAdminMessage = async (e) => {
+    if (e) e.preventDefault();
+    if (!supportText.trim()) return;
+
+    setSupportLoading(true);
+    setSupportSuccessMsg('');
+    try {
+      const partnerIdentifier = `NMD-DRV-${(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}`;
+      const partnerDisplayName = profileName || boyName || 'Delivery Partner';
+      const title = `🚚 Partner Alert (${partnerDisplayName}): ${supportCategory}`;
+      const fullMessage = `[${supportPriority.toUpperCase()} PRIORITY] ${supportText.trim()}\nPartner: ${partnerDisplayName} (${partnerIdentifier})\nPhone: ${profilePhone || boyMobile || 'N/A'}\nRoute Area: ${profileArea || boyArea || 'Madhapur'}`;
+
+      const payload = {
+        recipientRole: 'admin',
+        recipientId: '',
+        title,
+        message: fullMessage,
+        type: 'partner_message',
+        data: {
+          senderRole: 'delivery_boy',
+          senderId: boyId,
+          senderName: partnerDisplayName,
+          partnerCode: partnerIdentifier,
+          senderPhone: profilePhone || boyMobile || '',
+          area: profileArea || boyArea || 'Madhapur',
+          category: supportCategory,
+          priority: supportPriority,
+          text: supportText.trim(),
+          sentAt: new Date().toISOString(),
+        },
+      };
+
+      await sendNotification(payload);
+
+      // Also create support ticket in admin support desk
+      try {
+        await fetch('/api/supports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+          body: JSON.stringify({
+            senderRole: 'delivery_boy',
+            senderId: boyId,
+            senderName: partnerDisplayName,
+            senderPhone: profilePhone || boyMobile || '',
+            senderArea: profileArea || boyArea || 'Madhapur',
+            senderAddress: profileAddress || 'Madhapur Depot',
+            category: supportCategory,
+            priority: supportPriority,
+            subject: title,
+            message: supportText.trim(),
+          }),
+        });
+      } catch (supErr) {
+        console.warn('Support API call error:', supErr);
+      }
+
+      const newHistoryItem = {
+        id: 'drv_msg_' + Date.now(),
+        category: supportCategory,
+        priority: supportPriority,
+        text: supportText.trim(),
+        createdAt: new Date().toISOString(),
+        status: 'delivered',
+      };
+
+      const updatedHistory = [newHistoryItem, ...supportHistory].slice(0, 20);
+      setSupportHistory(updatedHistory);
+      try {
+        localStorage.setItem(`nmd_driver_support_history_${boyId}`, JSON.stringify(updatedHistory));
+      } catch (err) {}
+
+      setSupportText('');
+      setSupportSuccessMsg('Your message has been sent directly to Dispatch Admin! The operations team has been notified.');
+      setTimeout(() => setSupportSuccessMsg(''), 6000);
+    } catch (err) {
+      console.error('Failed to send support message:', err);
+    } finally {
+      setSupportLoading(false);
+    }
+  };
 
   // Add / Edit form fields
   const [custFormName, setCustFormName] = useState('');
@@ -360,6 +459,11 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         throw new Error(data.message || `Failed to ${endpoint} delivery.`);
       }
       setCustomerSuccessBanner(`Customer ${cust.name} delivery ${isCurrentlyPaused ? 'resumed' : 'paused'}.`);
+      setSelectedCustomer((prev) =>
+        prev && (prev.id === cust.id || prev._id === cust._id || (prev.mobile && prev.mobile === cust.mobile))
+          ? { ...prev, status: isCurrentlyPaused ? 'active' : 'paused' }
+          : prev
+      );
       setTimeout(() => setCustomerSuccessBanner(''), 4500);
       await Promise.all([
         loadAssignedCustomers(),
@@ -1086,6 +1190,17 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       ],
       phone: profileEmergencyContact,
     },
+    support: {
+      title: 'Help & Dispatch Support',
+      description: 'Send messages directly to the dispatch admin and access live supervisor hotlines.',
+      rows: [
+        ['Dispatch Hub Hotline', profileEmergencyContact || '+91 98765 43210'],
+        ['Supervisor Desk', 'Madhapur Field Operations Desk'],
+        ['Dispatch Shift Hours', '04:30 AM – 08:30 PM Daily'],
+        ['Direct Admin Message', 'Active Real-Time Dispatch Alerts'],
+      ],
+      phone: profileEmergencyContact || '9876543210',
+    },
   };
   const activeProfileDetail = profileDetailPages[profileDetailView];
 
@@ -1810,10 +1925,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
           .driver-mobile-card {
             padding: 15px !important;
-            border: 1px solid #e5ebe6 !important;
-            border-left-width: 3px !important;
+            border: 1px solid #e2e8f0 !important;
             border-radius: 13px !important;
-            box-shadow: 0 3px 12px rgba(25, 54, 39, 0.035) !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03) !important;
           }
 
           .driver-mobile-card h3 {
@@ -3495,430 +3609,168 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       return (
                         <div
                           key={item.id || item._id}
-                          className={`driver-route-stop-card ${isDone ? 'is-delivered' : isMissed ? 'is-skipped' : 'is-pending'}`}
+                          className="driver-customer-card"
+                          onClick={() => setSelectedRouteStop({ ...item, originalIndex, customerInfo })}
                           style={{
                             background: '#ffffff',
                             border: '1px solid #e2e8f0',
-                            borderRadius: isMobile ? '14px' : '16px',
-                            padding: isMobile ? '12px 14px' : '16px 18px',
+                            borderRadius: '14px',
+                            padding: '14px 16px',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            cursor: 'pointer',
                             transition: 'all 0.15s ease',
                           }}
                         >
-                          {/* Top Row: Stop Badge, Customer Name, Status & Price */}
-                          <div className="driver-route-stop-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', minWidth: 0, flex: '1' }}>
-                              {/* Sequence Badge */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                            {/* Avatar with Sequence Badge */}
+                            <div style={{ position: 'relative', flexShrink: 0 }}>
                               <div
-                                className="driver-route-stop-number"
                                 style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '10px',
-                                  background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#eff6ff',
-                                  color: isDone ? '#059669' : isMissed ? '#dc2626' : '#2563eb',
-                                  border: isDone ? '1px solid #bbf7d0' : isMissed ? '1px solid #fecaca' : '1px solid #bfdbfe',
+                                  width: '42px',
+                                  height: '42px',
+                                  borderRadius: '50%',
+                                  background: isDone
+                                    ? 'linear-gradient(135deg, #059669, #10b981)'
+                                    : isMissed
+                                    ? 'linear-gradient(135deg, #dc2626, #ef4444)'
+                                    : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                                  color: '#ffffff',
+                                  fontWeight: 800,
+                                  fontSize: '1rem',
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                  fontSize: '0.84rem',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                                }}
+                              >
+                                {(item.customerName || 'C').charAt(0).toUpperCase()}
+                              </div>
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  bottom: '-3px',
+                                  right: '-4px',
+                                  background: '#0f172a',
+                                  color: '#ffffff',
+                                  fontSize: '0.62rem',
                                   fontWeight: 800,
-                                  flexShrink: 0,
+                                  padding: '1px 5px',
+                                  borderRadius: '999px',
+                                  border: '1.5px solid #ffffff',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
                                 }}
                               >
                                 #{originalIndex + 1}
+                              </span>
+                            </div>
+
+                            {/* Name, ID, Area & Plan Pill */}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {item.customerName}
+                                </span>
+                                {(item.customerId || customerInfo?.customerId) && (
+                                  <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                                    {item.customerId || customerInfo?.customerId}
+                                  </span>
+                                )}
+                                {isSubscription && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      fontWeight: 800,
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: '#fffbeb',
+                                      color: '#b45309',
+                                      border: '1px solid #fde68a',
+                                    }}
+                                  >
+                                    Prepaid
+                                  </span>
+                                )}
                               </div>
 
-                              <div className="driver-route-customer">
-                                <div className="driver-route-customer-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                                    {item.customerName}
-                                  </h3>
-                                  {(item.customerId || customerInfo?.customerId) && (
-                                    <span
-                                      className="driver-route-customer-id"
-                                      style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 700,
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        background: '#f1f5f9',
-                                        color: '#475569',
-                                        border: '1px solid #e2e8f0',
-                                      }}
-                                    >
-                                      {item.customerId || customerInfo?.customerId}
-                                    </span>
-                                  )}
-                                  {isSubscription && (
-                                    <span
-                                      className="driver-route-subscription-tag"
-                                      style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 800,
-                                        padding: '2px 7px',
-                                        borderRadius: '4px',
-                                        background: '#fffbeb',
-                                        color: '#b45309',
-                                        border: '1px solid #fde68a',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                      }}
-                                    >
-                                      <Sparkles size={11} /> Prepaid Sub
-                                    </span>
-                                  )}
-                                </div>
-
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                  <MapPin size={11} color="#94a3b8" />
+                                  <span>{doorstepAddress}</span>
+                                </span>
                                 {customerPhone && (
-                                  <a
-                                    href={`tel:${customerPhone}`}
-                                    className="driver-route-customer-phone"
-                                    style={{
-                                      fontSize: '0.78rem',
-                                      color: '#2563eb',
-                                      fontWeight: 600,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                      marginTop: '3px',
-                                      textDecoration: 'none',
-                                    }}
-                                  >
-                                    <Phone size={12} /> {customerPhone}
-                                  </a>
+                                  <>
+                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>•</span>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
+                                      {customerPhone}
+                                    </span>
+                                  </>
                                 )}
-                              </div>
-                            </div>
-
-                            {/* Status Tag */}
-                            <div className="driver-route-stop-status" style={{ textAlign: 'right', flexShrink: 0 }}>
-                              <span
-                                className="driver-route-stop-status-badge"
-                                style={{
-                                  display: 'inline-block',
-                                  padding: '3px 9px',
-                                  borderRadius: '8px',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
-                                  color: isDone ? '#059669' : isMissed ? '#dc2626' : '#b45309',
-                                  border: isDone ? '1px solid #bbf7d0' : isMissed ? '1px solid #fecaca' : '1px solid #fde68a',
-                                }}
-                              >
-                                {isDone ? '✓ Delivered' : isMissed ? '✕ Skipped' : '○ Pending Drop'}
-                              </span>
-
-                              <div className="driver-route-stop-amount" style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
-                                {isSubscription
-                                  ? subDateText ? `Prepaid to ${subDateText}` : 'Active Prepaid'
-                                  : `₹${item.totalAmount}`}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Middle: Doorstep Address & Landmark */}
-                          <div
-                            className="driver-route-stop-address"
-                            style={{
-                              marginTop: '12px',
-                              padding: '10px 12px',
-                              background: '#f8fafc',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '10px',
-                              fontSize: '0.82rem',
-                              color: '#334155',
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                              <MapPin size={15} color="#059669" style={{ marginTop: '2px', flexShrink: 0 }} />
-                              <div>
-                                <strong>{doorstepAddress}</strong>
-                                {landmark && (
-                                  <div className="driver-route-landmark" style={{ color: '#64748b', fontSize: '0.76rem', marginTop: '2px' }}>
-                                    🏛️ Landmark: {landmark}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Product Pills & Delivery Info */}
-                          <div className="driver-route-stop-products" style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span
-                              className="driver-route-product-pill is-milk"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 9px',
-                                borderRadius: '6px',
-                                background: '#ecfdf5',
-                                border: '1px solid #bbf7d0',
-                                color: '#065f46',
-                                fontSize: '0.78rem',
-                                fontWeight: 700,
-                              }}
-                            >
-                              🥛 {item.actualMilk || item.plannedMilk || 1}L Daily Milk
-                            </span>
-
-                            {(item.plannedCurd > 0 || customerInfo?.deliveryPlan?.curdQty > 0) && (
-                              <span
-                                className="driver-route-product-pill is-curd"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '3px 9px',
-                                  borderRadius: '6px',
-                                  background: '#eff6ff',
-                                  border: '1px solid #bfdbfe',
-                                  color: '#1d4ed8',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                }}
-                              >
-                                🥣 {item.actualCurd || item.plannedCurd || customerInfo?.deliveryPlan?.curdQty}g Curd
-                              </span>
-                            )}
-
-                            <span
-                              className="driver-route-product-pill is-frequency"
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '3px 9px',
-                                borderRadius: '6px',
-                                background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                color: '#475569',
-                                fontSize: '0.76rem',
-                                fontWeight: 600,
-                              }}
-                            >
-                              <Calendar size={12} /> {customerInfo?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Everyday Morning'}
-                            </span>
-
-                            {isDone && item.deliveredAt && (
-                              <span
-                                className="driver-route-product-pill is-completed-at"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '3px 8px',
-                                  borderRadius: '6px',
-                                  background: '#f0fdf4',
-                                  color: '#047857',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 600,
-                                }}
-                              >
-                                <Clock size={12} /> Completed: {new Date(item.deliveredAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Doorstep Instructions / Special Notes */}
-                          {specialNotes && (
-                            <div
-                              className="driver-route-stop-note"
-                              style={{
-                                marginTop: '10px',
-                                padding: '8px 12px',
-                                background: '#fffbeb',
-                                border: '1px solid #fde68a',
-                                borderRadius: '8px',
-                                color: '#92400e',
-                                fontSize: '0.76rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                              }}
-                            >
-                              <Bell size={13} color="#d97706" style={{ flexShrink: 0 }} />
-                              <span><strong>Doorstep Note:</strong> {specialNotes}</span>
-                            </div>
-                          )}
-
-                          {/* Bottom Action Strip: Call, WhatsApp, Map, Confirm Delivery */}
-                          <div
-                            className="driver-route-stop-actions"
-                            style={{
-                              marginTop: '12px',
-                              paddingTop: '12px',
-                              borderTop: '1px solid #f1f5f9',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              flexWrap: 'wrap',
-                              gap: '8px',
-                            }}
-                          >
-                            {/* Contact Links */}
-                            <div className="driver-route-contact-actions" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                              {customerPhone && (
-                                <a
-                                  href={`tel:${customerPhone}`}
-                                  className="driver-route-action-link is-call"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '6px 11px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #cbd5e1',
-                                    background: '#ffffff',
-                                    color: '#0f172a',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    textDecoration: 'none',
-                                  }}
-                                >
-                                  <Phone size={13} color="#059669" />
-                                  <span>Call</span>
-                                </a>
-                              )}
-
-                              {customerPhone && (
-                                <a
-                                  href={`https://wa.me/91${customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${item.customerName}, your fresh milk delivery from Natural Milk Dairy is arriving at your doorstep!`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="driver-route-action-link is-whatsapp"
-                                  style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '6px 11px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #bbf7d0',
-                                    background: '#f0fdf4',
-                                    color: '#166534',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    textDecoration: 'none',
-                                  }}
-                                >
-                                  <MessageCircle size={13} color="#16a34a" />
-                                  <span>WhatsApp</span>
-                                </a>
-                              )}
-
-                              <a
-                                href={mapUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="driver-route-action-link is-navigate"
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '5px',
-                                  padding: '6px 11px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #bfdbfe',
-                                  background: '#eff6ff',
-                                  color: '#1d4ed8',
-                                  fontSize: '0.76rem',
-                                  fontWeight: 700,
-                                  textDecoration: 'none',
-                                }}
-                              >
-                                <Navigation size={13} color="#2563eb" />
-                                <span>Navigate</span>
-                              </a>
-                            </div>
-
-                            {/* Status Quick Action Buttons */}
-                            <div className="driver-route-delivery-actions" style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                              {isPending && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => openNotDeliveredModal(item)}
-                                    className="driver-route-action-button is-skip"
-                                    style={{
-                                      padding: '6px 10px',
-                                      borderRadius: '8px',
-                                      border: '1px solid #fecaca',
-                                      background: '#fff1f2',
-                                      color: '#b91c1c',
-                                      fontSize: '0.76rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    ✕ Skip
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => openDeliverModal(item)}
-                                    className="driver-route-action-button is-deliver"
-                                    style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '5px',
-                                      padding: '6px 14px',
-                                      borderRadius: '8px',
-                                      border: 'none',
-                                      background: '#059669',
-                                      color: '#ffffff',
-                                      fontSize: '0.76rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
-                                    }}
-                                  >
-                                    <Check size={14} />
-                                    <span>Mark Delivered</span>
-                                  </button>
-                                </>
-                              )}
-
-                              {isDone && (
                                 <span
                                   style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    padding: '5px 10px',
-                                    borderRadius: '6px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    color: '#059669',
                                     background: '#ecfdf5',
-                                    color: '#047857',
-                                    fontSize: '0.75rem',
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  <CheckCheck size={14} />
-                                  <span>Drop Finished</span>
-                                </span>
-                              )}
-
-                              {isMissed && (
-                                <button
-                                  type="button"
-                                  onClick={() => openDeliverModal(item)}
-                                  className="driver-route-action-button is-retry"
-                                  style={{
-                                    padding: '5px 10px',
+                                    padding: '2px 7px',
                                     borderRadius: '6px',
-                                    border: '1px solid #cbd5e1',
-                                    background: '#ffffff',
-                                    color: '#334155',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
+                                    border: '1px solid #d1fae5',
                                   }}
                                 >
-                                  Retry Drop
-                                </button>
-                              )}
+                                  🥛 {item.actualMilk || item.plannedMilk || 1}L Milk
+                                </span>
+                              </div>
                             </div>
+                          </div>
+
+                          {/* Right: Quick Action / Status Pill + Chevron */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                            {isPending ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDeliverModal(item);
+                                }}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '5px 11px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#ffffff',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 3px rgba(5,150,105,0.25)',
+                                }}
+                              >
+                                <Check size={13} />
+                                <span>Deliver</span>
+                              </button>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  padding: '3px 9px',
+                                  borderRadius: '999px',
+                                  background: isDone ? '#dcfce7' : '#fee2e2',
+                                  color: isDone ? '#166534' : '#991b1b',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                {isDone ? '✓ Delivered' : '✕ Skipped'}
+                              </span>
+                            )}
+                            <ChevronRight size={18} color="#94a3b8" />
                           </div>
                         </div>
                       );
@@ -4319,366 +4171,102 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         <div
                           key={cust.id || cust._id}
                           className="driver-customer-card"
+                          onClick={() => setSelectedCustomer(cust)}
                           style={{
                             background: '#ffffff',
                             border: '1px solid #e2e8f0',
                             borderRadius: '14px',
-                            padding: '16px',
+                            padding: '14px 16px',
                             boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                             display: 'flex',
-                            flexDirection: 'column',
+                            alignItems: 'center',
                             justifyContent: 'space-between',
                             gap: '12px',
+                            cursor: 'pointer',
                             transition: 'all 0.15s ease',
                           }}
                         >
-                          <div>
-                            {/* Card Header: Avatar, Name, ID & Badges */}
-                            <div className="driver-customer-card-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div
-                                  style={{
-                                    width: '38px',
-                                    height: '38px',
-                                    borderRadius: '50%',
-                                    background: isDriverCreated ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #2563eb, #3b82f6)',
-                                    color: '#ffffff',
-                                    fontWeight: 800,
-                                    fontSize: '0.95rem',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {(cust.name || 'C').charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <div style={{ fontWeight: 800, fontSize: '0.95rem', color: '#0f172a' }}>
-                                    {cust.name}
-                                  </div>
-                                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                                    {cust.customerId || `#${(cust.id || '').slice(-6)}`}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Status Pill */}
-                              <span
-                                className="driver-customer-status"
-                                style={{
-                                  fontSize: '0.7rem',
-                                  fontWeight: 700,
-                                  padding: '2px 8px',
-                                  borderRadius: '999px',
-                                  background: cust.status === 'paused' ? '#fef3c7' : '#dcfce7',
-                                  color: cust.status === 'paused' ? '#92400e' : '#166534',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {cust.status === 'paused' ? '⏸ Paused' : '✓ Active'}
-                              </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                            {/* Avatar */}
+                            <div
+                              style={{
+                                width: '42px',
+                                height: '42px',
+                                borderRadius: '50%',
+                                background: isDriverCreated ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                                color: '#ffffff',
+                                fontWeight: 800,
+                                fontSize: '1rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                              }}
+                            >
+                              {(cust.name || 'C').charAt(0).toUpperCase()}
                             </div>
 
-                            {/* Category Badges Strip */}
-                            <div className="driver-customer-badges" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                              {hasActiveSub && (
-                                <span
-                                  style={{
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    padding: '2px 8px',
-                                    borderRadius: '6px',
-                                    background: '#f5f3ff',
-                                    color: '#7c3aed',
-                                    border: '1px solid #ddd6fe',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                  }}
-                                >
-                                  ★ 30-Day Subscription
+                            {/* Name, ID, Area & Plan Pill */}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {cust.name}
                                 </span>
-                              )}
-                              {isDriverCreated ? (
+                                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                                  {cust.customerId || `#${(cust.id || '').slice(-6)}`}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                  <MapPin size={11} color="#94a3b8" />
+                                  <span>{cust.area || cust.address || 'Doorstep route'}</span>
+                                </span>
+                                {cust.mobile && (
+                                  <>
+                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>•</span>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
+                                      {cust.mobile}
+                                    </span>
+                                  </>
+                                )}
                                 <span
                                   style={{
-                                    fontSize: '0.68rem',
+                                    fontSize: '0.7rem',
                                     fontWeight: 700,
-                                    padding: '2px 8px',
-                                    borderRadius: '6px',
-                                    background: '#ecfdf5',
                                     color: '#059669',
-                                    border: '1px solid #a7f3d0',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
-                                  }}
-                                >
-                                  👤 Added by Driver
-                                </span>
-                              ) : (
-                                <span
-                                  style={{
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    padding: '2px 8px',
+                                    background: '#ecfdf5',
+                                    padding: '2px 7px',
                                     borderRadius: '6px',
-                                    background: '#eff6ff',
-                                    color: '#2563eb',
-                                    border: '1px solid #bfdbfe',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '3px',
+                                    border: '1px solid #d1fae5',
                                   }}
                                 >
-                                  🏢 Admin Assigned
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Address & Territory */}
-                            <div
-                              className="driver-customer-address"
-                              style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '6px',
-                                fontSize: '0.78rem',
-                                color: '#475569',
-                                marginBottom: '8px',
-                                lineHeight: 1.4,
-                              }}
-                            >
-                              <MapPin size={14} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
-                              <div>
-                                <span>{cust.address}</span>
-                                {cust.area && <span style={{ fontWeight: 600, color: '#0f172a' }}> • {cust.area}</span>}
-                                {cust.landmark && <span style={{ color: '#64748b' }}> (Near {cust.landmark})</span>}
-                              </div>
-                            </div>
-
-                            {/* Delivery Plan & Frequency */}
-                            <div
-                              className="driver-customer-plan"
-                              style={{
-                                background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '10px',
-                                padding: '8px 10px',
-                                marginBottom: '8px',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                flexWrap: 'wrap',
-                                gap: '6px',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <Truck size={14} color="#059669" />
-                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                                  {plan.milkQty || 1}L {plan.milkUnit || 'L'} Milk
-                                  {plan.curdQty > 0 ? ` + ${plan.curdQty}g Curd` : ''}
+                                  🥛 {plan.milkQty || 1}{plan.milkUnit || 'L'} Milk · {plan.frequency || 'Daily'}
                                 </span>
                               </div>
-                              <span
-                                style={{
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  color: '#059669',
-                                  background: '#ffffff',
-                                  padding: '2px 6px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  textTransform: 'capitalize',
-                                }}
-                              >
-                                {plan.frequency || 'Daily'}
-                              </span>
                             </div>
-
-                            {/* Subscription / Payment Meta */}
-                            {hasActiveSub && cust.subscription?.endDate && (
-                              <div
-                                className="driver-customer-subscription"
-                                style={{
-                                  background: '#faf5ff',
-                                  border: '1px solid #f3e8ff',
-                                  borderRadius: '8px',
-                                  padding: '6px 10px',
-                                  fontSize: '0.74rem',
-                                  color: '#6b21a8',
-                                  marginBottom: '8px',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                }}
-                              >
-                                <span>Valid through:</span>
-                                <strong>
-                                  {new Date(cust.subscription.endDate).toLocaleDateString('en-IN', {
-                                    day: '2-digit',
-                                    month: 'short',
-                                    year: 'numeric',
-                                  })}
-                                </strong>
-                              </div>
-                            )}
-
-                            {/* Contact & Balance Info */}
-                            <div
-                              className="driver-customer-contact-summary"
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                fontSize: '0.76rem',
-                                color: '#64748b',
-                                marginBottom: '4px',
-                              }}
-                            >
-                              <div>
-                                <span>Phone: </span>
-                                <strong style={{ color: '#0f172a' }}>{cust.mobile}</strong>
-                              </div>
-                              <div>
-                                <span>Payment: </span>
-                                <strong style={{ color: isPrepaid ? '#059669' : '#d97706' }}>
-                                  {isPrepaid ? 'Prepaid' : 'Monthly Credit'}
-                                </strong>
-                              </div>
-                            </div>
-
-                            {cust.notes && (
-                              <div style={{ fontSize: '0.72rem', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>
-                                💬 "{cust.notes}"
-                              </div>
-                            )}
                           </div>
 
-                          {/* Card Footer Actions (CRUD) */}
-                          <div
-                            className="driver-customer-card-footer"
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              paddingTop: '10px',
-                              borderTop: '1px solid #f1f5f9',
-                              gap: '6px',
-                              flexWrap: 'wrap',
-                            }}
-                          >
-                            <div className="driver-customer-contact-actions" style={{ display: 'flex', gap: '5px' }}>
-                              <a
-                                href={`tel:${cust.mobile}`}
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  background: '#ffffff',
-                                  color: '#059669',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  textDecoration: 'none',
-                                }}
-                                title="Call customer"
-                              >
-                                <Phone size={12} /> Call
-                              </a>
-                              <a
-                                href={`https://wa.me/91${cust.mobile.replace(/\D/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #bbf7d0',
-                                  background: '#f0fdf4',
-                                  color: '#16a34a',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  textDecoration: 'none',
-                                }}
-                                title="WhatsApp chat"
-                              >
-                                <MessageCircle size={12} /> WhatsApp
-                              </a>
-                            </div>
-
-                            <div className="driver-customer-management-actions" style={{ display: 'flex', gap: '5px' }}>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleCustomerPause(cust)}
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  background: cust.status === 'paused' ? '#ecfdf5' : '#fffbeb',
-                                  color: cust.status === 'paused' ? '#059669' : '#b45309',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                }}
-                                title={cust.status === 'paused' ? 'Resume delivery drops' : 'Pause customer deliveries'}
-                              >
-                                {cust.status === 'paused' ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
-                                <span>{cust.status === 'paused' ? 'Resume' : 'Pause'}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => openEditCustomer(cust)}
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #e2e8f0',
-                                  background: '#ffffff',
-                                  color: '#2563eb',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                }}
-                                title="Edit customer details & plan"
-                              >
-                                <Edit2 size={12} /> Edit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => setDeletingCustomer(cust)}
-                                style={{
-                                  padding: '5px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #fee2e2',
-                                  background: '#fff1f2',
-                                  color: '#dc2626',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                }}
-                                title="Remove customer from route"
-                              >
-                                <Trash2 size={12} /> Delete
-                              </button>
-                            </div>
+                          {/* Right: Status Pill + Chevron */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                            <span
+                              className="driver-customer-status"
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '3px 9px',
+                                borderRadius: '999px',
+                                background: cust.status === 'paused' ? '#fef3c7' : '#dcfce7',
+                                color: cust.status === 'paused' ? '#92400e' : '#166534',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                            >
+                              {cust.status === 'paused' ? '⏸ Paused' : '✓ Active'}
+                            </span>
+                            <ChevronRight size={18} color="#94a3b8" />
                           </div>
                         </div>
                       );
@@ -5452,55 +5040,455 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* ========================================================= */}
           {navTab === 'profile' && (
             profileDetailView ? (
-              <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
-                <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
-                  <button
-                    type="button"
-                    className="modern-profile-header-btn"
-                    onClick={backToDriverProfile}
-                    aria-label="Back to profile"
-                  >
-                    <ArrowLeft size={21} />
-                  </button>
-                  <div>
-                    <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
-                      {activeProfileDetail?.title || 'Profile details'}
-                    </h2>
-                    <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.84rem' }}>
-                      {activeProfileDetail?.description || 'Review your delivery partner information.'}
-                    </p>
-                  </div>
-                </header>
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '6px 18px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
-                  {(activeProfileDetail?.rows || []).map(([label, value]) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '18px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
-                      <span style={{ color: '#64748b', fontSize: '0.86rem' }}>{label}</span>
-                      <strong style={{ color: '#0f172a', fontSize: '0.88rem', textAlign: 'right', lineHeight: 1.5 }}>{value}</strong>
-                    </div>
-                  ))}
-                  {activeProfileDetail?.action === 'route' && (
+              profileDetailView === 'support' ? (
+                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
                     <button
                       type="button"
-                      className="profile-card-action-btn"
-                      style={{ margin: '14px 0 10px' }}
-                      onClick={() => handleNavChange('route')}
+                      className="modern-profile-header-btn"
+                      onClick={backToDriverProfile}
+                      aria-label="Back to profile"
                     >
-                      <Navigation size={15} />
-                      <span>Open route and stops</span>
+                      <ArrowLeft size={21} />
                     </button>
-                  )}
-                  {activeProfileDetail?.phone && (
-                    <a
-                      href={`tel:${activeProfileDetail.phone}`}
-                      className="profile-card-action-btn"
-                      style={{ margin: '14px 0 10px', textDecoration: 'none' }}
+                    <div>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
+                        Help & Support Desk
+                      </h2>
+                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.84rem' }}>
+                        Send live messages to Dispatch Admin and access operations emergency hotlines.
+                      </p>
+                    </div>
+                  </header>
+
+                  {/* Feedback Banner */}
+                  {supportSuccessMsg && (
+                    <div
+                      style={{
+                        padding: '14px 18px',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '14px',
+                        color: '#065f46',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        marginBottom: '16px',
+                        boxShadow: '0 2px 6px rgba(5,150,105,0.1)',
+                      }}
                     >
-                      <PhoneCall size={15} />
-                      <span>Call supervisor</span>
-                    </a>
+                      <CheckCircle2 size={18} color="#059669" />
+                      <span>{supportSuccessMsg}</span>
+                    </div>
                   )}
-                </div>
-              </section>
+
+                  {/* 1. Quick Emergency & Operations Hotlines */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+                      gap: '10px',
+                      marginBottom: '18px',
+                    }}
+                  >
+                    <a
+                      href={`tel:${profileEmergencyContact || '9876543210'}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '14px',
+                        textDecoration: 'none',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '10px',
+                          background: '#f0fdf4',
+                          border: '1px solid #bbf7d0',
+                          color: '#15803d',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Phone size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Call Operations Desk</div>
+                        <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>{profileEmergencyContact || '+91 98765 43210'}</div>
+                      </div>
+                    </a>
+
+                    <a
+                      href={`https://wa.me/91${(profileEmergencyContact || '9876543210').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello Dispatch Admin, I am delivery partner ${profileName || boyName} (Area: ${profileArea || boyArea || 'Madhapur'}). I need assistance regarding:`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '14px',
+                        textDecoration: 'none',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '10px',
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          color: '#047857',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <MessageCircle size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>WhatsApp Admin</div>
+                        <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700 }}>Instant Chat Support</div>
+                      </div>
+                    </a>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '14px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '10px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          color: '#2563eb',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <MapPin size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Dispatch Hub</div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{profileArea || boyArea || 'Madhapur'} Depot · Pillar 42</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Text a Message to Admin Form */}
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '18px',
+                      padding: isMobile ? '18px 16px' : '24px 26px',
+                      boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
+                      marginBottom: '18px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                      <div
+                        style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: '10px',
+                          background: 'linear-gradient(135deg, #059669, #10b981)',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                        }}
+                      >
+                        <Headphones size={20} />
+                      </div>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                          Text a Message to Admin
+                        </h3>
+                        <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                          Directly notifies the admin dashboard and dispatch supervisor in real time.
+                        </p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleSendAdminMessage}>
+                      {/* Topic Category Selection */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Select Topic / Issue Type
+                        </label>
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '6px',
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          {[
+                            { id: 'Route & Delivery', label: '🚚 Route & Stops' },
+                            { id: 'Milk & Crates Shortage', label: '🥛 Milk Shortage' },
+                            { id: 'Customer Address Issue', label: '📍 Address Not Found' },
+                            { id: 'Cash & Handover', label: '💰 Cash / Payment' },
+                            { id: 'Vehicle Breakdown', label: '⚠️ Vehicle / EV Issue' },
+                            { id: 'General Query', label: '💬 General Query' },
+                          ].map((cat) => {
+                            const isSelected = supportCategory === cat.id;
+                            return (
+                              <button
+                                key={cat.id}
+                                type="button"
+                                onClick={() => setSupportCategory(cat.id)}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.76rem',
+                                  fontWeight: isSelected ? 800 : 600,
+                                  background: isSelected ? '#ecfdf5' : '#f8fafc',
+                                  color: isSelected ? '#065f46' : '#475569',
+                                  border: `1px solid ${isSelected ? '#10b981' : '#e2e8f0'}`,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                {cat.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Urgency Selector */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Urgency Level
+                        </label>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {[
+                            { id: 'normal', label: 'Normal', color: '#059669', bg: '#ecfdf5' },
+                            { id: 'high', label: 'High Priority', color: '#b45309', bg: '#fffbeb' },
+                            { id: 'urgent', label: '🚨 Urgent / Road Emergency', color: '#b91c1c', bg: '#fef2f2' },
+                          ].map((p) => {
+                            const isSelected = supportPriority === p.id;
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => setSupportPriority(p.id)}
+                                style={{
+                                  padding: '5px 11px',
+                                  borderRadius: '8px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: isSelected ? 800 : 600,
+                                  background: isSelected ? p.bg : '#ffffff',
+                                  color: isSelected ? p.color : '#64748b',
+                                  border: `1.5px solid ${isSelected ? p.color : '#e2e8f0'}`,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {p.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Message Textarea */}
+                      <div style={{ marginBottom: '16px' }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Your Message to Admin
+                        </label>
+                        <textarea
+                          rows={4}
+                          value={supportText}
+                          onChange={(e) => setSupportText(e.target.value)}
+                          placeholder="Type your message or issue for the admin here... (e.g. Stop #3 customer requested 1 extra liter of cow milk, or crate shortage at Madhapur depot)"
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '12px 14px',
+                            borderRadius: '12px',
+                            border: '1px solid #cbd5e1',
+                            background: '#f8fafc',
+                            fontSize: '0.86rem',
+                            color: '#0f172a',
+                            outline: 'none',
+                            fontFamily: 'inherit',
+                            resize: 'vertical',
+                          }}
+                        />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '0.72rem', color: '#94a3b8' }}>
+                          <span>Partner: {profileName || boyName} (ID: NMD-DRV-{(boyId || '').slice(-4).toUpperCase() || '8492'})</span>
+                          <span>{supportText.length} characters</span>
+                        </div>
+                      </div>
+
+                      {/* Send Button */}
+                      <button
+                        type="submit"
+                        disabled={supportLoading || !supportText.trim()}
+                        style={{
+                          width: '100%',
+                          padding: '12px 20px',
+                          borderRadius: '12px',
+                          border: 'none',
+                          background: supportText.trim() ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : '#cbd5e1',
+                          color: '#ffffff',
+                          fontSize: '0.92rem',
+                          fontWeight: 800,
+                          cursor: supportText.trim() && !supportLoading ? 'pointer' : 'not-allowed',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '8px',
+                          boxShadow: supportText.trim() ? '0 4px 12px rgba(5,150,105,0.25)' : 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <Send size={16} />
+                        <span>{supportLoading ? 'Sending to Admin...' : 'Send Message to Admin'}</span>
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* 3. Recent Sent Messages to Admin Log */}
+                  {supportHistory.length > 0 && (
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '18px',
+                        padding: isMobile ? '16px' : '20px 22px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                      }}
+                    >
+                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                        Your Sent Messages to Admin ({supportHistory.length})
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {supportHistory.map((item) => (
+                          <div
+                            key={item.id}
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '12px 14px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
+                                  {item.category}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.66rem',
+                                    fontWeight: 700,
+                                    padding: '1px 6px',
+                                    borderRadius: '4px',
+                                    background: item.priority === 'urgent' ? '#fee2e2' : item.priority === 'high' ? '#fef3c7' : '#ecfdf5',
+                                    color: item.priority === 'urgent' ? '#991b1b' : item.priority === 'high' ? '#92400e' : '#166534',
+                                  }}
+                                >
+                                  {item.priority?.toUpperCase()}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.82rem', color: '#334155', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                              {item.text}
+                            </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
+                              <CheckCheck size={13} />
+                              <span>Delivered to Admin Dashboard</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ) : (
+                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
+                    <button
+                      type="button"
+                      className="modern-profile-header-btn"
+                      onClick={backToDriverProfile}
+                      aria-label="Back to profile"
+                    >
+                      <ArrowLeft size={21} />
+                    </button>
+                    <div>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
+                        {activeProfileDetail?.title || 'Profile details'}
+                      </h2>
+                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.84rem' }}>
+                        {activeProfileDetail?.description || 'Review your delivery partner information.'}
+                      </p>
+                    </div>
+                  </header>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '6px 18px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' }}>
+                    {(activeProfileDetail?.rows || []).map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '18px', padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
+                        <span style={{ color: '#64748b', fontSize: '0.86rem' }}>{label}</span>
+                        <strong style={{ color: '#0f172a', fontSize: '0.88rem', textAlign: 'right', lineHeight: 1.5 }}>{value}</strong>
+                      </div>
+                    ))}
+                    {activeProfileDetail?.action === 'route' && (
+                      <button
+                        type="button"
+                        className="profile-card-action-btn"
+                        style={{ margin: '14px 0 10px' }}
+                        onClick={() => handleNavChange('route')}
+                      >
+                        <Navigation size={15} />
+                        <span>Open route and stops</span>
+                      </button>
+                    )}
+                    {activeProfileDetail?.phone && (
+                      <a
+                        href={`tel:${activeProfileDetail.phone}`}
+                        className="profile-card-action-btn"
+                        style={{ margin: '14px 0 10px', textDecoration: 'none' }}
+                      >
+                        <PhoneCall size={15} />
+                        <span>Call supervisor</span>
+                      </a>
+                    )}
+                  </div>
+                </section>
+              )
             ) : isEditingProfile ? (
               /* ── SCREEN: EDIT PARTNER PROFILE ── */
               <div className="modern-profile-container">
@@ -5860,6 +5848,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                   <button
                     type="button"
+                    className="modern-profile-menu-row"
+                    onClick={() => openProfileDetail('support')}
+                  >
+                    <div className="modern-profile-menu-left">
+                      <span className="modern-profile-menu-icon"><Headphones size={20} color="#059669" /></span>
+                      <div>
+                        <span className="modern-profile-menu-label">Help & Support</span>
+                        <span className="modern-profile-menu-sub">
+                          Text admin, route queries & dispatch helpline
+                        </span>
+                      </div>
+                    </div>
+                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
+                  </button>
+
+                  <button
+                    type="button"
                     className="modern-profile-menu-row is-logout"
                     onClick={() => setShowLogoutConfirm(true)}
                   >
@@ -6167,6 +6172,27 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button
                       type="button"
+                      onClick={() => openProfileDetail('support')}
+                      style={{
+                        background: '#ecfdf5',
+                        color: '#047857',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '12px',
+                        padding: '10px 18px',
+                        fontSize: '0.88rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <Headphones size={16} />
+                      <span>Help & Support</span>
+                    </button>
+                    <button
+                      type="button"
                       className="profile-hero-btn"
                       onClick={openEditProfile}
                     >
@@ -6396,6 +6422,93 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       <Edit2 size={15} />
                       <span>Update Vehicle Details</span>
                     </button>
+                  </div>
+                </div>
+
+                {/* 2.5 Help & Support Desk Card */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+                    border: '1px solid #a7f3d0',
+                    borderRadius: '18px',
+                    padding: '20px 24px',
+                    marginTop: '20px',
+                    marginBottom: '16px',
+                    flexWrap: 'wrap',
+                    gap: '16px',
+                    boxShadow: '0 2px 8px rgba(5, 150, 105, 0.05)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div
+                      style={{
+                        width: '46px',
+                        height: '46px',
+                        borderRadius: '12px',
+                        background: '#059669',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff',
+                        flexShrink: 0,
+                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+                      }}
+                    >
+                      <Headphones size={22} />
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#065f46' }}>
+                        Partner Help & Support Desk
+                      </h4>
+                      <p style={{ margin: '3px 0 0', fontSize: '0.82rem', color: '#047857' }}>
+                        Have an issue on route, milk shortage, or delivery problem? Text the admin dashboard directly in real-time.
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => openProfileDetail('support')}
+                      style={{
+                        background: '#059669',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '10px 18px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+                      }}
+                    >
+                      <MessageCircle size={15} />
+                      <span>Text Admin / Open Help Desk</span>
+                    </button>
+                    <a
+                      href={`tel:${profileEmergencyContact || '9876543210'}`}
+                      style={{
+                        background: '#ffffff',
+                        color: '#065f46',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: '10px',
+                        padding: '10px 16px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <PhoneCall size={15} />
+                      <span>Call Operations Desk</span>
+                    </a>
                   </div>
                 </div>
 
@@ -7304,6 +7417,898 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           </div>
         </div>
       )}
+
+      {/* ============================================================ */}
+      {/* 4.5. CUSTOMER DETAILS MODAL (OPENED ON CARD CLICK)           */}
+      {/* ============================================================ */}
+      {selectedCustomer && (
+        <div
+          className="modal-overlay"
+          onClick={() => setSelectedCustomer(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1150,
+            padding: '16px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '520px',
+              width: '100%',
+              background: '#ffffff',
+              borderRadius: '20px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
+              border: '1px solid #e2e8f0',
+              padding: '22px 20px 24px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Customer Details
+                </h3>
+                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                  Complete subscriber profile and delivery preferences
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCustomer(null)}
+                style={{
+                  background: '#f1f5f9',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                }}
+                aria-label="Close modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Customer Hero Identity Card */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                borderRadius: '16px',
+                padding: '16px',
+                border: '1px solid #e2e8f0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+              }}
+            >
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  background: selectedCustomer.createdBy === 'driver' || selectedCustomer.createdByDriverId === boyId
+                    ? 'linear-gradient(135deg, #059669, #10b981)'
+                    : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '1.4rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                }}
+              >
+                {(selectedCustomer.name || 'C').charAt(0).toUpperCase()}
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    {selectedCustomer.name}
+                  </h4>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '999px',
+                      background: selectedCustomer.status === 'paused' ? '#fef3c7' : '#dcfce7',
+                      color: selectedCustomer.status === 'paused' ? '#92400e' : '#166534',
+                    }}
+                  >
+                    {selectedCustomer.status === 'paused' ? '⏸ Paused' : '✓ Active'}
+                  </span>
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
+                  ID: {selectedCustomer.customerId || `#${(selectedCustomer.id || '').slice(-6)}`}
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                  {(selectedCustomer.subscription?.status === 'active' || (selectedCustomer.subscription?.endDate && new Date(selectedCustomer.subscription.endDate) >= new Date())) && (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe' }}>
+                      ★ 30-Day Subscription
+                    </span>
+                  )}
+                  {selectedCustomer.createdBy === 'driver' || selectedCustomer.createdByDriverId === boyId ? (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#ecfdf5', color: '#059669', border: '1px solid #a7f3d0' }}>
+                      👤 Added by Driver
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
+                      🏢 Admin Assigned
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions Strip */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                gap: '8px',
+              }}
+            >
+              <a
+                href={`tel:${selectedCustomer.mobile}`}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  color: '#15803d',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <Phone size={16} />
+                <span>Call</span>
+              </a>
+
+              <a
+                href={`https://wa.me/91${selectedCustomer.mobile?.replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  color: '#047857',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <MessageCircle size={16} />
+                <span>WhatsApp</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => handleToggleCustomerPause(selectedCustomer)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: selectedCustomer.status === 'paused' ? '#ecfdf5' : '#fffbeb',
+                  border: `1px solid ${selectedCustomer.status === 'paused' ? '#a7f3d0' : '#fde68a'}`,
+                  color: selectedCustomer.status === 'paused' ? '#047857' : '#b45309',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {selectedCustomer.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
+                <span>{selectedCustomer.status === 'paused' ? 'Resume' : 'Pause'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const toEdit = selectedCustomer;
+                  setSelectedCustomer(null);
+                  openEditCustomer(toEdit);
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  color: '#1d4ed8',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Edit2 size={16} />
+                <span>Edit</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const toDelete = selectedCustomer;
+                  setSelectedCustomer(null);
+                  setDeletingCustomer(toDelete);
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: '#fff1f2',
+                  border: '1px solid #fecdd3',
+                  color: '#be123c',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Trash2 size={16} />
+                <span>Delete</span>
+              </button>
+            </div>
+
+            {/* Detail Blocks */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* 1. Delivery Plan Box */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                  <Truck size={15} color="#059669" />
+                  <span>Doorstep Delivery Plan</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Daily Milk: </span>
+                    <strong style={{ color: '#0f172a' }}>{selectedCustomer.deliveryPlan?.milkQty || 1} {selectedCustomer.deliveryPlan?.milkUnit || 'L'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Curd Qty: </span>
+                    <strong style={{ color: '#0f172a' }}>{selectedCustomer.deliveryPlan?.curdQty || 0} {selectedCustomer.deliveryPlan?.curdUnit || 'g'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Frequency: </span>
+                    <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{selectedCustomer.deliveryPlan?.frequency || 'Daily'}</strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Delivery Schedule: </span>
+                    <strong style={{ color: '#0f172a' }}>{(selectedCustomer.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).join(', ')}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Subscription & Payment Box */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                  <Wallet size={15} color="#059669" />
+                  <span>Subscription & Payment</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Payment Type: </span>
+                    <strong style={{ color: (selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? '#059669' : '#d97706' }}>
+                      {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Valid Through: </span>
+                    <strong style={{ color: '#6b21a8' }}>
+                      {selectedCustomer.subscription?.endDate
+                        ? new Date(selectedCustomer.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : 'Active / Ongoing'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Outstanding Due: </span>
+                    <strong style={{ color: selectedCustomer.currentBalance > 0 ? '#dc2626' : '#059669' }}>
+                      ₹{selectedCustomer.currentBalance || 0}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Status: </span>
+                    <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
+                      {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Address & Drop Instructions */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                  <MapPin size={15} color="#059669" />
+                  <span>Delivery Address & Location</span>
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.5 }}>
+                  <div><strong>Address: </strong>{selectedCustomer.address || 'Not specified'}</div>
+                  {selectedCustomer.area && <div><strong>Area: </strong>{selectedCustomer.area}</div>}
+                  {selectedCustomer.landmark && <div><strong>Landmark: </strong>{selectedCustomer.landmark}</div>}
+                  {selectedCustomer.notes && (
+                    <div style={{ marginTop: '6px', padding: '6px 8px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #a7f3d0', color: '#065f46' }}>
+                      💬 <strong>Delivery Instructions:</strong> {selectedCustomer.notes}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 4. Contact Details Box */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                  <Phone size={15} color="#059669" />
+                  <span>Contact Information</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                  <div>
+                    <span style={{ color: '#64748b' }}>Primary Phone: </span>
+                    <div><a href={`tel:${selectedCustomer.mobile}`} style={{ color: '#059669', fontWeight: 700, textDecoration: 'none' }}>{selectedCustomer.mobile}</a></div>
+                  </div>
+                  <div>
+                    <span style={{ color: '#64748b' }}>WhatsApp: </span>
+                    <div><a href={`https://wa.me/91${(selectedCustomer.whatsapp || selectedCustomer.mobile)?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>{selectedCustomer.whatsapp || selectedCustomer.mobile}</a></div>
+                  </div>
+                  {selectedCustomer.email && (
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <span style={{ color: '#64748b' }}>Email: </span>
+                      <strong style={{ color: '#0f172a' }}>{selectedCustomer.email}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedCustomer(null)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                background: '#f8fafc',
+                color: '#475569',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                marginTop: '4px',
+              }}
+            >
+              Close Details
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* 4.6. ROUTE STOP DETAILS MODAL (OPENED ON ROUTE CARD CLICK)   */}
+      {/* ============================================================ */}
+      {selectedRouteStop && (() => {
+        const item = selectedRouteStop;
+        const customerInfo = item.customerInfo || (assignedCustomers || []).find(
+          (c) => c.customerId === item.customerId ||
+                 c.mobile === item.customerPhone ||
+                 c._id === item.customerId ||
+                 c.id === item.customerId
+        );
+        const isDone = item.status === 'delivered';
+        const isMissed = item.status === 'not_delivered';
+        const isPending = item.status === 'pending';
+        const isSubscription = Boolean(item.subscriptionEndDate) ||
+          customerInfo?.subscription?.status === 'active' ||
+          item.paymentMethod === 'prepaid';
+        const subDateText = item.subscriptionEndDate
+          ? new Date(item.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : customerInfo?.subscription?.endDate
+          ? new Date(customerInfo.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '';
+        const customerPhone = item.customerPhone || customerInfo?.mobile || '';
+        const doorstepAddress = item.customerAddress || customerInfo?.address || 'Doorstep Delivery';
+        const landmark = item.landmark || customerInfo?.landmark || '';
+        const specialNotes = item.deliveryNotes || customerInfo?.deliveryNotes || customerInfo?.notes || '';
+        const mapAddress = `${doorstepAddress}, ${item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}`;
+        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
+
+        return (
+          <div
+            className="modal-overlay"
+            onClick={() => setSelectedRouteStop(null)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.65)',
+              backdropFilter: 'blur(4px)',
+              WebkitBackdropFilter: 'blur(4px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1150,
+              padding: '16px',
+              boxSizing: 'border-box',
+            }}
+          >
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '520px',
+                width: '100%',
+                background: '#ffffff',
+                borderRadius: '20px',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
+                border: '1px solid #e2e8f0',
+                padding: '22px 20px 24px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+              }}
+            >
+              {/* Modal Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                    Route Stop #{item.originalIndex !== undefined ? item.originalIndex + 1 : '1'}
+                  </h3>
+                  <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    Doorstep delivery details & route actions
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRouteStop(null)}
+                  style={{
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Close modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Customer Hero Identity Card */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '14px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '50%',
+                    background: isDone
+                      ? 'linear-gradient(135deg, #059669, #10b981)'
+                      : isMissed
+                      ? 'linear-gradient(135deg, #dc2626, #ef4444)'
+                      : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '1.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  }}
+                >
+                  {(item.customerName || 'C').charAt(0).toUpperCase()}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h4 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                      {item.customerName}
+                    </h4>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: isDone ? '#dcfce7' : isMissed ? '#fee2e2' : '#fef3c7',
+                        color: isDone ? '#166534' : isMissed ? '#991b1b' : '#92400e',
+                      }}
+                    >
+                      {isDone ? '✓ Delivered' : isMissed ? '✕ Skipped' : '○ Pending Drop'}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px', fontWeight: 600 }}>
+                    ID: {item.customerId || customerInfo?.customerId || `#${(item.id || '').slice(-6)}`}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                    {isSubscription && (
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#f5f3ff', color: '#7c3aed', border: '1px solid #ddd6fe' }}>
+                        ★ Prepaid Subscription
+                      </span>
+                    )}
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe' }}>
+                      📍 Stop #{item.originalIndex !== undefined ? item.originalIndex + 1 : '1'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions Strip */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                  gap: '8px',
+                }}
+              >
+                {isPending && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const toDeliver = item;
+                      setSelectedRouteStop(null);
+                      openDeliverModal(toDeliver);
+                    }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      padding: '9px 6px',
+                      borderRadius: '10px',
+                      background: '#059669',
+                      border: '1px solid #059669',
+                      color: '#ffffff',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.25)',
+                    }}
+                  >
+                    <Check size={16} />
+                    <span>Deliver</span>
+                  </button>
+                )}
+
+                {isPending && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const toSkip = item;
+                      setSelectedRouteStop(null);
+                      openNotDeliveredModal(toSkip);
+                    }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      padding: '9px 6px',
+                      borderRadius: '10px',
+                      background: '#fff1f2',
+                      border: '1px solid #fecaca',
+                      color: '#b91c1c',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={16} />
+                    <span>Skip</span>
+                  </button>
+                )}
+
+                {customerPhone && (
+                  <a
+                    href={`tel:${customerPhone}`}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      padding: '9px 6px',
+                      borderRadius: '10px',
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      color: '#15803d',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Phone size={16} />
+                    <span>Call</span>
+                  </a>
+                )}
+
+                {customerPhone && (
+                  <a
+                    href={`https://wa.me/91${customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hello ${item.customerName}, your fresh milk delivery from Natural Milk Dairy is arriving at your doorstep!`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      padding: '9px 6px',
+                      borderRadius: '10px',
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#047857',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <MessageCircle size={16} />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+
+                <a
+                  href={mapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    padding: '9px 6px',
+                    borderRadius: '10px',
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Navigation size={16} />
+                  <span>Map</span>
+                </a>
+
+                {isMissed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const toRetry = item;
+                      setSelectedRouteStop(null);
+                      openDeliverModal(toRetry);
+                    }}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                      padding: '9px 6px',
+                      borderRadius: '10px',
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <CheckCheck size={16} />
+                    <span>Retry Drop</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Detail Blocks */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* 1. Today's Delivery Plan Box */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                    <Truck size={15} color="#059669" />
+                    <span>Today’s Doorstep Delivery Plan</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Milk Quantity: </span>
+                      <strong style={{ color: '#0f172a' }}>{item.actualMilk || item.plannedMilk || 1} L Milk</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Curd Quantity: </span>
+                      <strong style={{ color: '#0f172a' }}>{item.actualCurd || item.plannedCurd || customerInfo?.deliveryPlan?.curdQty || 0} g Curd</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Frequency: </span>
+                      <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>
+                        {customerInfo?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Everyday Morning'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Delivery Slot: </span>
+                      <strong style={{ color: '#0f172a' }}>05:00 – 07:30 AM</strong>
+                    </div>
+                    {isDone && item.deliveredAt && (
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: '#64748b' }}>Delivered Time: </span>
+                        <strong style={{ color: '#059669' }}>
+                          {new Date(item.deliveredAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. Subscription & Payment Box */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                    <Wallet size={15} color="#059669" />
+                    <span>Subscription & Payment</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Payment Type: </span>
+                      <strong style={{ color: isSubscription ? '#059669' : '#d97706' }}>
+                        {isSubscription ? 'Prepaid Plan' : 'Cash on Delivery'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Amount: </span>
+                      <strong style={{ color: '#0f172a' }}>
+                        {isSubscription ? (subDateText ? `Valid to ${subDateText}` : 'Prepaid Active') : `₹${item.totalAmount}`}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Drop Status: </span>
+                      <strong style={{ color: isDone ? '#059669' : isMissed ? '#dc2626' : '#d97706' }}>
+                        {isDone ? 'Completed' : isMissed ? 'Skipped' : 'Pending Drop'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span style={{ color: '#64748b' }}>Route Area: </span>
+                      <strong style={{ color: '#0f172a' }}>{item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Address & Drop Instructions */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                    <MapPin size={15} color="#059669" />
+                    <span>Delivery Address & Location</span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: '#334155', lineHeight: 1.5 }}>
+                    <div><strong>Address: </strong>{doorstepAddress}</div>
+                    {landmark && <div><strong>Landmark: </strong>{landmark}</div>}
+                    {specialNotes && (
+                      <div style={{ marginTop: '6px', padding: '6px 8px', background: '#ecfdf5', borderRadius: '6px', border: '1px solid #a7f3d0', color: '#065f46' }}>
+                        💬 <strong>Doorstep Note:</strong> {specialNotes}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. Contact Details Box */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                    <Phone size={15} color="#059669" />
+                    <span>Contact Information</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                    {customerPhone && (
+                      <div>
+                        <span style={{ color: '#64748b' }}>Primary Phone: </span>
+                        <div><a href={`tel:${customerPhone}`} style={{ color: '#059669', fontWeight: 700, textDecoration: 'none' }}>{customerPhone}</a></div>
+                      </div>
+                    )}
+                    {customerPhone && (
+                      <div>
+                        <span style={{ color: '#64748b' }}>WhatsApp: </span>
+                        <div><a href={`https://wa.me/91${customerPhone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>{customerPhone}</a></div>
+                      </div>
+                    )}
+                    {customerInfo?.email && (
+                      <div style={{ gridColumn: 'span 2' }}>
+                        <span style={{ color: '#64748b' }}>Email: </span>
+                        <strong style={{ color: '#0f172a' }}>{customerInfo.email}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedRouteStop(null)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#f8fafc',
+                  color: '#475569',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  marginTop: '4px',
+                }}
+              >
+                Close Stop Details
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ============================================================ */}
       {/* 5. ADD / EDIT CUSTOMER MODAL (FULL CRUD)                      */}

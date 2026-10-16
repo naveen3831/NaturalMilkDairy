@@ -79,6 +79,7 @@ const defaultSeedNotifications = [
 
 // In-memory fallback if MongoDB is not reachable
 let memoryNotifications = [...defaultSeedNotifications];
+let hasSeededDB = false;
 
 const getNotifications = async (req, res) => {
   try {
@@ -97,29 +98,49 @@ const getNotifications = async (req, res) => {
 
     let list = [];
     try {
-      const count = await Notification.countDocuments();
-      if (count === 0) {
-        // Seed initial notifications
-        await Notification.insertMany(defaultSeedNotifications);
+      if (!hasSeededDB) {
+        hasSeededDB = true;
+        const count = await Notification.countDocuments();
+        if (count === 0) {
+          await Notification.insertMany(defaultSeedNotifications);
+        }
       }
       list = await Notification.find(filter).sort({ createdAt: -1 }).limit(50).lean();
     } catch (dbErr) {
-      // Fallback in-memory
-      list = memoryNotifications.filter((n) => {
-        if (!role || role === 'all') return true;
-        return n.recipientRole === role || n.recipientRole === 'all' || n.recipientId === userId;
-      });
+      list = [];
     }
+
+    // Always merge in-memory notifications matching filter
+    const memMatching = memoryNotifications.filter((n) => {
+      if (!role || role === 'all') return true;
+      return n.recipientRole === role || n.recipientRole === 'all' || (userId && n.recipientId === userId);
+    });
+
+    const existingIds = new Set(list.map((n) => (n._id ? n._id.toString() : n.id)));
+    for (const memItem of memMatching) {
+      const memId = memItem._id ? memItem._id.toString() : memItem.id;
+      if (!existingIds.has(memId)) {
+        list.unshift(memItem);
+        existingIds.add(memId);
+      }
+    }
+
+    // Restore originalType if stored inside data
+    list = list.map((n) => {
+      const rawType = n.data?.originalType || n.type;
+      return {
+        ...n,
+        type: rawType,
+        id: n._id ? n._id.toString() : (n.id || Math.random().toString(36).substr(2, 9)),
+      };
+    });
 
     const unreadCount = list.filter((n) => !n.isRead).length;
 
     return res.json({
       success: true,
       unreadCount,
-      notifications: list.map((n) => ({
-        ...n,
-        id: n._id ? n._id.toString() : (n.id || Math.random().toString(36).substr(2, 9)),
-      })),
+      notifications: list,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -149,7 +170,21 @@ const createNotification = async (req, res) => {
     try {
       savedItem = await Notification.create(itemData);
     } catch (dbErr) {
-      savedItem = { ...itemData, id: 'mem_' + Date.now() };
+      try {
+        // Retry with system type if enum failed
+        const fallbackItem = {
+          ...itemData,
+          type: 'system',
+          data: { ...itemData.data, originalType: itemData.type },
+        };
+        const createdFallback = await Notification.create(fallbackItem);
+        savedItem = {
+          ...createdFallback.toObject(),
+          type: itemData.type,
+        };
+      } catch (retryErr) {
+        savedItem = { ...itemData, id: 'mem_' + Date.now() };
+      }
       memoryNotifications.unshift(savedItem);
     }
 
@@ -159,6 +194,7 @@ const createNotification = async (req, res) => {
       success: true,
       notification: {
         ...savedItem,
+        type: itemData.type,
         id: savedItem._id ? savedItem._id.toString() : savedItem.id,
       },
     });
@@ -254,6 +290,8 @@ const deleteNotification = async (req, res) => {
     memoryNotifications = memoryNotifications.filter((n) =>
       n.id !== id && (!n._id || n._id.toString() !== id)
     );
+
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({ success: true, message: 'Notification deleted' });
   } catch (err) {

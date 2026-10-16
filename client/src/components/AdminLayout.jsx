@@ -23,6 +23,7 @@ import {
   Receipt,
   BadgeAlert,
   MapPin,
+  Headphones,
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
@@ -68,6 +69,29 @@ export default function AdminLayout({
       if (typeof unsub2 === 'function') unsub2();
     };
   }, [wsSubscribe, fetchPendingHandovers]);
+
+  const [openTicketsCount, setOpenTicketsCount] = useState(0);
+
+  const fetchTicketCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/supports');
+      const data = await res.json();
+      if (data.success) {
+        setOpenTicketsCount(data.openCount || 0);
+      }
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    fetchTicketCount();
+    if (!wsSubscribe) return;
+    const unsubT1 = wsSubscribe('SUPPORT_TICKET_CREATED', fetchTicketCount);
+    const unsubT2 = wsSubscribe('SUPPORT_TICKET_UPDATED', fetchTicketCount);
+    return () => {
+      if (typeof unsubT1 === 'function') unsubT1();
+      if (typeof unsubT2 === 'function') unsubT2();
+    };
+  }, [wsSubscribe, fetchTicketCount]);
 
   const summary = dashboardSummary || {};
 
@@ -153,9 +177,24 @@ export default function AdminLayout({
       badge: null,
       desc: 'Compliance & activity history',
     },
+    {
+      id: 'supports',
+      label: 'Help & Supports',
+      icon: Headphones,
+      badge: openTicketsCount > 0 ? `${openTicketsCount} New` : null,
+      badgeColor: '#0284c7',
+      desc: 'Driver & customer real-time messages',
+    },
   ];
 
   const currentNav = (() => {
+    if (activeTab === 'supports') {
+      return {
+        id: 'supports',
+        label: 'Help & Support Desk',
+        desc: 'Incoming route assistance requests from delivery partners and customer inquiries',
+      };
+    }
     if (activeTab === 'locations') {
       return {
         id: 'locations',

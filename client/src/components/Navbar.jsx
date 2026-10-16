@@ -47,12 +47,16 @@ export default function Navbar({ activeTab, setActiveTab }) {
     }, 40);
   };
 
-  const openUserPortal = () => {
+  const openUserPortal = (target = null) => {
     if (user?.role === 'admin') setActiveTab('dashboard');
     else if (user?.role === 'delivery_boy') setActiveTab('delivery-boy-app');
     else {
-      localStorage.setItem('nmd_customer_page', 'profile');
-      setActiveTab('customer-portal');
+      const targetPage = target || 'dashboard';
+      localStorage.setItem('nmd_customer_page', targetPage);
+      if (typeof setActiveTab === 'function') {
+        setActiveTab('customer-portal');
+      }
+      window.history.pushState({ nmdCustomerPage: true }, '', `/customer/${targetPage}`);
     }
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
@@ -234,19 +238,20 @@ export default function Navbar({ activeTab, setActiveTab }) {
             </button>
           </nav>
 
-          {/* Right Action: LOGIN & REGISTER (Clearly Visible) */}
-          <div className="public-site-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Right Action: LOGIN & REGISTER or USER ACTIONS */}
+          <div className="public-site-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {user ? (
               // Logged in User Controls
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <button
+                  type="button"
                   onClick={() => {
                     openUserPortal();
                   }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    gap: '7px',
                     padding: '8px 16px',
                     borderRadius: '8px',
                     background: '#eaf5ee',
@@ -255,10 +260,26 @@ export default function Navbar({ activeTab, setActiveTab }) {
                     fontSize: '0.88rem',
                     border: '1px solid #bbf7d0',
                     cursor: 'pointer',
+                    transition: 'all 0.2s',
                   }}
+                  title="Open Portal Console"
                 >
-                  {user.role === 'admin' ? <ShieldCheck size={16} /> : user.role === 'delivery_boy' ? <Truck size={16} /> : <User size={16} />}
-                  <span>{user.role === 'admin' ? 'Owner Portal' : user.role === 'delivery_boy' ? 'Delivery App' : 'Profile'}</span>
+                  {user.role === 'admin' ? (
+                    <ShieldCheck size={16} />
+                  ) : user.role === 'delivery_boy' ? (
+                    <Truck size={16} />
+                  ) : (
+                    <User size={16} />
+                  )}
+                  <span>
+                    {user.role === 'admin'
+                      ? 'Owner Portal'
+                      : user.role === 'delivery_boy'
+                        ? 'Delivery App'
+                        : user.name
+                          ? `${user.name.split(' ')[0]}'s Portal`
+                          : 'Customer Portal'}
+                  </span>
                 </button>
 
                 <button
@@ -297,6 +318,32 @@ export default function Navbar({ activeTab, setActiveTab }) {
                       {unreadCount}
                     </span>
                   )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    logout();
+                    navigatePage('home');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: '#fff1f2',
+                    color: '#be123c',
+                    fontWeight: 700,
+                    fontSize: '0.86rem',
+                    border: '1px solid #fecdd3',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                  }}
+                  title="Sign out of your account"
+                >
+                  <LogOut size={15} />
+                  <span>Logout</span>
                 </button>
               </div>
             ) : (
@@ -362,12 +409,15 @@ export default function Navbar({ activeTab, setActiveTab }) {
           items={CUSTOMER_HOME_NAV_ITEMS}
           activePage={activeTab === 'landing' ? 'home' : activeTab}
           onNavigate={(page) => {
-            if (page === 'profile' && user?.role === 'customer') {
-              openUserPortal();
-              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            if (page === 'profile') {
+              if (user?.role === 'customer') {
+                openUserPortal('profile');
+                return;
+              }
+              navigatePage('login');
               return;
             }
-            navigatePage(page === 'profile' ? 'login' : page);
+            navigatePage(page);
           }}
         />
       </>
@@ -797,7 +847,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 type="button"
                 className="portal-profile-link"
                 onClick={() => {
-                  openUserPortal();
+                  openUserPortal('profile');
                   setDropdownOpen(false);
                 }}
               >

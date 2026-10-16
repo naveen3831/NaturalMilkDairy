@@ -229,12 +229,15 @@ export default function HomePage({ setActiveTab }) {
   return (
     <div className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
       
-      <section
-        className="home-hero-banner"
-        style={{
-          backgroundImage: `url(${CLOUDINARY_MEDIA.heroDairy})`,
-        }}
-      >
+      <section className="home-hero-banner">
+        <div
+          className="home-hero-bg"
+          style={{
+            backgroundImage: `url(${CLOUDINARY_MEDIA.heroDairy}), url(/hero-dairy.jpg)`,
+          }}
+          role="img"
+          aria-label="Fresh farm milk, glass bottle, and dairy pasture"
+        />
         <div className="home-hero-overlay" />
         <div className="home-hero-inner">
           <div className="home-hero-copy">

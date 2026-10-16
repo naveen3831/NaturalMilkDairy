@@ -8,13 +8,34 @@ export function NotificationProvider({ children }) {
   const { user, getAuthHeaders } = useAuth();
   const { subscribe: wsSubscribe } = useWebSocket();
   // Intelligently identify current active portal / role
-  const currentRole = user?.role || (
-    typeof window !== 'undefined' && window.location.search.includes('tab=delivery')
-      ? 'delivery_boy'
-      : (typeof window !== 'undefined' && (window.location.search.includes('portal=admin') || window.location.search.includes('tab='))
-        ? 'admin'
-        : 'customer')
-  );
+  const currentRole = (() => {
+    if (user?.role) return user.role;
+    if (typeof window === 'undefined') return 'admin';
+    const path = window.location.pathname.toLowerCase();
+    const search = window.location.search.toLowerCase();
+    if (path.startsWith('/delivery') || search.includes('delivery')) return 'delivery_boy';
+    if (
+      path.startsWith('/admin') ||
+      path === '/dashboard' ||
+      path === '/deliveries' ||
+      path === '/customers' ||
+      path === '/subscriptions' ||
+      path === '/payments' ||
+      path === '/ledger' ||
+      path === '/outstanding' ||
+      path === '/pricing' ||
+      path === '/delivery-boys' ||
+      path === '/locations' ||
+      path === '/audit-logs' ||
+      path === '/supports' ||
+      search.includes('portal=admin') ||
+      search.includes('tab=dashboard')
+    ) {
+      return 'admin';
+    }
+    if (path.startsWith('/customer') || search.includes('portal=customer')) return 'customer';
+    return 'admin';
+  })();
   const currentUserId = user?.id || user?.customerId || '';
 
   const [notifications, setNotifications] = useState([]);
@@ -134,9 +155,10 @@ export function NotificationProvider({ children }) {
         headers: getAuthHeaders ? getAuthHeaders() : {},
       });
       const data = await res.json();
-      if (data.success && Array.isArray(data.notifications) && data.notifications.length > 0) {
+      if (data.success && Array.isArray(data.notifications)) {
         setNotifications(data.notifications);
-        setUnreadCount(data.unreadCount || data.notifications.filter((n) => !n.isRead).length);
+        setUnreadCount(data.unreadCount ?? data.notifications.filter((n) => !n.isRead).length);
+        localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(data.notifications));
         return;
       }
     } catch (err) {
@@ -145,7 +167,7 @@ export function NotificationProvider({ children }) {
 
     // Local fallback if no data from API
     const saved = localStorage.getItem(`nmd_notifs_${currentRole}`);
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
         setNotifications(parsed);
@@ -169,10 +191,8 @@ export function NotificationProvider({ children }) {
 
   // Persist to local storage
   useEffect(() => {
-    if (notifications.length > 0) {
-      localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(notifications));
-      setUnreadCount(notifications.filter((n) => !n.isRead).length);
-    }
+    localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(notifications));
+    setUnreadCount(notifications.filter((n) => !n.isRead).length);
   }, [notifications, currentRole]);
 
   // Send a new notification (dispatches to server and updates local state)
@@ -195,9 +215,15 @@ export function NotificationProvider({ children }) {
       setUnreadCount((prev) => prev + 1);
     }
 
-    // Trigger visual toast
-    setLatestToast(newNotif);
-    setTimeout(() => setLatestToast(null), 5000);
+    // Also update admin local cache if sent for admin
+    if (recipientRole === 'admin' || recipientRole === 'all') {
+      try {
+        const savedAdm = JSON.parse(localStorage.getItem('nmd_notifs_admin') || '[]');
+        if (!savedAdm.some((n) => n.id === newNotif.id)) {
+          localStorage.setItem('nmd_notifs_admin', JSON.stringify([newNotif, ...savedAdm].slice(0, 50)));
+        }
+      } catch (e) {}
+    }
 
     try {
       await fetch('/api/notifications', {
@@ -207,6 +233,30 @@ export function NotificationProvider({ children }) {
       });
     } catch (e) {
       console.warn('Error sending notification to API:', e);
+    }
+
+    // Automatically create Support Ticket record if partner or customer message
+    if (type === 'partner_message' || type === 'customer_message' || type === 'ticket') {
+      try {
+        await fetch('/api/supports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+          body: JSON.stringify({
+            senderRole: type === 'partner_message' ? 'delivery_boy' : 'customer',
+            senderId: data?.senderId || data?.customerId || '',
+            senderName: data?.senderName || data?.customerName || (type === 'partner_message' ? 'Delivery Partner' : 'Customer'),
+            senderPhone: data?.senderPhone || data?.customerPhone || '',
+            senderArea: data?.area || data?.customerArea || 'Madhapur',
+            senderAddress: data?.address || '',
+            category: data?.category || 'Support Request',
+            priority: data?.priority || 'normal',
+            subject: title,
+            message: data?.rawMessage || data?.text || message,
+          }),
+        });
+      } catch (e) {
+        console.warn('Support ticket API creation warning:', e);
+      }
     }
   };
 
@@ -256,13 +306,15 @@ export function NotificationProvider({ children }) {
   const clearAllNotifications = async () => {
     setNotifications([]);
     setUnreadCount(0);
-    localStorage.removeItem(`nmd_notifs_${currentRole}`);
+    localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify([]));
     try {
       await fetch(`/api/notifications/clear-all?role=${currentRole}&userId=${currentUserId}`, {
         method: 'DELETE',
         headers: getAuthHeaders ? getAuthHeaders() : {},
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Clear notifications error:', e);
+    }
   };
 
   return (

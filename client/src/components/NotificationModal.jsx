@@ -16,6 +16,12 @@ import {
   ShieldCheck,
   Radio,
   ExternalLink,
+  ArrowLeft,
+  ChevronRight,
+  Headphones,
+  User,
+  Phone,
+  MapPin,
 } from 'lucide-react';
 
 export default function NotificationModal() {
@@ -32,6 +38,14 @@ export default function NotificationModal() {
   } = useNotifications();
 
   const [activeTab, setActiveTab] = useState('all');
+  const [selectedNotification, setSelectedNotification] = useState(null);
+
+  // Reset selected notification when drawer closes
+  useEffect(() => {
+    if (!isNotificationOpen) {
+      setSelectedNotification(null);
+    }
+  }, [isNotificationOpen]);
 
   // Handle ESC key to close drawer & lock body scroll
   useEffect(() => {
@@ -64,7 +78,10 @@ export default function NotificationModal() {
         item.type === 'delivery_completed' ||
         item.type === 'delivery_missed' ||
         item.type === 'route_update' ||
-        item.type === 'subscription_created'
+        item.type === 'subscription_created' ||
+        item.type === 'partner_message' ||
+        item.type === 'customer_message' ||
+        item.type === 'ticket'
       );
     }
     if (activeTab === 'system') {
@@ -95,7 +112,7 @@ export default function NotificationModal() {
         return {
           icon: <Truck size={17} color="#2563eb" />,
           bg: '#eff6ff',
-          border: '#bfdbfe',
+          border: '#e2e8f0',
           tag: 'DISPATCH',
           tagColor: '#1d4ed8',
           tagBg: '#dbeafe',
@@ -104,7 +121,7 @@ export default function NotificationModal() {
         return {
           icon: <Sparkles size={17} color="#d97706" />,
           bg: '#fffbeb',
-          border: '#fde68a',
+          border: '#e2e8f0',
           tag: 'SUBSCRIPTION',
           tagColor: '#b45309',
           tagBg: '#fef3c7',
@@ -113,7 +130,7 @@ export default function NotificationModal() {
         return {
           icon: <CheckCircle2 size={17} color="#059669" />,
           bg: '#ecfdf5',
-          border: '#a7f3d0',
+          border: '#e2e8f0',
           tag: 'DELIVERED',
           tagColor: '#047857',
           tagBg: '#d1fae5',
@@ -122,7 +139,7 @@ export default function NotificationModal() {
         return {
           icon: <AlertCircle size={17} color="#dc2626" />,
           bg: '#fef2f2',
-          border: '#fecaca',
+          border: '#e2e8f0',
           tag: 'ALERT',
           tagColor: '#b91c1c',
           tagBg: '#fee2e2',
@@ -131,17 +148,36 @@ export default function NotificationModal() {
         return {
           icon: <Package size={17} color="#7c3aed" />,
           bg: '#f5f3ff',
-          border: '#ddd6fe',
+          border: '#e2e8f0',
           tag: 'ROUTE PLAN',
           tagColor: '#6d28d9',
           tagBg: '#ede9fe',
+        };
+      case 'partner_message':
+        return {
+          icon: <AlertCircle size={17} color="#059669" />,
+          bg: '#ecfdf5',
+          border: '#e2e8f0',
+          tag: 'DRIVER MESSAGE',
+          tagColor: '#065f46',
+          tagBg: '#d1fae5',
+        };
+      case 'customer_message':
+      case 'ticket':
+        return {
+          icon: <Headphones size={17} color="#0284c7" />,
+          bg: '#f0f9ff',
+          border: '#e2e8f0',
+          tag: 'CUSTOMER MESSAGE',
+          tagColor: '#0369a1',
+          tagBg: '#e0f2fe',
         };
       case 'system':
       default:
         return {
           icon: <Sparkles size={17} color="#059669" />,
           bg: '#f0fdf4',
-          border: '#bbf7d0',
+          border: '#e2e8f0',
           tag: 'UPDATE',
           tagColor: '#065f46',
           tagBg: '#ecfdf5',
@@ -460,7 +496,10 @@ export default function NotificationModal() {
             {notifications.length > 0 && (
               <button
                 type="button"
-                onClick={clearAllNotifications}
+                onClick={() => {
+                  clearAllNotifications();
+                  setSelectedNotification(null);
+                }}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -483,325 +522,520 @@ export default function NotificationModal() {
                   e.currentTarget.style.background = 'transparent';
                   e.currentTarget.style.color = '#94a3b8';
                 }}
-                title="Clear all notifications"
+                title="Delete all notifications"
               >
                 <Trash2 size={13} />
-                <span>Clear</span>
+                <span>Clear all</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Scrollable Notification Cards Feed */}
-        <div
-          className="nmd-notification-list"
-          style={{
-            padding: '16px 20px',
-            overflowY: 'auto',
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            background: '#ffffff',
-          }}
-        >
-          {filteredNotifications.length === 0 ? (
+        {/* Content Body: Either Single Notification Detail View or Cards Feed */}
+        {selectedNotification ? (
+          /* ================= Notification Detail View ================= */
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              background: '#ffffff',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Detail View Top Toolbar */}
             <div
               style={{
+                padding: '12px 20px',
+                borderBottom: '1px solid #f1f5f9',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'center',
-                padding: '60px 24px',
-                textAlign: 'center',
-                margin: 'auto 0',
+                justifyContent: 'space-between',
+                background: '#fafafa',
+                flexShrink: 0,
               }}
             >
+              <button
+                type="button"
+                onClick={() => setSelectedNotification(null)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  color: '#334155',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#cbd5e1')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#e2e8f0')}
+              >
+                <ArrowLeft size={14} />
+                <span>Back to list</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteNotification) {
+                    deleteNotification(selectedNotification.id);
+                  }
+                  setSelectedNotification(null);
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: '#fff1f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  color: '#dc2626',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#fff1f2')}
+              >
+                <Trash2 size={13} />
+                <span>Delete</span>
+              </button>
+            </div>
+
+            {/* Detail Content Body */}
+            <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
+              {/* Category Tag + Full Timestamp */}
+              {(() => {
+                const meta = getTypeMeta(selectedNotification.type);
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        color: meta.tagColor,
+                        background: meta.tagBg,
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      {meta.icon}
+                      {meta.tag}
+                    </span>
+
+                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Clock size={12} />
+                      {new Date(selectedNotification.createdAt).toLocaleString('en-IN', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* Title */}
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.35 }}>
+                {selectedNotification.title}
+              </h3>
+
+              {/* Full Message Box */}
               <div
                 style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '16px',
                   background: '#f8fafc',
                   border: '1px solid #e2e8f0',
-                  color: '#94a3b8',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '14px',
-                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
-                }}
-              >
-                <BellOff size={24} />
-              </div>
-              <h3
-                style={{
-                  fontSize: '0.98rem',
-                  fontWeight: 800,
+                  borderRadius: '12px',
+                  padding: '16px',
+                  fontSize: '0.88rem',
                   color: '#1e293b',
-                  margin: '0 0 6px 0',
+                  lineHeight: 1.6,
+                  whiteSpace: 'pre-wrap',
                 }}
               >
-                {activeTab === 'unread' ? 'All Caught Up!' : 'No Notifications'}
-              </h3>
-              <p
-                style={{
-                  fontSize: '0.78rem',
-                  color: '#64748b',
-                  margin: 0,
-                  maxWidth: '280px',
-                  lineHeight: 1.45,
-                }}
-              >
-                {activeTab === 'unread'
-                  ? 'You have read all incoming alerts. Any new deliveries or updates will appear here.'
-                  : 'There are no active notifications in this category right now.'}
-              </p>
-              {activeTab !== 'all' && (
+                {selectedNotification.message}
+              </div>
+
+              {/* Extra Metadata (if available) */}
+              {selectedNotification.data && Object.keys(selectedNotification.data).filter((k) => k !== 'originalType').length > 0 && (
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    padding: '14px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}
+                >
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Event Information
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                    {selectedNotification.data.customerName && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Customer</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.customerName}</span>
+                      </div>
+                    )}
+                    {selectedNotification.data.partnerName && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Delivery Partner</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.partnerName}</span>
+                      </div>
+                    )}
+                    {(selectedNotification.data.customerPhone || selectedNotification.data.partnerPhone || selectedNotification.data.phone) && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Phone</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                          {selectedNotification.data.customerPhone || selectedNotification.data.partnerPhone || selectedNotification.data.phone}
+                        </span>
+                      </div>
+                    )}
+                    {(selectedNotification.data.customerArea || selectedNotification.data.partnerArea || selectedNotification.data.area) && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Area / Route</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                          {selectedNotification.data.customerArea || selectedNotification.data.partnerArea || selectedNotification.data.area}
+                        </span>
+                      </div>
+                    )}
+                    {selectedNotification.data.category && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Category</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.category}</span>
+                      </div>
+                    )}
+                    {selectedNotification.data.priority && (
+                      <div>
+                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Priority</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase' }}>{selectedNotification.data.priority}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Bottom Back Button */}
+              <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
                 <button
                   type="button"
-                  onClick={() => setActiveTab('all')}
+                  onClick={() => setSelectedNotification(null)}
                   style={{
-                    marginTop: '16px',
-                    padding: '7px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
+                    width: '100%',
+                    padding: '11px',
+                    borderRadius: '10px',
                     background: '#f8fafc',
-                    color: '#059669',
-                    fontSize: '0.76rem',
+                    border: '1px solid #e2e8f0',
+                    color: '#334155',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                   }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#ecfdf5';
-                    e.currentTarget.style.borderColor = '#a7f3d0';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f8fafc';
-                    e.currentTarget.style.borderColor = '#e2e8f0';
-                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#f8fafc')}
                 >
-                  View All Notifications
+                  ← Return to All Notifications
                 </button>
-              )}
+              </div>
             </div>
-          ) : (
-            filteredNotifications.map((item) => {
-              const meta = getTypeMeta(item.type);
-              const isUnread = !item.isRead;
-
-              return (
+          </div>
+        ) : (
+          /* ================= Scrollable Notification Cards Feed ================= */
+          <div
+            className="nmd-notification-list"
+            style={{
+              padding: '16px 20px',
+              overflowY: 'auto',
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              background: '#ffffff',
+            }}
+          >
+            {filteredNotifications.length === 0 ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '60px 24px',
+                  textAlign: 'center',
+                  margin: 'auto 0',
+                }}
+              >
                 <div
-                  key={item.id}
-                  className="nmd-notification-card"
-                  onClick={() => isUnread && markAsRead(item.id)}
                   style={{
-                    padding: '14px 15px',
-                    borderRadius: '13px',
-                    background: isUnread
-                      ? 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)'
-                      : '#ffffff',
-                    border: isUnread ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-                    borderLeft: isUnread ? '3.5px solid #059669' : '1px solid #e2e8f0',
-                    boxShadow: isUnread
-                      ? '0 2px 8px rgba(5, 150, 105, 0.06)'
-                      : '0 1px 3px rgba(0, 0, 0, 0.02)',
+                    width: '56px',
+                    height: '56px',
+                    borderRadius: '16px',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    color: '#94a3b8',
                     display: 'flex',
-                    gap: '12px',
-                    cursor: isUnread ? 'pointer' : 'default',
-                    transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
-                    position: 'relative',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.06)';
-                    e.currentTarget.style.transform = 'translateY(-1px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = isUnread
-                      ? '0 2px 8px rgba(5, 150, 105, 0.06)'
-                      : '0 1px 3px rgba(0, 0, 0, 0.02)';
-                    e.currentTarget.style.transform = 'translateY(0)';
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '14px',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.03)',
                   }}
                 >
-                  {/* Category Type Icon Box */}
-                  <div
+                  <BellOff size={24} />
+                </div>
+                <h3
+                  style={{
+                    fontSize: '0.98rem',
+                    fontWeight: 800,
+                    color: '#1e293b',
+                    margin: '0 0 6px 0',
+                  }}
+                >
+                  {activeTab === 'unread' ? 'All Caught Up!' : 'No Notifications'}
+                </h3>
+                <p
+                  style={{
+                    fontSize: '0.78rem',
+                    color: '#64748b',
+                    margin: 0,
+                    maxWidth: '280px',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {activeTab === 'unread'
+                    ? 'You have read all incoming alerts. Any new deliveries or updates will appear here.'
+                    : 'There are no active notifications in this category right now.'}
+                </p>
+                {activeTab !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('all')}
                     style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '10px',
-                      background: meta.bg,
-                      border: `1px solid ${meta.border}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      marginTop: '1px',
+                      marginTop: '16px',
+                      padding: '7px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      color: '#059669',
+                      fontSize: '0.76rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#ecfdf5';
+                      e.currentTarget.style.borderColor = '#a7f3d0';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#f8fafc';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
                     }}
                   >
-                    {meta.icon}
-                  </div>
+                    View All Notifications
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredNotifications.map((item) => {
+                const meta = getTypeMeta(item.type);
+                const isUnread = !item.isRead;
 
-                  {/* Body Details */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Top Meta Strip: Category Tag + Relative Time */}
+                return (
+                  <div
+                    key={item.id}
+                    className="nmd-notification-card"
+                    onClick={() => {
+                      if (isUnread) markAsRead(item.id);
+                      setSelectedNotification(item);
+                    }}
+                    style={{
+                      padding: '14px 15px',
+                      borderRadius: '13px',
+                      background: isUnread ? '#fbfdfc' : '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
+                      display: 'flex',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                      position: 'relative',
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.04)';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.02)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.borderColor = '#e2e8f0';
+                    }}
+                  >
+                    {/* Category Type Icon Box */}
                     <div
                       style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '10px',
+                        background: meta.bg,
+                        border: '1px solid #e2e8f0',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '6px',
-                        marginBottom: '4px',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        marginTop: '1px',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span
-                          style={{
-                            fontSize: '0.62rem',
-                            fontWeight: 800,
-                            letterSpacing: '0.04em',
-                            color: meta.tagColor,
-                            background: meta.tagBg,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                          }}
-                        >
-                          {meta.tag}
-                        </span>
-                        {isUnread && (
+                      {meta.icon}
+                    </div>
+
+                    {/* Body Details */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* Top Meta Strip: Category Tag + Relative Time + Single Dismiss */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '6px',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span
                             style={{
-                              width: '6px',
-                              height: '6px',
-                              borderRadius: '50%',
-                              background: '#059669',
-                              display: 'inline-block',
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              letterSpacing: '0.04em',
+                              color: meta.tagColor,
+                              background: meta.tagBg,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
                             }}
-                          />
-                        )}
+                          >
+                            {meta.tag}
+                          </span>
+                          {isUnread && (
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: '#059669',
+                                display: 'inline-block',
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              color: '#94a3b8',
+                              fontSize: '0.68rem',
+                              fontWeight: 500,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <Clock size={11} />
+                            <span>{getRelativeTime(item.createdAt)}</span>
+                          </div>
+
+                          {/* Quick Delete Single Notification */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (deleteNotification) {
+                                deleteNotification(item.id);
+                              }
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#cbd5e1',
+                              padding: '2px',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                            title="Delete notification"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
                       </div>
+
+                      {/* Card Title */}
+                      <h4
+                        style={{
+                          fontSize: '0.86rem',
+                          fontWeight: isUnread ? 800 : 700,
+                          color: isUnread ? '#0f172a' : '#334155',
+                          margin: 0,
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {item.title}
+                      </h4>
+
+                      {/* Notification Description Preview */}
+                      <p
+                        style={{
+                          fontSize: '0.78rem',
+                          color: isUnread ? '#334155' : '#64748b',
+                          margin: '4px 0 0 0',
+                          lineHeight: 1.45,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {item.message}
+                      </p>
 
                       <div
                         style={{
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px',
-                          color: '#94a3b8',
-                          fontSize: '0.68rem',
-                          fontWeight: 500,
-                          whiteSpace: 'nowrap',
+                          justifyContent: 'flex-end',
+                          marginTop: '6px',
+                          fontSize: '0.7rem',
+                          color: '#059669',
+                          fontWeight: 600,
                         }}
                       >
-                        <Clock size={11} />
-                        <span>{getRelativeTime(item.createdAt)}</span>
+                        <span>View details →</span>
                       </div>
                     </div>
-
-                    {/* Card Title */}
-                    <h4
-                      style={{
-                        fontSize: '0.86rem',
-                        fontWeight: isUnread ? 800 : 700,
-                        color: isUnread ? '#0f172a' : '#334155',
-                        margin: 0,
-                        lineHeight: 1.35,
-                      }}
-                    >
-                      {item.title}
-                    </h4>
-
-                    {/* Notification Description */}
-                    <p
-                      style={{
-                        fontSize: '0.78rem',
-                        color: isUnread ? '#334155' : '#64748b',
-                        margin: '4px 0 0 0',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {item.message}
-                    </p>
-
-                    {/* Action Bar for Card */}
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginTop: '8px',
-                        paddingTop: '6px',
-                        borderTop: '1px dashed #f1f5f9',
-                      }}
-                    >
-                      {isUnread ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            markAsRead(item.id);
-                          }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#059669',
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            padding: '2px 0',
-                          }}
-                        >
-                          <Check size={12} strokeWidth={3} />
-                          <span>Tap to mark read</span>
-                        </button>
-                      ) : (
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Read</span>
-                      )}
-
-                      {/* Single Dismiss Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (deleteNotification) {
-                            deleteNotification(item.id);
-                          }
-                        }}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          color: '#cbd5e1',
-                          padding: '2px 4px',
-                          borderRadius: '4px',
-                          cursor: 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '3px',
-                          fontSize: '0.68rem',
-                          transition: 'all 0.15s ease',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = '#ef4444';
-                          e.currentTarget.style.background = '#fef2f2';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = '#cbd5e1';
-                          e.currentTarget.style.background = 'transparent';
-                        }}
-                        title="Dismiss notification"
-                      >
-                        <X size={12} />
-                        <span>Dismiss</span>
-                      </button>
-                    </div>
                   </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
         {/* Professional Drawer Footer */}
         <div

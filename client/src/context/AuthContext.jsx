@@ -31,7 +31,13 @@ export const DEMO_USERS = [
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('nmd_user');
+    // Purge any stale persistent user session from localStorage so visiting the site opens as guest
+    try {
+      localStorage.removeItem('nmd_user');
+      localStorage.removeItem('nmd_jwt_token');
+    } catch (e) {}
+
+    const saved = sessionStorage.getItem('nmd_user');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -42,28 +48,40 @@ export const AuthProvider = ({ children }) => {
     return null;
   });
 
-  const [token, setToken] = useState(() => localStorage.getItem('nmd_jwt_token') || '');
+  const [token, setToken] = useState(() => {
+    try {
+      return sessionStorage.getItem('nmd_jwt_token') || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [isValidating, setIsValidating] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('nmd_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('nmd_user');
-    }
+    try {
+      if (user) {
+        sessionStorage.setItem('nmd_user', JSON.stringify(user));
+      } else {
+        sessionStorage.removeItem('nmd_user');
+        localStorage.removeItem('nmd_user');
+      }
+    } catch (e) {}
   }, [user]);
 
   useEffect(() => {
-    if (token) {
-      localStorage.setItem('nmd_jwt_token', token);
-    } else {
-      localStorage.removeItem('nmd_jwt_token');
-    }
+    try {
+      if (token) {
+        sessionStorage.setItem('nmd_jwt_token', token);
+      } else {
+        sessionStorage.removeItem('nmd_jwt_token');
+        localStorage.removeItem('nmd_jwt_token');
+      }
+    } catch (e) {}
   }, [token]);
 
-  // On initial mount, verify token validity with backend if present
+  // On initial mount, verify token validity with backend if present in session
   useEffect(() => {
-    const storedToken = localStorage.getItem('nmd_jwt_token');
+    const storedToken = sessionStorage.getItem('nmd_jwt_token');
     if (!storedToken) return;
 
     let isMounted = true;
@@ -81,6 +99,8 @@ export const AuthProvider = ({ children }) => {
             console.warn('JWT session expired or invalid. Logging out.');
             setUser(null);
             setToken('');
+            sessionStorage.removeItem('nmd_user');
+            sessionStorage.removeItem('nmd_jwt_token');
             localStorage.removeItem('nmd_user');
             localStorage.removeItem('nmd_jwt_token');
           }
@@ -99,7 +119,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const getAuthHeaders = useCallback((customHeaders = {}) => {
-    const currentToken = token || localStorage.getItem('nmd_jwt_token');
+    const currentToken = token || sessionStorage.getItem('nmd_jwt_token');
     const auth = currentToken ? { Authorization: `Bearer ${currentToken}` } : {};
     return { ...auth, ...customHeaders };
   }, [token]);
@@ -115,9 +135,10 @@ export const AuthProvider = ({ children }) => {
       const data = await res.json();
       if (data.success && data.user) {
         setUser(data.user);
+        sessionStorage.setItem('nmd_user', JSON.stringify(data.user));
         if (data.token) {
           setToken(data.token);
-          localStorage.setItem('nmd_jwt_token', data.token);
+          sessionStorage.setItem('nmd_jwt_token', data.token);
         }
         return { success: true, user: data.user, token: data.token };
       } else {
@@ -134,6 +155,7 @@ export const AuthProvider = ({ children }) => {
     ) {
       const adminUser = DEMO_USERS[0];
       setUser(adminUser);
+      sessionStorage.setItem('nmd_user', JSON.stringify(adminUser));
       return { success: true, user: adminUser };
     }
 
@@ -154,7 +176,8 @@ export const AuthProvider = ({ children }) => {
       if (data.success && data.user && data.token) {
         setUser(data.user);
         setToken(data.token);
-        localStorage.setItem('nmd_jwt_token', data.token);
+        sessionStorage.setItem('nmd_user', JSON.stringify(data.user));
+        sessionStorage.setItem('nmd_jwt_token', data.token);
         return { success: true, user: data.user, token: data.token };
       } else {
         return {
@@ -194,6 +217,7 @@ export const AuthProvider = ({ children }) => {
     const found = DEMO_USERS.find((u) => u.id === roleOrId || u.role === roleOrId);
     if (found) {
       setUser(found);
+      sessionStorage.setItem('nmd_user', JSON.stringify(found));
       return found;
     }
     return null;
@@ -221,9 +245,16 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     setUser(null);
     setToken('');
-    localStorage.removeItem('nmd_user');
-    localStorage.removeItem('nmd_jwt_token');
-    localStorage.removeItem('nmd_admin_tab');
+    try {
+      sessionStorage.clear();
+      localStorage.removeItem('nmd_user');
+      localStorage.removeItem('nmd_jwt_token');
+      localStorage.removeItem('nmd_admin_tab');
+      localStorage.removeItem('nmd_current_tab');
+      localStorage.removeItem('nmd_customer_page');
+      localStorage.removeItem('nmd_driver_tab');
+      localStorage.removeItem('nmd_pending_subscription');
+    } catch (e) {}
   };
 
   return (

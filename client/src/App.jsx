@@ -23,6 +23,7 @@ import ProductsPricing from './pages/admin/ProductsPricing';
 import DeliveryBoysManager from './pages/admin/DeliveryBoysManager';
 import LocationsManager from './pages/admin/LocationsManager';
 import AuditLogs from './pages/admin/AuditLogs';
+import AdminSupportDesk from './pages/admin/AdminSupportDesk';
 import AddDeliveryBoyPage from './pages/admin/AddDeliveryBoyPage';
 import EditDeliveryBoyPage from './pages/admin/EditDeliveryBoyPage';
 import AddProductPage from './pages/admin/AddProductPage';
@@ -52,6 +53,7 @@ export default function App() {
     'delivery-boys',
     'locations',
     'audit-logs',
+    'supports',
     'add-delivery-boy',
     'edit-delivery-boy',
     'add-product',
@@ -64,7 +66,7 @@ export default function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const portalParam = urlParams.get('portal');
       const tabParam = urlParams.get('tab');
-      const savedUser = JSON.parse(localStorage.getItem('nmd_user') || 'null');
+      const savedUser = JSON.parse(sessionStorage.getItem('nmd_user') || 'null');
       const savedAdminTab = localStorage.getItem('nmd_admin_tab');
       const savedGeneralTab = localStorage.getItem('nmd_current_tab');
       const pathParts = window.location.pathname.split('/').filter(Boolean);
@@ -84,6 +86,12 @@ export default function App() {
         return 'login';
       }
 
+      // Root path ("/" or empty path): ALWAYS open the public Home page!
+      // Opening the website should never automatically hijack the user into the customer dashboard or any internal portal.
+      if (pathParts.length === 0) {
+        return 'home';
+      }
+
       if (pathParts[0] === 'delivery') {
         return savedUser?.role === 'delivery_boy' ? 'delivery-boy-app' : 'login';
       }
@@ -96,7 +104,7 @@ export default function App() {
       const knownTabs = [
         'home', 'products', 'story', 'faqs', 'contact', 'register',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'audit-logs', 'add-delivery-boy',
+        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length === 1 && knownTabs.includes(directTab)) {
@@ -107,20 +115,8 @@ export default function App() {
         if (!savedUser) return 'login';
       }
 
-      // 2. Role-based restoration
-      if (savedUser?.role === 'admin') {
-        return savedAdminTab && adminTabs.includes(savedAdminTab) ? savedAdminTab : 'dashboard';
-      }
-      if (savedUser?.role === 'delivery_boy') {
-        return 'delivery-boy-app';
-      }
-      if (savedUser?.role === 'customer') {
-        const customerTabs = ['customer-portal', 'home', 'landing', 'products', 'story', 'faqs', 'contact'];
-        return customerTabs.includes(savedGeneralTab) ? savedGeneralTab : 'home';
-      }
-      if (savedGeneralTab && !adminTabs.includes(savedGeneralTab)) {
-        return savedGeneralTab;
-      }
+      // Default fallback for any unspecified routes is the Home page
+      return 'home';
     } catch (e) {}
     return 'home';
   });
@@ -133,7 +129,7 @@ export default function App() {
       const tabParam = urlParams.get('tab');
 
       if (portalParam === 'delivery' || tabParam === 'delivery') {
-        const savedUser = JSON.parse(localStorage.getItem('nmd_user') || 'null');
+        const savedUser = JSON.parse(sessionStorage.getItem('nmd_user') || 'null');
         if (savedUser?.role === 'delivery_boy') {
           setActiveTab('delivery-boy-app');
         } else {
@@ -144,7 +140,7 @@ export default function App() {
           setActiveTab('login');
         }
       } else if (portalParam === 'customer') {
-        const savedUser = JSON.parse(localStorage.getItem('nmd_user') || 'null');
+        const savedUser = JSON.parse(sessionStorage.getItem('nmd_user') || 'null');
         if (savedUser?.role === 'customer') {
           setActiveTab('customer-portal');
         } else {
@@ -154,7 +150,7 @@ export default function App() {
           setActiveTab('login');
         }
       } else if (tabParam === 'login' || window.location.pathname === '/login') {
-        const savedUser = JSON.parse(localStorage.getItem('nmd_user') || 'null');
+        const savedUser = JSON.parse(sessionStorage.getItem('nmd_user') || 'null');
         if (!savedUser) {
           setActiveTab('login');
         }
@@ -210,7 +206,7 @@ export default function App() {
       const routeTabs = [
         'home', 'products', 'story', 'faqs', 'contact', 'register',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'add-delivery-boy',
+        'subscriptions', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length <= 1 && routeTabs.includes(pathTab)) {
@@ -277,10 +273,10 @@ export default function App() {
     }
   }, [user, activeTab]);
 
-  // Delivery boy isolation: Delivery partner only accesses the Delivery App
+  // Delivery boy isolation: Delivery partner does not access admin tabs
   useEffect(() => {
     if (user?.role === 'delivery_boy') {
-      if (activeTab !== 'delivery-boy-app') {
+      if (adminTabs.includes(activeTab)) {
         setActiveTab('delivery-boy-app');
       }
     }
@@ -506,6 +502,8 @@ export default function App() {
           {activeTab === 'locations' && <LocationsManager />}
 
           {activeTab === 'audit-logs' && <AuditLogs />}
+
+          {activeTab === 'supports' && <AdminSupportDesk />}
         </AdminLayout>
       ) : activeTab === 'delivery-boy-app' ? (
         /* Dedicated Driver Portal Layout (Sidebar on Web, Bottom Bar on Mobile) */

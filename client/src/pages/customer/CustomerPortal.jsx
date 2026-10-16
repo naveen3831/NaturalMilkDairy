@@ -49,12 +49,20 @@ import {
   Eye,
   EyeOff,
   FileText,
+  CheckCheck,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
   CUSTOMER_HOME_NAV_ITEMS,
   CUSTOMER_PORTAL_ITEMS,
 } from '../../components/CustomerBottomNav';
+
+const CUSTOMER_PROFILE_NAV_ITEMS = [
+  { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'subscription', label: 'Subscription', icon: CalendarDays },
+  { id: 'deliveries', label: 'Deliveries', icon: Truck },
+  { id: 'profile', label: 'Profile', icon: UserRound },
+];
 
 const formatProfileDate = (value) => {
   if (!value) return 'Not available';
@@ -80,7 +88,7 @@ const getCustomerRoute = () => {
 export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenTempQtyModal, onOpenPaymentModal }) {
   const { user, logout, setUser, getAuthHeaders } = useAuth();
   const { customers, deliveries, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
-  const { unreadCount, setIsNotificationOpen } = useNotifications();
+  const { unreadCount, setIsNotificationOpen, sendNotification } = useNotifications();
   const { subscribe: wsSubscribe } = useWebSocket();
   const [activePage, setActivePage] = useState(() => {
     const savedPage = localStorage.getItem('nmd_customer_page');
@@ -160,9 +168,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [supportTopic, setSupportTopic] = useState('delivery');
-  const [supportMsg, setSupportMsg] = useState('');
-  const [supportSubmitted, setSupportSubmitted] = useState(false);
+  const [supportCategory, setSupportCategory] = useState('Morning Delivery Delay');
+  const [supportPriority, setSupportPriority] = useState('normal');
+  const [supportText, setSupportText] = useState('');
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportSuccessMsg, setSupportSuccessMsg] = useState('');
+  const [supportHistory, setSupportHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`nmd_cust_support_${user?.id || user?.customerId || 'guest'}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [passwordValue, setPasswordValue] = useState('••••••••••••');
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
@@ -576,6 +594,118 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       setProfileError(error.message || 'Unable to save your profile.');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handleSendAdminCustomerMessage = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!supportText.trim()) return;
+
+    setSupportLoading(true);
+    setSupportSuccessMsg('');
+
+    const customerName = currentCustomer.name || user?.name || 'Customer';
+    const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
+    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur';
+    const customerAddress = currentCustomer.address || user?.address || 'Doorstep';
+
+    const newTicketMsg = {
+      id: `CUST-MSG-${Date.now()}`,
+      customerId,
+      customerName,
+      customerPhone,
+      category: supportCategory,
+      priority: supportPriority,
+      text: supportText.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      if (typeof sendNotification === 'function') {
+        await sendNotification({
+          recipientRole: 'admin',
+          type: 'customer_message',
+          title: `Customer Support: ${supportCategory} (${supportPriority.toUpperCase()})`,
+          message: `${customerName} (${customerId}, ${customerPhone}, ${customerArea}): ${supportText.trim()}`,
+          data: {
+            customerId,
+            customerName,
+            customerPhone,
+            customerArea,
+            address: customerAddress,
+            category: supportCategory,
+            priority: supportPriority,
+            rawMessage: supportText.trim(),
+            timestamp: new Date().toISOString(),
+          },
+        });
+      } else {
+        await fetch('/api/notifications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+          body: JSON.stringify({
+            recipientRole: 'admin',
+            type: 'customer_message',
+            title: `Customer Support: ${supportCategory} (${supportPriority.toUpperCase()})`,
+            message: `${customerName} (${customerId}, ${customerPhone}, ${customerArea}): ${supportText.trim()}`,
+            data: {
+              customerId,
+              customerName,
+              customerPhone,
+              customerArea,
+              address: customerAddress,
+              category: supportCategory,
+              priority: supportPriority,
+              rawMessage: supportText.trim(),
+              timestamp: new Date().toISOString(),
+            },
+          }),
+        });
+      }
+
+      // Also directly create support ticket in admin support desk
+      try {
+        await fetch('/api/supports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(getAuthHeaders ? getAuthHeaders() : {}) },
+          body: JSON.stringify({
+            senderRole: 'customer',
+            senderName: customerName,
+            senderPhone: customerPhone,
+            senderArea: customerArea,
+            senderAddress: customerAddress,
+            category: supportCategory,
+            priority: supportPriority,
+            message: supportText.trim(),
+            metadata: { customerId, deliveryBoyName: currentCustomer.deliveryPlan?.deliveryBoyName || '' },
+          }),
+        });
+      } catch (supErr) {
+        console.warn('Support ticket direct creation error:', supErr);
+      }
+
+      notifyRealtimeSync?.();
+
+      const updatedHistory = [newTicketMsg, ...supportHistory].slice(0, 15);
+      setSupportHistory(updatedHistory);
+      try {
+        localStorage.setItem(
+          `nmd_cust_support_${user?.id || user?.customerId || 'guest'}`,
+          JSON.stringify(updatedHistory)
+        );
+      } catch (err) {
+        console.warn('Failed saving customer support history:', err);
+      }
+
+      setSupportSuccessMsg('✓ Your message has been sent to Admin! Our operations team has received it.');
+      setSupportText('');
+      setTimeout(() => setSupportSuccessMsg(''), 7000);
+    } catch (err) {
+      console.error('Failed sending customer message to admin:', err);
+      alert('Failed to send message. Please check your connection or call our helpline.');
+    } finally {
+      setSupportLoading(false);
     }
   };
 
@@ -2609,30 +2739,53 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         {/* 8. 24/7 HELPLINE & SUPPORT */}
         {profileDetailView === 'support' && (
           <div className="mobile-detail-body">
+            {/* Feedback Toast */}
+            {supportSuccessMsg && (
+              <div
+                style={{
+                  padding: '14px 18px',
+                  background: '#ecfdf5',
+                  border: '1px solid #a7f3d0',
+                  borderRadius: '14px',
+                  color: '#065f46',
+                  fontSize: '0.88rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginBottom: '16px',
+                  boxShadow: '0 2px 6px rgba(5,150,105,0.1)',
+                }}
+              >
+                <CheckCircle2 size={18} color="#059669" />
+                <span>{supportSuccessMsg}</span>
+              </div>
+            )}
+
             {/* Direct Contact Cards */}
             <div className="mobile-detail-card mobile-detail-highlight-card">
               <div className="mobile-detail-plan-banner">
                 <div>
                   <span className="mobile-detail-badge is-emerald">24/7 PRIORITY SUPPORT</span>
-                  <h3 style={{ margin: '8px 0 4px', fontSize: '1.25rem', fontWeight: 800 }}>We're Here to Help</h3>
+                  <h3 style={{ margin: '8px 0 4px', fontSize: '1.25rem', fontWeight: 800 }}>Customer Care & Helplines</h3>
                   <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
-                    Quick response for morning delivery, payments, or bottle queries.
+                    Direct connection to Dispatch Operations, Morning Delivery Route, and Admin desk.
                   </p>
                 </div>
-                <HelpCircle size={28} style={{ color: '#059669' }} />
+                <Headphones size={28} style={{ color: '#059669' }} />
               </div>
             </div>
 
             {/* Contact Action Channels */}
             <div className="mobile-detail-channels-grid">
               <a
-                href={`https://wa.me/919876543210?text=Hi%20Natural%20Milk%20Dairy%2C%20I%20need%20assistance%20with%20my%20account%20ID%3A%20${customerId}`}
+                href={`https://wa.me/919876543210?text=Hi%20Natural%20Milk%20Dairy%2C%20I%20am%20customer%20${encodeURIComponent(customerName)}%20(ID%3A%20${customerId}).%20I%20need%20assistance%20regarding%3A`}
                 target="_blank"
                 rel="noreferrer"
                 className="mobile-detail-channel-card is-wa"
               >
                 <div className="mobile-detail-channel-icon is-emerald">
-                  <MessageSquare size={22} />
+                  <MessageCircle size={22} />
                 </div>
                 <strong>WhatsApp Priority Chat</strong>
                 <span>Instant response in 5 mins</span>
@@ -2640,7 +2793,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
               <a href="tel:+919876543210" className="mobile-detail-channel-card is-call">
                 <div className="mobile-detail-channel-icon is-green">
-                  <Phone size={22} />
+                  <PhoneCall size={22} />
                 </div>
                 <strong>Call 24/7 Helpline</strong>
                 <span>+91 98765 43210</span>
@@ -2655,88 +2808,242 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </a>
             </div>
 
-            {/* Raise a Support Ticket Form */}
-            <div className="mobile-detail-card">
-              <h4 className="mobile-detail-subheading">Submit a Support Ticket</h4>
-              {supportSubmitted ? (
-                <div className="mobile-profile-alert is-success">
-                  <CheckCircle2 size={18} />
-                  <span>Your support ticket #NMD-8492 has been received. Our dispatch team will assist you within 15 minutes.</span>
-                </div>
-              ) : (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    setSupportSubmitted(true);
-                    fetch('/api/notifications', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-                      body: JSON.stringify({
-                        title: `Support Ticket: ${supportTopic}`,
-                        message: `From ${customerName} (${customerId}, ${customerPhone}): ${supportMsg}`,
-                        type: 'ticket',
-                        recipientRole: 'admin',
-                      }),
-                    }).catch(() => {});
-                    notifyRealtimeSync?.();
-                    setTimeout(() => {
-                      setSupportMsg('');
-                      setSupportSubmitted(false);
-                    }, 4000);
+            {/* Text a Message to Admin Form */}
+            <div
+              className="mobile-detail-card"
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '18px',
+                padding: isMobile ? '16px' : '22px 24px',
+                boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
+                marginTop: '4px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, #0284c7, #38bdf8)',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
                   }}
                 >
-                  <label>
-                    <span>Issue Category</span>
-                    <select
-                      value={supportTopic}
-                      onChange={(e) => setSupportTopic(e.target.value)}
+                  <MessageSquare size={19} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
+                    Text a Message to Admin
+                  </h3>
+                  <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                    Sends an immediate notification to the Admin Dashboard & Dispatch Supervisor.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSendAdminCustomerMessage}>
+                {/* Topic / Issue Category Chips */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Select Topic / Issue Type
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[
+                      { id: 'Morning Delivery Delay', label: '🚚 Delivery Delay / Timing' },
+                      { id: 'Milk or Bottle Quality', label: '🥛 Milk / Glass Bottle' },
+                      { id: 'Subscription & Vacation', label: '📅 Subscription / Pause' },
+                      { id: 'Payment & Billing', label: '💰 Payment / Refund Wallet' },
+                      { id: 'Doorstep Address Change', label: '📍 Address Relocation' },
+                      { id: 'General Inquiry', label: '💬 General Inquiry' },
+                    ].map((cat) => {
+                      const isSelected = supportCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSupportCategory(cat.id)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: '0.76rem',
+                            fontWeight: isSelected ? 800 : 600,
+                            background: isSelected ? '#e0f2fe' : '#f8fafc',
+                            color: isSelected ? '#0369a1' : '#475569',
+                            border: `1px solid ${isSelected ? '#38bdf8' : '#e2e8f0'}`,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Urgency Level Selector */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    Urgency Level
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {[
+                      { id: 'normal', label: 'Normal', desc: 'Standard support' },
+                      { id: 'high', label: 'High Priority', desc: 'Needs attention today' },
+                      { id: 'urgent', label: '🚨 Urgent', desc: 'Immediate issue' },
+                    ].map((p) => {
+                      const isSelected = supportPriority === p.id;
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setSupportPriority(p.id)}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${isSelected ? (p.id === 'urgent' ? '#ef4444' : '#0284c7') : '#e2e8f0'}`,
+                            background: isSelected ? (p.id === 'urgent' ? '#fef2f2' : '#f0f9ff') : '#ffffff',
+                            color: isSelected ? (p.id === 'urgent' ? '#dc2626' : '#0369a1') : '#475569',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, fontSize: '0.8rem' }}>{p.label}</div>
+                          <div style={{ fontSize: '0.68rem', opacity: 0.85, marginTop: '2px' }}>{p.desc}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Message Textarea */}
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+                      Describe your message or issue for Admin
+                    </label>
+                    <span style={{ fontSize: '0.72rem', color: supportText.length > 450 ? '#dc2626' : '#94a3b8' }}>
+                      {supportText.length}/500
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    maxLength={500}
+                    required
+                    value={supportText}
+                    onChange={(e) => setSupportText(e.target.value)}
+                    placeholder="Enter message for Admin desk (e.g. Please check my morning delivery bottle count or delivery timing)..."
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      lineHeight: 1.5,
+                      boxSizing: 'border-box',
+                      fontFamily: 'inherit',
+                      resize: 'vertical',
+                      outline: 'none',
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#0284c7'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={supportLoading || !supportText.trim()}
+                  style={{
+                    width: '100%',
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: supportText.trim() ? '#0284c7' : '#94a3b8',
+                    color: '#ffffff',
+                    fontSize: '0.9rem',
+                    fontWeight: 800,
+                    cursor: supportLoading || !supportText.trim() ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: supportText.trim() ? '0 4px 12px rgba(2, 132, 199, 0.25)' : 'none',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Send size={16} />
+                  <span>{supportLoading ? 'Sending to Admin...' : 'Send Message to Admin'}</span>
+                </button>
+              </form>
+            </div>
+
+            {/* Recent Sent Messages to Admin Log */}
+            {supportHistory.length > 0 && (
+              <div
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '18px',
+                  padding: isMobile ? '16px' : '20px 22px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  marginTop: '16px',
+                }}
+              >
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                  Your Sent Messages to Admin ({supportHistory.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {supportHistory.map((item) => (
+                    <div
+                      key={item.id}
                       style={{
-                        width: '100%',
-                        padding: '10px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
                         borderRadius: '12px',
-                        border: '1.5px solid #e2e8f0',
-                        fontSize: '0.88rem',
-                        marginBottom: '12px',
+                        padding: '12px 14px',
                       }}
                     >
-                      <option value="delivery">Morning Delivery Timing or Delay</option>
-                      <option value="bottle">Glass Bottle Exchange / Damage</option>
-                      <option value="wallet">Refund Wallet / UPI Payment</option>
-                      <option value="pause">Vacation Schedule / Pause Request</option>
-                      <option value="address">Doorstep Address Relocation</option>
-                    </select>
-                  </label>
-
-                  <label>
-                    <span>Describe your issue</span>
-                    <textarea
-                      rows={3}
-                      required
-                      placeholder="Enter details here..."
-                      value={supportMsg}
-                      onChange={(e) => setSupportMsg(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: '12px',
-                        border: '1.5px solid #e2e8f0',
-                        fontSize: '0.88rem',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </label>
-
-                  <button
-                    type="submit"
-                    className="mobile-detail-big-action-btn is-green"
-                    style={{ marginTop: '12px' }}
-                  >
-                    <Send size={16} />
-                    <span>Submit Support Ticket</span>
-                  </button>
-                </form>
-              )}
-            </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
+                            {item.category}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: item.priority === 'urgent' ? '#fee2e2' : item.priority === 'high' ? '#fef3c7' : '#e0f2fe',
+                              color: item.priority === 'urgent' ? '#991b1b' : item.priority === 'high' ? '#92400e' : '#0369a1',
+                            }}
+                          >
+                            {item.priority?.toUpperCase()}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                          {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: '#334155', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                        {item.text}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
+                        <CheckCheck size={13} />
+                        <span>Delivered to Admin Dashboard</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2939,27 +3246,38 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const renderCustomerProfileMobile = () => {
-    const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
-    const customerName = currentCustomer.name || user?.name || 'Customer';
-    const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
+    const customerInitial = (currentCustomer.name || user?.name || 'N').charAt(0).toUpperCase();
+    const customerName = currentCustomer.name || user?.name || 'Naveen';
+    const customerPhone = currentCustomer.mobile || user?.mobile || '7702233931';
     const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
     const handleTag = `@${customerId.toLowerCase()}`;
-    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length;
+    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 1;
+    const formattedSubDate = subscriptionThrough
+      ? subscriptionThrough.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : (currentCustomer.subscription?.endDate
+          ? new Date(currentCustomer.subscription.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+          : '13 Nov 2026');
+    const displayAddress = address || 'Madhupur, Madhapur';
 
     return (
-      <div className="modern-profile-container">
-        {/* Top Header: ←  My Profile  ⚙️ */}
+      <div className="modern-profile-container customer-profile-mobile">
+        {/* Top Header: ← Customer Profile */}
         <div className="modern-profile-header">
           <button
             type="button"
             className="modern-profile-header-btn"
-            onClick={() => setActiveTab('home')}
+            onClick={() => {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('home');
+              } else {
+                window.location.href = '/';
+              }
+            }}
             aria-label="Back to home"
           >
-            <ArrowLeft size={22} />
+            <ArrowLeft size={22} color="#0f172a" strokeWidth={2} />
           </button>
           <h2 className="modern-profile-header-title">Customer Profile</h2>
-          <div style={{ width: 40 }} />
         </div>
 
         {/* FEEDBACK TOAST */}
@@ -2999,7 +3317,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               title="Change profile photo"
               aria-label="Change photo"
             >
-              <Camera size={13} />
+              <Camera size={13} color="#475569" />
             </button>
           </div>
 
@@ -3015,6 +3333,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </button>
           </div>
         </div>
+
         {/* Customer-Only Data Menu List */}
         <div className="modern-profile-menu-list">
           {/* 1. Account Details */}
@@ -3024,7 +3343,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             onClick={() => openProfileDetail('account-details')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><UserRound size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><UserRound size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Account Details</span>
                 <span className="modern-profile-menu-sub">
@@ -3033,168 +3352,165 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: isPaused ? '#b45309' : '#059669', background: isPaused ? '#fef3c7' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
-                {subscriptionStatusLabel}
+              <span>
+                Active
               </span>
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
-          {/* 1. Daily Milk Subscription */}
+
+          {/* 2. My Milk Subscription */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('subscription')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Milk size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><Milk size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">My Milk Subscription</span>
                 <span className="modern-profile-menu-sub">
-                  {hasPaidSubscription
-                    ? `Prepaid through ${subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'date unavailable'}`
-                    : `${milkQuantity} ${milkUnit} Daily Fresh Milk`}
+                  Prepaid through {formattedSubDate}
                 </span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: isPaused ? '#b45309' : '#059669', background: isPaused ? '#fef3c7' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
+              <span>
                 {isPaused ? 'Paused' : 'Active'}
               </span>
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 2. Doorstep Delivery Address */}
+          {/* 3. Delivery Address */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('personal-info')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><MapPin size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><MapPin size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Address</span>
-                <span className="modern-profile-menu-sub">{address || 'Doorstep delivery address'}</span>
+                <span className="modern-profile-menu-sub">{displayAddress}</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 3. Delivery Timing Window */}
+          {/* 4. Delivery Window */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('delivery-window')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Clock3 size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><Clock3 size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Window</span>
                 <span className="modern-profile-menu-sub">Before 6:30 AM early morning (Silent Drop)</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 4. Past Delivery Receipts & Invoices */}
+          {/* 5. Past Delivery Receipts & Invoices */}
           <button
             type="button"
-            className="modern-profile-menu-row"
+            className="modern-profile-menu-row is-highlighted"
             onClick={() => openProfileDetail('deliveries')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><FileText size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><FileText size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Receipts & History</span>
                 <span className="modern-profile-menu-sub">{totalDeliveries} Drops Completed · Daily proof logs</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 5. Billing & Wallet Balance */}
+          {/* 6. Subscription Payment */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('wallet')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Wallet size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><Wallet size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
-                <span className="modern-profile-menu-label">{hasPaidSubscription ? 'Subscription Payment' : 'Billing & Wallet Balance'}</span>
+                <span className="modern-profile-menu-label">Subscription Payment</span>
                 <span className="modern-profile-menu-sub">
-                  {hasPaidSubscription
-                    ? `Prepaid through ${subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'date unavailable'}`
-                    : balance > 0 ? `₹${balance} Outstanding Due` : '₹0 · No dues pending'}
+                  Prepaid through {formattedSubDate}
                 </span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: balance > 0 && !hasPaidSubscription ? '#b91c1c' : '#059669', background: balance > 0 && !hasPaidSubscription ? '#fee2e2' : '#ecfdf5', padding: '3px 8px', borderRadius: '8px' }}>
-                {hasPaidSubscription ? 'Prepaid' : balance > 0 ? `₹${balance} Due` : 'Paid'}
+              <span>
+                Prepaid
               </span>
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 6. Doorstep Drop Instructions */}
+          {/* 7. Drop Instructions */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('drop-instructions')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><ShieldCheck size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><ShieldCheck size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Drop Instructions</span>
                 <span className="modern-profile-menu-sub">{currentCustomer.landmark || 'Doorstep placement, bell & gate codes'}</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 7. Customer Care & WhatsApp */}
+          {/* 8. Customer Care & Helplines */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('support')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Headphones size={20} color="#059669" /></span>
+              <span className="modern-profile-menu-icon"><Headphones size={22} color="#00a651" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Customer Care & Helplines</span>
                 <span className="modern-profile-menu-sub">WhatsApp chat & 24/7 priority support</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 8. Log out */}
+          {/* 9. Log out */}
           <button
             type="button"
             className="modern-profile-menu-row is-logout"
             onClick={() => setShowLogoutConfirm(true)}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
-              <span className="modern-profile-menu-label">Log out</span>
+              <span className="modern-profile-menu-icon"><LogOut size={22} color="#e53935" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-label" style={{ color: '#e53935', fontWeight: 650 }}>Log out</span>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 9. Delete Account Permanently */}
+          {/* 10. Delete Account Permanently */}
           <button
             type="button"
             className="modern-profile-menu-row is-delete"
@@ -3204,16 +3520,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             }}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444' }}>
-                <Trash2 size={20} color="#ef4444" />
+              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444', borderRadius: '6px', padding: '2px' }}>
+                <Trash2 size={20} color="#ef4444" strokeWidth={1.8} />
               </span>
               <div>
-                <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 700 }}>Delete Account</span>
+                <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 650 }}>Delete Account</span>
                 <span className="modern-profile-menu-sub">Permanently delete account & records</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <ChevronRight size={18} />
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
         </div>
@@ -3528,14 +3844,37 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
 
-          <button
-            type="button"
-            className="profile-hero-btn"
-            onClick={() => openProfileDetail('personal-info')}
-          >
-            <Edit2 size={16} />
-            <span>Edit Profile</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => openProfileDetail('support')}
+              style={{
+                background: '#ecfdf5',
+                color: '#047857',
+                border: '1px solid #a7f3d0',
+                borderRadius: '12px',
+                padding: '10px 18px',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <Headphones size={16} />
+              <span>Help & Support</span>
+            </button>
+            <button
+              type="button"
+              className="profile-hero-btn"
+              onClick={() => openProfileDetail('personal-info')}
+            >
+              <Edit2 size={16} />
+              <span>Edit Profile</span>
+            </button>
+          </div>
         </div>
 
         {/* 2. Customer Data Responsive Cards Grid */}
@@ -3959,8 +4298,39 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       <div className="customer-app-main">
         <header
           className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}
-          style={{ justifyContent: 'flex-end' }}
+          style={{ justifyContent: 'space-between' }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof setActiveTab === 'function') {
+                  setActiveTab('home');
+                } else {
+                  window.location.href = '/';
+                }
+              }}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '8px',
+                background: '#ffffff',
+                color: '#0d5c3a',
+                fontSize: '0.84rem',
+                fontWeight: 700,
+                border: '1px solid #bbf7d0',
+                cursor: 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                transition: 'all 0.2s',
+              }}
+              title="Return to Natural Milk Dairy website"
+            >
+              <Home size={15} color="#0d5c3a" />
+              <span>Back to Store</span>
+            </button>
+          </div>
           <div className="customer-app-header-actions">
             <button
               type="button"
@@ -3981,15 +4351,6 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <Bell size={17} aria-hidden="true" />
               <span>Alerts</span>
               {unreadCount > 0 && <span className="customer-header-alert-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-            </button>
-            <button
-              type="button"
-              className="customer-header-profile"
-              onClick={() => navigateToPage('profile')}
-              aria-label="Open profile"
-            >
-              <span>{(user?.name || currentCustomer.name || 'C').charAt(0).toUpperCase()}</span>
-              <strong>{user?.name || currentCustomer.name}</strong>
             </button>
           </div>
         </header>
@@ -4018,8 +4379,24 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           className="customer-bottom-nav customer-portal-bottom-nav"
           ariaLabel="Main navigation"
           items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage="profile"
+          activePage={activePage === 'profile' ? 'profile' : undefined}
           onNavigate={(page) => {
+            if (page === 'home') {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('home');
+              } else {
+                window.location.href = '/';
+              }
+              return;
+            }
+            if (page === 'products' || page === 'story') {
+              if (typeof setActiveTab === 'function') {
+                setActiveTab(page);
+              } else {
+                window.location.href = `/${page}`;
+              }
+              return;
+            }
             if (page === 'profile') {
               navigateToPage('profile');
               setProfileDetailView(null);
