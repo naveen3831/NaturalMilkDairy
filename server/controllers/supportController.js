@@ -134,9 +134,10 @@ const getSupportTickets = async (req, res) => {
 
 const createSupportTicket = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Support details must be an object.' });
+    }
     const {
-      senderRole,
-      senderId,
       senderName,
       senderPhone,
       senderEmail,
@@ -148,24 +149,38 @@ const createSupportTicket = async (req, res) => {
       message,
     } = req.body;
 
-    if (!message || !message.trim()) {
-      return res.status(400).json({ success: false, message: 'Message content is required.' });
+    if (typeof message !== 'string' || !message.trim() || message.trim().length > 5000) {
+      return res.status(400).json({ success: false, message: 'Message must be between 1 and 5000 characters.' });
+    }
+    const limits = [
+      [senderName, 80, 'Sender name'],
+      [senderPhone, 20, 'Phone number'],
+      [senderEmail, 254, 'Email address'],
+      [senderArea, 100, 'Area'],
+      [senderAddress, 250, 'Address'],
+      [category, 80, 'Category'],
+      [subject, 150, 'Subject'],
+    ];
+    for (const [value, maxLength, label] of limits) {
+      if (value !== undefined && (typeof value !== 'string' || value.length > maxLength)) {
+        return res.status(400).json({ success: false, message: `${label} must be at most ${maxLength} characters.` });
+      }
     }
 
     const ticketId = 'TKT-' + Math.floor(1000 + Math.random() * 9000);
-    const resolvedRole = (senderRole === 'driver' || senderRole === 'delivery_boy') ? 'delivery_boy' : 'customer';
+    const resolvedRole = req.user?.role === 'delivery_boy' ? 'delivery_boy' : 'customer';
 
     const ticketData = {
       ticketId,
       senderRole: resolvedRole,
-      senderId: senderId || '',
-      senderName: senderName || (resolvedRole === 'delivery_boy' ? 'Delivery Partner' : 'Customer'),
-      senderPhone: senderPhone || '',
-      senderEmail: senderEmail || '',
+      senderId: req.user?.id || req.user?.customerId || '',
+      senderName: req.user?.name || senderName || (resolvedRole === 'delivery_boy' ? 'Delivery Partner' : 'Customer'),
+      senderPhone: req.user?.mobile || senderPhone || '',
+      senderEmail: req.user?.email || senderEmail || '',
       senderArea: senderArea || 'Madhapur',
       senderAddress: senderAddress || '',
       category: category || 'General Support',
-      priority: priority || 'normal',
+      priority: ['low', 'normal', 'high', 'urgent'].includes(priority) ? priority : 'normal',
       status: 'open',
       subject: subject || `${resolvedRole === 'delivery_boy' ? '🚚 Driver' : '🥛 Customer'} Help: ${category || 'Query'}`,
       message: message.trim(),

@@ -17,25 +17,25 @@ const {
   deleteCustomerHistoryEntry,
   clearCustomerHistory,
 } = require('../controllers/customerController');
-const { verifyToken, optionalToken, requireCustomer, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
+const { verifyToken, requireCustomer, requireAdmin, requireDeliveryStaff, authorizeCustomerAccess } = require('../middleware/authMiddleware');
 const { createOrder, verifyPayment } = require('../controllers/subscriptionController');
 
 router.post('/me/subscription/order', verifyToken, requireCustomer, createOrder);
 router.post('/me/subscription/verify', verifyToken, requireCustomer, verifyPayment);
 router.put('/me/profile', verifyToken, requireCustomer, updateOwnCustomerProfile);
-router.delete('/me/account', verifyToken, deleteOwnCustomerAccount);
-router.get('/', optionalToken, getCustomers);
-router.get('/:id', optionalToken, getCustomerById);
+router.delete('/me/account', verifyToken, requireCustomer, deleteOwnCustomerAccount);
+router.get('/', verifyToken, requireAdmin, getCustomers);
+router.get('/:id', verifyToken, authorizeCustomerAccess, getCustomerById);
 router.post('/', verifyToken, requireDeliveryStaff, createCustomer);
-router.put('/:id', verifyToken, requireDeliveryStaff, updateCustomer);
-router.delete('/:id', verifyToken, requireDeliveryStaff, deleteCustomer);
+router.put('/:id', verifyToken, requireDeliveryStaff, authorizeCustomerAccess, updateCustomer);
+router.delete('/:id', verifyToken, requireAdmin, deleteCustomer);
 router.put('/:id/assign-partner', verifyToken, requireAdmin, assignPartner);
-router.post('/:id/pause', verifyToken, pauseDelivery);
-router.post('/:id/resume', verifyToken, resumeDelivery);
-router.post('/:id/temp-qty', verifyToken, setTemporaryQty);
-router.get('/:id/ledger', optionalToken, getCustomerLedger);
-router.delete('/:id/history/:entryId', verifyToken, requireAdmin, deleteCustomerHistoryEntry);
-router.delete('/:id/history', verifyToken, requireAdmin, clearCustomerHistory);
+router.post('/:id/pause', verifyToken, authorizeCustomerAccess, pauseDelivery);
+router.post('/:id/resume', verifyToken, authorizeCustomerAccess, resumeDelivery);
+router.post('/:id/temp-qty', verifyToken, authorizeCustomerAccess, setTemporaryQty);
+router.get('/:id/ledger', verifyToken, authorizeCustomerAccess, getCustomerLedger);
+router.delete('/:id/history/:entryId', verifyToken, authorizeCustomerAccess, deleteCustomerHistoryEntry);
+router.delete('/:id/history', verifyToken, authorizeCustomerAccess, clearCustomerHistory);
 router.post('/:id/send-credentials', verifyToken, requireAdmin, sendCustomerCredentials);
 
 module.exports = router;

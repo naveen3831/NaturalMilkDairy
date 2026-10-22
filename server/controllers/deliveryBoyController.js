@@ -7,6 +7,7 @@ const CashHandover = require('../models/CashHandover');
 const { recordAudit } = require('../services/auditService');
 const { formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
+const { hashPassword, generateTemporaryPassword } = require('../security/password');
 
 const getDeliveryBoys = async (req, res) => {
   try {
@@ -61,7 +62,6 @@ const getDeliveryBoys = async (req, res) => {
         assignedArea: boy.assignedArea || 'Andheri West',
         vehicleNumber: boy.vehicleNumber || '',
         status: boy.status || 'active',
-        password: boy.password || (userMatch ? userMatch.password : ''),
         todayCashCollected: boy.todayCashCollected || 0,
         todayUpiCollected: boy.todayUpiCollected || 0,
         todayStats: {
@@ -85,16 +85,30 @@ const getDeliveryBoys = async (req, res) => {
 
 const addDeliveryBoy = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Delivery partner details must be an object.' });
+    }
     const { name, email, mobile, assignedArea, vehicleNumber, password, status, actor } = req.body;
-    if (!name || !mobile) {
+    if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80 ||
+      typeof mobile !== 'string' || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(mobile.trim())) {
       return res.status(400).json({ success: false, message: 'Name and mobile number are required' });
     }
 
-    const driverPass = password && password.trim() ? password.trim() : 'Driver@123';
+    if (password !== undefined && (typeof password !== 'string' || password.length < 8 || password.length > 128)) {
+      return res.status(400).json({ success: false, message: 'Password must be between 8 and 128 characters.' });
+    }
+    if (email !== undefined && (typeof email !== 'string' || email.length > 254)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+    }
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanMobile = mobile.trim();
     const cleanName = name.trim();
     const area = assignedArea || 'Andheri West';
+    const driverPass = password || generateTemporaryPassword();
+    if (!cleanEmail && !password) {
+      return res.status(400).json({ success: false, message: 'Provide a password or an email address for secure credential delivery.' });
+    }
+    const passwordHash = await hashPassword(driverPass);
     const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
     // 0. Check if phone number or email already exists
@@ -142,7 +156,7 @@ const addDeliveryBoy = async (req, res) => {
       name: cleanName,
       email: cleanEmail,
       mobile: cleanMobile,
-      password: driverPass,
+      password: passwordHash,
       assignedArea: area,
       vehicleNumber: (vehicleNumber || '').trim(),
       status: status || 'active',
@@ -159,7 +173,7 @@ const addDeliveryBoy = async (req, res) => {
           name: cleanName,
           email: cleanEmail,
           mobile: cleanMobile,
-          password: driverPass,
+          password: passwordHash,
           role: 'delivery_boy',
           assignedArea: area,
           status: status || 'active',
@@ -204,7 +218,6 @@ const addDeliveryBoy = async (req, res) => {
         vehicleNumber: newBoy.vehicleNumber,
         status: newBoy.status,
       },
-      temporaryPassword: driverPass,
       emailSent,
     });
   } catch (err) {
@@ -214,6 +227,9 @@ const addDeliveryBoy = async (req, res) => {
 
 const updateDeliveryBoy = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Delivery partner details must be an object.' });
+    }
     const { id } = req.params;
     const { name, email, mobile, assignedArea, vehicleNumber, password, status, resendEmail, actor } = req.body;
 
@@ -259,15 +275,23 @@ const updateDeliveryBoy = async (req, res) => {
       }
     }
 
+    if (password !== undefined && password !== '' &&
+      (typeof password !== 'string' || password.length < 8 || password.length > 128)) {
+      return res.status(400).json({ success: false, message: 'Password must be between 8 and 128 characters.' });
+    }
+    if (resendEmail && !email && !boy.email) {
+      return res.status(400).json({ success: false, message: 'Add an email address before sending login credentials.' });
+    }
+
+    const credentialPassword = password || (resendEmail ? generateTemporaryPassword() : '');
+    const passwordHash = credentialPassword ? await hashPassword(credentialPassword) : '';
     if (name !== undefined) boy.name = name.trim();
     if (email !== undefined) boy.email = email.trim().toLowerCase();
     if (mobile !== undefined) boy.mobile = mobile.trim();
     if (assignedArea !== undefined) boy.assignedArea = assignedArea.trim();
     if (vehicleNumber !== undefined) boy.vehicleNumber = vehicleNumber.trim();
     if (status !== undefined) boy.status = status;
-    if (password && password.trim()) {
-      boy.password = password.trim();
-    }
+    if (passwordHash) boy.password = passwordHash;
     await boy.save();
 
     // Update matching User document
@@ -279,7 +303,7 @@ const updateDeliveryBoy = async (req, res) => {
       status: boy.status,
       role: 'delivery_boy',
     };
-    if (password && password.trim()) userUpdate.password = password.trim();
+    if (passwordHash) userUpdate.password = passwordHash;
 
     let user = await User.findOneAndUpdate(
       { $or: [{ mobile: oldMobile }, { mobile: boy.mobile }] },
@@ -289,7 +313,7 @@ const updateDeliveryBoy = async (req, res) => {
     if (!user) {
       user = await User.create({
         ...userUpdate,
-        password: boy.password || 'Driver@123',
+        password: boy.password || passwordHash,
       });
     }
 
@@ -302,12 +326,12 @@ const updateDeliveryBoy = async (req, res) => {
 
     let emailSent = false;
     const targetEmail = email ? email.trim().toLowerCase() : (user ? user.email : '');
-    if (resendEmail && targetEmail) {
+    if (resendEmail && targetEmail && credentialPassword) {
       const { sendPartnerCredentialsEmail } = require('../services/emailService');
       try {
         const emailRes = await sendPartnerCredentialsEmail(
           { name: boy.name, email: targetEmail, mobile: boy.mobile, assignedArea: boy.assignedArea },
-          user?.password || password || 'Driver@123'
+          credentialPassword
         );
         emailSent = emailRes?.success || false;
       } catch (e) {
@@ -556,7 +580,24 @@ const sendDeliveryBoyCredentials = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No email address registered for this delivery partner' });
     }
 
-    const password = user?.password || 'Driver@123';
+    const password = generateTemporaryPassword();
+    const passwordHash = await hashPassword(password);
+    boy.password = passwordHash;
+    await boy.save();
+    if (user) {
+      user.password = passwordHash;
+      await user.save();
+    } else {
+      await User.create({
+        name: boy.name,
+        email: boy.email || targetEmail,
+        mobile: boy.mobile,
+        password: passwordHash,
+        role: 'delivery_boy',
+        assignedArea: boy.assignedArea,
+        status: boy.status,
+      });
+    }
     const { sendPartnerCredentialsEmail } = require('../services/emailService');
     const emailRes = await sendPartnerCredentialsEmail(
       {

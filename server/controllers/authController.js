@@ -4,26 +4,51 @@ const DeliveryBoy = require('../models/DeliveryBoy');
 const DeliveryLocation = require('../models/DeliveryLocation');
 const { generateToken } = require('../middleware/authMiddleware');
 const { recordAudit } = require('../services/auditService');
+const { hashPassword, verifyPassword } = require('../security/password');
+
+const verifyStoredPassword = async (password, records) => {
+  let valid = false;
+  let needsRehash = false;
+  for (const { model, document } of records) {
+    if (!document?.password) continue;
+    const result = await verifyPassword(password, document.password);
+    if (result.valid) {
+      valid = true;
+      needsRehash = needsRehash || result.needsRehash;
+    }
+  }
+  if (valid && needsRehash) {
+    const passwordHash = await hashPassword(password);
+    await Promise.all(records
+      .filter(({ document }) => document?._id)
+      .map(({ model, document }) =>
+        model.updateOne({ _id: document._id }, { $set: { password: passwordHash } })
+      ));
+  }
+  return valid;
+};
 
 const login = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Enter your registered email/mobile number and password.' });
+    }
     const { mobile, email, identifier: rawIdentifier, username, password } = req.body;
-    const identifier = (rawIdentifier || username || mobile || email || '').trim();
-    const cleanId = identifier.toLowerCase();
-    const cleanPhone = identifier.replace(/[^0-9]/g, '');
-    const inputPassword = (password || '').trim();
-
-    if (!identifier) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide your registered email or mobile number.',
-      });
+    const rawValue = rawIdentifier || username || mobile || email || '';
+    if (typeof rawValue !== 'string' || rawValue.length > 254 || typeof password !== 'string' || password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email/mobile number and password.' });
     }
 
-    if (!inputPassword) {
+    const identifier = rawValue.trim();
+    const cleanId = identifier.toLowerCase();
+    let cleanPhone = identifier.replace(/[^0-9]/g, '');
+    if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) cleanPhone = cleanPhone.slice(2);
+    const inputPassword = password;
+
+    if (!identifier || !inputPassword) {
       return res.status(400).json({
         success: false,
-        message: 'Please enter your password.',
+        message: 'Please provide your registered email/mobile number and password.',
       });
     }
 
@@ -35,17 +60,15 @@ const login = async (req, res) => {
       $or: [
         { email: emailRegex, role: 'admin' },
         { mobile: identifier, role: 'admin' },
-        ...(cleanId === 'admin@gmail.com' ? [{ role: 'admin' }] : []),
+        ...(cleanPhone.length === 10 ? [{ mobile: cleanPhone, role: 'admin' }] : []),
       ],
     });
 
     if (foundAdmin) {
-      const isValidAdminPass =
-        inputPassword === 'admin@123' ||
-        inputPassword === 'admin' ||
-        (foundAdmin.password && foundAdmin.password === inputPassword);
-
-      if (isValidAdminPass) {
+      if (foundAdmin.status && foundAdmin.status !== 'active') {
+        return res.status(403).json({ success: false, message: 'Your account is inactive. Contact an administrator.' });
+      }
+      if (await verifyStoredPassword(inputPassword, [{ model: User, document: foundAdmin }])) {
         const userPayload = {
           id: foundAdmin._id.toString(),
           name: foundAdmin.name || 'Dairy Owner (Admin)',
@@ -64,36 +87,9 @@ const login = async (req, res) => {
       } else {
         return res.status(401).json({
           success: false,
-          message: 'Incorrect admin password. Please try again.',
+          message: 'Invalid email/mobile number or password.',
         });
       }
-    }
-
-    if (!foundAdmin && (cleanId === 'admin@gmail.com' || cleanPhone === '9876543210') && (inputPassword === 'admin@123' || inputPassword === 'admin')) {
-      const seededAdmin = await User.findOneAndUpdate(
-        { email: 'admin@gmail.com' },
-        {
-          name: 'Dairy Owner (Admin)',
-          email: 'admin@gmail.com',
-          mobile: '9876543210',
-          password: 'admin@123',
-          role: 'admin',
-          status: 'active',
-          assignedArea: 'All Dairy Routes',
-        },
-        { upsert: true, new: true }
-      );
-      const userPayload = {
-        id: seededAdmin._id.toString(),
-        name: seededAdmin.name,
-        email: seededAdmin.email,
-        mobile: seededAdmin.mobile,
-        role: 'admin',
-        status: seededAdmin.status,
-        assignedArea: seededAdmin.assignedArea,
-      };
-      const token = generateToken(userPayload);
-      return res.json({ success: true, user: userPayload, token });
     }
 
     // 2. Check if Delivery Partner (look up in DeliveryBoy collection and User collection)
@@ -130,17 +126,15 @@ const login = async (req, res) => {
       }
 
       // Check portal password
-      const storedPass = deliveryBoyDoc?.password || userDriverDoc?.password || 'Driver@123';
-      const isValidPass =
-        storedPass === inputPassword ||
-        (userDriverDoc?.password && userDriverDoc.password === inputPassword) ||
-        (deliveryBoyDoc?.password && deliveryBoyDoc.password === inputPassword) ||
-        inputPassword === 'Driver@123';
+      const isValidPass = await verifyStoredPassword(inputPassword, [
+        { model: User, document: userDriverDoc },
+        { model: DeliveryBoy, document: deliveryBoyDoc },
+      ]);
 
       if (!isValidPass) {
         return res.status(401).json({
           success: false,
-          message: 'Incorrect delivery partner password. Please check your credentials email.',
+          message: 'Invalid email/mobile number or password.',
         });
       }
 
@@ -187,14 +181,14 @@ const login = async (req, res) => {
         mobile: foundCustomer.mobile,
         role: { $in: ['customer', 'user'] },
       }).lean();
-      const custPass =
-        customerUser?.password ||
-        foundCustomer.password ||
-        `${foundCustomer.name.split(' ')[0].toLowerCase()}@123`;
-      if (custPass && inputPassword && custPass !== inputPassword) {
+      const isValidPass = await verifyStoredPassword(inputPassword, [
+        { model: User, document: customerUser },
+        { model: Customer, document: foundCustomer },
+      ]);
+      if (!isValidPass) {
         return res.status(401).json({
           success: false,
-          message: 'Incorrect customer password. Please verify and try again.',
+          message: 'Invalid email/mobile number or password.',
         });
       }
 
@@ -219,7 +213,11 @@ const login = async (req, res) => {
 
     // 4. Also check general User collection
     const genericUser = await User.findOne({
-      $or: [{ email: emailRegex }, { mobile: identifier }],
+      $or: [
+        { email: emailRegex },
+        { mobile: identifier },
+        ...(cleanPhone.length === 10 ? [{ mobile: cleanPhone }] : []),
+      ],
     }).lean();
 
     if (genericUser) {
@@ -230,10 +228,10 @@ const login = async (req, res) => {
         });
       }
 
-      if (genericUser.password && genericUser.password !== inputPassword) {
+      if (!(await verifyStoredPassword(inputPassword, [{ model: User, document: genericUser }]))) {
         return res.status(401).json({
           success: false,
-          message: 'Incorrect password. Please verify and try again.',
+          message: 'Invalid email/mobile number or password.',
         });
       }
 
@@ -255,12 +253,13 @@ const login = async (req, res) => {
     }
 
     // 5. Account not found
-    return res.status(404).json({
+    return res.status(401).json({
       success: false,
-      message: 'No account found matching this email or mobile number.',
+      message: 'Invalid email/mobile number or password.',
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('Login failed:', err);
+    return res.status(500).json({ success: false, message: 'Unable to sign in right now.' });
   }
 };
 
@@ -281,6 +280,9 @@ const DEFAULT_DELIVERY_AREAS = [
 
 const register = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Registration details must be an object.' });
+    }
     const {
       name,
       mobile,
@@ -288,54 +290,61 @@ const register = async (req, res) => {
       role = 'customer',
       address,
       area,
-      milkQty = 1,
-      curdQty = 0,
-      frequency = 'daily',
     } = req.body;
 
-    if (typeof name !== 'string' || !name.trim() || typeof mobile !== 'string' || !mobile.trim()) {
-      return res.status(400).json({ success: false, message: 'Name and mobile number are required' });
+    if (role !== 'customer') {
+      return res.status(403).json({ success: false, message: 'Public registration is only available for customer accounts.' });
     }
 
-    const cleanMobile = mobile.trim();
+    if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
+      return res.status(400).json({ success: false, message: 'Name must be between 2 and 80 characters.' });
+    }
+    if (typeof mobile !== 'string' || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(mobile.trim())) {
+      return res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number.' });
+    }
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      return res.status(400).json({ success: false, message: 'Password must be between 8 and 128 characters.' });
+    }
+    if (typeof address !== 'string' || address.trim().length < 4 || address.trim().length > 250) {
+      return res.status(400).json({ success: false, message: 'Address must be between 4 and 250 characters.' });
+    }
+    if (area !== undefined && (typeof area !== 'string' || area.trim().length > 100)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid delivery area.' });
+    }
+
+    const cleanMobile = mobile.trim().replace(/[ -]/g, '').replace(/^\+?91/, '');
     const cleanName = name.trim();
-    if (typeof password !== 'string' || !password.trim()) {
-      return res.status(400).json({ success: false, message: 'Password is required' });
-    }
-
     const existingUser = await User.findOne({ mobile: cleanMobile });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'A user with this mobile number already exists. Please log in.' });
     }
 
-    if (role === 'customer' || role === 'user') {
-      const existingCustomer = await Customer.findOne({ mobile: cleanMobile });
-      if (existingCustomer) {
-        return res.status(400).json({ success: false, message: 'A customer with this mobile number already exists. Please log in.' });
-      }
+    const existingCustomer = await Customer.findOne({ mobile: cleanMobile });
+    if (existingCustomer) {
+      return res.status(400).json({ success: false, message: 'A customer with this mobile number already exists. Please log in.' });
+    }
 
-      const rawArea = (typeof area === 'string' && area.trim()) ? area.trim() : 'Madhapur';
-      
-      // Verify location is an active serviceable area configured by admin
-      const validLocation = await DeliveryLocation.findOne({
-        name: { $regex: new RegExp(`^${rawArea}$`, 'i') },
-        isActive: true,
+    const rawArea = (typeof area === 'string' && area.trim()) ? area.trim() : 'Madhapur';
+    const escapedArea = rawArea.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    const validLocation = await DeliveryLocation.findOne({
+      name: { $regex: new RegExp(`^${escapedArea}$`, 'i') },
+      isActive: true,
+    });
+
+    if (!validLocation) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery is currently not available in "${rawArea}". Please choose an active location from our delivery zones.`,
       });
+    }
 
-      if (!validLocation) {
-        return res.status(400).json({
-          success: false,
-          message: `Delivery is currently not available in "${rawArea}". Please choose an active location from our delivery zones.`,
-        });
-      }
+    const selectedArea = validLocation.name;
+    const cleanAddress = address.trim();
 
-      const selectedArea = validLocation.name;
-      const cleanAddress = (typeof address === 'string' && address.trim()) ? address.trim() : `${selectedArea}, Home Delivery`;
+    const custCount = await Customer.countDocuments();
+    const customerId = `CUST-${custCount + 101}`;
 
-      const custCount = await Customer.countDocuments();
-      const customerId = `CUST-${custCount + 101}`;
-
-      const newCustomer = await Customer.create({
+    const newCustomer = await Customer.create({
         customerId,
         name: cleanName,
         mobile: cleanMobile,
@@ -362,81 +371,43 @@ const register = async (req, res) => {
         currentBalance: 0,
         notes: 'Registered via web portal',
         createdAt: new Date(),
-      });
-
-      try {
-        await User.create({
-          name: cleanName,
-          mobile: cleanMobile,
-          password: password.trim(),
-          role: 'customer',
-          status: 'active',
-          assignedArea: selectedArea,
-          address: cleanAddress,
-        });
-      } catch (err) {
-        await Customer.deleteOne({ _id: newCustomer._id });
-        throw err;
-      }
-
-      await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
-
-      const userPayload = {
-        id: newCustomer._id.toString(),
-        name: newCustomer.name,
-        mobile: newCustomer.mobile,
-        role: 'customer',
-        status: 'inactive',
-        customerId: newCustomer.customerId,
-        area: newCustomer.area,
-        address: newCustomer.address,
-      };
-      return res.status(201).json({
-        success: true,
-        user: userPayload,
-        token: generateToken(userPayload),
-      });
-    }
-
-    // Admin or Delivery Boy registration
-    const newUser = await User.create({
-      name: cleanName,
-      mobile: cleanMobile,
-      password: password || '123456',
-      role: role === 'delivery_boy' ? 'delivery_boy' : 'admin',
-      status: 'active',
-      assignedArea: area || (role === 'delivery_boy' ? 'Madhapur' : 'All Areas'),
-      address: address || '',
     });
 
-    if (role === 'delivery_boy') {
-      await DeliveryBoy.create({
+    try {
+      await User.create({
         name: cleanName,
         mobile: cleanMobile,
-        assignedArea: area || 'Madhapur',
-        vehicleNumber: 'AP-40-ND-' + Math.floor(1000 + Math.random() * 9000),
+        password: await hashPassword(password),
+        role: 'customer',
         status: 'active',
+        assignedArea: selectedArea,
+        address: cleanAddress,
       });
+    } catch (err) {
+      await Customer.deleteOne({ _id: newCustomer._id });
+      throw err;
     }
 
-    await recordAudit('Staff Registered', cleanName, `Registered as ${role}`, 'auth');
+    await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
 
     const userPayload = {
-      id: newUser._id.toString(),
-      name: newUser.name,
-      mobile: newUser.mobile,
-      role: newUser.role,
-      assignedArea: newUser.assignedArea,
+      id: newCustomer._id.toString(),
+      name: newCustomer.name,
+      mobile: newCustomer.mobile,
+      role: 'customer',
+      status: 'inactive',
+      customerId: newCustomer.customerId,
+      area: newCustomer.area,
+      address: newCustomer.address,
     };
-    const token = generateToken(userPayload);
-
     return res.status(201).json({
       success: true,
       user: userPayload,
-      token,
+      token: generateToken(userPayload),
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    console.error('Registration failed:', err);
+    return res.status(500).json({ success: false, message: 'Unable to complete registration right now.' });
   }
 };
 
@@ -487,9 +458,10 @@ const getMe = async (req, res) => {
     }
 
     if (!userDoc) {
-      // Return safe decoded user data from token if DB document is missing
-      const { ...tokenUser } = req.user;
-      return res.json({ success: true, user: tokenUser });
+      return res.status(401).json({ success: false, message: 'Account no longer exists. Please sign in again.' });
+    }
+    if (userDoc.status === 'inactive' && ['admin', 'delivery_boy', 'user'].includes(req.user.role)) {
+      return res.status(401).json({ success: false, message: 'Account is inactive. Please contact an administrator.' });
     }
 
     // Strip password for security

@@ -1,30 +1,32 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, Truck, UserCheck, X, ArrowRight, Lock, Phone } from 'lucide-react';
+import { X, Lock, Phone } from 'lucide-react';
 
 export default function StaffLoginModal({ isOpen, onClose, onLoginSuccess }) {
-  const { switchUser, login, DEMO_USERS } = useAuth();
+  const { login, logout } = useAuth();
   const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
 
-  const handleQuickSelect = async (userId, targetTab) => {
-    await switchUser(userId);
-    onLoginSuccess(targetTab);
-    onClose();
-  };
-
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!mobile.trim() || !password || password.length > 128) {
+      setError('Enter your registered email/mobile number and password.');
+      return;
+    }
     const res = await login(mobile, password);
     if (res && res.success && res.user) {
       if (res.user.role === 'admin') {
         onLoginSuccess('dashboard');
-      } else {
+      } else if (res.user.role === 'delivery_boy') {
         onLoginSuccess('delivery-boy-app');
+      } else {
+        logout();
+        setError('A staff account is required to access this portal.');
+        return;
       }
       onClose();
     } else {
@@ -113,116 +115,8 @@ export default function StaffLoginModal({ isOpen, onClose, onLoginSuccess }) {
         {/* Content */}
         <div style={{ padding: '24px 28px' }}>
           <p style={{ fontSize: '0.88rem', color: '#597361', marginBottom: '18px', lineHeight: 1.5 }}>
-            Select your staff role below for immediate 1-tap test access, or sign in with your credentials.
+            Sign in with your staff credentials to continue to the management portal.
           </p>
-
-          {/* Quick 1-Tap Access Buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '22px' }}>
-            <button
-              onClick={() => handleQuickSelect('admin', 'dashboard')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: '12px',
-                background: '#eaf5ee',
-                border: '1.5px solid #0d5c3a',
-                color: '#0d5c3a',
-                fontWeight: 700,
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <ShieldCheck size={22} color="#0d5c3a" />
-                <div>
-                  <div style={{ fontSize: '0.98rem', color: '#0d5c3a' }}>Dairy Owner / Admin Portal</div>
-                  <div style={{ fontSize: '0.78rem', color: '#597361', fontWeight: 500 }}>
-                    Full ledger, customer management & billing
-                  </div>
-                </div>
-              </div>
-              <ArrowRight size={18} color="#0d5c3a" />
-            </button>
-
-            <button
-              onClick={() => handleQuickSelect('usr_boy_1', 'delivery-boy-app')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '14px 18px',
-                borderRadius: '12px',
-                background: '#fef8eb',
-                border: '1.5px solid #f5a623',
-                color: '#92400e',
-                fontWeight: 700,
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Truck size={22} color="#d98a0d" />
-                <div>
-                  <div style={{ fontSize: '0.98rem', color: '#92400e' }}>Delivery Partner: Rahul Sharma</div>
-                  <div style={{ fontSize: '0.78rem', color: '#b45309', fontWeight: 500 }}>
-                    Morning delivery route & cash/UPI collection
-                  </div>
-                </div>
-              </div>
-              <ArrowRight size={18} color="#d98a0d" />
-            </button>
-
-            <button
-              onClick={() => handleQuickSelect('usr_boy_2', 'delivery-boy-app')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                background: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                color: '#334155',
-                fontWeight: 600,
-                textAlign: 'left',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <Truck size={20} color="#64748b" />
-                <div>
-                  <div style={{ fontSize: '0.92rem' }}>Delivery Partner: Sunil Verma</div>
-                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Andheri East Route</div>
-                </div>
-              </div>
-              <ArrowRight size={16} color="#64748b" />
-            </button>
-          </div>
-
-          <div
-            style={{
-              position: 'relative',
-              textAlign: 'center',
-              margin: '20px 0',
-            }}
-          >
-            <div style={{ borderTop: '1px solid #e2e8f0', width: '100%' }} />
-            <span
-              style={{
-                position: 'absolute',
-                top: '-10px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: '#ffffff',
-                padding: '0 12px',
-                fontSize: '0.75rem',
-                color: '#94a3b8',
-                textTransform: 'uppercase',
-                fontWeight: 600,
-              }}
-            >
-              or sign in manually
-            </span>
-          </div>
 
           <form onSubmit={handleManualSubmit}>
             {error && (
@@ -248,6 +142,8 @@ export default function StaffLoginModal({ isOpen, onClose, onLoginSuccess }) {
                 <Phone size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                 <input
                   type="text"
+                  required
+                  maxLength={254}
                   placeholder="9876543210"
                   value={mobile}
                   onChange={(e) => setMobile(e.target.value)}
@@ -264,6 +160,8 @@ export default function StaffLoginModal({ isOpen, onClose, onLoginSuccess }) {
                 <Lock size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                 <input
                   type="password"
+                  required
+                  maxLength={128}
                   placeholder="••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

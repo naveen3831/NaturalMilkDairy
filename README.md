@@ -66,6 +66,13 @@ Built using the exact color palette and motifs from the official **Natural Milk 
 
 ## ⚡ Quick Start Instructions
 
+### Security Configuration
+Copy `server/.env.example` to `server/.env` and set a unique `JWT_SECRET` of at least 32 characters. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. Never commit or share `server/.env`.
+
+For production, set `NODE_ENV=production`, configure `CLIENT_URL` to the exact HTTPS origin serving the client, and add any other trusted browser origins to `CORS_ORIGINS`. The API rejects unlisted browser origins. WebSocket clients must authenticate with a valid JWT; use HTTPS/WSS when deployed.
+
+New customer and staff passwords are stored as salted scrypt hashes. Existing plaintext passwords are upgraded to hashes after a successful sign-in; reset any known/default credentials before deployment.
+
 ### Razorpay Subscription Checkout
 Set `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in `server/.env` before starting the backend. Use Razorpay test credentials for development and live credentials only for a deployed production environment. The server verifies each payment signature and captured order before activating a 30-day prepaid subscription.
 
@@ -92,21 +99,3 @@ npm run client
 Open **http://localhost:3000** in your browser!
 
 ---
-
-## 👥 Demo Roles & Quick Switcher
-
-You can test both roles using the top-right role switcher dropdown in the navbar or via the login page:
-
-1. **Dairy Owner / Admin**:
-   - Mobile: `9876543210`
-   - Password: `admin`
-   - Access: Full control, dashboard, customers, pricing, audit trail, cash reconciliation.
-
-2. **Delivery Boy (Rahul Sharma — Andheri West)**:
-   - Mobile: `9811122233`
-   - Password: `123`
-   - Access: Today's morning route, fast 2-tap delivery, call/map, offline storage, daily collection summary.
-
-3. **Delivery Boy (Sunil Verma — Andheri East)**:
-   - Mobile: `9822233344`
-   - Password: `123`

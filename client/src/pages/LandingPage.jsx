@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
 import {
   Milk,
@@ -30,7 +29,6 @@ import StaffLoginModal from '../components/StaffLoginModal';
 import Footer from '../components/Footer';
 
 export default function LandingPage({ setActiveTab }) {
-  const { switchUser } = useAuth();
   const { products, deliveryBoys } = useDairy();
 
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
@@ -42,16 +40,6 @@ export default function LandingPage({ setActiveTab }) {
   const handleOpenSubscribe = (prod = null) => {
     setSelectedProduct(prod);
     setIsSubscribeOpen(true);
-  };
-
-  const handleAdminLaunch = () => {
-    switchUser('admin');
-    setActiveTab('dashboard');
-  };
-
-  const handleDeliveryLaunch = () => {
-    switchUser('usr_boy_1');
-    setActiveTab('delivery-boy-app');
   };
 
   const catalogProducts = [

@@ -469,7 +469,14 @@ const getMySubscriptions = async (req, res) => {
 const toggleSubscriptionStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, reason, actor } = req.body || {}; // action: 'stop' | 'start'
+    const { action, reason } = req.body || {};
+    const actor = req.user.name || req.user.role;
+    if (!['stop', 'start'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Action must be either start or stop.' });
+    }
+    if (reason !== undefined && (typeof reason !== 'string' || reason.length > 500)) {
+      return res.status(400).json({ success: false, message: 'Reason must be 500 characters or fewer.' });
+    }
 
     // Look up subscription by _id, or by customerId, or providerOrderId
     let subscription = null;
@@ -494,6 +501,11 @@ const toggleSubscriptionStatus = async (req, res) => {
 
     if (!subscription && !customer) {
       return res.status(404).json({ success: false, message: 'Subscription record not found.' });
+    }
+    const isCustomerOwner = req.user.role === 'customer' && customer &&
+      (req.user.id === customer._id.toString() || req.user.customerId === customer.customerId);
+    if (req.user.role !== 'admin' && !isCustomerOwner) {
+      return res.status(403).json({ success: false, message: 'You can only change your own subscription.' });
     }
 
     const isStopping = action === 'stop';

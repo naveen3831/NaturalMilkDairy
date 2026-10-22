@@ -2,33 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 
 const AuthContext = createContext();
 
-export const DEMO_USERS = [
-  {
-    id: 'usr_admin_1',
-    name: 'Dairy Owner (Admin)',
-    email: 'admin@gmail.com',
-    mobile: 'admin@gmail.com',
-    role: 'admin',
-    assignedArea: 'All Dairy Routes',
-  },
-  {
-    id: 'usr_boy_1',
-    name: 'Rahul Sharma (Partner)',
-    email: 'naveenkumar970100@gmail.com',
-    mobile: '9701878789',
-    role: 'delivery_boy',
-    assignedArea: 'madhapur',
-  },
-  {
-    id: 'usr_boy_2',
-    name: 'Laddu (Partner)',
-    email: 'naveenkumarnaveen97311@gmail.com',
-    mobile: '6361923127',
-    role: 'delivery_boy',
-    assignedArea: 'Andheri West',
-  },
-];
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     // Purge any stale persistent user session from localStorage so visiting the site opens as guest
@@ -126,6 +99,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (identifier, password) => {
     const trimmed = (identifier || '').trim();
+    if (!trimmed || typeof password !== 'string' || !password || password.length > 128) {
+      return { success: false, message: 'Enter your registered email/mobile number and password.' };
+    }
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -133,36 +109,19 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ identifier: trimmed, mobile: trimmed, email: trimmed, password }),
       });
       const data = await res.json();
-      if (data.success && data.user) {
+      if (res.ok && data.success && data.user && data.token) {
         setUser(data.user);
         sessionStorage.setItem('nmd_user', JSON.stringify(data.user));
-        if (data.token) {
-          setToken(data.token);
-          sessionStorage.setItem('nmd_jwt_token', data.token);
-        }
+        setToken(data.token);
+        sessionStorage.setItem('nmd_jwt_token', data.token);
         return { success: true, user: data.user, token: data.token };
       } else {
         return { success: false, message: data.message || 'Invalid credentials' };
       }
     } catch (err) {
-      console.warn('API login error, using local fallback:', err);
+      console.error('API login failed:', err);
+      return { success: false, message: 'Unable to reach the sign-in service. Please try again.' };
     }
-
-    // Strict fallback for seeded admin only
-    if (
-      (trimmed.toLowerCase() === 'admin@gmail.com' || trimmed === '9876543210') &&
-      password === 'admin@123'
-    ) {
-      const adminUser = DEMO_USERS[0];
-      setUser(adminUser);
-      sessionStorage.setItem('nmd_user', JSON.stringify(adminUser));
-      return { success: true, user: adminUser };
-    }
-
-    return {
-      success: false,
-      message: 'Invalid credentials. Please verify your mobile/email and password.',
-    };
   };
 
   const register = async (formData) => {
@@ -194,35 +153,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const switchUser = async (roleOrId) => {
-    // If admin
-    if (roleOrId === 'admin' || roleOrId === 'usr_admin_1') {
-      const res = await login('admin@gmail.com', 'admin@123');
-      return res?.user || null;
-    }
-    // If delivery boy 1
-    if (roleOrId === 'usr_boy_1' || roleOrId === 'delivery_boy') {
-      const res = await login('9701878789', 'naveen123');
-      if (res && res.success) return res.user;
-      const res2 = await login('9701878789', 'Driver@123');
-      return res2?.user || null;
-    }
-    // If delivery boy 2
-    if (roleOrId === 'usr_boy_2') {
-      const res = await login('6361923127', 'naveen123');
-      if (res && res.success) return res.user;
-      const res2 = await login('6361923127', 'Driver@123');
-      return res2?.user || null;
-    }
-    const found = DEMO_USERS.find((u) => u.id === roleOrId || u.role === roleOrId);
-    if (found) {
-      setUser(found);
-      sessionStorage.setItem('nmd_user', JSON.stringify(found));
-      return found;
-    }
-    return null;
-  };
-
   const authFetch = async (url, options = {}) => {
     const headers = {
       ...(options.headers || {}),
@@ -242,7 +172,7 @@ export const AuthProvider = ({ children }) => {
     return res;
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     setToken('');
     try {
@@ -255,7 +185,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('nmd_driver_tab');
       localStorage.removeItem('nmd_pending_subscription');
     } catch (e) {}
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -266,11 +196,9 @@ export const AuthProvider = ({ children }) => {
         isValidating,
         getAuthHeaders,
         authFetch,
-        switchUser,
         login,
         register,
         logout,
-        DEMO_USERS,
       }}
     >
       {children}

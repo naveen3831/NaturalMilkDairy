@@ -11,6 +11,7 @@ import {
 
 export const CUSTOMER_PORTAL_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'products', label: 'Products', icon: ShoppingBag },
   { id: 'subscription', label: 'Subscription', icon: CalendarDays },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'profile', label: 'Profile', icon: UserRound },

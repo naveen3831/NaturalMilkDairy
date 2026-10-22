@@ -518,7 +518,13 @@ export default function App() {
           {/* Main Content Area - Full 100% Viewport Width */}
           <main
             className={`public-mobile-content${user?.role === 'customer' ? ' customer-public-content' : ''}`}
-            style={{ flex: 1, padding: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden' }}
+            style={{
+              flex: 1,
+              padding: 0,
+              width: '100%',
+              maxWidth: '100%',
+              overflowX: activeTab === 'customer-portal' ? 'visible' : 'hidden',
+            }}
           >
             {/* Public Separate Pages */}
             {(activeTab === 'home' || activeTab === 'landing') && (

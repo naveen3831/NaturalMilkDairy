@@ -10,6 +10,7 @@ const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
+const { hashPassword, generateTemporaryPassword } = require('../security/password');
 
 // Get all customers with search and filters
 const getCustomers = async (req, res) => {
@@ -81,10 +82,11 @@ const getCustomers = async (req, res) => {
     return res.json({
       success: true,
       count: customers.length,
-      customers: customers.map((c) => ({
-        ...c,
-        id: c._id.toString(),
-      })),
+      customers: customers.map((customer) => {
+        const safeCustomer = { ...customer };
+        delete safeCustomer.password;
+        return { ...safeCustomer, id: safeCustomer._id.toString() };
+      }),
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -102,11 +104,13 @@ const getCustomerById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
+    const safeCustomer = { ...customer };
+    delete safeCustomer.password;
     return res.json({
       success: true,
       customer: {
-        ...customer,
-        id: customer._id.toString(),
+        ...safeCustomer,
+        id: safeCustomer._id.toString(),
       },
     });
   } catch (err) {
@@ -117,6 +121,9 @@ const getCustomerById = async (req, res) => {
 // Create customer
 const createCustomer = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Customer details must be an object.' });
+    }
     const {
       name,
       email,
@@ -140,14 +147,32 @@ const createCustomer = async (req, res) => {
       actor,
     } = req.body;
 
-    if (!name || !mobile || !address) {
+    if (
+      typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80 ||
+      typeof mobile !== 'string' || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(mobile.trim()) ||
+      typeof address !== 'string' || address.trim().length < 4 || address.trim().length > 250
+    ) {
       return res.status(400).json({ success: false, message: 'Name, mobile and address are required' });
     }
 
     const cleanName = name.trim();
     const cleanMobile = mobile.trim();
+    if (email !== undefined && (typeof email !== 'string' || email.length > 254)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+    }
+    if (whatsapp !== undefined && (typeof whatsapp !== 'string' || whatsapp.length > 20)) {
+      return res.status(400).json({ success: false, message: 'WhatsApp number must be 20 characters or fewer.' });
+    }
     const cleanEmail = (email || '').trim().toLowerCase();
-    const customerPassword = password ? password.trim() : `${cleanName.split(' ')[0].toLowerCase()}@123`;
+    if (password !== undefined && password !== '' &&
+      (typeof password !== 'string' || password.length < 8 || password.length > 128)) {
+      return res.status(400).json({ success: false, message: 'Password must be between 8 and 128 characters.' });
+    }
+    if (!password && !cleanEmail) {
+      return res.status(400).json({ success: false, message: 'Provide a password or an email address for secure credential delivery.' });
+    }
+    const customerPassword = password || generateTemporaryPassword();
+    const passwordHash = await hashPassword(customerPassword);
     const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
     // Duplicate check for mobile
@@ -175,9 +200,11 @@ const createCustomer = async (req, res) => {
     }
 
     // Find driver name if assigned or if created by driver
-    let boyName = '';
-    let finalDeliveryBoyId = deliveryBoyId || '';
     const isDriver = req.user?.role === 'delivery_boy';
+    let boyName = isDriver ? (req.user.name || 'Delivery Partner') : '';
+    let finalDeliveryBoyId = isDriver
+      ? (req.user.boyId || req.user.id || '')
+      : (deliveryBoyId || '');
 
     // Validate that the requested delivery area is an active serviceable location
     const targetArea = (area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur')).trim();
@@ -232,7 +259,7 @@ const createCustomer = async (req, res) => {
       name: cleanName,
       email: cleanEmail,
       mobile: cleanMobile,
-      password: customerPassword,
+      password: passwordHash,
       whatsapp: (whatsapp || cleanMobile).trim(),
       address: address.trim(),
       area: area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur'),
@@ -274,7 +301,7 @@ const createCustomer = async (req, res) => {
           name: cleanName,
           email: cleanEmail,
           mobile: cleanMobile,
-          password: customerPassword,
+          password: passwordHash,
           role: 'customer',
           status: 'active',
         },
@@ -329,13 +356,14 @@ const createCustomer = async (req, res) => {
     broadcast('DELIVERY_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
 
+    const customerResponse = newCustomer.toObject();
+    delete customerResponse.password;
     return res.status(201).json({
       success: true,
       customer: {
-        ...newCustomer.toObject(),
+        ...customerResponse,
         id: newCustomer._id.toString(),
       },
-      temporaryPassword: customerPassword,
       emailSent,
     });
   } catch (err) {
@@ -346,14 +374,36 @@ const createCustomer = async (req, res) => {
 // Update customer
 const updateCustomer = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Customer details must be an object.' });
+    }
     const { id } = req.params;
     const query = id.length === 24 ? { _id: id } : { customerId: id };
     const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    const fieldLimits = {
+      name: 80,
+      email: 254,
+      mobile: 15,
+      whatsapp: 20,
+      address: 250,
+      area: 100,
+      landmark: 120,
+      notes: 1000,
+      deliveryBoyId: 64,
+      deliveryBoyName: 80,
+    };
+    for (const [field, maxLength] of Object.entries(fieldLimits)) {
+      if (req.body[field] !== undefined &&
+        (typeof req.body[field] !== 'string' || req.body[field].length > maxLength)) {
+        return res.status(400).json({ success: false, message: `${field} must be a string of at most ${maxLength} characters.` });
+      }
+    }
 
     const existingCust = await Customer.findOne(query);
     if (!existingCust) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
+    const isDriver = req.user?.role === 'delivery_boy';
 
     if (req.body.mobile && req.body.mobile.trim() !== existingCust.mobile) {
       const cleanMobile = req.body.mobile.trim();
@@ -404,43 +454,105 @@ const updateCustomer = async (req, res) => {
       req.body.area = validLoc.name;
     }
 
-    const updateData = { ...req.body };
-    if (req.body.milkQty !== undefined) {
-      updateData['deliveryPlan.milkQty'] = Number(req.body.milkQty);
+    const adminFields = [
+      'name', 'email', 'mobile', 'whatsapp', 'address', 'area', 'landmark',
+      'status', 'currentBalance', 'notes', 'password',
+      'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
+      'deliveryBoyId', 'deliveryBoyName', 'paymentType', 'paymentCycle',
+      'deliveryPlan.milkQty', 'deliveryPlan.milkUnit', 'deliveryPlan.curdQty',
+      'deliveryPlan.curdUnit', 'deliveryPlan.frequency', 'deliveryPlan.deliveryDays',
+      'deliveryPlan.deliveryBoyId', 'deliveryPlan.deliveryBoyName',
+      'paymentInfo.paymentType', 'paymentInfo.paymentCycle',
+    ];
+    const driverFields = [
+      'whatsapp', 'address', 'landmark', 'notes',
+      'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
+      'deliveryPlan.milkQty', 'deliveryPlan.milkUnit',
+      'deliveryPlan.curdQty', 'deliveryPlan.curdUnit', 'deliveryPlan.frequency',
+      'deliveryPlan.deliveryDays',
+    ];
+    const updateData = {};
+    for (const field of (isDriver ? driverFields : adminFields)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        updateData[field] = req.body[field];
+      }
     }
-    if (req.body.milkUnit !== undefined) {
-      updateData['deliveryPlan.milkUnit'] = req.body.milkUnit;
+    if (updateData.name !== undefined &&
+      (typeof updateData.name !== 'string' || updateData.name.trim().length < 2 || updateData.name.trim().length > 80)) {
+      return res.status(400).json({ success: false, message: 'Name must be between 2 and 80 characters.' });
     }
-    if (req.body.curdQty !== undefined) {
-      updateData['deliveryPlan.curdQty'] = Number(req.body.curdQty);
+    if (updateData.mobile !== undefined &&
+      (typeof updateData.mobile !== 'string' || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(updateData.mobile.trim()))) {
+      return res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number.' });
     }
-    if (req.body.curdUnit !== undefined) {
-      updateData['deliveryPlan.curdUnit'] = req.body.curdUnit;
+    if (updateData.address !== undefined &&
+      (typeof updateData.address !== 'string' || updateData.address.trim().length < 4 || updateData.address.trim().length > 250)) {
+      return res.status(400).json({ success: false, message: 'Address must be between 4 and 250 characters.' });
     }
-    if (req.body.frequency !== undefined) {
-      updateData['deliveryPlan.frequency'] = req.body.frequency;
+    const quantities = ['milkQty', 'curdQty', 'deliveryPlan.milkQty', 'deliveryPlan.curdQty'];
+    for (const key of quantities) {
+      if (updateData[key] !== undefined &&
+        (!Number.isFinite(Number(updateData[key])) || Number(updateData[key]) < 0 || Number(updateData[key]) > 20_000)) {
+        return res.status(400).json({ success: false, message: 'Delivery quantities must be valid non-negative numbers.' });
+      }
     }
-    if (req.body.deliveryBoyId !== undefined) {
-      updateData['deliveryPlan.deliveryBoyId'] = req.body.deliveryBoyId;
+    const frequency = updateData.frequency || updateData['deliveryPlan.frequency'];
+    if (frequency !== undefined && !['daily', 'alternate', 'selected', 'custom'].includes(frequency)) {
+      return res.status(400).json({ success: false, message: 'Invalid delivery frequency.' });
     }
-    if (boyName) {
+    const deliveryDays = updateData.deliveryDays || updateData['deliveryPlan.deliveryDays'];
+    if (deliveryDays !== undefined &&
+      (!Array.isArray(deliveryDays) || deliveryDays.length > 7 ||
+        deliveryDays.some((day) => !['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].includes(day)))) {
+      return res.status(400).json({ success: false, message: 'Select valid delivery days.' });
+    }
+    if (req.body.password !== undefined && !isDriver) {
+      if (typeof req.body.password !== 'string' || req.body.password.length < 8 || req.body.password.length > 128) {
+        return res.status(400).json({ success: false, message: 'Password must be between 8 and 128 characters.' });
+      }
+      updateData.password = await hashPassword(req.body.password);
+    }
+    if (updateData.milkQty !== undefined) {
+      updateData['deliveryPlan.milkQty'] = Number(updateData.milkQty);
+    }
+    if (updateData.milkUnit !== undefined) {
+      updateData['deliveryPlan.milkUnit'] = updateData.milkUnit;
+    }
+    if (updateData.curdQty !== undefined) {
+      updateData['deliveryPlan.curdQty'] = Number(updateData.curdQty);
+    }
+    if (updateData.curdUnit !== undefined) {
+      updateData['deliveryPlan.curdUnit'] = updateData.curdUnit;
+    }
+    if (updateData.frequency !== undefined) {
+      updateData['deliveryPlan.frequency'] = updateData.frequency;
+    }
+    if (updateData.deliveryBoyId !== undefined) {
+      updateData['deliveryPlan.deliveryBoyId'] = updateData.deliveryBoyId;
+    }
+    if (boyName && updateData.deliveryBoyId !== undefined) {
       updateData['deliveryPlan.deliveryBoyName'] = boyName;
     }
-    if (req.body.paymentType !== undefined) {
-      updateData['paymentInfo.paymentType'] = req.body.paymentType;
+    if (updateData.paymentType !== undefined) {
+      updateData['paymentInfo.paymentType'] = updateData.paymentType;
     }
-    if (req.body.paymentCycle !== undefined) {
-      updateData['paymentInfo.paymentCycle'] = req.body.paymentCycle;
+    if (updateData.paymentCycle !== undefined) {
+      updateData['paymentInfo.paymentCycle'] = updateData.paymentCycle;
+    }
+    if (isDriver) {
+      updateData.area = existingCust.area;
+      updateData['deliveryPlan.deliveryBoyId'] = req.user.boyId || req.user.id;
+      updateData['deliveryPlan.deliveryBoyName'] = req.user.name;
     }
 
     const updated = await Customer.findOneAndUpdate(query, { $set: updateData }, { new: true });
 
     // Sync auth User record
     const userUpdate = {};
-    if (req.body.name) userUpdate.name = req.body.name.trim();
-    if (req.body.email) userUpdate.email = req.body.email.trim().toLowerCase();
-    if (req.body.mobile) userUpdate.mobile = req.body.mobile.trim();
-    if (req.body.password && req.body.password.trim()) userUpdate.password = req.body.password.trim();
+    if (updateData.name) userUpdate.name = updateData.name.trim();
+    if (updateData.email) userUpdate.email = updateData.email.trim().toLowerCase();
+    if (updateData.mobile) userUpdate.mobile = updateData.mobile.trim();
+    if (req.body.password && !isDriver) userUpdate.password = updateData.password;
     if (Object.keys(userUpdate).length > 0) {
       await User.findOneAndUpdate(
         { $or: [{ mobile: existingCust.mobile }, { mobile: updated.mobile }] },
@@ -450,7 +562,7 @@ const updateCustomer = async (req, res) => {
 
     await recordAudit(
       'Customer Updated',
-      req.body.actor || 'Admin',
+      req.user.name || req.user.role,
       `Updated details for ${updated.name} (${updated.customerId})`,
       'customer'
     );
@@ -827,7 +939,14 @@ const sendCustomerCredentials = async (req, res) => {
     }
 
     const user = await User.findOne({ mobile: customer.mobile });
-    const password = customer.password || user?.password || `${customer.name.split(' ')[0].toLowerCase()}@123`;
+    const password = generateTemporaryPassword();
+    const passwordHash = await hashPassword(password);
+    customer.password = passwordHash;
+    await customer.save();
+    if (user) {
+      user.password = passwordHash;
+      await user.save();
+    }
 
     const { sendCustomerCredentialsEmail } = require('../services/emailService');
     const emailRes = await sendCustomerCredentialsEmail(customer, password);

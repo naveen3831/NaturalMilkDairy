@@ -50,15 +50,24 @@ import {
   EyeOff,
   FileText,
   CheckCheck,
+  ShoppingBag,
+  Search,
+  Calendar,
+  Package,
+  Plus,
+  X,
+  Tag,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
   CUSTOMER_HOME_NAV_ITEMS,
   CUSTOMER_PORTAL_ITEMS,
 } from '../../components/CustomerBottomNav';
+import ProductDetailsView from '../ProductDetailsView';
 
 const CUSTOMER_PROFILE_NAV_ITEMS = [
   { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'products', label: 'Products', icon: ShoppingBag },
   { id: 'subscription', label: 'Subscription', icon: CalendarDays },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'profile', label: 'Profile', icon: UserRound },
@@ -72,7 +81,7 @@ const formatProfileDate = (value) => {
 
 const getCustomerRoute = () => {
   const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
-  if (section !== 'customer' || !['dashboard', 'subscription', 'deliveries', 'profile'].includes(page)) {
+  if (section !== 'customer' || !['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(page)) {
     return null;
   }
   const profileViews = [
@@ -87,12 +96,12 @@ const getCustomerRoute = () => {
 
 export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenTempQtyModal, onOpenPaymentModal }) {
   const { user, logout, setUser, getAuthHeaders } = useAuth();
-  const { customers, deliveries, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
+  const { customers, deliveries, products, fetchProducts, setTemporaryQty, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
   const { unreadCount, setIsNotificationOpen, sendNotification } = useNotifications();
   const { subscribe: wsSubscribe } = useWebSocket();
   const [activePage, setActivePage] = useState(() => {
     const savedPage = localStorage.getItem('nmd_customer_page');
-    const validPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedPage) ? savedPage : 'dashboard';
+    const validPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(savedPage) ? savedPage : 'dashboard';
     return getCustomerRoute()?.page || validPage;
   });
   const [ledgerEntries, setLedgerEntries] = useState([]);
@@ -185,6 +194,296 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [passwordValue, setPasswordValue] = useState('••••••••••••');
   const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
 
+  // Products & Bookings State (Real-Time Synchronized)
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [selectedProductCategory, setSelectedProductCategory] = useState('all');
+  const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [selectedBookingProduct, setSelectedBookingProduct] = useState(null);
+  const [bookingForm, setBookingForm] = useState({
+    date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    quantity: 1,
+    dropNotes: '',
+    bookingType: 'one_time',
+  });
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+  const [bookingSuccessMsg, setBookingSuccessMsg] = useState('');
+  const [customerBookings, setCustomerBookings] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`nmd_bookings_${user?.customerId || user?.mobile || 'default'}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedProductDetails, setSelectedProductDetails] = useState(null);
+
+  const getProductImage = (p) => {
+    if (!p) return '/product-cow-milk.jpg';
+    const n = (p.name || '').toLowerCase();
+    const c = (p.category || '').toLowerCase();
+
+    // Specific product asset matches
+    if (n.includes('500ml') || n.includes('500 ml') || n.includes('half')) {
+      return '/product-cow-milk-500ml.jpg';
+    }
+    if (n.includes('buffalo')) return '/product-buffalo-milk.jpg';
+    if (c === 'curd' || n.includes('curd') || n.includes('dahi')) return '/product-curd.jpg';
+    if (c === 'ghee' || n.includes('ghee')) return '/product-ghee.jpg';
+    if (c === 'paneer' || n.includes('paneer')) return '/product-paneer.jpg';
+
+    if (p.imageUrl && p.imageUrl.startsWith('http')) return p.imageUrl;
+    if (p.image && p.image.startsWith('http')) return p.image;
+    if (p.imageUrl && p.imageUrl.startsWith('/')) return p.imageUrl;
+    if (p.image && p.image.startsWith('/')) return p.image;
+
+    return '/product-cow-milk.jpg';
+  };
+
+  const handleProductImgError = (e, product) => {
+    const n = (product?.name || '').toLowerCase();
+    const c = (product?.category || '').toLowerCase();
+    let fallback = '/product-cow-milk.jpg';
+    if (n.includes('500ml') || n.includes('500 ml')) fallback = '/product-cow-milk-500ml.jpg';
+    else if (n.includes('buffalo')) fallback = '/product-buffalo-milk.jpg';
+    else if (c === 'curd' || n.includes('curd') || n.includes('dahi')) fallback = '/product-curd.jpg';
+    else if (c === 'ghee' || n.includes('ghee')) fallback = '/product-ghee.jpg';
+    else if (c === 'paneer' || n.includes('paneer')) fallback = '/product-paneer.jpg';
+
+    if (e.currentTarget.src !== window.location.origin + fallback) {
+      e.currentTarget.src = fallback;
+    }
+  };
+
+  const displayProducts = useMemo(() => {
+    if (products && products.length > 0) return products;
+    return [
+      {
+        _id: 'prod-cow-1l',
+        name: 'Pure Desi Cow Milk (A2 Gir)',
+        category: 'milk',
+        unit: '1 Litre Glass Bottle',
+        price: 60,
+        status: 'active',
+        description: 'Raw, unpasteurized, farm-fresh A2 milk from grass-fed indigenous Gir cows. Bottled in sterilized glass.',
+        imageUrl: '/product-cow-milk.jpg',
+      },
+      {
+        _id: 'prod-buffalo-1l',
+        name: 'Rich Buffalo Milk',
+        category: 'milk',
+        unit: '1 Litre Glass Bottle',
+        price: 75,
+        status: 'active',
+        description: 'Naturally thick milk with rich golden malai, ideal for traditional kheer, tea, and homemade paneer.',
+        imageUrl: '/product-buffalo-milk.jpg',
+      },
+      {
+        _id: 'prod-curd-500g',
+        name: 'Traditional Clay Pot Curd',
+        category: 'curd',
+        unit: '500g Clay Pot',
+        price: 35,
+        status: 'active',
+        description: 'Set naturally in earthen pots with live probiotic active cultures for perfect gut health and digestion.',
+        imageUrl: '/product-curd.jpg',
+      },
+      {
+        _id: 'prod-ghee-500ml',
+        name: 'Handcrafted A2 Bilona Desi Ghee',
+        category: 'ghee',
+        unit: '500ml Glass Jar',
+        price: 480,
+        status: 'active',
+        description: 'Slow-cooked over firewood from cultured Gir cow curd butter using authentic Vedic bilona churning.',
+        imageUrl: '/product-ghee.jpg',
+      },
+      {
+        _id: 'prod-paneer-250g',
+        name: 'Fresh Artisanal Malai Paneer',
+        category: 'paneer',
+        unit: '250g Vacuum Pack',
+        price: 110,
+        status: 'active',
+        description: 'Soft, melt-in-mouth cottage cheese crafted fresh every morning with zero starch or synthetic coagulants.',
+        imageUrl: '/product-paneer.jpg',
+      },
+      {
+        _id: 'prod-cow-500ml',
+        name: 'Pure Desi Cow Milk (500ml)',
+        category: 'milk',
+        unit: '500ml Glass Bottle',
+        price: 32,
+        status: 'active',
+        description: 'Fresh morning portion of raw A2 Gir cow milk for individuals or single tea servings.',
+        imageUrl: '/product-cow-milk-500ml.jpg',
+      },
+    ];
+  }, [products]);
+
+  // Real-time synchronization for products
+  useEffect(() => {
+    if (typeof fetchProducts === 'function') {
+      fetchProducts();
+    }
+  }, [fetchProducts]);
+
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const unsub = wsSubscribe((data) => {
+      if (data?.type === 'products_updated' || data?.type === 'database_sync' || data?.type === 'refresh_all') {
+        fetchProducts?.();
+        refreshAll?.();
+      }
+    });
+    return () => unsub?.();
+  }, [wsSubscribe, fetchProducts, refreshAll]);
+
+  const openBookingModal = (product = null, defaultType = 'one_time') => {
+    const prod = product || displayProducts[0] || null;
+    setSelectedBookingProduct(prod);
+    setBookingForm({
+      date: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      quantity: 1,
+      dropNotes: currentCustomer.landmark ? `Near ${currentCustomer.landmark}` : 'Deliver at doorstep milk bag',
+      bookingType: defaultType,
+    });
+    setBookingSuccessMsg('');
+    setBookingModalOpen(true);
+  };
+
+  const submitBookingModal = async (e) => {
+    e.preventDefault();
+    if (!selectedBookingProduct) return;
+    setBookingSubmitting(true);
+    try {
+      const newBooking = {
+        id: `BK-${Date.now().toString().slice(-6)}`,
+        productName: selectedBookingProduct.name,
+        productPrice: selectedBookingProduct.price,
+        productUnit: selectedBookingProduct.unit || 'unit',
+        productImage: getProductImage(selectedBookingProduct),
+        category: selectedBookingProduct.category,
+        quantity: Number(bookingForm.quantity) || 1,
+        date: bookingForm.date,
+        dropNotes: bookingForm.dropNotes || 'Deliver at doorstep milk bag',
+        bookingType: bookingForm.bookingType,
+        status: 'scheduled',
+        totalAmount: (Number(selectedBookingProduct.price) || 0) * (Number(bookingForm.quantity) || 1),
+        createdAt: new Date().toISOString(),
+      };
+
+      const updated = [newBooking, ...customerBookings];
+      setCustomerBookings(updated);
+      try {
+        localStorage.setItem(`nmd_bookings_${user?.customerId || user?.mobile || 'default'}`, JSON.stringify(updated));
+      } catch (err) {}
+
+      if (typeof setTemporaryQty === 'function' && currentCustomer?.id) {
+        try {
+          await setTemporaryQty(currentCustomer.id, {
+            date: newBooking.date,
+            milkQty: selectedBookingProduct.category === 'milk' ? Number(newBooking.quantity) : undefined,
+            curdQty: selectedBookingProduct.category === 'curd' ? Number(newBooking.quantity) : undefined,
+            actor: currentCustomer.name || 'Customer',
+          });
+        } catch (err) {
+          console.warn('Temp qty update notice:', err);
+        }
+      }
+
+      notifyRealtimeSync?.();
+      refreshAll?.();
+
+      if (typeof sendNotification === 'function') {
+        sendNotification({
+          title: 'Order Confirmed! 🎉',
+          message: `Your order for ${newBooking.quantity}x ${newBooking.productName} on ${newBooking.date} has been scheduled for morning delivery!`,
+          type: 'booking',
+        });
+      }
+
+      setBookingSuccessMsg(`Your order for ${newBooking.quantity}x ${newBooking.productName} for ${newBooking.date} has been scheduled for morning delivery!`);
+    } catch (err) {
+      alert('Could not complete booking: ' + (err.message || 'Please try again.'));
+    } finally {
+      setBookingSubmitting(false);
+    }
+  };
+
+  const handleDirectOrder = async (orderData) => {
+    const prod = orderData.product || selectedProductDetails;
+    if (!prod) return { success: false, message: 'No product selected' };
+    const qty = Number(orderData.quantity) || 1;
+    const price = Number(prod.numericPrice || prod.price) || 60;
+    const newBooking = {
+      id: `BK-${Date.now().toString().slice(-6)}`,
+      productName: prod.name,
+      productPrice: price,
+      productUnit: prod.unit || 'unit',
+      productImage: getProductImage(prod),
+      category: prod.category,
+      quantity: qty,
+      date: orderData.date || new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      dropNotes: orderData.dropNotes || 'Deliver at doorstep milk bag',
+      bookingType: orderData.bookingType || 'subscription',
+      status: 'scheduled',
+      totalAmount: price * qty,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [newBooking, ...customerBookings];
+    setCustomerBookings(updated);
+    try {
+      localStorage.setItem(`nmd_bookings_${user?.customerId || user?.mobile || 'default'}`, JSON.stringify(updated));
+    } catch (err) {}
+
+    if (typeof setTemporaryQty === 'function' && currentCustomer?.id) {
+      try {
+        await setTemporaryQty(currentCustomer.id, {
+          date: newBooking.date,
+          milkQty: prod.category === 'milk' ? Number(newBooking.quantity) : undefined,
+          curdQty: prod.category === 'curd' ? Number(newBooking.quantity) : undefined,
+          actor: currentCustomer.name || 'Customer',
+        });
+      } catch (err) {
+        console.warn('Temp qty update notice:', err);
+      }
+    }
+
+    notifyRealtimeSync?.();
+    refreshAll?.();
+
+    if (typeof sendNotification === 'function') {
+      sendNotification({
+        title: 'Order Confirmed! 🎉',
+        message: `Your ${newBooking.bookingType === 'subscription' ? 'daily subscription' : 'order'} for ${newBooking.quantity}x ${newBooking.productName} has been confirmed!`,
+        type: 'booking',
+      });
+    }
+
+    return {
+      success: true,
+      booking: newBooking,
+      message: `Your order for ${newBooking.quantity}x ${newBooking.productName} starting ${newBooking.date} has been scheduled for morning delivery!`,
+    };
+  };
+
+  const handleCancelBooking = (bookingId) => {
+    const updated = customerBookings.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b));
+    setCustomerBookings(updated);
+    try {
+      localStorage.setItem(`nmd_bookings_${user?.customerId || user?.mobile || 'default'}`, JSON.stringify(updated));
+    } catch (e) {}
+    notifyRealtimeSync?.();
+    if (typeof sendNotification === 'function') {
+      sendNotification({
+        title: 'Booking Cancelled',
+        message: 'Your scheduled extra delivery has been cancelled.',
+        type: 'booking',
+      });
+    }
+  };
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth <= 768);
@@ -204,7 +503,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             return;
           }
           const savedPage = localStorage.getItem('nmd_customer_page');
-          const fallbackPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedPage)
+          const fallbackPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(savedPage)
             ? savedPage
             : 'dashboard';
           setActivePage(fallbackPage);
@@ -519,6 +818,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
     localStorage.setItem('nmd_customer_page', page);
     setActivePage(page);
+    setSelectedProductDetails(null);
+    setBookingModalOpen(false);
     setProfileDetailView(null);
     setIsEditingProfile(false);
     setCustomerPath(`/customer/${page}`);
@@ -1654,6 +1955,738 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     );
   };
 
+  const renderDashboardBookings = () => {
+    const scheduled = customerBookings.filter((b) => b.status === 'scheduled');
+    return (
+      <section className="customer-dashboard-bookings-section" aria-label="Morning dairy orders">
+        <div className="customer-dashboard-bookings-header">
+          <div>
+            <div className="customer-eyebrow-chip">
+              <Sparkles size={13} color="#059669" />
+              <span>MORNING DAIRY ORDERS & EXTRAS</span>
+            </div>
+            <h3>Order Extra Milk & Dairy</h3>
+            <p>Schedule one-time morning deliveries or start a daily subscription.</p>
+          </div>
+
+          <div className="customer-bookings-header-actions">
+            <button
+              type="button"
+              className="customer-btn-new-booking"
+              onClick={() => openBookingModal(displayProducts[0] || null)}
+            >
+              <PlusCircle size={16} />
+              <span>+ Order Products</span>
+            </button>
+            <button
+              type="button"
+              className="customer-btn-view-all-products"
+              onClick={() => navigateToPage('products')}
+            >
+              <ShoppingBag size={16} />
+              <span>Browse All Products ({displayProducts.length}) →</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Quick 1-Click Product Ordering Shortcuts */}
+        <div className="customer-quick-bookings-grid">
+          {displayProducts.slice(0, 4).map((item) => (
+            <div key={item._id || item.name} className="customer-quick-book-item">
+              <div className="customer-quick-book-media">
+                <img
+                  src={getProductImage(item)}
+                  alt={item.name}
+                  loading="lazy"
+                  onError={(e) => handleProductImgError(e, item)}
+                />
+              </div>
+              <div className="customer-quick-book-details">
+                <strong>{item.name}</strong>
+                <span className="customer-quick-price">
+                  ₹{item.price} <small>/ {item.unit || 'unit'}</small>
+                </span>
+                <span className="customer-quick-stock">● Chilled 4°C • Drop 6:30 AM</span>
+              </div>
+              <button
+                type="button"
+                className="customer-quick-book-btn"
+                onClick={() => openBookingModal(item, 'one_time')}
+              >
+                Order
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Active Scheduled Orders */}
+        {scheduled.length > 0 ? (
+          <div className="customer-active-bookings-wrap">
+            <div className="customer-active-bookings-title">
+              <Clock3 size={15} color="#059669" />
+              <span>Your Scheduled Morning Orders ({scheduled.length})</span>
+            </div>
+            <div className="customer-bookings-cards-wrap">
+              {scheduled.map((booking) => (
+                <div key={booking.id} className="customer-booking-status-card">
+                  <div className="customer-booking-status-info">
+                    <span className="customer-booking-status-icon">
+                      <Package size={17} color="#0d5c3a" />
+                    </span>
+                    <div>
+                      <strong>{booking.quantity}x {booking.productName}</strong>
+                      <small>
+                        Scheduled Drop: <strong>{booking.date}</strong> (Before 6:30 AM)
+                        {booking.totalAmount ? ` • ₹${booking.totalAmount}` : ''}
+                      </small>
+                    </div>
+                  </div>
+                  <div className="customer-booking-status-actions">
+                    <span className="customer-badge-scheduled">Scheduled</span>
+                    <button
+                      type="button"
+                      className="customer-btn-cancel-booking"
+                      onClick={() => handleCancelBooking(booking.id)}
+                      title="Cancel this order"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="customer-bookings-empty-hint">
+            <Info size={15} color="#64748b" />
+            <span>Need extra milk or curd tomorrow? Click any product above or <strong>+ Order Products</strong> to schedule delivery before 6:30 AM.</span>
+          </div>
+        )}
+      </section>
+    );
+  };
+
+  const renderProductsPage = () => {
+    const categories = [
+      { id: 'all', label: 'All Products' },
+      { id: 'milk', label: 'Farm Milk' },
+      { id: 'curd', label: 'Fresh Curd' },
+      { id: 'ghee', label: 'A2 Desi Ghee' },
+      { id: 'paneer', label: 'Artisanal Paneer' },
+      { id: 'butter', label: 'Pure Butter' },
+    ];
+
+    const filtered = displayProducts.filter((p) => {
+      const pCat = (p.category || '').toLowerCase();
+      const pName = (p.name || '').toLowerCase();
+      const selected = selectedProductCategory.toLowerCase();
+      const matchCat =
+        selected === 'all' ||
+        pCat === selected ||
+        pCat.includes(selected) ||
+        pName.includes(selected) ||
+        (selected === 'milk' && (pCat.includes('milk') || pName.includes('milk'))) ||
+        (selected === 'curd' && (pCat.includes('curd') || pName.includes('curd') || pName.includes('dahi'))) ||
+        (selected === 'ghee' && (pCat.includes('ghee') || pName.includes('ghee'))) ||
+        (selected === 'paneer' && (pCat.includes('paneer') || pName.includes('paneer')));
+
+      const matchSearch =
+        !productSearchQuery.trim() ||
+        pName.includes(productSearchQuery.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(productSearchQuery.toLowerCase()));
+      return matchCat && matchSearch;
+    });
+
+    if (selectedProductDetails) {
+      const p = selectedProductDetails;
+      const img = getProductImage(p);
+      const enriched = {
+        ...p,
+        image: img,
+        imageUrl: img,
+        numericPrice: Number(p.price) || 60,
+        unit: p.unit || '1 Litre Glass Bottle',
+        images: Array.isArray(p.images) && p.images.length > 0 ? p.images : [img],
+        initialFreq: p.initialFreq,
+      };
+
+      return (
+        <div className="customer-product-details-view-container">
+          <ProductDetailsView
+            product={enriched}
+            customer={currentCustomer}
+            onBack={() => {
+              setSelectedProductDetails(null);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onDirectPlaceOrder={handleDirectOrder}
+            onNavigateDashboard={() => {
+              setSelectedProductDetails(null);
+              navigateToPage('dashboard');
+            }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="customer-products-page">
+        {/* Banner */}
+        <div className="customer-products-banner">
+          <div className="customer-products-banner-copy">
+            <span className="customer-products-badge">
+              <Sparkles size={14} color="#059669" />
+              <span>FARM FRESH • 100% UNADULTERATED</span>
+            </span>
+            <h2>Pure Farm Dairy Store</h2>
+            <p>
+              Sourced from single-origin grass-fed indigenous cows. Chilled within 30 minutes to 4°C and delivered silently to your doorstep before 6:30 AM.
+            </p>
+          </div>
+          <div className="customer-products-banner-stats">
+            <div className="customer-stat-box">
+              <strong>{displayProducts.length}</strong>
+              <small>Live Products</small>
+            </div>
+            <div className="customer-stat-box">
+              <strong>6:30 AM</strong>
+              <small>Daily Drop</small>
+            </div>
+            <div className="customer-stat-box">
+              <strong>4°C</strong>
+              <small>Cold Chain</small>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter & Search Bar */}
+        <div className="customer-products-toolbar">
+          <div className="customer-products-search">
+            <Search size={17} color="#64748b" />
+            <input
+              type="text"
+              placeholder="Search farm fresh milk, curd, ghee, paneer..."
+              value={productSearchQuery}
+              onChange={(e) => setProductSearchQuery(e.target.value)}
+            />
+            {productSearchQuery && (
+              <button type="button" onClick={() => setProductSearchQuery('')} aria-label="Clear search">
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <div className="customer-products-cats">
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`customer-cat-btn ${selectedProductCategory === c.id ? 'is-active' : ''}`}
+                onClick={() => setSelectedProductCategory(c.id)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Products Grid */}
+        <div className="customer-products-grid">
+          {filtered.length === 0 ? (
+            <div className="customer-products-empty">
+              <ShoppingBag size={42} color="#94a3b8" />
+              <h4>No products found</h4>
+              <p>Try searching with another keyword or select All Products.</p>
+              <button
+                type="button"
+                className="customer-btn-secondary"
+                onClick={() => {
+                  setProductSearchQuery('');
+                  setSelectedProductCategory('all');
+                }}
+              >
+                Reset Filters
+              </button>
+            </div>
+          ) : (
+            filtered.map((product) => {
+              const hasActiveBooking = customerBookings.some(
+                (b) => b.productName === product.name && b.status === 'scheduled'
+              );
+              return (
+                <div
+                  key={product._id || product.id || product.name}
+                  className="customer-product-card is-clickable"
+                  onClick={() => {
+                    setSelectedProductDetails(product);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  title="Click to view full product details"
+                >
+                  <div className="customer-product-img-wrap">
+                    <img
+                      src={getProductImage(product)}
+                      alt={product.name}
+                      loading="lazy"
+                      onError={(e) => handleProductImgError(e, product)}
+                    />
+                    <span className="customer-product-cat-tag">
+                      {product.category?.toUpperCase() || 'DAIRY'}
+                    </span>
+                    <span className="customer-product-stock-tag">
+                      <span className="stock-dot" /> Chilled 4°C
+                    </span>
+                  </div>
+
+                  <div className="customer-product-body">
+                    <div className="customer-product-header">
+                      <h4>{product.name}</h4>
+                      <div className="customer-product-pricing">
+                        <span className="customer-price-val">₹{product.price}</span>
+                        <span className="customer-unit-val">/ {product.unit || 'Unit'}</span>
+                      </div>
+                    </div>
+
+                    <p className="customer-product-desc">
+                      {product.description ||
+                        'Farm-fresh pure raw dairy, unadulterated and delivered daily in eco-friendly sterilized glass bottles.'}
+                    </p>
+
+                    <div className="customer-product-perks">
+                      <span>✓ Zero Preservatives</span>
+                      <span>✓ Glass Bottled</span>
+                      <span>✓ 6:30 AM Delivery</span>
+                    </div>
+
+                    {hasActiveBooking && (
+                      <div className="customer-booked-badge">
+                        <CheckCircle2 size={13} color="#059669" />
+                        <span>Order Scheduled for Morning</span>
+                      </div>
+                    )}
+
+                    <div className="customer-product-actions" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="customer-btn-book"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProductDetails({ ...product, initialFreq: 'one_time' });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        title="View details and order once for morning delivery"
+                      >
+                        <ShoppingBag size={15} />
+                        <span>Buy Once</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="customer-btn-subscribe"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedProductDetails({ ...product, initialFreq: 'daily' });
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        title="View details and subscribe to daily delivery"
+                      >
+                        <CalendarDays size={15} />
+                        <span>Subscribe Daily</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderBookingModal = () => {
+    const isFullscreen = !isMobile;
+    const prodImg = selectedBookingProduct ? getProductImage(selectedBookingProduct) : '/product-cow-milk.jpg';
+    const prodPrice = Number(selectedBookingProduct?.price) || 60;
+    const prodUnit = selectedBookingProduct?.unit || 'unit';
+    const totalCalc = prodPrice * (Number(bookingForm.quantity) || 1);
+
+    return (
+      <div
+        className={`modal-overlay customer-booking-modal-overlay ${isFullscreen ? 'is-fullscreen-web-overlay' : ''}`}
+        onClick={() => setBookingModalOpen(false)}
+      >
+        <div
+          className={`modal-content customer-booking-modal ${isFullscreen ? 'is-fullscreen-web' : ''}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="customer-booking-modal-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span className="customer-booking-modal-icon">
+                <ShoppingBag size={20} color="#0d5c3a" />
+              </span>
+              <div>
+                <h3>{bookingForm.bookingType === 'one_time' ? 'One-Time Morning Order' : 'Daily Morning Subscription'}</h3>
+                <small>Chilled 4°C delivery silently to your doorstep before 6:30 AM in sterilized glass bottles</small>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="customer-modal-close-btn"
+              onClick={() => setBookingModalOpen(false)}
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {bookingSuccessMsg ? (
+            <div className="customer-booking-success-view">
+              <CheckCircle2 size={56} color="#059669" />
+              <h4>Order Confirmed! 🎉</h4>
+              <p>{bookingSuccessMsg}</p>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '14px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="customer-btn-primary"
+                  onClick={() => {
+                    setBookingModalOpen(false);
+                    navigateToPage('dashboard');
+                  }}
+                >
+                  View in Dashboard
+                </button>
+                <button
+                  type="button"
+                  className="customer-btn-secondary"
+                  onClick={() => setBookingModalOpen(false)}
+                >
+                  Continue Shopping
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={submitBookingModal} className={`customer-booking-form ${isFullscreen ? 'is-fullscreen-layout' : ''}`}>
+              {isFullscreen ? (
+                <div className="customer-fullscreen-grid">
+                  {/* Left Column: Product Showcase & Summary */}
+                  <div className="customer-fullscreen-left">
+                    <div className="customer-fs-product-card">
+                      <div className="customer-fs-img-wrap">
+                        <img
+                          src={prodImg}
+                          alt={selectedBookingProduct?.name || 'Product'}
+                          onError={(e) => handleProductImgError(e, selectedBookingProduct)}
+                        />
+                        <span className="customer-fs-stock-pill">● Chilled 4°C Raw Milk</span>
+                      </div>
+                      <div className="customer-fs-product-info">
+                        <h4>{selectedBookingProduct?.name}</h4>
+                        <div className="customer-fs-price-line">
+                          <strong>₹{prodPrice}</strong>
+                          <span>/ {prodUnit}</span>
+                        </div>
+                        <p>{selectedBookingProduct?.description || '100% farm-fresh, unadulterated pure raw dairy.'}</p>
+                      </div>
+
+                      <div className="customer-fs-perks">
+                        <div className="customer-fs-perk-item">
+                          <CheckCircle2 size={15} color="#059669" />
+                          <span>Delivered before 6:30 AM</span>
+                        </div>
+                        <div className="customer-fs-perk-item">
+                          <CheckCircle2 size={15} color="#059669" />
+                          <span>Sterilized Glass Bottle Exchange</span>
+                        </div>
+                        <div className="customer-fs-perk-item">
+                          <CheckCircle2 size={15} color="#059669" />
+                          <span>Zero Additives or Preservatives</span>
+                        </div>
+                      </div>
+
+                      {/* Live Calculation Box */}
+                      <div className="customer-booking-summary-box customer-fs-summary">
+                        <div className="summary-line">
+                          <span>Unit Price:</span>
+                          <strong>₹{prodPrice} / {prodUnit}</strong>
+                        </div>
+                        <div className="summary-line">
+                          <span>Order Type:</span>
+                          <strong style={{ color: '#059669' }}>
+                            {bookingForm.bookingType === 'one_time' ? 'One-Time Order' : 'Daily Subscription'}
+                          </strong>
+                        </div>
+                        <div className="summary-line">
+                          <span>Quantity per Day:</span>
+                          <strong>{bookingForm.quantity} unit(s)</strong>
+                        </div>
+                        <div className="summary-line summary-total">
+                          <span>Total Amount:</span>
+                          <strong>₹{totalCalc.toLocaleString('en-IN')}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Order Configuration */}
+                  <div className="customer-fullscreen-right">
+                    {/* 1. Frequency Selection */}
+                    <div className="customer-form-group">
+                      <label style={{ fontSize: '0.86rem', fontWeight: 800 }}>Choose Order Frequency</label>
+                      <div className="customer-booking-type-toggle customer-fs-toggle">
+                        <button
+                          type="button"
+                          className={`booking-type-btn ${bookingForm.bookingType === 'one_time' ? 'is-active' : ''}`}
+                          onClick={() => setBookingForm((prev) => ({ ...prev, bookingType: 'one_time' }))}
+                        >
+                          <ShoppingBag size={17} />
+                          <div>
+                            <strong>One-Time Order</strong>
+                            <small>Single doorstep delivery tomorrow morning</small>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          className={`booking-type-btn ${bookingForm.bookingType === 'subscription' ? 'is-active' : ''}`}
+                          onClick={() => setBookingForm((prev) => ({ ...prev, bookingType: 'subscription' }))}
+                        >
+                          <CalendarDays size={17} />
+                          <div>
+                            <strong>Daily Subscription</strong>
+                            <small>Every morning before 6:30 AM drop</small>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Product Picker */}
+                    <div className="customer-form-group">
+                      <label>Selected Dairy Item</label>
+                      <select
+                        value={selectedBookingProduct?._id || selectedBookingProduct?.name || ''}
+                        onChange={(e) => {
+                          const found = displayProducts.find(
+                            (p) => (p._id && p._id === e.target.value) || p.name === e.target.value
+                          );
+                          setSelectedBookingProduct(found || displayProducts[0]);
+                        }}
+                        className="customer-form-input"
+                      >
+                        {displayProducts.map((p) => (
+                          <option key={p._id || p.name} value={p._id || p.name}>
+                            {p.name} — ₹{p.price}/{p.unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* 3. Date & Quantity Row */}
+                    <div className="customer-form-row">
+                      <div className="customer-form-group" style={{ flex: 1.2 }}>
+                        <label>
+                          <Calendar size={14} />
+                          <span>{bookingForm.bookingType === 'one_time' ? 'Delivery Date (Morning 6:30 AM)' : 'Subscription Start Date'}</span>
+                        </label>
+                        <input
+                          type="date"
+                          min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                          value={bookingForm.date}
+                          onChange={(e) => setBookingForm((prev) => ({ ...prev, date: e.target.value }))}
+                          className="customer-form-input"
+                          required
+                        />
+                      </div>
+
+                      <div className="customer-form-group" style={{ flex: 0.8 }}>
+                        <label>Daily Quantity</label>
+                        <div className="customer-qty-stepper">
+                          <button
+                            type="button"
+                            onClick={() => setBookingForm((prev) => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
+                          >
+                            -
+                          </button>
+                          <span>{bookingForm.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => setBookingForm((prev) => ({ ...prev, quantity: prev.quantity + 1 }))}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. Drop Address Preview */}
+                    <div className="customer-fs-address-card">
+                      <div className="customer-fs-addr-head">
+                        <MapPin size={16} color="#059669" />
+                        <strong>Doorstep Delivery Destination</strong>
+                      </div>
+                      <p>{currentCustomer.address || 'Doorstep drop'}{currentCustomer.area ? `, ${currentCustomer.area}` : ''}</p>
+                      <small>Customer: {currentCustomer.name} · Phone: {currentCustomer.mobile || 'Registered mobile'}</small>
+                    </div>
+
+                    {/* 5. Drop Notes */}
+                    <div className="customer-form-group">
+                      <label>Doorstep Delivery Instructions</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Leave in doorstep milk bag, ring bell once"
+                        value={bookingForm.dropNotes}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, dropNotes: e.target.value }))}
+                        className="customer-form-input"
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="customer-booking-modal-actions customer-fs-actions">
+                      <button
+                        type="button"
+                        className="customer-btn-secondary"
+                        onClick={() => setBookingModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="customer-btn-primary customer-btn-fs-confirm"
+                        disabled={bookingSubmitting}
+                      >
+                        {bookingSubmitting ? 'Confirming Order...' : `Confirm & Place Order (₹${totalCalc.toLocaleString('en-IN')})`}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Compact Mobile Modal */
+                <>
+                  <div className="customer-form-group">
+                    <label>Select Product</label>
+                    <select
+                      value={selectedBookingProduct?._id || selectedBookingProduct?.name || ''}
+                      onChange={(e) => {
+                        const found = displayProducts.find(
+                          (p) => (p._id && p._id === e.target.value) || p.name === e.target.value
+                        );
+                        setSelectedBookingProduct(found || displayProducts[0]);
+                      }}
+                      className="customer-form-input"
+                    >
+                      {displayProducts.map((p) => (
+                        <option key={p._id || p.name} value={p._id || p.name}>
+                          {p.name} — ₹{p.price}/{p.unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="customer-form-group">
+                    <label>Order Frequency</label>
+                    <div className="customer-booking-type-toggle">
+                      <button
+                        type="button"
+                        className={`booking-type-btn ${bookingForm.bookingType === 'one_time' ? 'is-active' : ''}`}
+                        onClick={() => setBookingForm((prev) => ({ ...prev, bookingType: 'one_time' }))}
+                      >
+                        One-Time Order
+                      </button>
+                      <button
+                        type="button"
+                        className={`booking-type-btn ${bookingForm.bookingType === 'subscription' ? 'is-active' : ''}`}
+                        onClick={() => setBookingForm((prev) => ({ ...prev, bookingType: 'subscription' }))}
+                      >
+                        Daily Subscription
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="customer-form-row">
+                    <div className="customer-form-group" style={{ flex: 1.2 }}>
+                      <label>
+                        <Calendar size={14} />
+                        <span>{bookingForm.bookingType === 'one_time' ? 'Delivery Date' : 'Starting From'}</span>
+                      </label>
+                      <input
+                        type="date"
+                        min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                        value={bookingForm.date}
+                        onChange={(e) => setBookingForm((prev) => ({ ...prev, date: e.target.value }))}
+                        className="customer-form-input"
+                        required
+                      />
+                    </div>
+
+                    <div className="customer-form-group" style={{ flex: 0.8 }}>
+                      <label>Quantity</label>
+                      <div className="customer-qty-stepper">
+                        <button
+                          type="button"
+                          onClick={() => setBookingForm((prev) => ({ ...prev, quantity: Math.max(1, prev.quantity - 1) }))}
+                        >
+                          -
+                        </button>
+                        <span>{bookingForm.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => setBookingForm((prev) => ({ ...prev, quantity: prev.quantity + 1 }))}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="customer-form-group">
+                    <label>Doorstep Instructions</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Leave in door bag, ring bell once"
+                      value={bookingForm.dropNotes}
+                      onChange={(e) => setBookingForm((prev) => ({ ...prev, dropNotes: e.target.value }))}
+                      className="customer-form-input"
+                    />
+                  </div>
+
+                  <div className="customer-booking-summary-box">
+                    <div className="summary-line">
+                      <span>Unit Price:</span>
+                      <strong>₹{prodPrice} / {prodUnit}</strong>
+                    </div>
+                    <div className="summary-line">
+                      <span>Quantity:</span>
+                      <strong>{bookingForm.quantity}</strong>
+                    </div>
+                    <div className="summary-line summary-total">
+                      <span>Total Amount:</span>
+                      <strong>₹{totalCalc.toLocaleString('en-IN')}</strong>
+                    </div>
+                  </div>
+
+                  <div className="customer-booking-modal-actions">
+                    <button
+                      type="button"
+                      className="customer-btn-secondary"
+                      onClick={() => setBookingModalOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="customer-btn-primary"
+                      disabled={bookingSubmitting}
+                    >
+                      {bookingSubmitting ? 'Confirming...' : 'Confirm & Place Order'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => (
     <>
       <section className="customer-dashboard-hero">
@@ -1719,6 +2752,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         {renderPlanCard()}
         {renderDeliveryActions()}
       </section>
+
+      {/* Bookings & Products Section in Dashboard */}
+      {renderDashboardBookings()}
+
       {renderDeliveryHistory('Recent deliveries', 5)}
     </>
   );
@@ -4214,6 +5251,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const renderPage = () => {
+    if (activePage === 'products') return renderProductsPage();
     if (activePage === 'subscription') return renderSubscriptionPage();
     if (activePage === 'deliveries') return renderDeliveryHistory('Your deliveries');
     if (activePage === 'profile') return renderProfile();
@@ -4296,73 +5334,45 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       </aside>
 
       <div className="customer-app-main">
-        <header
-          className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}
-          style={{ justifyContent: 'space-between' }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof setActiveTab === 'function') {
-                  setActiveTab('home');
-                } else {
-                  window.location.href = '/';
-                }
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                borderRadius: '8px',
-                background: '#ffffff',
-                color: '#0d5c3a',
-                fontSize: '0.84rem',
-                fontWeight: 700,
-                border: '1px solid #bbf7d0',
-                cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                transition: 'all 0.2s',
-              }}
-              title="Return to Natural Milk Dairy website"
-            >
-              <Home size={15} color="#0d5c3a" />
-              <span>Back to Store</span>
-            </button>
-          </div>
-          <div className="customer-app-header-actions">
-            <button
-              type="button"
-              className={`customer-page-status${isPaused ? ' is-paused is-interactive' : ''}`}
-              onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
-              title={isPaused ? 'Click to restart deliveries' : 'Manage delivery schedule'}
-              style={{ cursor: 'pointer', font: 'inherit' }}
-            >
-              <span />
-              {isPaused ? (restartingDelivery ? 'Restarting...' : 'Delivery paused · Click to restart') : 'Subscription active'}
-            </button>
-            <button
-              type="button"
-              className="customer-header-alerts"
-              onClick={() => setIsNotificationOpen(true)}
-              aria-label={`View notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
-            >
-              <Bell size={17} aria-hidden="true" />
-              <span>Alerts</span>
-              {unreadCount > 0 && <span className="customer-header-alert-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
-            </button>
-          </div>
-        </header>
+        {!(activePage === 'products' && selectedProductDetails) && (
+          <header
+            className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}
+            style={{ justifyContent: 'flex-end' }}
+          >
+            <div className="customer-app-header-actions">
+              <button
+                type="button"
+                className={`customer-page-status${isPaused ? ' is-paused is-interactive' : ''}`}
+                onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
+                title={isPaused ? 'Click to restart deliveries' : 'Manage delivery schedule'}
+                style={{ cursor: 'pointer', font: 'inherit' }}
+              >
+                <span />
+                {isPaused ? (restartingDelivery ? 'Restarting...' : 'Delivery paused · Click to restart') : 'Subscription active'}
+              </button>
+              <button
+                type="button"
+                className="customer-header-alerts"
+                onClick={() => setIsNotificationOpen(true)}
+                aria-label={`View notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+              >
+                <Bell size={17} aria-hidden="true" />
+                <span>Alerts</span>
+                {unreadCount > 0 && <span className="customer-header-alert-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
+              </button>
+            </div>
+          </header>
+        )}
 
         <div className="customer-dashboard-content">
-          {(!isMobile || activePage !== 'profile') && (
+          {(!isMobile || activePage !== 'profile') && !(activePage === 'products' && selectedProductDetails) && (
             <div className="customer-page-heading">
               <div>
                 <span className="customer-section-kicker">CUSTOMER PORTAL · ID {currentCustomer.customerId || 'CUST-101'}</span>
-                <h1>{activePage === 'profile' ? 'Profile & Settings' : (activePage === 'dashboard' ? 'Dashboard' : currentPage.label)}</h1>
+                <h1>{activePage === 'profile' ? 'Profile & Settings' : (activePage === 'dashboard' ? 'Dashboard' : (activePage === 'products' ? 'Products & Bookings' : currentPage.label))}</h1>
                 <p>
                   {activePage === 'dashboard' && 'Your daily essentials, all in one place.'}
+                  {activePage === 'products' && 'Explore farm-fresh pure dairy products and schedule morning bookings in real-time.'}
                   {activePage === 'subscription' && 'Review your plan and manage your upcoming delivery.'}
                   {activePage === 'deliveries' && 'Track your latest doorstep deliveries and payments.'}
                   {activePage === 'profile' && 'Manage your personal details, subscription plan, and doorstep preferences.'}
@@ -4607,6 +5617,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {/* Subscription Details Modal */}
       {selectedSubForDetails && renderSubscriptionDetailsModal()}
+
+      {/* Product Booking Modal */}
+      {bookingModalOpen && renderBookingModal()}
 
     </div>
   );

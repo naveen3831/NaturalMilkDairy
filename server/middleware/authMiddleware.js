@@ -1,9 +1,11 @@
 const jwt = require('jsonwebtoken');
+const Customer = require('../models/Customer');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'natural_milk_dairy_super_secret_jwt_key_2026';
-if (!process.env.JWT_SECRET) {
-  console.warn('NOTICE: JWT_SECRET not found in environment, using default key.');
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
+  throw new Error('JWT_SECRET must be configured with at least 32 characters.');
 }
+const VALID_ROLES = new Set(['admin', 'delivery_boy', 'customer', 'user']);
 
 /**
  * Generate signed JWT token
@@ -25,7 +27,7 @@ const generateToken = (user, expiresIn = '7d') => {
       boyId: user.boyId || (user.role === 'delivery_boy' ? userId : ''),
     },
     JWT_SECRET,
-    { expiresIn }
+    { expiresIn, algorithm: 'HS256' }
   );
 };
 
@@ -59,7 +61,14 @@ const verifyToken = (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    if (!decoded.id || !VALID_ROLES.has(decoded.role)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired JWT token. Please sign in again.',
+        code: 'INVALID_TOKEN',
+      });
+    }
     req.user = decoded;
     next();
   } catch (err) {
@@ -70,7 +79,6 @@ const verifyToken = (req, res, next) => {
         ? 'Session expired. Please sign in again.'
         : 'Invalid or expired JWT token. Please sign in again.',
       code: isExpired ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN',
-      error: err.message,
     });
   }
 };
@@ -98,7 +106,8 @@ const optionalToken = (req, res, next) => {
     }
 
     if (token) {
-      req.user = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+      if (decoded.id && VALID_ROLES.has(decoded.role)) req.user = decoded;
     }
   } catch (err) {
     // Ignore invalid token in optional mode
@@ -149,6 +158,40 @@ const requireAuth = (req, res, next) => {
   next();
 };
 
+const authorizeCustomerAccess = async (req, res, next) => {
+  if (req.user?.role === 'admin') return next();
+  const requestedId = req.params.id || req.query.customerId;
+  if (req.user?.role === 'delivery_boy') {
+    try {
+      const query = /^[a-f\d]{24}$/i.test(requestedId)
+        ? { _id: requestedId }
+        : { customerId: requestedId };
+      const customer = await Customer.findOne(query).lean();
+      if (!customer) return res.status(404).json({ success: false, message: 'Customer not found.' });
+      const identity = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
+      const assignedIds = [
+        customer.deliveryPlan?.deliveryBoyId,
+      ].filter(Boolean);
+      const assignedById = assignedIds.some((id) => identity.includes(id));
+      const assignedByName = req.user.name && customer.deliveryPlan?.deliveryBoyName &&
+        req.user.name.trim().toLowerCase() === customer.deliveryPlan.deliveryBoyName.trim().toLowerCase();
+      if (assignedById || assignedByName) return next();
+      return res.status(403).json({ success: false, message: 'You can only access customers assigned to your route.' });
+    } catch (error) {
+      return next(error);
+    }
+  }
+  const isOwner = ['customer', 'user'].includes(req.user?.role) &&
+    (requestedId === req.user.id || requestedId === req.user.customerId);
+  if (!isOwner) {
+    return res.status(403).json({
+      success: false,
+      message: 'You can only access your own customer account.',
+    });
+  }
+  return next();
+};
+
 module.exports = {
   generateToken,
   verifyToken,
@@ -157,5 +200,6 @@ module.exports = {
   requireCustomer,
   requireDeliveryStaff,
   requireAuth,
+  authorizeCustomerAccess,
   JWT_SECRET,
 };

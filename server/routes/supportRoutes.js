@@ -6,11 +6,18 @@ const {
   updateSupportTicket,
   deleteSupportTicket,
 } = require('../controllers/supportController');
-const { optionalToken } = require('../middleware/authMiddleware');
+const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+const { createRateLimiter } = require('../middleware/rateLimitMiddleware');
 
-router.get('/', optionalToken, getSupportTickets);
-router.post('/', optionalToken, createSupportTicket);
-router.put('/:id', optionalToken, updateSupportTicket);
-router.delete('/:id', optionalToken, deleteSupportTicket);
+const supportCreateLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  maxRequests: 5,
+  message: 'Too many support requests. Please wait before sending another.',
+});
+
+router.get('/', verifyToken, requireAdmin, getSupportTickets);
+router.post('/', supportCreateLimiter, createSupportTicket);
+router.put('/:id', verifyToken, requireAdmin, updateSupportTicket);
+router.delete('/:id', verifyToken, requireAdmin, deleteSupportTicket);
 
 module.exports = router;

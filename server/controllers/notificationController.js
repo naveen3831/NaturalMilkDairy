@@ -81,20 +81,29 @@ const defaultSeedNotifications = [
 let memoryNotifications = [...defaultSeedNotifications];
 let hasSeededDB = false;
 
+const getUserNotificationScope = (user) => {
+  const ids = [user.id, user.customerId, user.boyId].filter(Boolean);
+  return {
+    $or: [
+      { recipientRole: user.role },
+      { recipientRole: 'all' },
+      ...(ids.length ? [{ recipientId: { $in: ids } }] : []),
+    ],
+  };
+};
+
+const canAccessNotification = (notification, user) => {
+  if (user.role === 'admin') return true;
+  const ids = [user.id, user.customerId, user.boyId].filter(Boolean).map(String);
+  return notification.recipientRole === user.role ||
+    notification.recipientRole === 'all' ||
+    ids.includes(String(notification.recipientId || ''));
+};
+
 const getNotifications = async (req, res) => {
   try {
-    const { role, userId } = req.query;
-    const filter = {};
-
-    if (role && role !== 'all') {
-      filter.$or = [
-        { recipientRole: role },
-        { recipientRole: 'all' },
-      ];
-      if (userId) {
-        filter.$or.push({ recipientId: userId });
-      }
-    }
+    const role = req.user.role;
+    const filter = role === 'admin' ? {} : getUserNotificationScope(req.user);
 
     let list = [];
     try {
@@ -112,8 +121,7 @@ const getNotifications = async (req, res) => {
 
     // Always merge in-memory notifications matching filter
     const memMatching = memoryNotifications.filter((n) => {
-      if (!role || role === 'all') return true;
-      return n.recipientRole === role || n.recipientRole === 'all' || (userId && n.recipientId === userId);
+      return canAccessNotification(n, req.user);
     });
 
     const existingIds = new Set(list.map((n) => (n._id ? n._id.toString() : n.id)));
@@ -206,14 +214,15 @@ const createNotification = async (req, res) => {
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    try {
-      if (id.length === 24) {
-        await Notification.findByIdAndUpdate(id, { isRead: true });
-      }
-    } catch (e) {}
+    const filter = req.user.role === 'admin'
+      ? { _id: id }
+      : { _id: id, ...getUserNotificationScope(req.user) };
+    if (id.length === 24) await Notification.findOneAndUpdate(filter, { isRead: true });
 
     memoryNotifications = memoryNotifications.map((n) =>
-      (n.id === id || (n._id && n._id.toString() === id)) ? { ...n, isRead: true } : n
+      (n.id === id || (n._id && n._id.toString() === id)) && canAccessNotification(n, req.user)
+        ? { ...n, isRead: true }
+        : n
     );
 
     broadcast('NOTIFICATION_UPDATED', {});
@@ -226,22 +235,11 @@ const markAsRead = async (req, res) => {
 
 const markAllAsRead = async (req, res) => {
   try {
-    const { role, userId } = req.body;
-    const filter = {};
-    if (role && role !== 'all') {
-      filter.$or = [{ recipientRole: role }, { recipientRole: 'all' }];
-      if (userId) filter.$or.push({ recipientId: userId });
-    }
-
-    try {
-      await Notification.updateMany(filter, { isRead: true });
-    } catch (e) {}
+    const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
+    await Notification.updateMany(filter, { isRead: true });
 
     memoryNotifications = memoryNotifications.map((n) => {
-      if (!role || role === 'all' || n.recipientRole === role || n.recipientRole === 'all') {
-        return { ...n, isRead: true };
-      }
-      return n;
+      return canAccessNotification(n, req.user) ? { ...n, isRead: true } : n;
     });
 
     broadcast('NOTIFICATION_UPDATED', {});
@@ -254,20 +252,11 @@ const markAllAsRead = async (req, res) => {
 
 const clearAll = async (req, res) => {
   try {
-    const { role, userId } = req.query;
-    const filter = {};
-    if (role && role !== 'all') {
-      filter.$or = [{ recipientRole: role }, { recipientRole: 'all' }];
-      if (userId) filter.$or.push({ recipientId: userId });
-    }
-
-    try {
-      await Notification.deleteMany(filter);
-    } catch (e) {}
+    const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
+    await Notification.deleteMany(filter);
 
     memoryNotifications = memoryNotifications.filter((n) => {
-      if (!role || role === 'all') return false;
-      return n.recipientRole !== role && n.recipientRole !== 'all';
+      return !canAccessNotification(n, req.user);
     });
 
     broadcast('NOTIFICATION_UPDATED', {});
@@ -281,15 +270,15 @@ const clearAll = async (req, res) => {
 const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    try {
-      if (id.length === 24) {
-        await Notification.findByIdAndDelete(id);
-      }
-    } catch (e) {}
+    const filter = req.user.role === 'admin'
+      ? { _id: id }
+      : { _id: id, ...getUserNotificationScope(req.user) };
+    if (id.length === 24) await Notification.findOneAndDelete(filter);
 
-    memoryNotifications = memoryNotifications.filter((n) =>
-      n.id !== id && (!n._id || n._id.toString() !== id)
-    );
+    memoryNotifications = memoryNotifications.filter((n) => {
+      const matchesId = n.id === id || (n._id && n._id.toString() === id);
+      return !matchesId || !canAccessNotification(n, req.user);
+    });
 
     broadcast('NOTIFICATION_UPDATED', {});
 

@@ -267,7 +267,7 @@ export default function HomePage({ setActiveTab }) {
                 <ArrowRight size={18} aria-hidden="true" />
               </button>
               <button
-                onClick={() => handleSubscribe(products[0])}
+                onClick={() => setActiveTab('products')}
                 className="home-hero-button home-hero-button-secondary"
               >
                 <Milk size={18} aria-hidden="true" />
@@ -297,6 +297,7 @@ export default function HomePage({ setActiveTab }) {
       {/* 2. 100% VX LIGHT SECTION: QUICK MORNING ESSENTIALS & MATTER   */}
       {/* ============================================================ */}
       <section
+        className="home-morning-section"
         style={{
           width: '100%',
           background: '#ffffff',
@@ -308,6 +309,7 @@ export default function HomePage({ setActiveTab }) {
         <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
           
           <div
+            className="home-morning-grid"
             style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))',
@@ -315,8 +317,8 @@ export default function HomePage({ setActiveTab }) {
               alignItems: 'center',
             }}
           >
-            {/* Left Column: Farm Purity Story */}
-            <div>
+            {/* Left Column: Farm Purity Story (Desktop - Unchanged) */}
+            <div className="home-purity-story-desktop">
               <div
                 style={{
                   display: 'inline-flex',
@@ -370,8 +372,35 @@ export default function HomePage({ setActiveTab }) {
               </div>
             </div>
 
+            {/* Mobile Responsive Redesigned Story: Simple, Sleek & Professional */}
+            <div className="home-purity-story-mobile">
+              <div className="home-mobile-purity-badge">
+                <Leaf size={13} color="#059669" />
+                <span>Good Mornings Begin Naturally</span>
+              </div>
+              <h2 className="home-mobile-purity-title">
+                Pure Milk Drawn at Dawn.<br />
+                <span>Delivered in Glass Bottles.</span>
+              </h2>
+              <div className="home-mobile-purity-pills">
+                <div className="home-mobile-pill">
+                  <CheckCircle size={12} color="#059669" />
+                  <span>100% Raw & Pure</span>
+                </div>
+                <div className="home-mobile-pill">
+                  <Clock size={12} color="#d98a0d" />
+                  <span>Drop by 6:30 AM</span>
+                </div>
+                <div className="home-mobile-pill">
+                  <ShieldCheck size={12} color="#0284c7" />
+                  <span>Glass Bottled</span>
+                </div>
+              </div>
+            </div>
+
             {/* Right Column: Interactive Light Morning Subscription Selector Box */}
             <div
+              className="home-subscription-selector-card"
               style={{
                 background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
                 borderRadius: '24px',
@@ -1224,8 +1253,131 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 9. 100% VX: VERIFIED MUMBAI CUSTOMER TESTIMONIALS            */}
       {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '90px auto', padding: '0 32px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '46px' }}>
+      <section className="home-reviews-section">
+        <style>{`
+          .home-reviews-section {
+            max-width: 1440px;
+            margin: 90px auto;
+            padding: 0 32px;
+          }
+          .home-reviews-header {
+            text-align: center;
+            margin-bottom: 46px;
+          }
+          .home-reviews-grid {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 26px !important;
+            width: 100% !important;
+          }
+          .home-review-card {
+            background: #ffffff;
+            border-radius: 24px;
+            padding: 30px;
+            border: 1.5px solid #e2ece3;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.03);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+          .home-review-stars {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 14px;
+          }
+          .home-review-quote {
+            color: #334155;
+            font-size: 0.96rem;
+            line-height: 1.65;
+            font-style: italic;
+            margin-bottom: 22px;
+          }
+          .home-review-author-box {
+            border-top: 1px solid #edf3ee;
+            padding-top: 16px;
+          }
+          .home-review-name {
+            font-weight: 900;
+            color: #0c2340;
+            font-size: 1.02rem;
+          }
+          .home-review-info {
+            font-size: 0.82rem;
+            color: #64748b;
+            margin-top: 2px;
+          }
+          .home-review-mobile-only {
+            display: none !important;
+          }
+
+          @media (max-width: 768px) {
+            .home-reviews-section {
+              margin: 40px auto 44px !important;
+              padding: 0 10px !important;
+            }
+            .home-reviews-header {
+              margin-bottom: 20px !important;
+            }
+            .home-reviews-header h2 {
+              font-size: 1.35rem !important;
+              line-height: 1.25 !important;
+            }
+            .home-reviews-header p {
+              font-size: 0.80rem !important;
+              line-height: 1.38 !important;
+              margin-top: 6px !important;
+            }
+            .home-reviews-grid {
+              display: grid !important;
+              grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+              gap: 8px !important;
+              width: 100% !important;
+            }
+            .home-review-card {
+              padding: 12px 9px !important;
+              border-radius: 14px !important;
+              border-width: 1px !important;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.03) !important;
+              min-width: 0 !important;
+              width: 100% !important;
+            }
+            .home-review-mobile-only {
+              display: flex !important;
+            }
+            .home-review-stars {
+              gap: 2px !important;
+              margin-bottom: 6px !important;
+            }
+            .home-review-stars svg {
+              width: 11px !important;
+              height: 11px !important;
+            }
+            .home-review-quote {
+              font-size: 0.72rem !important;
+              line-height: 1.38 !important;
+              margin-bottom: 8px !important;
+              color: #334155 !important;
+              word-break: break-word;
+            }
+            .home-review-author-box {
+              padding-top: 8px !important;
+            }
+            .home-review-name {
+              font-size: 0.76rem !important;
+              line-height: 1.2 !important;
+              word-break: break-word;
+            }
+            .home-review-info {
+              font-size: 0.64rem !important;
+              margin-top: 2px !important;
+              line-height: 1.3 !important;
+              word-break: break-word;
+            }
+          }
+        `}</style>
+        <div className="home-reviews-header">
           <div
             style={{
               display: 'inline-flex',
@@ -1253,7 +1405,7 @@ export default function HomePage({ setActiveTab }) {
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '26px' }}>
+        <div className="home-reviews-grid">
           {[
             {
               quote: 'The thick golden malai layer on the cow milk is unreal! My kids now actually ask for milk in the morning. And the glass bottle packaging feels so clean and nostalgic.',
@@ -1273,35 +1425,32 @@ export default function HomePage({ setActiveTab }) {
               area: 'Juhu Scheme',
               plan: '2L Buffalo Milk Alternate Days',
             },
+            {
+              quote: 'Pure raw milk with zero adulteration. Morning delivery before 6:30 AM is always on time, and our tea and coffee taste so much richer now.',
+              name: 'Dr. Rohan & Kavita Mehta',
+              area: 'Powai (Hiranandani)',
+              plan: '1L Gir Cow Milk Daily',
+              mobileOnly: true,
+            },
           ].map((t, tidx) => (
             <div
               key={tidx}
-              className="dairy-card-interactive"
-              style={{
-                background: '#ffffff',
-                borderRadius: '24px',
-                padding: '30px',
-                border: '1.5px solid #e2ece3',
-                boxShadow: '0 6px 20px rgba(0,0,0,0.03)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-              }}
+              className={`home-review-card dairy-card-interactive ${t.mobileOnly ? 'home-review-mobile-only' : ''}`}
             >
               <div>
-                <div style={{ display: 'flex', gap: '4px', marginBottom: '14px' }}>
+                <div className="home-review-stars">
                   {[...Array(5)].map((_, i) => (
                     <Star key={i} size={17} fill="#f5a623" color="#f5a623" />
                   ))}
                 </div>
-                <p style={{ color: '#334155', fontSize: '0.96rem', lineHeight: 1.65, fontStyle: 'italic', marginBottom: '22px' }}>
+                <p className="home-review-quote">
                   "{t.quote}"
                 </p>
               </div>
 
-              <div style={{ borderTop: '1px solid #edf3ee', paddingTop: '16px' }}>
-                <div style={{ fontWeight: 900, color: '#0c2340', fontSize: '1.02rem' }}>{t.name}</div>
-                <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+              <div className="home-review-author-box">
+                <div className="home-review-name">{t.name}</div>
+                <div className="home-review-info">
                   {t.area} • <span style={{ color: '#059669', fontWeight: 700 }}>{t.plan}</span>
                 </div>
               </div>

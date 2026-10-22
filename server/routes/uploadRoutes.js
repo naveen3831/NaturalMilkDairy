@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { uploadToCloudinary, uploadUrlOrBase64, cloudinary } = require('../config/cloudinary');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
 
 // Configure multer with memory storage (no temp files on disk)
 const storage = multer.memoryStorage();
@@ -44,7 +44,7 @@ router.get('/test', async (req, res) => {
  * Upload single image via multipart/form-data
  * POST /api/upload
  */
-router.post('/', verifyToken, upload.single('image'), async (req, res) => {
+router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Please select an image file to upload' });
@@ -102,7 +102,7 @@ router.post('/', verifyToken, upload.single('image'), async (req, res) => {
  * Upload image via Base64 or remote URL
  * POST /api/upload/base64
  */
-router.post('/base64', async (req, res) => {
+router.post('/base64', verifyToken, requireAdmin, async (req, res) => {
   try {
     const { image, folder = 'natural-milk-dairy' } = req.body;
     if (!image) {

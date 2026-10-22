@@ -8,9 +8,13 @@ const { broadcast } = require('../config/websocket');
 
 const recordPayment = async (req, res) => {
   try {
-    const { customerId, amount, paymentMethod, referenceNumber, notes, collectedBy, deliveryBoyId } = req.body;
+    const { customerId, amount, paymentMethod, referenceNumber, notes, collectedBy, deliveryBoyId } = req.body || {};
 
-    if (!customerId || !amount || Number(amount) <= 0) {
+    const paymentAmount = Number(amount);
+    const method = paymentMethod || 'cash';
+    if (typeof customerId !== 'string' || customerId.length > 64 ||
+      !Number.isFinite(paymentAmount) || paymentAmount <= 0 || paymentAmount > 1_000_000 ||
+      !['cash', 'upi', 'bank_transfer', 'other'].includes(method)) {
       return res.status(400).json({ success: false, message: 'Valid customer and payment amount are required' });
     }
 
@@ -21,8 +25,20 @@ const recordPayment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
+    const isDriver = req.user?.role === 'delivery_boy';
+    if (isDriver) {
+      const identity = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
+      const assignedId = customer.deliveryPlan?.deliveryBoyId;
+      const assignedName = customer.deliveryPlan?.deliveryBoyName;
+      const isAssigned = identity.includes(assignedId) ||
+        (req.user.name && assignedName &&
+          req.user.name.trim().toLowerCase() === assignedName.trim().toLowerCase());
+      if (!isAssigned) {
+        return res.status(403).json({ success: false, message: 'You can only record payments for your assigned customers.' });
+      }
+    }
+
     const prevBalance = customer.currentBalance;
-    const paymentAmount = Number(amount);
     const newBalance = prevBalance - paymentAmount;
 
     customer.currentBalance = newBalance;
@@ -32,24 +48,25 @@ const recordPayment = async (req, res) => {
       customerId: customer.customerId || customer._id.toString(),
       customerName: customer.name,
       amount: paymentAmount,
-      paymentMethod: paymentMethod || 'cash',
+      paymentMethod: method,
       paymentDate: new Date(),
-      collectedBy: collectedBy || 'Admin',
-      deliveryBoyId: deliveryBoyId || '',
-      referenceNumber: referenceNumber || '',
+      collectedBy: isDriver ? req.user.name : (collectedBy || 'Admin'),
+      deliveryBoyId: isDriver ? (req.user.boyId || req.user.id) : (deliveryBoyId || ''),
+      referenceNumber: typeof referenceNumber === 'string' ? referenceNumber.slice(0, 120) : '',
       previousBalance: prevBalance,
       newBalance,
-      notes: notes || '',
+      notes: typeof notes === 'string' ? notes.slice(0, 500) : '',
       createdAt: new Date(),
     });
 
     // Update driver daily collections
-    if (deliveryBoyId) {
-      const boyQuery = deliveryBoyId.length === 24 ? { _id: deliveryBoyId } : { mobile: deliveryBoyId };
+    const collectorBoyId = isDriver ? (req.user.boyId || req.user.id) : deliveryBoyId;
+    if (collectorBoyId) {
+      const boyQuery = collectorBoyId.length === 24 ? { _id: collectorBoyId } : { mobile: collectorBoyId };
       const boy = await DeliveryBoy.findOne(boyQuery);
       if (boy) {
-        if (paymentMethod === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paymentAmount;
-        if (paymentMethod === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paymentAmount;
+        if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paymentAmount;
+        if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paymentAmount;
         await boy.save();
       }
     }
@@ -111,6 +128,9 @@ const getAllPayments = async (req, res) => {
  */
 const submitCashHandover = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ success: false, message: 'Handover details must be an object.' });
+    }
     const {
       deliveryBoyId,
       deliveryBoyName,
@@ -124,14 +144,27 @@ const submitCashHandover = async (req, res) => {
     } = req.body;
 
     const parsedAmount = Number(amount);
-    if (!parsedAmount || parsedAmount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000) {
       return res.status(400).json({ success: false, message: 'Valid handover amount is required' });
     }
 
-    const boyId = deliveryBoyId || req.user?.id || req.user?.boyId || '';
-    const boyName = deliveryBoyName || req.user?.name || 'Delivery Partner';
-    const boyMobile = deliveryBoyMobile || req.user?.mobile || '';
-    const area = assignedArea || req.user?.assignedArea || '';
+    let boy = null;
+    if (req.user?.role === 'delivery_boy') {
+      const identity = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
+      boy = await DeliveryBoy.findOne({
+        $or: [
+          ...(identity.some((value) => /^[a-f\d]{24}$/i.test(value)) ? [{ _id: { $in: identity.filter((value) => /^[a-f\d]{24}$/i.test(value)) } }] : []),
+          ...(identity.some((value) => !/^[a-f\d]{24}$/i.test(value)) ? [{ mobile: { $in: identity.filter((value) => !/^[a-f\d]{24}$/i.test(value)) } }] : []),
+        ],
+      });
+      if (!boy) return res.status(403).json({ success: false, message: 'Delivery partner record not found.' });
+    }
+
+    const isDriver = req.user?.role === 'delivery_boy';
+    const boyId = isDriver ? boy._id.toString() : (deliveryBoyId || req.user?.id || req.user?.boyId || '');
+    const boyName = isDriver ? boy.name : (deliveryBoyName || req.user?.name || 'Delivery Partner');
+    const boyMobile = isDriver ? boy.mobile : (deliveryBoyMobile || req.user?.mobile || '');
+    const area = isDriver ? boy.assignedArea : (assignedArea || req.user?.assignedArea || '');
 
     // Check for existing handovers today to prevent duplicate submissions
     const startOfDay = new Date();
@@ -155,7 +188,9 @@ const submitCashHandover = async (req, res) => {
     }
 
     const alreadyHandedOver = existingHandovers.reduce((sum, h) => sum + (h.amount || 0), 0);
-    const totalPhysical = Number(physicalCashCollected) || parsedAmount;
+    const totalPhysical = isDriver
+      ? Number(boy.todayCashCollected) || 0
+      : Number(physicalCashCollected) || parsedAmount;
     const availableCash = Math.max(0, totalPhysical - alreadyHandedOver);
 
     if (alreadyHandedOver > 0 && availableCash <= 0) {
@@ -165,7 +200,7 @@ const submitCashHandover = async (req, res) => {
       });
     }
 
-    if (parsedAmount > availableCash && availableCash > 0) {
+    if (parsedAmount > availableCash) {
       return res.status(400).json({
         success: false,
         message: `Cannot handover ₹${parsedAmount}. Remaining cash in hand is ₹${availableCash}.`,
@@ -178,10 +213,10 @@ const submitCashHandover = async (req, res) => {
       deliveryBoyMobile: boyMobile,
       assignedArea: area,
       amount: parsedAmount,
-      physicalCashCollected: Number(physicalCashCollected) || parsedAmount,
-      upiCollected: Number(upiCollected) || 0,
+      physicalCashCollected: totalPhysical,
+      upiCollected: isDriver ? (Number(boy.todayUpiCollected) || 0) : (Number(upiCollected) || 0),
       handoverMethod: handoverMethod || 'cash',
-      notes: notes || '',
+      notes: typeof notes === 'string' ? notes.slice(0, 500) : '',
       status: 'pending',
       handoverDate: new Date(),
     });
@@ -398,5 +433,3 @@ module.exports = {
   updateHandoverStatus,
   deleteCashHandover,
 };
-
-

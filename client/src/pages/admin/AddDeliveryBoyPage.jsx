@@ -21,7 +21,7 @@ export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
-  const [password, setPassword] = useState('Driver@123');
+  const [password, setPassword] = useState('');
   const [assignedArea, setAssignedArea] = useState('Andheri West');
   const [vehicleNumber, setVehicleNumber] = useState('');
   const [status, setStatus] = useState('active');
@@ -91,6 +91,10 @@ export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }
       setErrorMessage('Please enter a valid 10-digit mobile number.');
       return;
     }
+    if (password && (password.length < 8 || password.length > 128)) {
+      setErrorMessage('Password must be between 8 and 128 characters.');
+      return;
+    }
     if (!cleanEmail || !cleanEmail.includes('@')) {
       setErrorMessage('A valid email address is required to dispatch login credentials.');
       return;
@@ -134,7 +138,7 @@ export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }
         mobile: cleanMobile,
         assignedArea: assignedArea.trim(),
         vehicleNumber: vehicleNumber.trim(),
-        password: password.trim() || 'Driver@123',
+        password: password.trim(),
         status,
         actor: 'Admin',
       });
@@ -590,7 +594,8 @@ export default function AddDeliveryBoyPage({ onBack, onSaved, onNavigateToEdit }
                 <div style={{ position: 'relative' }}>
                   <Lock size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
                   <input
-                    type="text"
+                    type="password"
+                    maxLength={128}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     style={{

@@ -392,6 +392,7 @@ export default function LoginPage({ setActiveTab }) {
               <input
                 type="text"
                 required
+                maxLength={254}
                 className="login-input"
                 placeholder="Enter email or 10-digit mobile"
                 value={identifier}
@@ -408,6 +409,7 @@ export default function LoginPage({ setActiveTab }) {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  maxLength={128}
                   className="login-input login-password-input"
                   placeholder="Password"
                   value={password}

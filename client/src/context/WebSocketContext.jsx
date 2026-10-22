@@ -1,13 +1,17 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { useAuth } from './AuthContext';
 
 const WebSocketContext = createContext(null);
 
 export const WebSocketProvider = ({ children }) => {
+  const { token, logout } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef(null);
   const listenersRef = useRef(new Map());
   const reconnectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
+  const generationRef = useRef(0);
+  const authenticatedRef = useRef(false);
 
   const getWsUrl = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -16,30 +20,47 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const connect = useCallback(() => {
+    if (!token) return;
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
+    const generation = generationRef.current;
     try {
       const url = getWsUrl();
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setIsConnected(true);
-        // Start ping interval every 25 seconds
-        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-        pingIntervalRef.current = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'PING' }));
-          }
-        }, 25000);
+        if (generationRef.current !== generation || !token) {
+          ws.close();
+          return;
+        }
+        ws.send(JSON.stringify({ type: 'AUTH', token }));
       };
 
       ws.onmessage = (event) => {
+        if (generationRef.current !== generation) return;
         try {
           const data = JSON.parse(event.data);
           if (!data || !data.type) return;
+
+          if (data.type === 'AUTHENTICATED') {
+            authenticatedRef.current = true;
+            setIsConnected(true);
+            if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+            pingIntervalRef.current = setInterval(() => {
+              if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'PING' }));
+            }, 25000);
+            return;
+          }
+
+          if (data.type === 'AUTH_REQUIRED') return;
+          if (data.type === 'PONG') return;
+          if (data.type === 'AUTH_EXPIRED') {
+            logout();
+            return;
+          }
 
           // Dispatch to registered listeners
           const eventListeners = listenersRef.current.get(data.type);
@@ -70,13 +91,16 @@ export const WebSocketProvider = ({ children }) => {
       };
 
       ws.onclose = () => {
-        setIsConnected(false);
-        if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
-        // Auto-reconnect after 3 seconds
-        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, 3000);
+        if (wsRef.current === ws) {
+          authenticatedRef.current = false;
+          setIsConnected(false);
+          wsRef.current = null;
+          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+        }
+        if (generationRef.current === generation && token) {
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = setTimeout(connect, 3000);
+        }
       };
 
       ws.onerror = () => {
@@ -84,22 +108,28 @@ export const WebSocketProvider = ({ children }) => {
       };
     } catch (err) {
       console.warn('WebSocket connection init failed:', err);
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, 4000);
+      if (generationRef.current === generation && token) {
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = setTimeout(connect, 4000);
+      }
     }
-  }, []);
+  }, [token, logout]);
 
   useEffect(() => {
+    generationRef.current += 1;
+    authenticatedRef.current = false;
+    setIsConnected(false);
     connect();
 
     return () => {
+      generationRef.current += 1;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
+      authenticatedRef.current = false;
     };
   }, [connect]);
 
@@ -124,7 +154,8 @@ export const WebSocketProvider = ({ children }) => {
 
   // Send message
   const sendMessage = useCallback((type, payload = {}) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (type === 'PING' && authenticatedRef.current &&
+      wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type, payload, timestamp: Date.now() }));
     }
   }, []);

@@ -26,7 +26,7 @@ import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from './CustomerBottomNav';
 
 export default function Navbar({ activeTab, setActiveTab }) {
-  const { user, logout, switchUser, DEMO_USERS } = useAuth();
+  const { user, logout } = useAuth();
   const { isOnline, offlineQueue, syncOfflineQueue } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
   const [dropdownOpen, setDropdownOpen] = useState(false);

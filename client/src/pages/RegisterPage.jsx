@@ -71,8 +71,23 @@ export default function RegisterPage({ setActiveTab }) {
     e.preventDefault();
     setError('');
 
-    if (!formData.name.trim() || !formData.mobile.trim() || !formData.password.trim()) {
-      setError('Please fill in all required fields (Name, Mobile, Password)');
+    if (formData.name.trim().length < 2 || formData.name.trim().length > 80) {
+      setError('Name must be between 2 and 80 characters.');
+      return;
+    }
+
+    if (!/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(formData.mobile.trim())) {
+      setError('Enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    if (formData.password.length < 8 || formData.password.length > 128) {
+      setError('Password must be between 8 and 128 characters.');
+      return;
+    }
+
+    if (formData.address.trim().length < 4 || formData.address.trim().length > 250) {
+      setError('Address must be between 4 and 250 characters.');
       return;
     }
 
@@ -450,6 +465,8 @@ export default function RegisterPage({ setActiveTab }) {
                     <input
                       type="text"
                       required
+                      minLength={2}
+                      maxLength={80}
                       className="register-input"
                       placeholder="e.g. Anand Deshmukh"
                       value={formData.name}
@@ -461,6 +478,8 @@ export default function RegisterPage({ setActiveTab }) {
                     <input
                       type="tel"
                       required
+                      maxLength={15}
+                      pattern="(?:\+?91[- ]?)?[6-9][0-9]{9}"
                       className="register-input"
                       placeholder="10-digit number"
                       value={formData.mobile}
@@ -477,6 +496,8 @@ export default function RegisterPage({ setActiveTab }) {
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
+                        minLength={8}
+                        maxLength={128}
                         className="register-input register-password-input"
                         placeholder="••••••••"
                         value={formData.password}
@@ -499,6 +520,8 @@ export default function RegisterPage({ setActiveTab }) {
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
                         required
+                        minLength={8}
+                        maxLength={128}
                         className="register-input register-password-input"
                         placeholder="••••••••"
                         value={formData.confirmPassword}
@@ -525,6 +548,8 @@ export default function RegisterPage({ setActiveTab }) {
                   <input
                     type="text"
                     required
+                    minLength={4}
+                    maxLength={250}
                     className="register-input"
                     placeholder="e.g. 402 Palm View, Main Link Road"
                     value={formData.address}

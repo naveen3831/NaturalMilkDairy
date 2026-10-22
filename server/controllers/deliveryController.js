@@ -32,12 +32,11 @@ const isPersistedProof = (proofImage) => {
 const canManageDelivery = (user, delivery) => {
   if (user?.role === 'admin') return true;
   if (user?.role !== 'delivery_boy') return false;
-  if (!delivery.deliveryBoyId) return true;
   const identityMatches = [user.id, user.boyId, user.mobile].filter(Boolean)
     .includes(delivery.deliveryBoyId);
   const nameMatches = user.name && delivery.deliveryBoyName &&
     user.name.trim().toLowerCase() === delivery.deliveryBoyName.trim().toLowerCase();
-  return identityMatches || nameMatches;
+  return Boolean(delivery.deliveryBoyId || delivery.deliveryBoyName) && (identityMatches || nameMatches);
 };
 
 // Get today's or selected date deliveries
@@ -57,9 +56,18 @@ const getDeliveries = async (req, res) => {
     const filter = {
       deletedForAdmin: { $ne: true },
     };
+    const andFilters = [];
 
     if (req.user?.role === 'delivery_boy') {
       filter.deletedForDriver = { $ne: true };
+      const assignedIds = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
+      const assignedNames = req.user.name ? [req.user.name] : [];
+      const assignedFilter = [
+        ...(assignedIds.length ? [{ deliveryBoyId: { $in: assignedIds } }] : []),
+        ...(assignedNames.length ? [{ deliveryBoyName: { $in: assignedNames } }] : []),
+      ];
+      if (!assignedFilter.length) return res.json({ success: true, date: targetDate, summary: { total: 0, delivered: 0, pending: 0, notDelivered: 0 }, deliveries: [] });
+      andFilters.push({ $or: assignedFilter });
     }
 
     // Apply date range filters
@@ -94,18 +102,15 @@ const getDeliveries = async (req, res) => {
       filter.deliveryDate = targetDate;
     }
 
-    if (deliveryBoyId && deliveryBoyId !== 'all') {
+    if (req.user?.role !== 'delivery_boy' && deliveryBoyId && deliveryBoyId !== 'all') {
       const boyQuery = [
         ...(deliveryBoyId.length === 24 ? [{ _id: deliveryBoyId }] : []),
         { mobile: deliveryBoyId },
       ];
       let driverBoy = null;
       let driverUser = null;
-      try {
-        const User = require('../models/User');
-        driverBoy = await DeliveryBoy.findOne({ $or: boyQuery }).lean();
-        driverUser = await User.findOne({ $or: boyQuery }).lean();
-      } catch (e) {}
+      driverBoy = await DeliveryBoy.findOne({ $or: boyQuery }).lean();
+      driverUser = await User.findOne({ $or: boyQuery }).lean();
 
       const possibleIds = [deliveryBoyId];
       if (driverBoy) {
@@ -119,10 +124,10 @@ const getDeliveries = async (req, res) => {
 
       const driverNames = [driverBoy?.name, driverUser?.name].filter(Boolean);
 
-      filter.$or = [
+      andFilters.push({ $or: [
         { deliveryBoyId: { $in: possibleIds } },
         ...(driverNames.length > 0 ? [{ deliveryBoyName: { $in: driverNames } }] : []),
-      ];
+      ] });
     }
 
     if (status && status !== 'all') {
@@ -130,13 +135,14 @@ const getDeliveries = async (req, res) => {
     }
 
     if (search) {
-      const q = search.trim();
-      filter.$or = [
+      const q = search.trim().slice(0, 100).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      if (q) andFilters.push({ $or: [
         { customerName: { $regex: q, $options: 'i' } },
         { customerAddress: { $regex: q, $options: 'i' } },
         { customerPhone: { $regex: q, $options: 'i' } },
-      ];
+      ] });
     }
+    if (andFilters.length) filter.$and = andFilters;
 
     const list = await Delivery.find(filter).sort({ deliveryDate: -1, customerName: 1 }).lean();
 

@@ -1,36 +1,91 @@
-const { WebSocketServer } = require('ws');
+const jwt = require('jsonwebtoken');
+const { WebSocketServer, WebSocket } = require('ws');
+const { JWT_SECRET } = require('../middleware/authMiddleware');
 
 let wss = null;
 
 function initWebSocket(server) {
-  wss = new WebSocketServer({ server, path: '/ws' });
+  const allowedOrigins = new Set([
+    process.env.CLIENT_URL,
+    ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()),
+    ...(process.env.NODE_ENV === 'production'
+      ? []
+      : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173']),
+  ].filter(Boolean));
+  const connectionCounts = new Map();
+
+  wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: 1024,
+    verifyClient: ({ origin }, callback) => {
+      callback(!origin || allowedOrigins.has(origin), 403, 'Origin not allowed');
+    },
+  });
 
   wss.on('connection', (ws, req) => {
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    const connectionCount = connectionCounts.get(clientIp) || 0;
+    if (connectionCount >= 8) {
+      ws.close(1013, 'Too many connections');
+      return;
+    }
+    connectionCounts.set(clientIp, connectionCount + 1);
+
     ws.isAlive = true;
+    ws.user = null;
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
-    // Send welcome / handshake
-    ws.send(JSON.stringify({
-      type: 'CONNECTED',
-      message: 'WebSocket connected to Natural Milk Dairy real-time service',
-      timestamp: Date.now(),
-    }));
+    ws.send(JSON.stringify({ type: 'AUTH_REQUIRED', timestamp: Date.now() }));
+    const authTimeout = setTimeout(() => {
+      if (!ws.user) ws.close(1008, 'Authentication required');
+    }, 5000);
 
     ws.on('message', (message) => {
+      let data;
       try {
-        const data = JSON.parse(message);
-        if (data.type === 'PING') {
-          ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
+        data = JSON.parse(message.toString());
+      } catch {
+        ws.close(1008, 'Invalid message');
+        return;
+      }
+
+      if (!ws.user) {
+        if (data?.type !== 'AUTH' || typeof data.token !== 'string' || data.token.length > 4096) {
+          ws.close(1008, 'Authentication required');
+          return;
         }
-      } catch (e) {
-        // ignore non-json
+        try {
+          ws.user = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
+          if (
+            !ws.user.id ||
+            !['admin', 'delivery_boy', 'customer', 'user'].includes(ws.user.role)
+          ) {
+            ws.close(1008, 'Invalid authentication token');
+            return;
+          }
+          clearTimeout(authTimeout);
+          ws.send(JSON.stringify({ type: 'AUTHENTICATED', timestamp: Date.now() }));
+        } catch {
+          ws.close(1008, 'Invalid authentication token');
+        }
+        return;
+      }
+
+      if (data?.type === 'PING') {
+        ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
+      } else {
+        ws.close(1008, 'Unsupported message');
       }
     });
 
     ws.on('close', () => {
-      // client disconnected
+      clearTimeout(authTimeout);
+      const remaining = (connectionCounts.get(clientIp) || 1) - 1;
+      if (remaining > 0) connectionCounts.set(clientIp, remaining);
+      else connectionCounts.delete(clientIp);
     });
 
     ws.on('error', (err) => {
@@ -38,10 +93,13 @@ function initWebSocket(server) {
     });
   });
 
-  // Keep alive heartbeat ping every 30 seconds
   const interval = setInterval(() => {
-    if (!wss) return;
     wss.clients.forEach((ws) => {
+      if (ws.user?.exp && ws.user.exp <= Math.floor(Date.now() / 1000)) {
+        ws.send(JSON.stringify({ type: 'AUTH_EXPIRED', timestamp: Date.now() }));
+        ws.close(1008, 'Authentication expired');
+        return;
+      }
       if (ws.isAlive === false) return ws.terminate();
       ws.isAlive = false;
       ws.ping();
@@ -50,17 +108,14 @@ function initWebSocket(server) {
 
   wss.on('close', () => {
     clearInterval(interval);
+    connectionCounts.clear();
+    wss = null;
   });
 
-  console.log('⚡ WebSocket Server initialized on path /ws');
+  console.log('WebSocket server initialized on authenticated path /ws');
   return wss;
 }
 
-/**
- * Broadcast an event to all connected clients
- * @param {string} event - Event type (e.g. 'DELIVERY_UPDATED', 'CUSTOMER_UPDATED', 'PAYMENT_RECORDED', 'NOTIFICATION_NEW')
- * @param {object} payload - Optional data payload
- */
 function broadcast(event, payload = {}) {
   if (!wss) return;
   const message = JSON.stringify({
@@ -70,12 +125,26 @@ function broadcast(event, payload = {}) {
   });
 
   wss.clients.forEach((client) => {
-    if (client.readyState === 1) { // WebSocket.OPEN
-      try {
-        client.send(message);
-      } catch (err) {
-        console.warn('WebSocket broadcast error:', err.message);
-      }
+    if (client.readyState !== WebSocket.OPEN || !client.user) return;
+    if (client.user.exp && client.user.exp <= Math.floor(Date.now() / 1000)) {
+      client.close(1008, 'Authentication expired');
+      return;
+    }
+    const isAdmin = client.user.role === 'admin';
+    const isSafeForDelivery = [
+      'DELIVERY_UPDATED',
+      'DELIVERY_BOY_UPDATED',
+      'LOCATION_UPDATED',
+      'NOTIFICATION_UPDATED',
+      'PRODUCT_UPDATED',
+    ].includes(event);
+    const isSafeForCustomer = ['PRODUCT_UPDATED', 'LOCATION_UPDATED', 'NOTIFICATION_UPDATED'].includes(event);
+    if (
+      isAdmin ||
+      (client.user.role === 'delivery_boy' && isSafeForDelivery) ||
+      (['customer', 'user'].includes(client.user.role) && isSafeForCustomer)
+    ) {
+      client.send(message);
     }
   });
 }

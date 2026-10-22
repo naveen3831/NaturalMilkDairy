@@ -78,7 +78,7 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
       mobile: mobile.trim(),
       assignedArea,
       vehicleNumber: vehicleNumber.trim(),
-      password: password.trim() || 'driver@123',
+      password: password.trim(),
       actor: 'Admin',
     });
     setIsSubmitting(false);
@@ -619,8 +619,9 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                   Portal Password
                 </label>
                 <input
-                  type="text"
-                  placeholder="e.g. driver@123 (Default: driver@123)"
+                  type="password"
+                  maxLength={128}
+                  placeholder="Leave blank to send a generated password by email"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
