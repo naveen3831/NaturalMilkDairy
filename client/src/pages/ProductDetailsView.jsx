@@ -65,6 +65,13 @@ export default function ProductDetailsView({
   const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
+    document.body.classList.add('product-details-page-active');
+    return () => {
+      document.body.classList.remove('product-details-page-active');
+    };
+  }, []);
+
+  useEffect(() => {
     if (product?.initialFreq) {
       setBookingFreq(product.initialFreq === 'one_time' ? 'one_time' : 'subscription');
     }
@@ -215,8 +222,32 @@ export default function ProductDetailsView({
         color: '#13281c',
       }}
     >
-      {/* 1. TOP HEADER BAR */}
+      {/* MOBILE TOP APP BAR (MOBILE ONLY) */}
+      <div className="pdp-mobile-top-bar">
+        <button
+          type="button"
+          onClick={onBack}
+          className="pdp-mobile-circle-btn"
+          aria-label="Back to products"
+        >
+          <ArrowLeft size={19} color="#0d5c3a" strokeWidth={2.2} />
+        </button>
+        <div className="pdp-mobile-header-title">
+          <span>{product.name}</span>
+        </div>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="pdp-mobile-circle-btn"
+          aria-label="Share product"
+        >
+          {copiedLink ? <Check size={17} color="#0d5c3a" /> : <Share2 size={17} color="#0d5c3a" />}
+        </button>
+      </div>
+
+      {/* 1. TOP HEADER BAR (DESKTOP) */}
       <header
+        className="pdp-desktop-header"
         style={{
           position: 'sticky',
           top: 0,
@@ -363,9 +394,10 @@ export default function ProductDetailsView({
           className="product-details-grid"
         >
           {/* ================= LEFT COLUMN: VISUAL EXPERIENCE & FARM GUARANTEES ================= */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Main Stage Image */}
-            <div
+          <div className="pdp-left-column" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="pdp-image-section" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Main Stage Image */}
+              <div
               style={{
                 position: 'relative',
                 borderRadius: '24px',
@@ -416,38 +448,7 @@ export default function ProductDetailsView({
                 <span>100% FARM FRESH</span>
               </div>
 
-              {/* Floating Fullscreen Trigger */}
-              <button
-                type="button"
-                onClick={() => setIsLightboxOpen(true)}
-                style={{
-                  position: 'absolute',
-                  top: '16px',
-                  right: '16px',
-                  background: 'rgba(15, 23, 42, 0.65)',
-                  backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255, 255, 255, 0.25)',
-                  color: '#ffffff',
-                  padding: '7px 14px',
-                  borderRadius: '999px',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#0d5c3a';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(15, 23, 42, 0.65)';
-                }}
-              >
-                <Maximize2 size={13} />
-                <span>Full View</span>
-              </button>
+
 
               {/* Floating Bottom Ribbon */}
               <div
@@ -532,8 +533,11 @@ export default function ProductDetailsView({
               </div>
             )}
 
+            </div>
+
             {/* 4 Farm Fresh Quality Pillars (2x2 Matrix) */}
             <div
+              className="pdp-quality-pillars"
               style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(2, 1fr)',
@@ -744,6 +748,7 @@ export default function ProductDetailsView({
 
           {/* ================= RIGHT COLUMN: UNIFIED LUXURY BOOKING SUITE ================= */}
           <div
+            className="pdp-booking-suite"
             style={{
               background: '#ffffff',
               borderRadius: '24px',
@@ -1578,6 +1583,32 @@ export default function ProductDetailsView({
           </div>
         </div>
       </main>
+
+      {/* 2.5 STICKY BOTTOM ACTION BAR (MOBILE ONLY) */}
+      {!orderSuccessMsg && (
+        <div className="pdp-mobile-bottom-bar">
+          <div className="pdp-mobile-bottom-price">
+            <div className="pdp-mobile-price-val">₹{dailyTotal}</div>
+            <div className="pdp-mobile-price-sub">
+              {bookingFreq === 'subscription' ? 'Daily Morning Drop' : 'One-Time Delivery'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleConfirmOrder}
+            disabled={isSubmitting}
+            className="pdp-mobile-cta-btn"
+          >
+            {isSubmitting ? (
+              <span>Scheduling...</span>
+            ) : bookingFreq === 'subscription' ? (
+              <span>Start Subscription →</span>
+            ) : (
+              <span>Confirm Order →</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* 3. LIGHTBOX FULL VIEW MODAL */}
       {isLightboxOpen && (

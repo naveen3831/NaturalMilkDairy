@@ -1,3 +1,4 @@
+
 :root {
   /* Brand Color Palette matching the Logo */
   --primary-green: #0d5c3a;
@@ -648,6 +649,213 @@ table.dairy-table tr:hover {
   }
   .dairy-card {
     padding: 16px;
+  }
+}
+
+/* ==========================================================================
+   PRODUCT DETAILS VIEW - MOBILE REDESIGN & NAVIGATION REMOVAL
+   Scoped strictly to mobile response (does NOT affect desktop)
+   ========================================================================== */
+@media (min-width: 769px) {
+  .pdp-mobile-top-bar,
+  .pdp-mobile-bottom-bar {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* 1. REMOVE SITE NAVBAR & BOTTOM NAV BAR ON MOBILE PRODUCT DETAILS PAGE */
+  body.product-details-page-active .public-site-header,
+  body.product-details-page-active .customer-public-header,
+  body.product-details-page-active .customer-dashboard-nav,
+  body.product-details-page-active .public-mobile-bottom-nav,
+  body.product-details-page-active .customer-bottom-nav,
+  body.product-details-page-active .floating-contact-wrapper,
+  body.product-details-page-active footer,
+  body:has(.product-details-root) .public-site-header,
+  body:has(.product-details-root) .customer-public-header,
+  body:has(.product-details-root) .customer-dashboard-nav,
+  body:has(.product-details-root) .public-mobile-bottom-nav,
+  body:has(.product-details-root) .customer-bottom-nav,
+  body:has(.product-details-root) .floating-contact-wrapper,
+  body:has(.product-details-root) footer {
+    display: none !important;
+  }
+
+  body.product-details-page-active .public-mobile-content,
+  body:has(.product-details-root) .public-mobile-content {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  /* 2. ROOT & MAIN CONTAINER */
+  .product-details-root {
+    background: #f6faf7 !important;
+    padding-bottom: 92px !important; /* Space for sticky bottom action bar */
+    min-height: 100vh !important;
+  }
+
+  /* Hide Desktop Top Header on mobile */
+  .pdp-desktop-header {
+    display: none !important;
+  }
+
+  /* 3. MOBILE APP TOP HEADER */
+  .pdp-mobile-top-bar {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid #e1eee4;
+    box-shadow: 0 1px 4px rgba(13, 92, 58, 0.04);
+  }
+
+  .pdp-mobile-circle-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: #eef6f0;
+    border: 1px solid #cce2d3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+  }
+
+  .pdp-mobile-circle-btn:active {
+    transform: scale(0.93);
+    background: #0d5c3a;
+    color: #ffffff;
+  }
+
+  .pdp-mobile-header-title {
+    flex: 1;
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0c331e;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 4. MAIN CONTENT & REORDERED STREAM (Image -> Booking Suite -> Quality Pillars) */
+  .product-details-root > main {
+    padding: 12px 14px 28px !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .product-details-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+  }
+
+  .pdp-left-column {
+    display: contents !important;
+  }
+
+  .pdp-image-section {
+    order: 1 !important;
+  }
+
+  .pdp-booking-suite {
+    order: 2 !important;
+    padding: 18px 16px !important;
+    border-radius: 20px !important;
+    border: 1px solid #e1eee4 !important;
+    box-shadow: 0 4px 16px rgba(13, 92, 58, 0.04) !important;
+  }
+
+  .pdp-quality-pillars {
+    order: 3 !important;
+    gap: 10px !important;
+    margin-top: 4px !important;
+  }
+
+  .pdp-quality-pillars > div {
+    padding: 12px 10px !important;
+    border-radius: 14px !important;
+    gap: 8px !important;
+  }
+
+  .pdp-quality-pillars h4 {
+    font-size: 0.8rem !important;
+  }
+
+  .pdp-quality-pillars p {
+    font-size: 0.72rem !important;
+    line-height: 1.35 !important;
+  }
+
+  /* 5. STICKY BOTTOM ACTION BAR (MOBILE ONLY) */
+  .pdp-mobile-bottom-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    background: #ffffff;
+    border-top: 1px solid #e1eee4;
+    padding: 10px 16px 14px;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    box-shadow: 0 -4px 20px rgba(13, 92, 58, 0.08);
+  }
+
+  .pdp-mobile-bottom-price {
+    display: flex;
+    flex-direction: column;
+    min-width: 90px;
+  }
+
+  .pdp-mobile-price-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    color: #0d5c3a;
+    line-height: 1.1;
+  }
+
+  .pdp-mobile-price-sub {
+    font-size: 0.72rem;
+    color: #617b6a;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  .pdp-mobile-cta-btn {
+    flex: 1;
+    max-width: 220px;
+    padding: 13px 18px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #0d5c3a 0%, #16804d 100%);
+    color: #ffffff;
+    border: none;
+    font-size: 0.92rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    box-shadow: 0 6px 18px rgba(13, 92, 58, 0.25);
+    transition: all 0.15s ease;
+  }
+
+  .pdp-mobile-cta-btn:active {
+    transform: scale(0.97);
   }
 }
 
@@ -10215,6 +10423,206 @@ body::-webkit-scrollbar,
 
 .modern-profile-menu-row.is-delete:hover {
   background: #fef2f2;
+}
+
+/* ==========================================================================
+   CUSTOMER PROFILE MOBILE - LUXURY STREAMLINED REDESIGN
+   Scoped strictly to mobile customer profile (does not affect desktop)
+   ========================================================================== */
+.customer-profile-mobile {
+  background: #f6faf7 !important;
+  min-height: 100%;
+  padding: 14px 16px 85px !important;
+}
+
+.customer-profile-mobile .modern-profile-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.customer-profile-mobile .modern-profile-header-title {
+  font-size: 1.18rem;
+  font-weight: 800;
+  color: #0c331e;
+  letter-spacing: -0.01em;
+}
+
+.customer-profile-mobile .modern-profile-identity {
+  background: #ffffff;
+  border: 1px solid #e1eee4;
+  border-radius: 16px;
+  padding: 12px 14px 10px;
+  margin-bottom: 12px;
+  box-shadow: 0 3px 12px rgba(13, 92, 58, 0.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.customer-profile-mobile .modern-profile-avatar-wrap {
+  width: 52px;
+  height: 52px;
+  margin-bottom: 6px;
+  position: relative;
+}
+
+.customer-profile-mobile .modern-profile-avatar-placeholder {
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, #0d5c3a 0%, #16804d 100%) !important;
+  box-shadow: 0 0 0 3px #e8f5ec;
+  font-size: 1.35rem;
+  font-weight: 800;
+  border-radius: 50%;
+}
+
+.customer-profile-mobile .modern-profile-camera-badge {
+  background: #ffffff;
+  border: 1.5px solid #d2e4d7;
+  color: #0d5c3a;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customer-profile-mobile .modern-profile-identity-info {
+  align-items: center;
+  width: 100%;
+}
+
+.customer-profile-mobile .modern-profile-name {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0c331e;
+  margin-bottom: 3px;
+}
+
+/* Green professional Edit Profile pill */
+.customer-profile-mobile .modern-profile-edit-btn {
+  background: #eef6f0 !important;
+  color: #0d5c3a !important;
+  border: 1.5px solid #cce2d3 !important;
+  box-shadow: 0 1px 4px rgba(13, 92, 58, 0.06) !important;
+  padding: 4px 12px !important;
+  font-size: 0.74rem !important;
+  font-weight: 750 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  border-radius: 999px !important;
+  transition: all 0.2s ease !important;
+}
+
+.customer-profile-mobile .modern-profile-edit-btn:hover {
+  background: #0d5c3a !important;
+  color: #ffffff !important;
+}
+
+/* Quick Identity Metric Chips */
+.customer-profile-chips-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f5f1;
+}
+
+.customer-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f7faf8;
+  border: 1px solid #e1eee4;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: #31523c;
+}
+
+/* Grouped Modern Card Sections */
+.customer-profile-group {
+  background: #ffffff;
+  border: 1px solid #e1eee4;
+  border-radius: 18px;
+  padding: 4px 14px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 14px rgba(13, 92, 58, 0.04);
+}
+
+.customer-profile-group-header {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #5d7a67;
+  padding: 12px 6px 4px;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.customer-profile-mobile .modern-profile-menu-row {
+  padding: 12px 4px;
+  border-bottom: 1px solid #f1f6f2;
+}
+
+.customer-profile-mobile .modern-profile-menu-row:last-child {
+  border-bottom: none;
+}
+
+.customer-profile-mobile .modern-profile-menu-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #eef6f0;
+  color: #0d5c3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customer-profile-mobile .modern-profile-menu-label {
+  font-size: 0.92rem;
+  font-weight: 750;
+  color: #112a1a;
+}
+
+.customer-profile-mobile .modern-profile-menu-sub {
+  font-size: 0.74rem;
+  color: #617b6a;
+  margin-top: 2px;
+}
+
+.customer-profile-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef6f0;
+  color: #0d5c3a;
+  border: 1px solid #d2e5d8;
+}
+
+.customer-profile-badge.is-paused {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
 }
 
 /* ── Screen 2: Edit Profile ── */

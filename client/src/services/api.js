@@ -1,17 +1,39 @@
 /**
  * Centralized API Client & Endpoint Resolver for Natural Milk Dairy
- * Uses import.meta.env.VITE_API_URL for production backend (Render)
+ * Supports:
+ * - Local Development (localhost:3000 -> localhost:5000 via Vite proxy)
+ * - Production Domains (Vercel -> Render backend https://naturalmilkdiary.onrender.com)
+ * - Custom Domains / VPS (Nginx + PM2)
  */
 
-const envApiUrl = import.meta.env.VITE_API_URL || '';
-export const API_BASE_URL = envApiUrl.replace(/\/+$/, '');
+const isBrowser = typeof window !== 'undefined';
+const isLocalhost =
+  isBrowser &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.startsWith('192.168.') ||
+    window.location.hostname.startsWith('10.'));
+
+// Smart Base URL resolver:
+// 1. Explicit VITE_API_URL if provided
+// 2. If running on remote domain (e.g. Vercel), fallback to production Render backend
+// 3. If running on localhost/LAN, default to relative '' so Vite proxy forwards to port 5000
+const resolveBaseUrl = () => {
+  const envUrl = (import.meta.env.VITE_API_URL || '').trim();
+  if (envUrl) return envUrl.replace(/\/+$/, '');
+
+  if (isBrowser && !isLocalhost) {
+    return 'https://naturalmilkdiary.onrender.com';
+  }
+  return '';
+};
+
+export const API_BASE_URL = resolveBaseUrl();
 
 /**
- * Resolves an endpoint to a full URL using VITE_API_URL in production,
- * or relative URL in development (handled by Vite proxy).
- *
+ * Resolves an endpoint to a full URL.
  * @param {string} endpoint - e.g. '/api/auth/login'
- * @returns {string} - e.g. 'https://naturalmilkdiary.onrender.com/api/auth/login'
+ * @returns {string} - full URL or relative path
  */
 export function getApiUrl(endpoint = '') {
   if (!endpoint) return API_BASE_URL;
@@ -21,7 +43,7 @@ export function getApiUrl(endpoint = '') {
 }
 
 /**
- * Resolves WebSocket URL pointing to Render backend in production
+ * Resolves WebSocket URL pointing to the appropriate server.
  */
 export function getWebSocketUrl() {
   if (API_BASE_URL) {
@@ -33,7 +55,34 @@ export function getWebSocketUrl() {
 }
 
 /**
- * Centralized fetch helper with token attachment and full URL resolution
+ * Safely parse JSON from a fetch Response without throwing SyntaxError
+ */
+export async function safeResponseJson(res) {
+  try {
+    const text = await res.clone().text();
+    if (!text || text.trim() === '') {
+      return {
+        success: false,
+        status: res.status,
+        message: res.status >= 500
+          ? 'Backend server error (500). Please ensure server is running.'
+          : `Empty response from server (${res.status})`,
+      };
+    }
+    return JSON.parse(text);
+  } catch (err) {
+    return {
+      success: false,
+      status: res.status,
+      message: res.status >= 500
+        ? 'Backend service error. Please verify server connection.'
+        : 'Invalid response from server.',
+    };
+  }
+}
+
+/**
+ * Centralized fetch helper with token attachment, URL resolution, and safe JSON parsing
  */
 export async function apiFetch(endpoint, options = {}) {
   const url = getApiUrl(endpoint);
@@ -47,15 +96,32 @@ export async function apiFetch(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    // Attach safe json method so callers can do `await res.json()` without crash
+    res.json = () => safeResponseJson(res);
+    return res;
+  } catch (netErr) {
+    // Return a synthesized Response so caller does not crash ungracefully
+    const synthetic = new Response(
+      JSON.stringify({
+        success: false,
+        message: 'Could not reach backend server. Please verify your connection or server status.',
+      }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
+    synthetic.json = () => safeResponseJson(synthetic);
+    return synthetic;
+  }
 }
 
 /**
  * Centralized API client with standard HTTP verbs
- * Example: api.post('/api/auth/login', { identifier, password })
+ * Example: await api.post('/api/auth/login', { identifier, password })
  */
 export const api = {
   get: (endpoint, options = {}) =>
@@ -84,6 +150,8 @@ export const api = {
 
   delete: (endpoint, options = {}) =>
     apiFetch(endpoint, { ...options, method: 'DELETE' }),
+
+  safeJson: safeResponseJson,
 };
 
 export default api;

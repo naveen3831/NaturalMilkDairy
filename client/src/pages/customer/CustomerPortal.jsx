@@ -2856,73 +2856,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
             </div>
 
-            {/* Doorstep Delivery Address Card */}
-            <div className="mobile-detail-card">
-              <div className="mobile-detail-card-head">
-                <div className="mobile-detail-card-icon is-green">
-                  <MapPin size={18} />
-                </div>
-                <div>
-                  <h4>Doorstep Delivery Address</h4>
-                  <p>Daily 5:00 AM – 6:30 AM drop location</p>
-                </div>
-              </div>
-
-              <div className="customer-profile-details" style={{ marginTop: '14px' }}>
-                <div className="is-wide"><span>Complete Address</span><strong>{customerAddress}</strong></div>
-                <div><span>Locality / Area</span><strong>{customerArea}</strong></div>
-                <div><span>Landmark / Gate</span><strong>{currentCustomer.landmark || 'None provided'}</strong></div>
-                <div><span>Assigned Specialist</span><strong>{currentCustomer.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Morning Route Specialist'}</strong></div>
-                <div><span>Drop Time Window</span><strong style={{ color: '#059669' }}>5:00 AM – 6:30 AM (Silent Drop)</strong></div>
-              </div>
-            </div>
-
-            {/* Milk Subscription Summary */}
-            <div className="mobile-detail-card">
-              <div className="mobile-detail-card-head">
-                <div className="mobile-detail-card-icon is-green">
-                  <Milk size={18} />
-                </div>
-                <div>
-                  <h4>Active Delivery Plan</h4>
-                  <p>Daily milk & curd drop configuration</p>
-                </div>
-              </div>
-
-              <div className="customer-profile-details" style={{ marginTop: '14px' }}>
-                <div><span>Daily Cow Milk</span><strong>{milkQuantity} {milkUnit}</strong></div>
-                <div><span>Daily Farm Curd</span><strong>{curdQuantity > 0 ? `${curdQuantity} ${curdUnit}` : 'None'}</strong></div>
-                <div><span>Delivery Schedule</span><strong style={{ textTransform: 'capitalize' }}>{deliveryFrequency}</strong></div>
-                {hasPaidSubscription ? (
-                  <div>
-                    <span>Subscription Through</span>
-                    <strong style={{ color: '#059669' }}>
-                      {subscriptionThrough?.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) || 'Renewal required'}
-                    </strong>
-                  </div>
-                ) : (
-                  <div><span>Wallet Balance</span><strong>₹{balance.toLocaleString('en-IN')}</strong></div>
-                )}
-              </div>
-
-              <div style={{ marginTop: '16px' }}>
-                <button
-                  type="button"
-                  className="customer-profile-secondary-button"
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                  onClick={() => openProfileDetail('subscription')}
-                >
-                  <CalendarDays size={15} />
-                  <span>View Full Subscription & Pauses</span>
-                </button>
-              </div>
-            </div>
-
             {/* Back Button */}
             <button
               type="button"
               className="customer-profile-secondary-button"
-              style={{ width: '100%', marginTop: '6px' }}
+              style={{ width: '100%', marginTop: '12px' }}
               onClick={backToProfile}
             >
               Back to Profile
@@ -3732,44 +3670,138 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
         {profileDetailView === 'drop-instructions' && (
           <div className="mobile-detail-body">
+            {profileMessage && (
+              <div className="mobile-profile-alert is-success" role="status" style={{ marginBottom: '14px' }}>
+                <CheckCircle2 size={16} />
+                <span>{profileMessage}</span>
+              </div>
+            )}
+            {profileError && (
+              <div className="customer-profile-feedback is-error" role="alert" style={{ marginBottom: '14px' }}>
+                <AlertCircle size={16} />
+                <span>{profileError}</span>
+              </div>
+            )}
+
             <div className="mobile-detail-card mobile-detail-highlight-card">
               <div className="mobile-detail-plan-banner">
                 <div>
-                  <span className="mobile-detail-badge is-emerald">YOUR DELIVERY PREFERENCES</span>
-                  <h3 style={{ margin: '8px 0 4px', fontSize: '1.12rem', fontWeight: 800 }}>Where to leave your order</h3>
+                  <span className="mobile-detail-badge is-emerald">DOORSTEP DROP PREFERENCES</span>
+                  <h3 style={{ margin: '8px 0 4px', fontSize: '1.18rem', fontWeight: 800 }}>Morning Drop Instructions</h3>
                   <p style={{ margin: 0, fontSize: '0.84rem', color: '#64748b' }}>
-                    Your delivery partner uses these details for a smooth, contact-free drop.
+                    Real-time instructions for your 5:00 AM – 6:30 AM morning delivery specialist.
                   </p>
                 </div>
-                <MapPin size={26} style={{ color: '#059669' }} />
+                <ShieldCheck size={28} style={{ color: '#059669' }} />
               </div>
             </div>
-            <div className="mobile-detail-card">
-              <h4 className="mobile-detail-subheading">Delivery address</h4>
-              <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>{address || 'Add your delivery address to help your partner find you.'}</p>
-            </div>
-            <div className="mobile-detail-card">
-              <h4 className="mobile-detail-subheading">Doorstep instructions</h4>
-              <p style={{ margin: 0, color: '#334155', lineHeight: 1.6 }}>
-                {currentCustomer.landmark || 'No additional instructions saved. Add a landmark, gate code, or preferred safe-drop location.'}
+
+            <form className="mobile-detail-card" onSubmit={saveProfile}>
+              <h4 className="mobile-detail-subheading" style={{ marginBottom: '8px' }}>Delivery Partner Instructions</h4>
+              <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: '#64748b', lineHeight: 1.5 }}>
+                Tap quick notes below or type your custom gate code, bag location, or doorstep instructions:
               </p>
-              <p style={{ margin: '10px 0 0', color: '#64748b', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                Deliveries are normally placed at your doorstep during the morning delivery window. Your partner will follow the saved instructions above.
-              </p>
-            </div>
-            <div className="mobile-detail-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', flexWrap: 'wrap' }}>
-              <div>
-                <strong style={{ color: '#0f172a' }}>Need to update these details?</strong>
-                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.82rem' }}>Keep your address and delivery notes current.</p>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                {[
+                  'Leave in dairy bag on door hook',
+                  'Silent drop (Do not ring doorbell)',
+                  'Ring bell once after drop',
+                  'Place inside gate grill',
+                  'Leave on shoe rack by door',
+                ].map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setProfileForm((cur) => {
+                        const existing = (cur.landmark || '').trim();
+                        if (existing.includes(tag)) return cur;
+                        return {
+                          ...cur,
+                          landmark: existing ? `${existing}. ${tag}` : tag,
+                        };
+                      });
+                    }}
+                    style={{
+                      background: (profileForm.landmark || '').includes(tag) ? '#eef6f0' : '#f8fafc',
+                      border: (profileForm.landmark || '').includes(tag) ? '1.5px solid #0d5c3a' : '1px solid #cbd5e1',
+                      color: (profileForm.landmark || '').includes(tag) ? '#0d5c3a' : '#475569',
+                      padding: '5px 10px',
+                      borderRadius: '8px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    + {tag}
+                  </button>
+                ))}
               </div>
+
+              <label style={{ display: 'block', marginBottom: '16px' }}>
+                <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 750, color: '#1e293b', marginBottom: '6px' }}>
+                  Doorstep / Gate Instructions:
+                </span>
+                <textarea
+                  rows={4}
+                  value={profileForm.landmark || ''}
+                  onChange={(e) => setProfileForm((cur) => ({ ...cur, landmark: e.target.value }))}
+                  placeholder="e.g. Please leave on the hook beside flat door. Gate code is #1042. Silent drop, please do not ring doorbell."
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    lineHeight: 1.5,
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
+              </label>
+
               <button
-                type="button"
+                type="submit"
+                disabled={profileSaving}
                 className="customer-profile-primary-button"
-                onClick={() => openProfileDetail('personal-info')}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '12px',
+                  fontWeight: 750,
+                  fontSize: '0.92rem',
+                }}
               >
-                Edit delivery details
+                <CheckCircle2 size={16} />
+                <span>{profileSaving ? 'Saving in Real Time...' : 'Save Drop Instructions'}</span>
               </button>
+            </form>
+
+            <div className="mobile-detail-card mobile-detail-notice-card">
+              <div className="mobile-detail-notice-item">
+                <Clock3 size={20} className="mobile-detail-notice-icon is-blue" />
+                <div>
+                  <strong>Live Sync with Morning Route Partner</strong>
+                  <p>Updates save instantly and sync to your assigned driver's route roster for the morning drop.</p>
+                </div>
+              </div>
             </div>
+
+            <button
+              type="button"
+              className="customer-profile-secondary-button"
+              style={{ width: '100%', marginTop: '4px' }}
+              onClick={backToProfile}
+            >
+              Back to Profile
+            </button>
           </div>
         )}
 
@@ -4295,6 +4327,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           ? new Date(currentCustomer.subscription.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
           : '13 Nov 2026');
     const displayAddress = address || 'Madhupur, Madhapur';
+    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur';
 
     return (
       <div className="modern-profile-container customer-profile-mobile">
@@ -4332,7 +4365,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              marginBottom: '18px',
+              marginBottom: '14px',
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
             }}
           >
@@ -4341,7 +4374,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
-        {/* Identity Section: Circular avatar + Name + Handle + Red Pill Button */}
+        {/* Identity Hero Section */}
         <div className="modern-profile-identity">
           <div className="modern-profile-avatar-wrap">
             <div className="modern-profile-avatar-placeholder">
@@ -4354,56 +4387,53 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               title="Change profile photo"
               aria-label="Change photo"
             >
-              <Camera size={13} color="#475569" />
+              <Camera size={12} color="#0d5c3a" />
             </button>
           </div>
 
           <div className="modern-profile-identity-info">
             <h3 className="modern-profile-name">{customerName}</h3>
-            <span className="modern-profile-handle">{handleTag}</span>
             <button
               type="button"
               className="modern-profile-edit-btn"
               onClick={() => openProfileDetail('personal-info')}
             >
-              Edit Profile
+              <Edit3 size={12} />
+              <span>Edit Profile</span>
             </button>
+          </div>
+
+          <div className="customer-profile-chips-row">
+            <div className="customer-profile-chip">
+              <Milk size={12} color="#0d5c3a" />
+              <span>{milkQuantity}L Daily</span>
+            </div>
+            <div className="customer-profile-chip">
+              <MapPin size={12} color="#0d5c3a" />
+              <span>{customerArea || 'Madhapur'}</span>
+            </div>
+            <div className="customer-profile-chip">
+              <CheckCircle2 size={12} color="#0d5c3a" />
+              <span>{totalDeliveries} Drops Done</span>
+            </div>
           </div>
         </div>
 
-        {/* Customer-Only Data Menu List */}
-        <div className="modern-profile-menu-list">
-          {/* 1. Account Details */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('account-details')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><UserRound size={22} color="#00a651" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Account Details</span>
-                <span className="modern-profile-menu-sub">
-                  ID: {customerId} · {customerPhone}
-                </span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <span>
-                Active
-              </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
+        {/* Group 1: Delivery & Schedule */}
+        <div className="customer-profile-group">
+          <h4 className="customer-profile-group-header">
+            <Truck size={14} />
+            <span>Delivery & Schedule</span>
+          </h4>
 
-          {/* 2. My Milk Subscription */}
+          {/* 1. My Milk Subscription */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('subscription')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Milk size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><Milk size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">My Milk Subscription</span>
                 <span className="modern-profile-menu-sub">
@@ -4412,21 +4442,21 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <span>
+              <span className={`customer-profile-badge${isPaused ? ' is-paused' : ''}`}>
                 {isPaused ? 'Paused' : 'Active'}
               </span>
               <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
 
-          {/* 3. Delivery Address */}
+          {/* 2. Delivery Address */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('personal-info')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><MapPin size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><MapPin size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Address</span>
                 <span className="modern-profile-menu-sub">{displayAddress}</span>
@@ -4437,17 +4467,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* 4. Delivery Window */}
+          {/* 3. Delivery Window */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('delivery-window')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Clock3 size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><Clock3 size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Window</span>
-                <span className="modern-profile-menu-sub">Before 6:30 AM early morning (Silent Drop)</span>
+                <span className="modern-profile-menu-sub">5:00 AM – 6:30 AM (Silent Early Drop)</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
@@ -4455,14 +4485,63 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* 5. Past Delivery Receipts & Invoices */}
+          {/* 4. Drop Instructions */}
           <button
             type="button"
-            className="modern-profile-menu-row is-highlighted"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('drop-instructions')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><ShieldCheck size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Drop Instructions</span>
+                <span className="modern-profile-menu-sub">{currentCustomer.landmark || 'Doorstep placement, bell & gate codes'}</span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
+            </div>
+          </button>
+        </div>
+
+        {/* Group 2: Account & Billing */}
+        <div className="customer-profile-group">
+          <h4 className="customer-profile-group-header">
+            <CreditCard size={14} />
+            <span>Account & Billing</span>
+          </h4>
+
+          {/* 5. Account Details */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
+            onClick={() => openProfileDetail('account-details')}
+          >
+            <div className="modern-profile-menu-left">
+              <span className="modern-profile-menu-icon"><UserRound size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
+              <div>
+                <span className="modern-profile-menu-label">Account Details</span>
+                <span className="modern-profile-menu-sub">
+                  ID: {customerId} · {customerPhone}
+                </span>
+              </div>
+            </div>
+            <div className="modern-profile-menu-right">
+              <span className="customer-profile-badge">
+                Active
+              </span>
+              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
+            </div>
+          </button>
+
+          {/* 6. Past Delivery Receipts & Invoices */}
+          <button
+            type="button"
+            className="modern-profile-menu-row"
             onClick={() => openProfileDetail('deliveries')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><FileText size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><FileText size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Delivery Receipts & History</span>
                 <span className="modern-profile-menu-sub">{totalDeliveries} Drops Completed · Daily proof logs</span>
@@ -4473,14 +4552,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* 6. Subscription Payment */}
+          {/* 7. Subscription Payment */}
           <button
             type="button"
             className="modern-profile-menu-row"
             onClick={() => openProfileDetail('wallet')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Wallet size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><Wallet size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Subscription Payment</span>
                 <span className="modern-profile-menu-sub">
@@ -4489,27 +4568,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
             </div>
             <div className="modern-profile-menu-right">
-              <span>
+              <span className="customer-profile-badge">
                 Prepaid
               </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 7. Drop Instructions */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('drop-instructions')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><ShieldCheck size={22} color="#00a651" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Drop Instructions</span>
-                <span className="modern-profile-menu-sub">{currentCustomer.landmark || 'Doorstep placement, bell & gate codes'}</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
               <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
@@ -4521,7 +4582,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             onClick={() => openProfileDetail('support')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Headphones size={22} color="#00a651" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon"><Headphones size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
               <div>
                 <span className="modern-profile-menu-label">Customer Care & Helplines</span>
                 <span className="modern-profile-menu-sub">WhatsApp chat & 24/7 priority support</span>
@@ -4531,6 +4592,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
+        </div>
+
+        {/* Group 3: Account Controls */}
+        <div className="customer-profile-group" style={{ marginBottom: '24px' }}>
+          <h4 className="customer-profile-group-header">
+            <Settings size={14} />
+            <span>Account Controls</span>
+          </h4>
 
           {/* 9. Log out */}
           <button
@@ -4539,7 +4608,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             onClick={() => setShowLogoutConfirm(true)}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><LogOut size={22} color="#e53935" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#e53935' }}>
+                <LogOut size={20} color="#e53935" strokeWidth={1.8} />
+              </span>
               <span className="modern-profile-menu-label" style={{ color: '#e53935', fontWeight: 650 }}>Log out</span>
             </div>
             <div className="modern-profile-menu-right">

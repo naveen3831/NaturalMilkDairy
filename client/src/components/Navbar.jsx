@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -60,8 +60,44 @@ export default function Navbar({ activeTab, setActiveTab }) {
     }
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
+
+  const [isProductDetailsActive, setIsProductDetailsActive] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const urlParams = new URLSearchParams(window.location.search);
+    return (
+      Boolean(urlParams.get('product')) ||
+      Boolean(urlParams.get('id')) ||
+      document.body.classList.contains('product-details-page-active')
+    );
+  });
+
+  useEffect(() => {
+    const checkProductDetails = () => {
+      if (typeof window === 'undefined') return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const isPDP =
+        Boolean(urlParams.get('product')) ||
+        Boolean(urlParams.get('id')) ||
+        document.body.classList.contains('product-details-page-active') ||
+        Boolean(document.querySelector('.product-details-root'));
+      setIsProductDetailsActive(isPDP);
+    };
+    checkProductDetails();
+    const interval = setInterval(checkProductDetails, 150);
+    window.addEventListener('popstate', checkProductDetails);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('popstate', checkProductDetails);
+    };
+  }, []);
+
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
+    // In mobile view on product details page, completely omit Navbar
+    if (isProductDetailsActive && typeof window !== 'undefined' && window.innerWidth <= 768) {
+      return null;
+    }
+
     return (
       <>
         <header
