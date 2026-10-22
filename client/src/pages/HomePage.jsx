@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Clock,
   Sparkles,
-  Award,
   ArrowRight,
   Star,
   Check,
@@ -17,7 +16,6 @@ import {
   Calculator,
   MapPin,
   Flame,
-  FileCheck2,
   Users,
   ShieldAlert,
   X,
@@ -419,7 +417,7 @@ export default function HomePage({ setActiveTab }) {
                 Click any item below to configure your morning delivery. Start with zero deposit and pause anytime.
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
+              <div className="home-selector-items-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '24px' }}>
                 {[
                   {
                     id: 'cow-milk',
@@ -454,9 +452,10 @@ export default function HomePage({ setActiveTab }) {
                   return (
                     <div
                       key={item.id}
+                      className={`home-selector-item-card ${isSelected ? 'is-selected' : ''}`}
                       onClick={() => {
                         setHeroSelectedProduct(item.id);
-                        handleSubscribe(item.prod);
+                        handleProductClick(item.prod);
                       }}
                       style={{
                         padding: '16px 18px',
@@ -466,16 +465,25 @@ export default function HomePage({ setActiveTab }) {
                         boxShadow: isSelected ? '0 8px 20px rgba(5, 150, 105, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
                         cursor: 'pointer',
                         transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        minHeight: '112px',
+                        boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           {item.badge}
                         </span>
-                        {isSelected && <Check size={16} color="#059669" />}
+                        {isSelected && <Check size={16} color="#059669" strokeWidth={2.5} />}
                       </div>
-                      <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0c2340' }}>{item.label}</div>
-                      <div style={{ fontWeight: 900, fontSize: '1.15rem', color: '#059669', marginTop: '4px' }}>{item.price}</div>
+                      <div className="home-selector-item-title" style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0c2340', lineHeight: 1.25, minHeight: '38px', display: 'flex', alignItems: 'center' }}>
+                        {item.label}
+                      </div>
+                      <div style={{ fontWeight: 900, fontSize: '1.18rem', color: '#059669', marginTop: 'auto', paddingTop: '6px' }}>
+                        {item.price}
+                      </div>
                     </div>
                   );
                 })}
@@ -483,14 +491,14 @@ export default function HomePage({ setActiveTab }) {
 
               <button
                 onClick={() => handleSubscribe(cowMilkItem || products[0])}
-                className="shine-button dairy-btn-hover"
+                className="home-selector-submit-btn shine-button dairy-btn-hover"
                 style={{
                   width: '100%',
                   background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                   color: '#ffffff',
                   fontWeight: 800,
                   fontSize: '1.02rem',
-                  padding: '15px',
+                  padding: '15px 20px',
                   borderRadius: '14px',
                   cursor: 'pointer',
                   border: 'none',
@@ -499,6 +507,7 @@ export default function HomePage({ setActiveTab }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
+                  boxSizing: 'border-box',
                 }}
               >
                 <Milk size={19} />
@@ -511,255 +520,14 @@ export default function HomePage({ setActiveTab }) {
         </div>
       </section>
 
-      {/* ============================================================ */}
-      {/* 3. 100% VX ALL LIGHT THEMED: DAILY QUALITY SEAL & DISPATCH    */}
-      {/* ============================================================ */}
-      <section
-        style={{
-          width: '100%',
-          background: '#f8faf8',
-          borderBottom: '1px solid #e2ece3',
-          padding: '48px 24px',
-        }}
-      >
-        <div style={{ maxWidth: '1440px', margin: '0 auto' }}>
-          
-          {/* Header Row: Seal Badge + Route + Star Rating (LIGHT THEMED) */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '18px',
-              marginBottom: '28px',
-              paddingBottom: '22px',
-              borderBottom: '1px solid #e2ece3',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div
-                style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '14px',
-                  background: '#ecfdf5',
-                  border: '1.5px solid #a7f3d0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Award size={26} color="#059669" />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#0c2340', margin: 0 }}>
-                    Daily Farm Quality Seal
-                  </h3>
-                  <span
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: '20px',
-                      background: '#ecfdf5',
-                      border: '1px solid #a7f3d0',
-                      color: '#065f46',
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Grade A+ Certified
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.82rem', color: '#597361', marginTop: '2px' }}>
-                  Laboratory Certified at Farm at 04:45 AM • FSSAI Certified
-                </div>
-              </div>
-            </div>
 
-            {/* Route Status & Customer Rating */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  background: '#ffffff',
-                  padding: '8px 18px',
-                  borderRadius: '30px',
-                  border: '1px solid #e2e8f0',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                }}
-              >
-                <div
-                  style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    background: '#10b981',
-                    boxShadow: '0 0 8px #10b981',
-                  }}
-                  className="pulse-badge"
-                />
-                <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#0c2340' }}>
-                  Tomorrow's 6:00 AM Hyderabad Routes Active
-                </span>
-                <button
-                  onClick={() => handleSubscribe(products[0])}
-                  style={{
-                    background: '#059669',
-                    color: '#ffffff',
-                    padding: '4px 12px',
-                    borderRadius: '8px',
-                    fontWeight: 800,
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    border: 'none',
-                    marginLeft: '4px',
-                  }}
-                >
-                  Join Route
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <div style={{ display: 'flex', color: '#f5a623' }}>
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} size={16} fill="#f5a623" color="#f5a623" />
-                  ))}
-                </div>
-                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0c2340' }}>4.92 / 5.0</span>
-                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>(850+ Mumbai Homes)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 4 Lab Verified Purity Metrics Cards Grid (LIGHT THEMED) */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '18px',
-              marginBottom: '32px',
-            }}
-          >
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '18px',
-                padding: '22px',
-                border: '1.5px solid #e2ece3',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>Natural Milk Fat Content</div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: '#d97706', margin: '4px 0' }}>4.2% - 7.5%</div>
-              <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>Thick Homemade Golden Malai</div>
-            </div>
-
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '18px',
-                padding: '22px',
-                border: '1.5px solid #e2ece3',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>SNF (Solids Not Fat)</div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: '#059669', margin: '4px 0' }}>8.6% - 9.2%</div>
-              <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>High Natural Whey & Casein Protein</div>
-            </div>
-
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '18px',
-                padding: '22px',
-                border: '1.5px solid #e2ece3',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>Chemical Adulterants</div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0284c7', margin: '4px 0' }}>0.0%</div>
-              <div style={{ fontSize: '0.78rem', color: '#0284c7', fontWeight: 600 }}>Zero Added Water, Starch, or Urea</div>
-            </div>
-
-            <div
-              style={{
-                background: '#ffffff',
-                borderRadius: '18px',
-                padding: '22px',
-                border: '1.5px solid #e2ece3',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
-              }}
-            >
-              <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700 }}>Chilling Temperature</div>
-              <div style={{ fontSize: '2rem', fontWeight: 900, color: '#0891b2', margin: '4px 0' }}>3.8°C</div>
-              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>Chilled within 30 min of milking</div>
-            </div>
-          </div>
-
-          {/* Live Dispatch Counters Row (LIGHT THEMED) */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '20px',
-              paddingTop: '20px',
-              borderTop: '1px solid #e2ece3',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Milk size={24} color="#d97706" />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340' }}>1,420 Litres</div>
-                <div style={{ fontSize: '0.8rem', color: '#597361' }}>Morning Harvest Yield</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Clock size={24} color="#166534" />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340' }}>99.8% On-Time</div>
-                <div style={{ fontSize: '0.8rem', color: '#597361' }}>Delivered Before 6:30 AM</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <FileCheck2 size={24} color="#0369a1" />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340' }}>Daily Tested</div>
-                <div style={{ fontSize: '0.8rem', color: '#597361' }}>Lab Certified Every Dawn</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: '#fce7f3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Users size={24} color="#be185d" />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340' }}>850+ Families</div>
-                <div style={{ fontSize: '0.8rem', color: '#597361' }}>Active Daily Subscribers</div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </section>
 
       {/* ============================================================ */}
       {/* 4. ARTISANAL FARM PRODUCTS COLLECTION                         */}
       {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
+      <section className="public-home-products-section" style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div
+          className="public-home-products-header"
           style={{
             display: 'flex',
             alignItems: 'flex-end',
@@ -795,7 +563,7 @@ export default function HomePage({ setActiveTab }) {
           </div>
 
           {/* Interactive Category Tabs */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <div className="public-home-category-tabs" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             {[
               { id: 'all', label: `All Products (${products.length})` },
               { id: 'milk', label: 'Fresh Milks' },
@@ -900,7 +668,7 @@ export default function HomePage({ setActiveTab }) {
               {/* Product Information Body */}
               <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div className="public-product-card-info">
-                  <div style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                  <div className="public-product-tagline" style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
                     {prod.tagline}
                   </div>
                   <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
@@ -918,6 +686,18 @@ export default function HomePage({ setActiveTab }) {
                         <span>{h}</span>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Compact Mobile Micro Data Badges */}
+                  <div className="public-product-card-data-row">
+                    <span className="public-card-data-pill">
+                      <Check size={9} color="#059669" />
+                      <span>{prod.highlights?.[0] || 'Glass Bottled'}</span>
+                    </span>
+                    <span className="public-card-data-pill">
+                      <Sparkles size={9} color="#d98a0d" />
+                      <span>{prod.highlights?.[1] || (prod.category === 'milk' ? 'Raw 4°C Chilled' : '100% Pure A2')}</span>
+                    </span>
                   </div>
                 </div>
 
@@ -1223,7 +1003,7 @@ export default function HomePage({ setActiveTab }) {
               </div>
 
               <button
-                onClick={() => handleSubscribe(cowMilkItem || products[0])}
+                onClick={() => setActiveTab('products')}
                 className="shine-button dairy-btn-hover"
                 style={{
                   width: '100%',
@@ -1462,71 +1242,8 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 10. PRE-FOOTER LIGHT MINT SATISFACTION GUARANTEE BANNER      */}
       {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '0 auto 80px auto', padding: '0 32px' }}>
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)',
-            borderRadius: '28px',
-            padding: '48px 38px',
-            color: '#0c2340',
-            border: '2px solid #a7f3d0',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '26px',
-            boxShadow: '0 16px 40px rgba(5, 150, 105, 0.08)',
-          }}
-        >
-          <div style={{ maxWidth: '640px' }}>
-            <span
-              style={{
-                background: '#059669',
-                color: '#ffffff',
-                padding: '4px 14px',
-                borderRadius: '20px',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              100% Satisfaction Guarantee
-            </span>
-            <h2 style={{ fontSize: 'clamp(1.8rem, 3vw, 2.5rem)', fontWeight: 900, color: '#0c2340', marginTop: '12px' }}>
-              Taste The Difference Tomorrow Morning
-            </h2>
-            <p style={{ color: '#475569', fontSize: '1.02rem', marginTop: '8px', lineHeight: 1.6 }}>
-              Sign up today with zero deposit. If you don't taste the unmistakable sweetness 
-              and rich cream layer on your first delivery, your morning is on us.
-            </p>
-          </div>
 
-          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => handleSubscribe(products[0])}
-              className="shine-button dairy-btn-hover"
-              style={{
-                background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                color: '#ffffff',
-                padding: '16px 32px',
-                borderRadius: '14px',
-                fontWeight: 900,
-                fontSize: '1rem',
-                cursor: 'pointer',
-                border: 'none',
-                boxShadow: '0 8px 24px rgba(5, 150, 105, 0.25)',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-            >
-              <Milk size={19} />
-              <span>Start Tomorrow's Delivery</span>
-            </button>
-          </div>
-        </div>
-      </section>
+
 
       {/* Global Subscription Modal */}
       <SubscribeModal

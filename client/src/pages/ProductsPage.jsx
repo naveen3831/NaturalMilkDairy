@@ -582,8 +582,20 @@ export default function ProductsPage({ setActiveTab }) {
                     ))}
                   </div>
 
+                  {/* Compact Mobile Micro Data Badges */}
+                  <div className="public-product-card-data-row">
+                    <span className="public-card-data-pill">
+                      <Check size={9} color="#16a34a" />
+                      <span>{p.features?.[0] || 'Glass Bottled'}</span>
+                    </span>
+                    <span className="public-card-data-pill">
+                      <Sparkles size={9} color="#d98a0d" />
+                      <span>{p.category === 'milk' ? 'Raw 4°C Chilled' : '100% Pure A2'}</span>
+                    </span>
+                  </div>
+
                   {/* Tap to View Details pill */}
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 700, marginBottom: '6px' }}>
+                  <div className="public-product-card-view-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 700, marginBottom: '6px' }}>
                     <Eye size={13} />
                     <span>Click card for details & specs →</span>
                   </div>

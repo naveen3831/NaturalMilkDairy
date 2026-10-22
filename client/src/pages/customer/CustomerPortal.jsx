@@ -20,6 +20,7 @@ import {
   LogOut,
   Mail,
   MapPin,
+  Navigation,
   MessageSquare,
   Milk,
   PauseCircle,
@@ -87,6 +88,7 @@ const getCustomerRoute = () => {
   const profileViews = [
     'personal-info', 'subscription', 'deliveries', 'wallet', 'pause', 'quantity',
     'delivery-window', 'drop-instructions', 'support', 'about', 'delete-account',
+    'delivery-address',
   ];
   return {
     page,
@@ -96,7 +98,7 @@ const getCustomerRoute = () => {
 
 export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenTempQtyModal, onOpenPaymentModal }) {
   const { user, logout, setUser, getAuthHeaders } = useAuth();
-  const { customers, deliveries, products, fetchProducts, setTemporaryQty, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync } = useDairy();
+  const { customers, deliveries, products, fetchProducts, setTemporaryQty, pauseDelivery, resumeDelivery, refreshAll, notifyRealtimeSync, locations, fetchLocations } = useDairy();
   const { unreadCount, setIsNotificationOpen, sendNotification } = useNotifications();
   const { subscribe: wsSubscribe } = useWebSocket();
   const [activePage, setActivePage] = useState(() => {
@@ -171,6 +173,25 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
+  const [locationSearchQuery, setLocationSearchQuery] = useState('');
+
+  const serviceableLocations = useMemo(() => {
+    if (Array.isArray(locations) && locations.length > 0) {
+      const active = locations.filter((loc) => loc.isActive !== false);
+      if (active.length > 0) return active;
+    }
+    return [
+      { id: 'loc-1', name: 'Madhapur', pincode: '500081', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-2', name: 'Gachibowli', pincode: '500032', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-3', name: 'Hitec City', pincode: '500081', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-4', name: 'Kondapur', pincode: '500084', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-5', name: 'Jubilee Hills', pincode: '500033', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-6', name: 'Banjara Hills', pincode: '500034', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-7', name: 'Financial District', pincode: '500075', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-8', name: 'Kukatpally', pincode: '500072', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+      { id: 'loc-9', name: 'Manikonda', pincode: '500089', city: 'Hyderabad', state: 'Telangana', deliverySlot: 'Morning 5:00 AM - 7:30 AM', isActive: true },
+    ];
+  }, [locations]);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
@@ -534,19 +555,22 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const openProfileDetail = (view) => {
-    if (view === 'personal-info') {
+    if (view === 'personal-info' || view === 'delivery-address') {
       setProfileForm({
-        name: currentCustomer.name || '',
-        mobile: currentCustomer.mobile || '',
-        email: currentCustomer.email || '',
+        name: currentCustomer.name || user?.name || '',
+        mobile: currentCustomer.mobile || user?.mobile || '',
+        email: currentCustomer.email || user?.email || '',
         whatsapp: currentCustomer.whatsapp || '',
-        address: currentCustomer.address || '',
-        area: currentCustomer.area || '',
+        address: currentCustomer.address || user?.address || '',
+        area: currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur',
         landmark: currentCustomer.landmark || '',
       });
       setProfileError('');
       setProfileMessage('');
       setIsEditingProfile(true);
+      if (typeof fetchLocations === 'function') {
+        fetchLocations();
+      }
     }
     localStorage.setItem('nmd_customer_page', 'profile');
     setActivePage('profile');
@@ -2774,6 +2798,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     let viewTitle = 'Profile Details';
     if (profileDetailView === 'account-details') viewTitle = 'Account Details';
     else if (profileDetailView === 'personal-info') viewTitle = 'Personal Details';
+    else if (profileDetailView === 'delivery-address') viewTitle = 'Delivery Address & Locations';
     else if (profileDetailView === 'subscription') viewTitle = 'My Subscriptions';
     else if (profileDetailView === 'deliveries') viewTitle = 'Saved Deliveries';
     else if (profileDetailView === 'wallet') viewTitle = 'Refund Wallet & Balance';
@@ -3007,6 +3032,388 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <div>
                   <strong>100% Confidential Delivery Profile</strong>
                   <p>Your doorstep details are shared solely with your assigned dairy route specialist for 5:00 AM delivery.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* DELIVERY ADDRESS & AVAILABLE LOCATIONS VIEW */}
+        {profileDetailView === 'delivery-address' && (
+          <div className="mobile-detail-body">
+            {/* Feedback alert toasts */}
+            {profileMessage && (
+              <div className="mobile-profile-alert is-success" role="status" style={{ marginBottom: '14px' }}>
+                <CheckCircle2 size={16} />
+                <span>{profileMessage}</span>
+              </div>
+            )}
+            {profileError && (
+              <div className="customer-profile-feedback is-error" role="alert" style={{ marginBottom: '14px' }}>
+                <AlertCircle size={16} />
+                <span>{profileError}</span>
+              </div>
+            )}
+
+            {/* 1. CURRENT ACTIVE DELIVERY DESTINATION CARD */}
+            <div className="delivery-address-hero-card">
+              <div className="delivery-address-hero-header">
+                <div>
+                  <div className="delivery-status-pill">
+                    <span className="delivery-pulse-dot" />
+                    <span>Active Morning Drop Destination</span>
+                  </div>
+                  <h3 style={{ margin: '8px 0 2px', fontSize: '1.22rem', fontWeight: 800, color: '#064e3b' }}>
+                    {customerName}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#047857' }}>
+                    Customer ID: {customerId} · Ph: {customerPhone}
+                  </p>
+                </div>
+                <div style={{ background: '#d1fae5', padding: '10px', borderRadius: '12px', color: '#059669' }}>
+                  <MapPin size={26} strokeWidth={2.2} />
+                </div>
+              </div>
+
+              <div className="delivery-address-highlight-box">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', color: '#0d5c3a', fontSize: '0.78rem', fontWeight: 800 }}>
+                  <Navigation size={14} />
+                  <span>CURRENT DOORSTEP ADDRESS:</span>
+                </div>
+                <p className="delivery-address-highlight-text">
+                  {currentCustomer.address || user?.address || 'Flat / House details not yet specified'}
+                </p>
+                <div style={{ fontSize: '0.84rem', color: '#475569', fontWeight: 600 }}>
+                  <strong>Area:</strong> {currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur'}, Hyderabad
+                </div>
+                {currentCustomer.landmark && (
+                  <div style={{ fontSize: '0.80rem', color: '#64748b', marginTop: '4px' }}>
+                    <strong>Landmark / Instructions:</strong> {currentCustomer.landmark}
+                  </div>
+                )}
+              </div>
+
+              <div className="delivery-address-chips-row">
+                <span className="delivery-address-sub-chip is-green">
+                  <Clock3 size={12} /> 5:00 AM – 6:30 AM Morning Slot
+                </span>
+                <span className="delivery-address-sub-chip is-blue">
+                  <Truck size={12} /> {currentCustomer.deliveryPlan?.deliveryBoyName ? `Route Partner: ${currentCustomer.deliveryPlan.deliveryBoyName}` : 'Dedicated Route Specialist'}
+                </span>
+                <span className="delivery-address-sub-chip">
+                  <ShieldCheck size={12} /> Synced with Admin & Driver
+                </span>
+              </div>
+            </div>
+
+            {/* 2. AVAILABLE SERVICEABLE LOCATIONS */}
+            <div className="mobile-detail-card" style={{ marginBottom: '18px' }}>
+              <div className="mobile-detail-card-head">
+                <div className="mobile-detail-card-icon is-green">
+                  <MapPin size={20} />
+                </div>
+                <div>
+                  <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    Available Service Locations
+                    <span style={{ fontSize: '0.72rem', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '999px', border: '1px solid #a7f3d0' }}>
+                      {serviceableLocations.length} Active Zones
+                    </span>
+                  </h4>
+                  <p>We deliver fresh morning A2 milk and dairy across these verified locations. Tap any location to select it for your address.</p>
+                </div>
+              </div>
+
+              {/* Location Search Bar */}
+              <div style={{ position: 'relative', margin: '8px 0 14px' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+                <input
+                  type="text"
+                  placeholder="Filter available locations (e.g. Madhapur, Gachibowli, Hitec City...)"
+                  value={locationSearchQuery}
+                  onChange={(e) => setLocationSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px 10px 36px',
+                    borderRadius: '12px',
+                    border: '1.5px solid #e2e8f0',
+                    fontSize: '0.84rem',
+                    background: '#f8fafc',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              {/* Locations Grid */}
+              <div className="locations-grid-container">
+                {serviceableLocations
+                  .filter((loc) => {
+                    if (!locationSearchQuery.trim()) return true;
+                    const q = locationSearchQuery.toLowerCase();
+                    return (
+                      loc.name.toLowerCase().includes(q) ||
+                      (loc.pincode && loc.pincode.includes(q)) ||
+                      (loc.city && loc.city.toLowerCase().includes(q))
+                    );
+                  })
+                  .map((loc) => {
+                    const isCurrentArea = (profileForm.area || currentCustomer.area || '').toLowerCase().trim() === loc.name.toLowerCase().trim();
+                    return (
+                      <div
+                        key={loc.id || loc._id || loc.name}
+                        className={`location-item-card ${isCurrentArea ? 'is-selected' : ''}`}
+                        onClick={() => {
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            area: loc.name,
+                          }));
+                          const formEl = document.getElementById('delivery-address-update-form');
+                          if (formEl) {
+                            formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                          }
+                        }}
+                      >
+                        <div>
+                          <div className="location-item-head">
+                            <span className="location-item-name">
+                              <MapPin size={15} color={isCurrentArea ? '#059669' : '#64748b'} />
+                              {loc.name}
+                            </span>
+                            {isCurrentArea ? (
+                              <span className="location-item-badge">✓ Selected</span>
+                            ) : (
+                              <span style={{ fontSize: '0.68rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                {loc.pincode || 'Active'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="location-item-slot">
+                            <Clock3 size={13} color="#94a3b8" />
+                            <span>{loc.deliverySlot || 'Morning 5:00 AM - 7:30 AM'}</span>
+                          </div>
+                          {loc.assignedPartnerName && (
+                            <div style={{ fontSize: '0.72rem', color: '#0d5c3a', fontWeight: 650, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Truck size={12} /> Partner: {loc.assignedPartnerName}
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="location-item-action-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              area: loc.name,
+                            }));
+                            const formEl = document.getElementById('delivery-address-update-form');
+                            if (formEl) {
+                              formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                        >
+                          {isCurrentArea ? (
+                            <>
+                              <CheckCircle2 size={14} />
+                              <span>Current Selected Area</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={14} />
+                              <span>Select {loc.name}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* 3. OPTION TO UPDATE DELIVERY ADDRESS */}
+            <div className="mobile-detail-card" id="delivery-address-update-form">
+              <div className="mobile-detail-card-head">
+                <div className="mobile-detail-card-icon is-green">
+                  <Edit3 size={20} />
+                </div>
+                <div>
+                  <h4>Update Delivery Address</h4>
+                  <p>Updates sync in real time across the Admin portal and your Delivery Partner's mobile app.</p>
+                </div>
+              </div>
+
+              <form className="customer-profile-edit-form" onSubmit={saveProfile}>
+                {/* 1. Selected Area / Locality */}
+                <label>
+                  <span>Service Area / Locality *</span>
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={profileForm.area || ''}
+                      required
+                      onChange={(e) => setProfileForm((cur) => ({ ...cur, area: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '12px',
+                        border: '1.5px solid #cbd5e1',
+                        fontSize: '0.90rem',
+                        background: '#ffffff',
+                        fontWeight: 650,
+                        color: '#0f172a',
+                        boxSizing: 'border-box',
+                      }}
+                    >
+                      <option value="">-- Choose an Available Delivery Location --</option>
+                      {serviceableLocations.map((loc) => (
+                        <option key={loc.id || loc._id || loc.name} value={loc.name}>
+                          {loc.name} {loc.pincode ? `(${loc.pincode})` : ''} - {loc.deliverySlot || 'Morning Delivery'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+
+                {/* 2. Doorstep Delivery Address */}
+                <label style={{ marginTop: '12px' }}>
+                  <span>Doorstep Delivery Address * (Flat / House No, Wing, Building / Society, Street)</span>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Flat 304, Tower B, My Home Bhooja, Silent Drop Door Hook"
+                    value={profileForm.address || ''}
+                    required
+                    onChange={(e) => setProfileForm((cur) => ({ ...cur, address: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      boxSizing: 'border-box',
+                      lineHeight: 1.45,
+                    }}
+                  />
+                </label>
+
+                {/* 3. Landmark & Delivery Partner Drop Instructions */}
+                <label style={{ marginTop: '12px' }}>
+                  <span>Landmark / Gate Instructions (Visible to Delivery Partner)</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. Near Lift 2, Leave bag on door hook, gate code #4490"
+                    value={profileForm.landmark || ''}
+                    onChange={(e) => setProfileForm((cur) => ({ ...cur, landmark: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+
+                {/* Quick instruction recommendation tags */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '8px 0 14px' }}>
+                  {[
+                    'Leave in dairy bag on door hook',
+                    'Silent drop (Do not ring bell)',
+                    'Ring bell once after drop',
+                    'Place on shoe rack by door',
+                  ].map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setProfileForm((cur) => {
+                          const existing = (cur.landmark || '').trim();
+                          if (existing.includes(tag)) return cur;
+                          return {
+                            ...cur,
+                            landmark: existing ? `${existing}. ${tag}` : tag,
+                          };
+                        });
+                      }}
+                      style={{
+                        background: (profileForm.landmark || '').includes(tag) ? '#eef6f0' : '#f8fafc',
+                        border: (profileForm.landmark || '').includes(tag) ? '1.5px solid #0d5c3a' : '1px solid #cbd5e1',
+                        color: (profileForm.landmark || '').includes(tag) ? '#0d5c3a' : '#475569',
+                        padding: '4px 9px',
+                        borderRadius: '7px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 4. Confirmed Mobile Number */}
+                <label style={{ marginTop: '6px' }}>
+                  <span>Contact Mobile Number (For morning route coordinator)</span>
+                  <input
+                    type="tel"
+                    value={profileForm.mobile || ''}
+                    required
+                    onChange={(e) => setProfileForm((cur) => ({ ...cur, mobile: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '0.88rem',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+
+                {/* Submit Actions */}
+                <div className="customer-profile-edit-actions" style={{ marginTop: '18px' }}>
+                  <button
+                    type="button"
+                    className="customer-profile-secondary-button"
+                    onClick={backToProfile}
+                  >
+                    Back to Profile
+                  </button>
+                  <button
+                    type="submit"
+                    className="customer-profile-primary-button"
+                    disabled={profileSaving}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      background: '#0d5c3a',
+                      color: '#ffffff',
+                    }}
+                  >
+                    {profileSaving ? (
+                      <>
+                        <RefreshCw size={16} className="animate-spin" />
+                        <span>Updating & Syncing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={16} />
+                        <span>Update Address (Sync Admin & Partner)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Sync Guarantee Notice */}
+            <div className="mobile-detail-card mobile-detail-notice-card" style={{ marginTop: '16px' }}>
+              <div className="mobile-detail-notice-item">
+                <ShieldCheck size={22} className="mobile-detail-notice-icon is-green" />
+                <div>
+                  <strong>Instant Fleet & Admin Synchronization</strong>
+                  <p>When you update your delivery address, our backend automatically updates your customer records, pending morning deliveries, and routes. Your assigned delivery partner's app receives the live notification immediately.</p>
                 </div>
               </div>
             </div>
@@ -4453,7 +4860,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('personal-info')}
+            onClick={() => openProfileDetail('delivery-address')}
           >
             <div className="modern-profile-menu-left">
               <span className="modern-profile-menu-icon"><MapPin size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
@@ -5066,10 +5473,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <button
               type="button"
               className="profile-card-action-btn"
-              onClick={() => openProfileDetail('personal-info')}
+              onClick={() => openProfileDetail('delivery-address')}
             >
               <Edit2 size={15} />
-              <span>Update Address & Instructions</span>
+              <span>Update Address & View Locations</span>
             </button>
           </div>
 

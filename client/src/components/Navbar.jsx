@@ -71,6 +71,16 @@ export default function Navbar({ activeTab, setActiveTab }) {
     );
   });
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   useEffect(() => {
     const checkProductDetails = () => {
       if (typeof window === 'undefined') return;
@@ -93,10 +103,12 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
-    // In mobile view on product details page, completely omit Navbar
-    if (isProductDetailsActive && typeof window !== 'undefined' && window.innerWidth <= 768) {
-      return null;
-    }
+    // On mobile: hide only the top header on products page, story page, and product details page
+    const hideTopHeader =
+      isMobile &&
+      (isProductDetailsActive ||
+        activeTab === 'products' ||
+        activeTab === 'story');
 
     return (
       <>
@@ -111,6 +123,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
             top: 0,
             zIndex: 100,
             boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
+            display: hideTopHeader ? 'none' : undefined,
           }}
         >
         <div

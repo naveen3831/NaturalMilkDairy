@@ -1049,6 +1049,25 @@ const updateOwnCustomerProfile = async (req, res) => {
       };
     }
 
+    // If area is provided or changed, link customer to the active serviceable location's assigned delivery partner
+    if (profile.area) {
+      try {
+        const matchedLoc = await DeliveryLocation.findOne({
+          name: { $regex: new RegExp(`^${profile.area.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          isActive: true,
+        }).lean();
+        if (matchedLoc && matchedLoc.assignedPartnerId) {
+          customer.deliveryPlan = {
+            ...(customer.deliveryPlan || {}),
+            deliveryBoyId: matchedLoc.assignedPartnerId,
+            deliveryBoyName: matchedLoc.assignedPartnerName || '',
+          };
+        }
+      } catch (locErr) {
+        console.warn('Location lookup warning on profile update:', locErr.message);
+      }
+    }
+
     Object.assign(customer, profile);
     await customer.save();
 
@@ -1072,6 +1091,10 @@ const updateOwnCustomerProfile = async (req, res) => {
       customerPhone: customer.mobile,
       customerAddress: fullAddress,
     };
+    if (customer.deliveryPlan?.deliveryBoyId) {
+      deliveryUpdate.deliveryBoyId = customer.deliveryPlan.deliveryBoyId;
+      deliveryUpdate.deliveryBoyName = customer.deliveryPlan.deliveryBoyName || '';
+    }
     if (customer.deliveryPlan?.milkQty !== undefined) {
       deliveryUpdate.plannedMilk = customer.deliveryPlan.milkQty;
       deliveryUpdate.actualMilk = customer.deliveryPlan.milkQty;
@@ -1098,6 +1121,11 @@ const updateOwnCustomerProfile = async (req, res) => {
       },
       { $set: deliveryUpdate }
     );
+
+    // Broadcast real-time events over WebSocket so admin & delivery partner dashboards update immediately!
+    broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId, id: customer._id.toString() });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,
