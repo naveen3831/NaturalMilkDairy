@@ -4,8 +4,22 @@
   "private": true,
   "scripts": {
     "install:all": "npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix server install",
+    "postinstall": "npm --prefix server install",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
     "start": "node server/index.js"
+  },
+  "dependencies": {
+    "cloudinary": "^2.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.9.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.4.0",
+    "nodemailer": "^10.0.16",
+    "ws": "^8.22.0"
   }
 }
