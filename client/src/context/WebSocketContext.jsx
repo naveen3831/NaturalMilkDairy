@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { getWebSocketUrl } from '../services/api';
 
 const WebSocketContext = createContext(null);
 
@@ -14,9 +15,7 @@ export const WebSocketProvider = ({ children }) => {
   const authenticatedRef = useRef(false);
 
   const getWsUrl = () => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    // Connect through the same host and port so both localhost and network IP addresses work seamlessly
-    return `${protocol}//${window.location.host}/ws`;
+    return getWebSocketUrl();
   };
 
   const connect = useCallback(() => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { getApiUrl } from '../services/api';
 
 export default function RegisterPage({ setActiveTab }) {
   const { register } = useAuth();
@@ -42,7 +43,7 @@ export default function RegisterPage({ setActiveTab }) {
 
     const loadDeliveryAreas = async () => {
       try {
-        const response = await fetch('/api/auth/delivery-areas');
+        const response = await fetch(getApiUrl('/api/auth/delivery-areas'));
         const data = await response.json();
         if (response.ok && data.success && Array.isArray(data.areas) && data.areas.length > 0) {
           if (isMounted) {

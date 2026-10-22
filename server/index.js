@@ -20,18 +20,35 @@ const supportRoutes = require('./routes/supportRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
 
 // Connect to Database
 connectDB();
 
-// Middleware
-const allowedOrigins = new Set([
+// Allowed Origins for CORS
+const staticAllowedOrigins = [
+  'https://natural-milk-dairy-naveen3831s-projects.vercel.app',
+  'https://natural-milk-dairy.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+];
+
+const envOrigins = [
   process.env.CLIENT_URL,
-  ...(process.env.CORS_ORIGINS || '').split(',').map((origin) => origin.trim()),
-  ...(process.env.NODE_ENV === 'production'
-    ? []
-    : ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:3000', 'http://127.0.0.1:5173']),
-].filter(Boolean));
+  ...(process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()),
+].filter(Boolean);
+
+const allowedOrigins = new Set([...staticAllowedOrigins, ...envOrigins]);
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (allowedOrigins.has(origin)) return true;
+  // Allow all Vercel deployment URLs for this project
+  if (/^https:\/\/natural-milk-dairy.*\.vercel\.app$/i.test(origin)) return true;
+  return false;
+};
 
 app.disable('x-powered-by');
 app.use((req, res, next) => {
@@ -46,11 +63,12 @@ app.use((req, res, next) => {
 });
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
     return callback(new Error('Origin is not allowed by CORS.'));
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   maxAge: 600,
 }));
 app.use(express.json({ limit: '1mb', strict: true }));

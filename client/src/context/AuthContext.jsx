@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getApiUrl, api } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -61,7 +62,7 @@ export const AuthProvider = ({ children }) => {
     const verifySession = async () => {
       try {
         setIsValidating(true);
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(getApiUrl('/api/auth/me'), {
           headers: { Authorization: `Bearer ${storedToken}` },
         });
         const data = await res.json();
@@ -103,10 +104,11 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: 'Enter your registered email/mobile number and password.' };
     }
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: trimmed, mobile: trimmed, email: trimmed, password }),
+      const res = await api.post('/api/auth/login', {
+        identifier: trimmed,
+        mobile: trimmed,
+        email: trimmed,
+        password,
       });
       const data = await res.json();
       if (res.ok && data.success && data.user && data.token) {
@@ -126,11 +128,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (formData) => {
     try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+      const res = await api.post('/api/auth/register', formData);
       const data = await res.json();
       if (data.success && data.user && data.token) {
         setUser(data.user);
@@ -154,11 +152,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const authFetch = async (url, options = {}) => {
+    const fullUrl = getApiUrl(url);
     const headers = {
       ...(options.headers || {}),
       ...getAuthHeaders(),
     };
-    const res = await fetch(url, { ...options, headers });
+    const res = await fetch(fullUrl, { ...options, headers });
     if (res.status === 401) {
       const clone = res.clone();
       try {
