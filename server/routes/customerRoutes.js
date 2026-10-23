@@ -16,6 +16,11 @@ const {
   sendCustomerCredentials,
   deleteCustomerHistoryEntry,
   clearCustomerHistory,
+  getCustomerAddresses,
+  addCustomerAddress,
+  updateCustomerAddress,
+  deleteCustomerAddress,
+  setDefaultCustomerAddress,
 } = require('../controllers/customerController');
 const { verifyToken, requireCustomer, requireAdmin, requireDeliveryStaff, authorizeCustomerAccess } = require('../middleware/authMiddleware');
 const { createOrder, verifyPayment } = require('../controllers/subscriptionController');
@@ -24,6 +29,13 @@ router.post('/me/subscription/order', verifyToken, requireCustomer, createOrder)
 router.post('/me/subscription/verify', verifyToken, requireCustomer, verifyPayment);
 router.put('/me/profile', verifyToken, requireCustomer, updateOwnCustomerProfile);
 router.delete('/me/account', verifyToken, requireCustomer, deleteOwnCustomerAccount);
+
+// Customer Delivery Addresses CRUD
+router.get('/me/addresses', verifyToken, requireCustomer, getCustomerAddresses);
+router.post('/me/addresses', verifyToken, requireCustomer, addCustomerAddress);
+router.put('/me/addresses/:addressId', verifyToken, requireCustomer, updateCustomerAddress);
+router.delete('/me/addresses/:addressId', verifyToken, requireCustomer, deleteCustomerAddress);
+router.put('/me/addresses/:addressId/default', verifyToken, requireCustomer, setDefaultCustomerAddress);
 router.get('/', verifyToken, requireAdmin, getCustomers);
 router.get('/:id', verifyToken, authorizeCustomerAccess, getCustomerById);
 router.post('/', verifyToken, requireDeliveryStaff, createCustomer);

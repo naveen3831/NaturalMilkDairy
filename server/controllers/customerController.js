@@ -1399,6 +1399,498 @@ const clearCustomerHistory = async (req, res) => {
   }
 };
 
+// Helper to find customer from authenticated user
+const findCustomerFromReqUser = async (user) => {
+  if (!user) return null;
+  let customer = null;
+  if (user.id && user.id.length === 24) {
+    try {
+      customer = await Customer.findById(user.id);
+    } catch (e) {
+      customer = null;
+    }
+  }
+  if (!customer && user.mobile) {
+    customer = await Customer.findOne({ mobile: user.mobile });
+  }
+  if (!customer && user.email) {
+    customer = await Customer.findOne({ email: user.email });
+  }
+  if (!customer && user.customerId) {
+    customer = await Customer.findOne({ customerId: user.customerId });
+  }
+  return customer;
+};
+
+// Helper to notify Admin & Delivery Partner on address changes
+const notifyAddressUpdate = async (customer, formattedAddress, actionDescription = 'updated delivery address') => {
+  try {
+    const fullAddress = formattedAddress || [customer.address, customer.landmark, customer.area].filter(Boolean).join(', ');
+
+    // 1. Notification to Admin
+    await Notification.create({
+      recipientRole: 'admin',
+      recipientId: '',
+      title: '📍 Customer Delivery Address Updated',
+      message: `${customer.name} (${customer.customerId}) ${actionDescription}: ${fullAddress}`,
+      type: 'route_update',
+      data: {
+        customerId: customer.customerId,
+        customerName: customer.name,
+        customerPhone: customer.mobile,
+        address: fullAddress,
+        area: customer.area,
+        deliveryBoyId: customer.deliveryPlan?.deliveryBoyId || '',
+        deliveryBoyName: customer.deliveryPlan?.deliveryBoyName || '',
+      },
+    });
+
+    // 2. Notification to Delivery Partner (if assigned)
+    const driverId = customer.deliveryPlan?.deliveryBoyId;
+    if (driverId) {
+      await Notification.create({
+        recipientRole: 'delivery_boy',
+        recipientId: String(driverId),
+        title: '📍 Customer Address Updated',
+        message: `${customer.name} on your route ${actionDescription}: ${fullAddress}`,
+        type: 'route_update',
+        data: {
+          customerId: customer.customerId,
+          customerName: customer.name,
+          customerPhone: customer.mobile,
+          address: fullAddress,
+          area: customer.area,
+        },
+      });
+    }
+
+    // 3. Sync all pending deliveries for this customer
+    await Delivery.updateMany(
+      {
+        $or: [
+          { customerId: customer._id.toString() },
+          { customerId: customer.customerId },
+          { customerPhone: customer.mobile },
+        ],
+        status: 'pending',
+      },
+      {
+        $set: {
+          customerAddress: fullAddress,
+        },
+      }
+    );
+
+    // 4. WebSocket Broadcasts
+    broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId, id: customer._id.toString() });
+    broadcast('DELIVERY_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', {});
+  } catch (err) {
+    console.error('notifyAddressUpdate error:', err.message);
+  }
+};
+
+// GET /api/customers/me/addresses
+const getCustomerAddresses = async (req, res) => {
+  try {
+    const customer = await findCustomerFromReqUser(req.user);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    // Seed default address if customer.addresses is empty
+    if (!Array.isArray(customer.addresses) || customer.addresses.length === 0) {
+      const defaultAddr = {
+        id: `addr_${Date.now()}_default`,
+        type: 'home',
+        label: 'Home',
+        flatNo: '',
+        apartmentStreet: customer.address || '',
+        area: customer.area || 'Madhapur',
+        landmark: customer.landmark || '',
+        city: 'Hyderabad',
+        pincode: '500081',
+        deliveryInstructions: '',
+        isDefault: true,
+        createdAt: customer.createdAt || new Date(),
+        updatedAt: new Date(),
+      };
+      customer.addresses = [defaultAddr];
+      await customer.save();
+    }
+
+    return res.json({
+      success: true,
+      addresses: customer.addresses,
+      activeAddress: customer.address,
+      activeArea: customer.area,
+    });
+  } catch (err) {
+    console.error('getCustomerAddresses error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve addresses.' });
+  }
+};
+
+// POST /api/customers/me/addresses
+const addCustomerAddress = async (req, res) => {
+  try {
+    const customer = await findCustomerFromReqUser(req.user);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    const {
+      type = 'home',
+      label = 'Home',
+      flatNo = '',
+      apartmentStreet = '',
+      area = 'Madhapur',
+      landmark = '',
+      city = 'Hyderabad',
+      pincode = '',
+      deliveryInstructions = '',
+      isDefault = false,
+    } = req.body;
+
+    if (!apartmentStreet && !flatNo) {
+      return res.status(400).json({ success: false, message: 'Street or building address is required.' });
+    }
+
+    if (!Array.isArray(customer.addresses)) {
+      customer.addresses = [];
+    }
+
+    const shouldBeDefault = Boolean(isDefault) || customer.addresses.length === 0;
+
+    if (shouldBeDefault) {
+      customer.addresses.forEach((addr) => {
+        addr.isDefault = false;
+      });
+    }
+
+    const newAddr = {
+      id: `addr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      type: ['home', 'work', 'other'].includes(type) ? type : 'home',
+      label: (label || (type === 'home' ? 'Home' : type === 'work' ? 'Work' : 'Other')).trim(),
+      flatNo: (flatNo || '').trim(),
+      apartmentStreet: (apartmentStreet || '').trim(),
+      area: (area || 'Madhapur').trim(),
+      landmark: (landmark || '').trim(),
+      city: (city || 'Hyderabad').trim(),
+      pincode: (pincode || '').trim(),
+      deliveryInstructions: (deliveryInstructions || '').trim(),
+      isDefault: shouldBeDefault,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    customer.addresses.push(newAddr);
+
+    const formattedAddress = [
+      newAddr.flatNo,
+      newAddr.apartmentStreet,
+      newAddr.landmark ? `(Near ${newAddr.landmark})` : '',
+      newAddr.area,
+      newAddr.city,
+      newAddr.pincode,
+    ].filter(Boolean).join(', ');
+
+    if (shouldBeDefault) {
+      customer.address = [newAddr.flatNo, newAddr.apartmentStreet].filter(Boolean).join(', ') || newAddr.area;
+      customer.area = newAddr.area;
+      customer.landmark = newAddr.landmark;
+
+      // Also sync delivery partner based on area if available
+      try {
+        const matchedLoc = await DeliveryLocation.findOne({
+          name: { $regex: new RegExp(`^${newAddr.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          isActive: true,
+        }).lean();
+        if (matchedLoc && matchedLoc.assignedPartnerId) {
+          customer.deliveryPlan = {
+            ...(customer.deliveryPlan || {}),
+            deliveryBoyId: matchedLoc.assignedPartnerId,
+            deliveryBoyName: matchedLoc.assignedPartnerName || '',
+          };
+        }
+      } catch (locErr) {
+        console.warn('Location lookup warning on address add:', locErr.message);
+      }
+
+      await User.updateMany(
+        { mobile: customer.mobile, role: { $in: ['customer', 'user'] } },
+        { $set: { address: customer.address, assignedArea: customer.area } }
+      );
+    }
+
+    await customer.save();
+
+    // Trigger Admin and Delivery Boy notification
+    await notifyAddressUpdate(customer, formattedAddress, shouldBeDefault ? 'added a new default delivery address' : 'added a new delivery address');
+
+    return res.status(201).json({
+      success: true,
+      message: 'Address added successfully.',
+      address: newAddr,
+      addresses: customer.addresses,
+      activeAddress: customer.address,
+      activeArea: customer.area,
+    });
+  } catch (err) {
+    console.error('addCustomerAddress error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to add address.' });
+  }
+};
+
+// PUT /api/customers/me/addresses/:addressId
+const updateCustomerAddress = async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const customer = await findCustomerFromReqUser(req.user);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    if (!Array.isArray(customer.addresses)) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    const addrIndex = customer.addresses.findIndex((a) => a.id === addressId);
+    if (addrIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    const target = customer.addresses[addrIndex];
+    const {
+      type,
+      label,
+      flatNo,
+      apartmentStreet,
+      area,
+      landmark,
+      city,
+      pincode,
+      deliveryInstructions,
+      isDefault,
+    } = req.body;
+
+    if (type !== undefined) target.type = ['home', 'work', 'other'].includes(type) ? type : target.type;
+    if (label !== undefined) target.label = label.trim();
+    if (flatNo !== undefined) target.flatNo = flatNo.trim();
+    if (apartmentStreet !== undefined) target.apartmentStreet = apartmentStreet.trim();
+    if (area !== undefined) target.area = area.trim();
+    if (landmark !== undefined) target.landmark = landmark.trim();
+    if (city !== undefined) target.city = city.trim();
+    if (pincode !== undefined) target.pincode = pincode.trim();
+    if (deliveryInstructions !== undefined) target.deliveryInstructions = deliveryInstructions.trim();
+    target.updatedAt = new Date();
+
+    const makeDefault = Boolean(isDefault);
+    if (makeDefault) {
+      customer.addresses.forEach((a, idx) => {
+        a.isDefault = idx === addrIndex;
+      });
+      target.isDefault = true;
+    }
+
+    if (target.isDefault) {
+      customer.address = [target.flatNo, target.apartmentStreet].filter(Boolean).join(', ') || target.area;
+      customer.area = target.area;
+      customer.landmark = target.landmark;
+
+      if (target.area) {
+        try {
+          const matchedLoc = await DeliveryLocation.findOne({
+            name: { $regex: new RegExp(`^${target.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            isActive: true,
+          }).lean();
+          if (matchedLoc && matchedLoc.assignedPartnerId) {
+            customer.deliveryPlan = {
+              ...(customer.deliveryPlan || {}),
+              deliveryBoyId: matchedLoc.assignedPartnerId,
+              deliveryBoyName: matchedLoc.assignedPartnerName || '',
+            };
+          }
+        } catch (locErr) {
+          console.warn('Location lookup warning on address update:', locErr.message);
+        }
+      }
+
+      await User.updateMany(
+        { mobile: customer.mobile, role: { $in: ['customer', 'user'] } },
+        { $set: { address: customer.address, assignedArea: customer.area } }
+      );
+    }
+
+    await customer.save();
+
+    const formattedAddress = [
+      target.flatNo,
+      target.apartmentStreet,
+      target.landmark ? `(Near ${target.landmark})` : '',
+      target.area,
+      target.city,
+      target.pincode,
+    ].filter(Boolean).join(', ');
+
+    // Notify Admin and Partner
+    await notifyAddressUpdate(customer, formattedAddress, 'updated delivery address');
+
+    return res.json({
+      success: true,
+      message: 'Address updated successfully.',
+      address: target,
+      addresses: customer.addresses,
+      activeAddress: customer.address,
+      activeArea: customer.area,
+    });
+  } catch (err) {
+    console.error('updateCustomerAddress error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update address.' });
+  }
+};
+
+// DELETE /api/customers/me/addresses/:addressId
+const deleteCustomerAddress = async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const customer = await findCustomerFromReqUser(req.user);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    if (!Array.isArray(customer.addresses) || customer.addresses.length === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    const addrIndex = customer.addresses.findIndex((a) => a.id === addressId);
+    if (addrIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    if (customer.addresses.length === 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete your only delivery address. You can update it instead.',
+      });
+    }
+
+    const wasDefault = customer.addresses[addrIndex].isDefault;
+    customer.addresses.splice(addrIndex, 1);
+
+    if (wasDefault && customer.addresses.length > 0) {
+      customer.addresses[0].isDefault = true;
+      const newDef = customer.addresses[0];
+      customer.address = [newDef.flatNo, newDef.apartmentStreet].filter(Boolean).join(', ') || newDef.area;
+      customer.area = newDef.area;
+      customer.landmark = newDef.landmark;
+
+      await User.updateMany(
+        { mobile: customer.mobile, role: { $in: ['customer', 'user'] } },
+        { $set: { address: customer.address, assignedArea: customer.area } }
+      );
+    }
+
+    await customer.save();
+
+    const activeDef = customer.addresses.find((a) => a.isDefault) || customer.addresses[0];
+    const formattedAddress = [
+      activeDef.flatNo,
+      activeDef.apartmentStreet,
+      activeDef.area,
+    ].filter(Boolean).join(', ');
+
+    await notifyAddressUpdate(customer, formattedAddress, 'deleted an address');
+
+    return res.json({
+      success: true,
+      message: 'Address removed successfully.',
+      addresses: customer.addresses,
+      activeAddress: customer.address,
+      activeArea: customer.area,
+    });
+  } catch (err) {
+    console.error('deleteCustomerAddress error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to delete address.' });
+  }
+};
+
+// PUT /api/customers/me/addresses/:addressId/default
+const setDefaultCustomerAddress = async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const customer = await findCustomerFromReqUser(req.user);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer account not found.' });
+    }
+
+    if (!Array.isArray(customer.addresses)) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    const target = customer.addresses.find((a) => a.id === addressId);
+    if (!target) {
+      return res.status(404).json({ success: false, message: 'Address not found.' });
+    }
+
+    customer.addresses.forEach((a) => {
+      a.isDefault = a.id === addressId;
+    });
+
+    customer.address = [target.flatNo, target.apartmentStreet].filter(Boolean).join(', ') || target.area;
+    customer.area = target.area;
+    customer.landmark = target.landmark;
+
+    if (target.area) {
+      try {
+        const matchedLoc = await DeliveryLocation.findOne({
+          name: { $regex: new RegExp(`^${target.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          isActive: true,
+        }).lean();
+        if (matchedLoc && matchedLoc.assignedPartnerId) {
+          customer.deliveryPlan = {
+            ...(customer.deliveryPlan || {}),
+            deliveryBoyId: matchedLoc.assignedPartnerId,
+            deliveryBoyName: matchedLoc.assignedPartnerName || '',
+          };
+        }
+      } catch (locErr) {
+        console.warn('Location lookup warning on set default address:', locErr.message);
+      }
+    }
+
+    await User.updateMany(
+      { mobile: customer.mobile, role: { $in: ['customer', 'user'] } },
+      { $set: { address: customer.address, assignedArea: customer.area } }
+    );
+
+    await customer.save();
+
+    const formattedAddress = [
+      target.flatNo,
+      target.apartmentStreet,
+      target.landmark ? `(Near ${target.landmark})` : '',
+      target.area,
+      target.city,
+      target.pincode,
+    ].filter(Boolean).join(', ');
+
+    // Notify Admin and Partner
+    await notifyAddressUpdate(customer, formattedAddress, 'switched default delivery address to');
+
+    return res.json({
+      success: true,
+      message: 'Default delivery address set successfully.',
+      addresses: customer.addresses,
+      activeAddress: customer.address,
+      activeArea: customer.area,
+    });
+  } catch (err) {
+    console.error('setDefaultCustomerAddress error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to set default address.' });
+  }
+};
+
 module.exports = {
   getCustomers,
   getCustomerById,
@@ -1415,4 +1907,9 @@ module.exports = {
   sendCustomerCredentials,
   deleteCustomerHistoryEntry,
   clearCustomerHistory,
+  getCustomerAddresses,
+  addCustomerAddress,
+  updateCustomerAddress,
+  deleteCustomerAddress,
+  setDefaultCustomerAddress,
 };

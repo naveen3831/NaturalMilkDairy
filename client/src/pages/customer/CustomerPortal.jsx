@@ -58,6 +58,8 @@ import {
   Plus,
   X,
   Tag,
+  Briefcase,
+  Building,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
@@ -80,19 +82,42 @@ const formatProfileDate = (value) => {
   return Number.isNaN(date.getTime()) ? 'Not available' : date.toLocaleDateString();
 };
 
+const formatDeliveryDate = (value) => {
+  if (!value) return 'Delivery Date';
+  try {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    }
+  } catch (e) {}
+  return value;
+};
+
 const getCustomerRoute = () => {
   const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
   if (section !== 'customer' || !['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(page)) {
     return null;
   }
+  if (page === 'profile' && detail === 'deliveries') {
+    return { page: 'deliveries', detail: null };
+  }
+  if (page === 'profile' && detail === 'subscription') {
+    return { page: 'subscription', detail: null };
+  }
+  const normalizedDetail = detail === 'delivery_address' ? 'delivery-address' : detail;
   const profileViews = [
-    'personal-info', 'subscription', 'deliveries', 'wallet', 'pause', 'quantity',
+    'personal-info', 'wallet', 'pause', 'quantity',
     'delivery-window', 'drop-instructions', 'support', 'about', 'delete-account',
-    'delivery-address',
+    'delivery-address', 'account-details',
   ];
   return {
     page,
-    detail: page === 'profile' && profileViews.includes(detail) ? detail : null,
+    detail: page === 'profile' && profileViews.includes(normalizedDetail) ? normalizedDetail : null,
   };
 };
 
@@ -106,12 +131,31 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const validPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(savedPage) ? savedPage : 'dashboard';
     return getCustomerRoute()?.page || validPage;
   });
+  const [previousPage, setPreviousPage] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem('nmd_customer_history');
+      const arr = raw ? JSON.parse(raw) : [];
+      return arr.length > 1 ? arr[arr.length - 2] : null;
+    } catch {
+      return null;
+    }
+  });
   const [ledgerEntries, setLedgerEntries] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState(null);
   const [ledgerCustomer, setLedgerCustomer] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
   const [profileDetailView, setProfileDetailView] = useState(() => getCustomerRoute()?.detail || null);
+  const [viewingProofPhoto, setViewingProofPhoto] = useState(null);
+
+  useEffect(() => {
+    if (!viewingProofPhoto) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setViewingProofPhoto(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewingProofPhoto]);
 
   const matchedCustomer = customers.find((customer) =>
     customer.mobile === user?.mobile
@@ -555,7 +599,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const openProfileDetail = (view) => {
-    if (view === 'personal-info' || view === 'delivery-address') {
+    const normalizedView = (view === 'delivery_address' || view === 'delivery-address') ? 'delivery-address' : view;
+    if (normalizedView === 'deliveries') {
+      navigateToPage('deliveries');
+      return;
+    }
+    if (normalizedView === 'subscription') {
+      navigateToPage('subscription');
+      return;
+    }
+    if (normalizedView === 'personal-info') {
       setProfileForm({
         name: currentCustomer.name || user?.name || '',
         mobile: currentCustomer.mobile || user?.mobile || '',
@@ -568,14 +621,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       setProfileError('');
       setProfileMessage('');
       setIsEditingProfile(true);
-      if (typeof fetchLocations === 'function') {
-        fetchLocations();
+    } else {
+      setIsEditingProfile(false);
+      if (normalizedView === 'delivery-address') {
+        if (typeof fetchLocations === 'function') {
+          fetchLocations();
+        }
+        fetchAddresses();
       }
     }
     localStorage.setItem('nmd_customer_page', 'profile');
     setActivePage('profile');
-    setProfileDetailView(view);
-    setCustomerPath(`/customer/profile/${view}`);
+    setProfileDetailView(normalizedView);
+    setCustomerPath(`/customer/profile/${normalizedView}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -831,7 +889,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
   };
 
-  const navigateToPage = (page) => {
+  const navigateToPage = (page, recordHistory = true) => {
     if (page === 'home') {
       if (typeof setActiveTab === 'function') {
         setActiveTab('home');
@@ -840,6 +898,21 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       }
       return;
     }
+
+    if (recordHistory && page !== activePage) {
+      try {
+        const raw = sessionStorage.getItem('nmd_customer_history');
+        const historyList = raw ? JSON.parse(raw) : [];
+        if (historyList.length === 0 || historyList[historyList.length - 1] !== activePage) {
+          historyList.push(activePage);
+        }
+        historyList.push(page);
+        const trimmed = historyList.slice(-20);
+        sessionStorage.setItem('nmd_customer_history', JSON.stringify(trimmed));
+        setPreviousPage(activePage);
+      } catch (err) {}
+    }
+
     localStorage.setItem('nmd_customer_page', page);
     setActivePage(page);
     setSelectedProductDetails(null);
@@ -850,6 +923,59 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     const mainEl = document.querySelector('.customer-dashboard-content') || document.querySelector('.customer-app-main');
     if (mainEl) mainEl.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  };
+
+  const handleSmartBack = () => {
+    // 1. If currently inside a Profile Detail sub-view (delivery-address, personal-info, etc.)
+    if (profileDetailView) {
+      backToProfile();
+      return;
+    }
+
+    // 2. Retrieve recent history stack from sessionStorage
+    try {
+      const raw = sessionStorage.getItem('nmd_customer_history');
+      let historyList = raw ? JSON.parse(raw) : [];
+      // Pop current active page from top of stack if present
+      while (historyList.length > 0 && historyList[historyList.length - 1] === activePage) {
+        historyList.pop();
+      }
+      if (historyList.length > 0) {
+        const recentTarget = historyList.pop();
+        sessionStorage.setItem('nmd_customer_history', JSON.stringify(historyList));
+        if (recentTarget && recentTarget !== activePage) {
+          navigateToPage(recentTarget, false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Recent history back error:', e);
+    }
+
+    // 3. Fallback: previousPage in state
+    if (previousPage && previousPage !== activePage) {
+      navigateToPage(previousPage, false);
+      return;
+    }
+
+    // 4. Fallback: browser back if within customer portal
+    if (window.history.length > 1 && window.history.state?.nmdCustomerPage) {
+      window.history.back();
+      return;
+    }
+
+    // 5. Context-aware fallback:
+    if (activePage === 'deliveries' || activePage === 'subscription') {
+      navigateToPage('profile', false);
+    } else if (activePage === 'profile' || activePage === 'products') {
+      navigateToPage('dashboard', false);
+    } else {
+      if (typeof setActiveTab === 'function') {
+        setActiveTab('home');
+      } else {
+        navigateToPage('dashboard', false);
+      }
+    }
   };
 
   const backToProfile = () => {
@@ -919,6 +1045,221 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       setProfileError(error.message || 'Unable to save your profile.');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  // Delivery Addresses CRUD State & Operations
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState(null);
+  const [addressForm, setAddressForm] = useState({
+    type: 'home',
+    label: 'Home',
+    flatNo: '',
+    apartmentStreet: '',
+    area: 'Madhapur',
+    landmark: '',
+    city: 'Hyderabad',
+    pincode: '500081',
+    deliveryInstructions: '',
+    isDefault: false,
+  });
+  const [addressSaving, setAddressSaving] = useState(false);
+  const [addressError, setAddressError] = useState('');
+  const [addressSuccess, setAddressSuccess] = useState('');
+
+  const fetchAddresses = useCallback(async () => {
+    if (!user) return;
+    try {
+      setAddressesLoading(true);
+      const res = await fetch('/api/customers/me/addresses', {
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.addresses)) {
+        setSavedAddresses(data.addresses);
+      }
+    } catch (err) {
+      console.warn('Failed to load saved addresses:', err.message);
+    } finally {
+      setAddressesLoading(false);
+    }
+  }, [user, getAuthHeaders]);
+
+  useEffect(() => {
+    if (user?.role === 'customer' || user?.role === 'user') {
+      fetchAddresses();
+    }
+  }, [user, fetchAddresses]);
+
+  const handleOpenAddAddress = () => {
+    setEditingAddressId(null);
+    const initialArea = currentCustomer.area || serviceableLocations[0]?.name || 'Madhapur';
+    const matchedLoc = serviceableLocations.find((l) => l.name === initialArea) || serviceableLocations[0];
+    setAddressForm({
+      type: 'home',
+      label: 'Home',
+      flatNo: '',
+      apartmentStreet: '',
+      area: initialArea,
+      landmark: '',
+      city: matchedLoc?.city || 'Hyderabad',
+      pincode: matchedLoc?.pincode || '500081',
+      deliveryInstructions: '',
+      isDefault: savedAddresses.length === 0,
+    });
+    setAddressError('');
+    setAddressSuccess('');
+    setAddressModalOpen(true);
+  };
+
+  const handleOpenEditAddress = (addr) => {
+    setEditingAddressId(addr.id);
+    const area = addr.area || currentCustomer.area || serviceableLocations[0]?.name || 'Madhapur';
+    const matchedLoc = serviceableLocations.find((l) => l.name === area);
+    setAddressForm({
+      type: addr.type || 'home',
+      label: addr.label || (addr.type === 'home' ? 'Home' : addr.type === 'work' ? 'Work' : 'Other'),
+      flatNo: addr.flatNo || '',
+      apartmentStreet: addr.apartmentStreet || '',
+      area: area,
+      landmark: addr.landmark || '',
+      city: addr.city || matchedLoc?.city || 'Hyderabad',
+      pincode: addr.pincode || matchedLoc?.pincode || '500081',
+      deliveryInstructions: addr.deliveryInstructions || '',
+      isDefault: Boolean(addr.isDefault),
+    });
+    setAddressError('');
+    setAddressSuccess('');
+    setAddressModalOpen(true);
+  };
+
+  const handleSaveAddress = async (e) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    if (!addressForm.flatNo && !addressForm.apartmentStreet) {
+      setAddressError('Please enter flat/house number or street details.');
+      return;
+    }
+
+    try {
+      setAddressSaving(true);
+      setAddressError('');
+      const url = editingAddressId
+        ? `/api/customers/me/addresses/${encodeURIComponent(editingAddressId)}`
+        : '/api/customers/me/addresses';
+      const method = editingAddressId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getAuthHeaders ? getAuthHeaders() : {}),
+        },
+        body: JSON.stringify(addressForm),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Unable to save address.');
+      }
+
+      setSavedAddresses(data.addresses || []);
+      setAddressSuccess(
+        editingAddressId
+          ? 'Address updated & notification sent to Admin and Delivery Partner!'
+          : 'New address added & notification sent to Admin and Delivery Partner!'
+      );
+      setAddressModalOpen(false);
+      setEditingAddressId(null);
+
+      if (data.activeAddress) {
+        setLedgerCustomer((prev) => ({
+          ...(prev || currentCustomer),
+          address: data.activeAddress,
+          area: data.activeArea || prev?.area,
+        }));
+        setUser((currentUser) => ({
+          ...currentUser,
+          address: data.activeAddress,
+          area: data.activeArea || currentUser?.area,
+        }));
+      }
+
+      if (typeof refreshAll === 'function') refreshAll();
+      if (typeof notifyRealtimeSync === 'function') notifyRealtimeSync();
+
+      setTimeout(() => {
+        setAddressSuccess('');
+      }, 4000);
+    } catch (err) {
+      setAddressError(err.message || 'Failed to save address.');
+    } finally {
+      setAddressSaving(false);
+    }
+  };
+
+  const handleDeleteAddress = async (addrId) => {
+    if (savedAddresses.length <= 1) {
+      window.alert('You must have at least one delivery address. You can edit this one instead.');
+      return;
+    }
+    if (!window.confirm('Are you sure you want to delete this delivery address?')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/customers/me/addresses/${encodeURIComponent(addrId)}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to delete address.');
+      }
+      setSavedAddresses(data.addresses || []);
+      setAddressSuccess('Address removed successfully.');
+      if (typeof refreshAll === 'function') refreshAll();
+      if (typeof notifyRealtimeSync === 'function') notifyRealtimeSync();
+      setTimeout(() => {
+        setAddressSuccess('');
+      }, 3000);
+    } catch (err) {
+      setAddressError(err.message || 'Failed to delete address.');
+    }
+  };
+
+  const handleSetDefaultAddress = async (addrId) => {
+    try {
+      const res = await fetch(`/api/customers/me/addresses/${encodeURIComponent(addrId)}/default`, {
+        method: 'PUT',
+        headers: getAuthHeaders ? getAuthHeaders() : {},
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to set default address.');
+      }
+      setSavedAddresses(data.addresses || []);
+      setAddressSuccess('Default morning delivery address updated! Admin & Partner notified.');
+      if (data.activeAddress) {
+        setLedgerCustomer((prev) => ({
+          ...(prev || currentCustomer),
+          address: data.activeAddress,
+          area: data.activeArea || prev?.area,
+        }));
+        setUser((currentUser) => ({
+          ...currentUser,
+          address: data.activeAddress,
+          area: data.activeArea || currentUser?.area,
+        }));
+      }
+      if (typeof refreshAll === 'function') refreshAll();
+      if (typeof notifyRealtimeSync === 'function') notifyRealtimeSync();
+      setTimeout(() => {
+        setAddressSuccess('');
+      }, 4000);
+    } catch (err) {
+      setAddressError(err.message || 'Failed to set default address.');
     }
   };
 
@@ -1873,6 +2214,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderDeliveryHistory = (title = 'Recent deliveries', limit = Infinity) => {
     const visibleDeliveries = allCustomerDeliveries.slice(0, limit);
+    const deliveredCount = allCustomerDeliveries.filter((d) => d.status === 'delivered').length;
+    const pendingCount = allCustomerDeliveries.filter((d) => d.status !== 'delivered').length;
 
     return (
       <section className="customer-dashboard-card customer-history-card">
@@ -1883,6 +2226,51 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
           <span className="customer-history-count">{allCustomerDeliveries.length} total</span>
         </div>
+
+        {/* Quick metrics bar on Deliveries page */}
+        {limit === Infinity && (
+          <div className="customer-deliveries-mobile-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#e0f2fe', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Truck size={18} />
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1.15rem', color: '#0f172a' }}>{allCustomerDeliveries.length}</strong>
+                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Total Drops</span>
+              </div>
+            </div>
+
+            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CheckCircle2 size={18} />
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1.15rem', color: '#065f46' }}>{deliveredCount}</strong>
+                <span style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700 }}>Delivered</span>
+              </div>
+            </div>
+
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Clock3 size={18} />
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1.15rem', color: '#92400e' }}>{pendingCount}</strong>
+                <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>Pending Drops</span>
+              </div>
+            </div>
+
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ShieldCheck size={18} />
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '1.15rem', color: '#15803d' }}>100%</strong>
+                <span style={{ fontSize: '0.72rem', color: '#166534', fontWeight: 700 }}>Cold-Chain 4°C</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {visibleDeliveries.length === 0 ? (
           <div className="customer-empty-history">
@@ -1895,85 +2283,269 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
         ) : (
-          <div className="table-responsive customer-history-table-wrap">
-            <table className="dairy-table customer-history-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Milk</th>
-                  <th>Curd</th>
-                  {!hasPaidSubscription && <th>Amount</th>}
-                  <th>Delivery</th>
-                  <th>Payment</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleDeliveries.map((delivery, index) => (
-                  <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
-                    <td><strong>{delivery.deliveryDate}</strong></td>
-                    <td>{delivery.actualMilk} L</td>
-                    <td>{delivery.actualCurd || 0} g</td>
-                    {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
-                    <td>
-                      <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
-                        {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
-                      </span>
-                      {delivery.proofImage && (
-                        <a
-                          href={delivery.proofImage}
-                          target="_blank"
-                          rel="noopener noreferrer"
+          <>
+            {/* 1. Desktop Table View */}
+            <div className="customer-deliveries-desktop-table table-responsive customer-history-table-wrap">
+              <table className="dairy-table customer-history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Milk</th>
+                    <th>Curd</th>
+                    {!hasPaidSubscription && <th>Amount</th>}
+                    <th>Delivery</th>
+                    <th>Payment</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleDeliveries.map((delivery, index) => (
+                    <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
+                      <td><strong>{delivery.deliveryDate}</strong></td>
+                      <td>{delivery.actualMilk} L</td>
+                      <td>{delivery.actualCurd || 0} g</td>
+                      {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
+                      <td>
+                        <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
+                          {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
+                        </span>
+                        {delivery.proofImage && (
+                          <button
+                            type="button"
+                            onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '0.72rem',
+                              color: '#059669',
+                              marginLeft: '6px',
+                              fontWeight: 700,
+                              background: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '6px',
+                              padding: '2px 8px',
+                              cursor: 'pointer',
+                            }}
+                            title="View doorstep delivery proof photo"
+                          >
+                            📷 Proof
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : (delivery.paymentStatus === 'advance' ? ' is-pending' : ' is-unpaid')}`}>
+                          {delivery.paymentStatus || 'Advance'}
+                        </span>
+                      </td>
+                      <td>
+                        {delivery.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUserHistory(delivery.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              borderRadius: '4px',
+                              transition: 'color 0.15s ease',
+                            }}
+                            title="Delete from your history"
+                            onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                            onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 2. Mobile Responsive Deliveries Cards View */}
+            <div className="customer-deliveries-mobile-cards">
+              {visibleDeliveries.map((delivery, index) => {
+                const isDelivered = delivery.status === 'delivered';
+                const isPaid = delivery.paymentStatus === 'paid';
+                const isAdvance = delivery.paymentStatus === 'advance' || !delivery.paymentStatus;
+                const formattedDate = formatDeliveryDate(delivery.deliveryDate || delivery.date);
+
+                return (
+                  <div
+                    key={delivery.id || `${delivery.deliveryDate}-${index}`}
+                    className="customer-delivery-mobile-card"
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      marginBottom: '10px',
+                      boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {/* Header Row: Date & Status */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div
+                          style={{
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '8px',
+                            background: isDelivered ? '#ecfdf5' : '#fffbeb',
+                            color: isDelivered ? '#059669' : '#b45309',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <Calendar size={16} />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: '0.94rem', fontWeight: 700, color: '#0f172a', display: 'block', lineHeight: 1.25 }}>
+                            {formattedDate}
+                          </strong>
+                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Morning Slot · 5:00 AM – 6:30 AM</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
+                            padding: '3px 9px',
+                            borderRadius: '6px',
                             fontSize: '0.72rem',
-                            color: '#059669',
-                            marginLeft: '6px',
                             fontWeight: 700,
-                            textDecoration: 'none',
+                            background: isDelivered ? '#ecfdf5' : '#fffbeb',
+                            color: isDelivered ? '#047857' : '#92400e',
+                            border: isDelivered ? '1px solid #a7f3d0' : '1px solid #fde68a',
                           }}
-                          title="View doorstep delivery proof photo"
                         >
-                          📷 Proof
-                        </a>
-                      )}
-                    </td>
-                    <td>
-                      <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : ' is-unpaid'}`}>
-                        {delivery.paymentStatus || 'Unpaid'}
-                      </span>
-                    </td>
-                    <td>
-                      {delivery.id && (
+                          {isDelivered ? <Check size={12} strokeWidth={2.5} /> : <Clock3 size={12} />}
+                          <span>{isDelivered ? 'Delivered' : 'Pending'}</span>
+                        </span>
+
+                        {delivery.id && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteUserHistory(delivery.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#94a3b8',
+                              cursor: 'pointer',
+                              padding: '4px',
+                              borderRadius: '6px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              transition: 'color 0.15s ease',
+                            }}
+                            title="Delete delivery record"
+                            aria-label="Delete"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats Row: Milk, Curd, Payment */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, 1fr)',
+                        gap: '8px',
+                        background: '#f8fafc',
+                        border: '1px solid #f1f5f9',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                      }}
+                    >
+                      <div>
+                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Milk</span>
+                        <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0d5c3a' }}>
+                          {delivery.actualMilk || 0} L
+                        </span>
+                      </div>
+
+                      <div>
+                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Curd</span>
+                        <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>
+                          {delivery.actualCurd >= 1000 ? `${(delivery.actualCurd / 1000).toFixed(delivery.actualCurd % 1000 === 0 ? 0 : 1)} kg` : `${delivery.actualCurd || 0} g`}
+                        </span>
+                      </div>
+
+                      <div>
+                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Payment</span>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 7px',
+                            borderRadius: '5px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            background: isPaid ? '#dcfce7' : isAdvance ? '#fef9c3' : '#fee2e2',
+                            color: isPaid ? '#15803d' : isAdvance ? '#854d0e' : '#b91c1c',
+                          }}
+                        >
+                          {isPaid ? 'Paid' : isAdvance ? 'Advance' : (delivery.paymentStatus || 'Advance')}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Proof photo section if available */}
+                    {delivery.proofImage && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          paddingTop: '10px',
+                          marginTop: '10px',
+                          borderTop: '1px solid #f1f5f9',
+                        }}
+                      >
+                        <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                          <ShieldCheck size={14} color="#059669" /> Doorstep proof verified
+                        </span>
                         <button
                           type="button"
-                          onClick={() => handleDeleteUserHistory(delivery.id)}
+                          onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formattedDate, delivery })}
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            padding: '4px',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            borderRadius: '4px',
-                            transition: 'color 0.15s ease',
+                            gap: '5px',
+                            padding: '5px 12px',
+                            borderRadius: '8px',
+                            background: '#f0fdf4',
+                            color: '#047857',
+                            border: '1px solid #bbf7d0',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
                           }}
-                          title="Delete from your history"
-                          onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
                         >
-                          <Trash2 size={14} />
+                          <Camera size={13} />
+                          <span>View Photo</span>
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
     );
@@ -2798,9 +3370,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     let viewTitle = 'Profile Details';
     if (profileDetailView === 'account-details') viewTitle = 'Account Details';
     else if (profileDetailView === 'personal-info') viewTitle = 'Personal Details';
-    else if (profileDetailView === 'delivery-address') viewTitle = 'Delivery Address & Locations';
+    else if (profileDetailView === 'delivery-address' || profileDetailView === 'delivery_address') viewTitle = 'Delivery Addresses';
     else if (profileDetailView === 'subscription') viewTitle = 'My Subscriptions';
-    else if (profileDetailView === 'deliveries') viewTitle = 'Saved Deliveries';
+    else if (profileDetailView === 'deliveries') viewTitle = 'Deliveries';
     else if (profileDetailView === 'wallet') viewTitle = 'Refund Wallet & Balance';
     else if (profileDetailView === 'pause') viewTitle = 'Cancel / Pause Schedule';
     else if (profileDetailView === 'quantity') viewTitle = 'Update Quantity';
@@ -3038,385 +3610,814 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
-        {/* DELIVERY ADDRESS & AVAILABLE LOCATIONS VIEW */}
-        {profileDetailView === 'delivery-address' && (
-          <div className="mobile-detail-body">
+        {/* DELIVERY ADDRESS CARDS & CRUD MANAGEMENT VIEW */}
+        {(profileDetailView === 'delivery-address' || profileDetailView === 'delivery_address') && (
+          <div className="mobile-detail-body delivery-address-management-view">
             {/* Feedback alert toasts */}
-            {profileMessage && (
-              <div className="mobile-profile-alert is-success" role="status" style={{ marginBottom: '14px' }}>
-                <CheckCircle2 size={16} />
-                <span>{profileMessage}</span>
+            {addressSuccess && (
+              <div className="mobile-profile-alert is-success" role="status" style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 14px', borderRadius: '12px', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0' }}>
+                <CheckCircle2 size={18} color="#059669" />
+                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{addressSuccess}</span>
               </div>
             )}
-            {profileError && (
-              <div className="customer-profile-feedback is-error" role="alert" style={{ marginBottom: '14px' }}>
-                <AlertCircle size={16} />
-                <span>{profileError}</span>
+            {addressError && (
+              <div className="customer-profile-feedback is-error" role="alert" style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 14px', borderRadius: '12px', background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                <AlertCircle size={18} color="#dc2626" />
+                <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{addressError}</span>
               </div>
             )}
 
-            {/* 1. CURRENT ACTIVE DELIVERY DESTINATION CARD */}
-            <div className="delivery-address-hero-card">
-              <div className="delivery-address-hero-header">
-                <div>
-                  <div className="delivery-status-pill">
-                    <span className="delivery-pulse-dot" />
-                    <span>Active Morning Drop Destination</span>
-                  </div>
-                  <h3 style={{ margin: '8px 0 2px', fontSize: '1.22rem', fontWeight: 800, color: '#064e3b' }}>
-                    {customerName}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: '0.82rem', color: '#047857' }}>
-                    Customer ID: {customerId} · Ph: {customerPhone}
-                  </p>
-                </div>
-                <div style={{ background: '#d1fae5', padding: '10px', borderRadius: '12px', color: '#059669' }}>
-                  <MapPin size={26} strokeWidth={2.2} />
-                </div>
-              </div>
-
-              <div className="delivery-address-highlight-box">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', color: '#0d5c3a', fontSize: '0.78rem', fontWeight: 800 }}>
-                  <Navigation size={14} />
-                  <span>CURRENT DOORSTEP ADDRESS:</span>
-                </div>
-                <p className="delivery-address-highlight-text">
-                  {currentCustomer.address || user?.address || 'Flat / House details not yet specified'}
+            {/* Header with "+ Add New Address" Button */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0c2340', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>Doorstep Delivery Addresses</span>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '2px 8px', borderRadius: '999px' }}>
+                    {savedAddresses.length} {savedAddresses.length === 1 ? 'Address' : 'Addresses'}
+                  </span>
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                  Manage multiple delivery points. Your active default address receives morning farm drops.
                 </p>
-                <div style={{ fontSize: '0.84rem', color: '#475569', fontWeight: 600 }}>
-                  <strong>Area:</strong> {currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur'}, Hyderabad
-                </div>
-                {currentCustomer.landmark && (
-                  <div style={{ fontSize: '0.80rem', color: '#64748b', marginTop: '4px' }}>
-                    <strong>Landmark / Instructions:</strong> {currentCustomer.landmark}
-                  </div>
-                )}
               </div>
 
-              <div className="delivery-address-chips-row">
-                <span className="delivery-address-sub-chip is-green">
-                  <Clock3 size={12} /> 5:00 AM – 6:30 AM Morning Slot
-                </span>
-                <span className="delivery-address-sub-chip is-blue">
-                  <Truck size={12} /> {currentCustomer.deliveryPlan?.deliveryBoyName ? `Route Partner: ${currentCustomer.deliveryPlan.deliveryBoyName}` : 'Dedicated Route Specialist'}
-                </span>
-                <span className="delivery-address-sub-chip">
-                  <ShieldCheck size={12} /> Synced with Admin & Driver
-                </span>
-              </div>
+              <button
+                type="button"
+                onClick={handleOpenAddAddress}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '10px 18px',
+                  borderRadius: '12px',
+                  fontWeight: 750,
+                  fontSize: '0.88rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(13, 92, 58, 0.25)',
+                  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                <span>Add New Address</span>
+              </button>
             </div>
 
-            {/* 2. AVAILABLE SERVICEABLE LOCATIONS */}
-            <div className="mobile-detail-card" style={{ marginBottom: '18px' }}>
-              <div className="mobile-detail-card-head">
-                <div className="mobile-detail-card-icon is-green">
-                  <MapPin size={20} />
-                </div>
-                <div>
-                  <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    Available Service Locations
-                    <span style={{ fontSize: '0.72rem', background: '#ecfdf5', color: '#059669', padding: '2px 8px', borderRadius: '999px', border: '1px solid #a7f3d0' }}>
-                      {serviceableLocations.length} Active Zones
-                    </span>
-                  </h4>
-                  <p>We deliver fresh morning A2 milk and dairy across these verified locations. Tap any location to select it for your address.</p>
-                </div>
+            {/* Loading Skeleton */}
+            {addressesLoading && savedAddresses.length === 0 && (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
+                <RefreshCw size={24} className="animate-spin" style={{ margin: '0 auto 10px', color: '#0d5c3a' }} />
+                <p style={{ margin: 0, fontSize: '0.88rem' }}>Loading your delivery addresses...</p>
               </div>
+            )}
 
-              {/* Location Search Bar */}
-              <div style={{ position: 'relative', margin: '8px 0 14px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                <input
-                  type="text"
-                  placeholder="Filter available locations (e.g. Madhapur, Gachibowli, Hitec City...)"
-                  value={locationSearchQuery}
-                  onChange={(e) => setLocationSearchQuery(e.target.value)}
+            {/* Empty State */}
+            {!addressesLoading && savedAddresses.length === 0 && (
+              <div style={{ background: '#ffffff', borderRadius: '18px', border: '1.5px dashed #cbd5e1', padding: '36px 20px', textAlign: 'center', marginBottom: '20px' }}>
+                <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+                  <MapPin size={28} />
+                </div>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>No Delivery Address Added Yet</h4>
+                <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '360px', margin: '0 auto 18px' }}>
+                  Add your home or apartment address to start receiving daily fresh pure milk directly at your door.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenAddAddress}
                   style={{
-                    width: '100%',
-                    padding: '10px 12px 10px 36px',
-                    borderRadius: '12px',
-                    border: '1.5px solid #e2e8f0',
-                    fontSize: '0.84rem',
-                    background: '#f8fafc',
-                    boxSizing: 'border-box',
-                    outline: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '10px 20px',
+                    borderRadius: '10px',
+                    fontWeight: 750,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
                   }}
-                />
+                >
+                  + Add Your First Address
+                </button>
               </div>
+            )}
 
-              {/* Locations Grid */}
-              <div className="locations-grid-container">
-                {serviceableLocations
-                  .filter((loc) => {
-                    if (!locationSearchQuery.trim()) return true;
-                    const q = locationSearchQuery.toLowerCase();
-                    return (
-                      loc.name.toLowerCase().includes(q) ||
-                      (loc.pincode && loc.pincode.includes(q)) ||
-                      (loc.city && loc.city.toLowerCase().includes(q))
-                    );
-                  })
-                  .map((loc) => {
-                    const isCurrentArea = (profileForm.area || currentCustomer.area || '').toLowerCase().trim() === loc.name.toLowerCase().trim();
-                    return (
-                      <div
-                        key={loc.id || loc._id || loc.name}
-                        className={`location-item-card ${isCurrentArea ? 'is-selected' : ''}`}
-                        onClick={() => {
-                          setProfileForm((prev) => ({
-                            ...prev,
-                            area: loc.name,
-                          }));
-                          const formEl = document.getElementById('delivery-address-update-form');
-                          if (formEl) {
-                            formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                          }
-                        }}
-                      >
-                        <div>
-                          <div className="location-item-head">
-                            <span className="location-item-name">
-                              <MapPin size={15} color={isCurrentArea ? '#059669' : '#64748b'} />
-                              {loc.name}
-                            </span>
-                            {isCurrentArea ? (
-                              <span className="location-item-badge">✓ Selected</span>
-                            ) : (
-                              <span style={{ fontSize: '0.68rem', color: '#64748b', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                                {loc.pincode || 'Active'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="location-item-slot">
-                            <Clock3 size={13} color="#94a3b8" />
-                            <span>{loc.deliverySlot || 'Morning 5:00 AM - 7:30 AM'}</span>
-                          </div>
-                          {loc.assignedPartnerName && (
-                            <div style={{ fontSize: '0.72rem', color: '#0d5c3a', fontWeight: 650, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <Truck size={12} /> Partner: {loc.assignedPartnerName}
-                            </div>
-                          )}
+            {/* 1. SAVED ADDRESS CARDS LIST */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: '16px', marginBottom: '24px' }}>
+              {savedAddresses.map((addr) => {
+                const isDefault = Boolean(addr.isDefault);
+                const isHome = (addr.type || 'home') === 'home';
+                const isWork = addr.type === 'work';
+
+                return (
+                  <div
+                    key={addr.id}
+                    style={{
+                      background: isDefault ? 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)' : '#ffffff',
+                      border: isDefault ? '2px solid #059669' : '1.5px solid #e2e8f0',
+                      borderRadius: '18px',
+                      padding: '18px 20px',
+                      boxShadow: isDefault ? '0 8px 24px rgba(5, 150, 105, 0.12)' : '0 4px 14px rgba(0, 0, 0, 0.04)',
+                      position: 'relative',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.2s ease',
+                    }}
+                  >
+                    <div>
+                      {/* Card Header with Type Badge & Default Status */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              background: isHome ? '#dcfce7' : isWork ? '#dbeafe' : '#f3e8ff',
+                              color: isHome ? '#166534' : isWork ? '#1e40af' : '#6b21a8',
+                              border: isHome ? '1px solid #bbf7d0' : isWork ? '1px solid #bfdbfe' : '1px solid #e9d5ff',
+                            }}
+                          >
+                            {isHome ? <Home size={13} /> : isWork ? <Briefcase size={13} /> : <MapPin size={13} />}
+                            <span>{addr.label || (isHome ? 'Home' : isWork ? 'Work' : 'Other')}</span>
+                          </span>
                         </div>
 
+                        {isDefault ? (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 9px',
+                              borderRadius: '999px',
+                              background: '#059669',
+                              color: '#ffffff',
+                              fontSize: '0.70rem',
+                              fontWeight: 800,
+                              boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)',
+                            }}
+                          >
+                            <BadgeCheck size={12} />
+                            <span>Default Morning Drop</span>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleSetDefaultAddress(addr.id)}
+                            style={{
+                              background: 'transparent',
+                              border: '1px solid #cbd5e1',
+                              color: '#475569',
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '0.70rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Check size={11} />
+                            <span>Set as Default</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* House / Flat & Street Details */}
+                      <div style={{ marginBottom: '10px' }}>
+                        {addr.flatNo && (
+                          <div style={{ fontSize: '1.02rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.35, marginBottom: '2px' }}>
+                            {addr.flatNo}
+                          </div>
+                        )}
+                        <div style={{ fontSize: '0.92rem', color: '#334155', fontWeight: 650, lineHeight: 1.45 }}>
+                          {addr.apartmentStreet}
+                        </div>
+                        <div style={{ fontSize: '0.84rem', color: '#64748b', marginTop: '4px' }}>
+                          <strong>Area:</strong> {addr.area || 'Madhapur'}, {addr.city || 'Hyderabad'} {addr.pincode ? `– ${addr.pincode}` : ''}
+                        </div>
+                      </div>
+
+                      {/* Landmark & Instructions */}
+                      {addr.landmark && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 650, background: '#f0fdf4', padding: '6px 10px', borderRadius: '8px', marginBottom: '6px', border: '1px solid #d1fae5' }}>
+                          <Navigation size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+                          <span>Landmark: {addr.landmark}</span>
+                        </div>
+                      )}
+
+                      {addr.deliveryInstructions && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '0.76rem', color: '#475569', background: '#f8fafc', padding: '6px 10px', borderRadius: '8px', marginBottom: '8px', border: '1px solid #e2e8f0' }}>
+                          <MessageSquare size={13} style={{ flexShrink: 0, marginTop: '2px', color: '#64748b' }} />
+                          <span>Note: {addr.deliveryInstructions}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Card Actions Footer */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '12px', borderTop: isDefault ? '1px solid #a7f3d0' : '1px solid #f1f5f9', marginTop: '10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <button
                           type="button"
-                          className="location-item-action-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setProfileForm((prev) => ({
-                              ...prev,
-                              area: loc.name,
-                            }));
-                            const formEl = document.getElementById('delivery-address-update-form');
-                            if (formEl) {
-                              formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
+                          onClick={() => handleOpenEditAddress(addr)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            color: '#0d5c3a',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: '0.76rem',
+                            fontWeight: 750,
+                            cursor: 'pointer',
                           }}
                         >
-                          {isCurrentArea ? (
-                            <>
-                              <CheckCircle2 size={14} />
-                              <span>Current Selected Area</span>
-                            </>
-                          ) : (
-                            <>
-                              <Plus size={14} />
-                              <span>Select {loc.name}</span>
-                            </>
-                          )}
+                          <Edit3 size={13} />
+                          <span>Edit</span>
                         </button>
+
+                        {savedAddresses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAddress(addr.id)}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              background: '#ffffff',
+                              border: '1px solid #fecaca',
+                              color: '#dc2626',
+                              padding: '6px 10px',
+                              borderRadius: '8px',
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
+                          </button>
+                        )}
                       </div>
-                    );
-                  })}
-              </div>
-            </div>
 
-            {/* 3. OPTION TO UPDATE DELIVERY ADDRESS */}
-            <div className="mobile-detail-card" id="delivery-address-update-form">
-              <div className="mobile-detail-card-head">
-                <div className="mobile-detail-card-icon is-green">
-                  <Edit3 size={20} />
-                </div>
-                <div>
-                  <h4>Update Delivery Address</h4>
-                  <p>Updates sync in real time across the Admin portal and your Delivery Partner's mobile app.</p>
-                </div>
-              </div>
-
-              <form className="customer-profile-edit-form" onSubmit={saveProfile}>
-                {/* 1. Selected Area / Locality */}
-                <label>
-                  <span>Service Area / Locality *</span>
-                  <div style={{ position: 'relative' }}>
-                    <select
-                      value={profileForm.area || ''}
-                      required
-                      onChange={(e) => setProfileForm((cur) => ({ ...cur, area: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '12px',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '0.90rem',
-                        background: '#ffffff',
-                        fontWeight: 650,
-                        color: '#0f172a',
-                        boxSizing: 'border-box',
-                      }}
-                    >
-                      <option value="">-- Choose an Available Delivery Location --</option>
-                      {serviceableLocations.map((loc) => (
-                        <option key={loc.id || loc._id || loc.name} value={loc.name}>
-                          {loc.name} {loc.pincode ? `(${loc.pincode})` : ''} - {loc.deliverySlot || 'Morning Delivery'}
-                        </option>
-                      ))}
-                    </select>
+                      {!isDefault && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetDefaultAddress(addr.id)}
+                          style={{
+                            background: '#0d5c3a',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: '0.76rem',
+                            fontWeight: 750,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Check size={12} strokeWidth={2.5} />
+                          <span>Deliver Here</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </label>
-
-                {/* 2. Doorstep Delivery Address */}
-                <label style={{ marginTop: '12px' }}>
-                  <span>Doorstep Delivery Address * (Flat / House No, Wing, Building / Society, Street)</span>
-                  <textarea
-                    rows={3}
-                    placeholder="e.g. Flat 304, Tower B, My Home Bhooja, Silent Drop Door Hook"
-                    value={profileForm.address || ''}
-                    required
-                    onChange={(e) => setProfileForm((cur) => ({ ...cur, address: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #cbd5e1',
-                      fontSize: '0.88rem',
-                      boxSizing: 'border-box',
-                      lineHeight: 1.45,
-                    }}
-                  />
-                </label>
-
-                {/* 3. Landmark & Delivery Partner Drop Instructions */}
-                <label style={{ marginTop: '12px' }}>
-                  <span>Landmark / Gate Instructions (Visible to Delivery Partner)</span>
-                  <input
-                    type="text"
-                    placeholder="e.g. Near Lift 2, Leave bag on door hook, gate code #4490"
-                    value={profileForm.landmark || ''}
-                    onChange={(e) => setProfileForm((cur) => ({ ...cur, landmark: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #cbd5e1',
-                      fontSize: '0.88rem',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
-
-                {/* Quick instruction recommendation tags */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '8px 0 14px' }}>
-                  {[
-                    'Leave in dairy bag on door hook',
-                    'Silent drop (Do not ring bell)',
-                    'Ring bell once after drop',
-                    'Place on shoe rack by door',
-                  ].map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => {
-                        setProfileForm((cur) => {
-                          const existing = (cur.landmark || '').trim();
-                          if (existing.includes(tag)) return cur;
-                          return {
-                            ...cur,
-                            landmark: existing ? `${existing}. ${tag}` : tag,
-                          };
-                        });
-                      }}
-                      style={{
-                        background: (profileForm.landmark || '').includes(tag) ? '#eef6f0' : '#f8fafc',
-                        border: (profileForm.landmark || '').includes(tag) ? '1.5px solid #0d5c3a' : '1px solid #cbd5e1',
-                        color: (profileForm.landmark || '').includes(tag) ? '#0d5c3a' : '#475569',
-                        padding: '4px 9px',
-                        borderRadius: '7px',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      + {tag}
-                    </button>
-                  ))}
-                </div>
-
-                {/* 4. Confirmed Mobile Number */}
-                <label style={{ marginTop: '6px' }}>
-                  <span>Contact Mobile Number (For morning route coordinator)</span>
-                  <input
-                    type="tel"
-                    value={profileForm.mobile || ''}
-                    required
-                    onChange={(e) => setProfileForm((cur) => ({ ...cur, mobile: e.target.value }))}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #cbd5e1',
-                      fontSize: '0.88rem',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                </label>
-
-                {/* Submit Actions */}
-                <div className="customer-profile-edit-actions" style={{ marginTop: '18px' }}>
-                  <button
-                    type="button"
-                    className="customer-profile-secondary-button"
-                    onClick={backToProfile}
-                  >
-                    Back to Profile
-                  </button>
-                  <button
-                    type="submit"
-                    className="customer-profile-primary-button"
-                    disabled={profileSaving}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      background: '#0d5c3a',
-                      color: '#ffffff',
-                    }}
-                  >
-                    {profileSaving ? (
-                      <>
-                        <RefreshCw size={16} className="animate-spin" />
-                        <span>Updating & Syncing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={16} />
-                        <span>Update Address (Sync Admin & Partner)</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                );
+              })}
             </div>
 
-            {/* Sync Guarantee Notice */}
+            {/* Sync Notice Card */}
             <div className="mobile-detail-card mobile-detail-notice-card" style={{ marginTop: '16px' }}>
               <div className="mobile-detail-notice-item">
                 <ShieldCheck size={22} className="mobile-detail-notice-icon is-green" />
                 <div>
                   <strong>Instant Fleet & Admin Synchronization</strong>
-                  <p>When you update your delivery address, our backend automatically updates your customer records, pending morning deliveries, and routes. Your assigned delivery partner's app receives the live notification immediately.</p>
+                  <p>When you update or add your delivery address, our backend automatically synchronizes your records with the Admin dashboard and sends an instant route alert notification to your assigned delivery partner.</p>
                 </div>
               </div>
             </div>
+
+            {/* 3. FULL SCREEN ADD / EDIT ADDRESS VIEW */}
+            {addressModalOpen && (
+              <div
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 99999,
+                  background: '#f8fafc',
+                  width: '100vw',
+                  height: '100dvh',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Sticky Fullscreen Top App Bar */}
+                <header
+                  style={{
+                    background: '#ffffff',
+                    borderBottom: '1px solid #e2e8f0',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexShrink: 0,
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setAddressModalOpen(false)}
+                      style={{
+                        background: '#f1f5f9',
+                        border: 'none',
+                        borderRadius: '10px',
+                        width: '38px',
+                        height: '38px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#0f172a',
+                        cursor: 'pointer',
+                      }}
+                      aria-label="Back"
+                    >
+                      <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0c2340', letterSpacing: '-0.01em' }}>
+                        {editingAddressId ? 'Edit Delivery Address' : 'Add New Delivery Address'}
+                      </h3>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748b' }}>
+                        Select your service location and update doorstep details
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setAddressModalOpen(false)}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '50%',
+                      width: '34px',
+                      height: '34px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#64748b',
+                      cursor: 'pointer',
+                    }}
+                    aria-label="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </header>
+
+                {/* Scrollable Form Body */}
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    WebkitOverflowScrolling: 'touch',
+                    padding: '18px 18px 120px',
+                  }}
+                >
+                  <div style={{ maxWidth: '640px', margin: '0 auto', width: '100%' }}>
+                    {addressError && (
+                      <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px 16px', borderRadius: '12px', fontSize: '0.86rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 650 }}>
+                        <AlertCircle size={18} color="#dc2626" style={{ flexShrink: 0 }} />
+                        <span>{addressError}</span>
+                      </div>
+                    )}
+
+                    <form id="fullscreen-address-form" onSubmit={handleSaveAddress}>
+                      {/* 1. Address Type Selection */}
+                      <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                          Address Type
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                          {[
+                            { id: 'home', label: 'Home', icon: Home },
+                            { id: 'work', label: 'Work', icon: Briefcase },
+                            { id: 'other', label: 'Other', icon: MapPin },
+                          ].map((t) => {
+                            const IconComp = t.icon;
+                            const isSel = addressForm.type === t.id;
+                            return (
+                              <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setAddressForm((f) => ({ ...f, type: t.id, label: t.id === 'other' ? (f.label === 'Home' || f.label === 'Work' ? '' : f.label) : t.label }))}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '6px',
+                                  padding: '11px 10px',
+                                  borderRadius: '12px',
+                                  border: isSel ? '2px solid #0d5c3a' : '1.5px solid #cbd5e1',
+                                  background: isSel ? '#ecfdf5' : '#ffffff',
+                                  color: isSel ? '#065f46' : '#475569',
+                                  fontWeight: 800,
+                                  fontSize: '0.86rem',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <IconComp size={16} />
+                                <span>{t.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {addressForm.type === 'other' && (
+                          <div style={{ marginTop: '12px' }}>
+                            <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
+                              Custom Address Label
+                            </label>
+                            <input
+                              type="text"
+                              value={addressForm.label || ''}
+                              placeholder="e.g. Vacation Villa, Parents' House, Farmhouse"
+                              onChange={(e) => setAddressForm((f) => ({ ...f, label: e.target.value }))}
+                              style={{
+                                width: '100%',
+                                padding: '10px 14px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '0.88rem',
+                                boxSizing: 'border-box',
+                                outline: 'none',
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 2. Primary Available Locations Dropdown */}
+                      <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MapPin size={16} color="#0d5c3a" />
+                            <span>Service Area / Delivery Location *</span>
+                          </span>
+                          <span style={{ fontSize: '0.72rem', color: '#059669', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                            {serviceableLocations.length} Verified Zones
+                          </span>
+                        </label>
+                        <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: '#64748b' }}>
+                          Choose your location from our verified morning delivery hubs:
+                        </p>
+
+                        <select
+                          required
+                          value={addressForm.area}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const matched = serviceableLocations.find((l) => l.name === val);
+                            setAddressForm((f) => ({
+                              ...f,
+                              area: val,
+                              pincode: matched?.pincode || f.pincode,
+                              city: matched?.city || 'Hyderabad',
+                            }));
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '12px 14px',
+                            borderRadius: '12px',
+                            border: '2px solid #0d5c3a',
+                            fontSize: '0.94rem',
+                            fontWeight: 750,
+                            background: '#f0fdf4',
+                            color: '#064e3b',
+                            boxSizing: 'border-box',
+                            outline: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <option value="" disabled>-- Select available delivery location --</option>
+                          {serviceableLocations.map((loc) => (
+                            <option key={loc.id || loc._id || loc.name} value={loc.name}>
+                              {loc.name} {loc.pincode ? `(${loc.pincode})` : ''} — 5:00 AM - 7:30 AM Slot
+                            </option>
+                          ))}
+                        </select>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 12px', borderRadius: '10px', fontSize: '0.78rem', color: '#166534' }}>
+                          <CheckCircle2 size={16} color="#059669" style={{ flexShrink: 0 }} />
+                          <span>
+                            <strong>{addressForm.area || 'Selected Area'}:</strong> Active morning dairy route. Farm fresh milk delivered every dawn before 6:30 AM.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 3. Address Specifics: Flat, Street, City & Pincode */}
+                      <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                          Complete Doorstep Address
+                        </label>
+
+                        {/* Flat / House No */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                            Flat / House No, Floor & Wing *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Flat 402, 4th Floor, Block B"
+                            value={addressForm.flatNo}
+                            onChange={(e) => setAddressForm((f) => ({ ...f, flatNo: e.target.value }))}
+                            style={{
+                              width: '100%',
+                              padding: '11px 14px',
+                              borderRadius: '10px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '0.90rem',
+                              boxSizing: 'border-box',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+
+                        {/* Apartment / Society / Street */}
+                        <div style={{ marginBottom: '12px' }}>
+                          <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                            Apartment, Society, Building or Street Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. My Home Bhooja, Silicon Valley High Street"
+                            value={addressForm.apartmentStreet}
+                            onChange={(e) => setAddressForm((f) => ({ ...f, apartmentStreet: e.target.value }))}
+                            style={{
+                              width: '100%',
+                              padding: '11px 14px',
+                              borderRadius: '10px',
+                              border: '1.5px solid #cbd5e1',
+                              fontSize: '0.90rem',
+                              boxSizing: 'border-box',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
+
+                        {/* City and Pincode Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                              City
+                            </label>
+                            <input
+                              type="text"
+                              value={addressForm.city || 'Hyderabad'}
+                              onChange={(e) => setAddressForm((f) => ({ ...f, city: e.target.value }))}
+                              style={{
+                                width: '100%',
+                                padding: '11px 14px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '0.90rem',
+                                boxSizing: 'border-box',
+                                outline: 'none',
+                                background: '#f8fafc',
+                              }}
+                            />
+                          </div>
+
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                              Pincode *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="500081"
+                              value={addressForm.pincode}
+                              onChange={(e) => setAddressForm((f) => ({ ...f, pincode: e.target.value }))}
+                              style={{
+                                width: '100%',
+                                padding: '11px 14px',
+                                borderRadius: '10px',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '0.90rem',
+                                boxSizing: 'border-box',
+                                outline: 'none',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 4. Landmark & Gate Instructions */}
+                      <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                          Landmark / Gate Instructions
+                        </label>
+                        <p style={{ margin: '0 0 8px', fontSize: '0.78rem', color: '#64748b' }}>
+                          Helps your early morning delivery agent locate your flat easily:
+                        </p>
+                        <input
+                          type="text"
+                          placeholder="e.g. Opposite Ratnadeep, Near Lift 2, Gate Security Code 4490"
+                          value={addressForm.landmark}
+                          onChange={(e) => setAddressForm((f) => ({ ...f, landmark: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '11px 14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '0.90rem',
+                            boxSizing: 'border-box',
+                            outline: 'none',
+                            marginBottom: '8px',
+                          }}
+                        />
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {['Opposite Supermarket', 'Near Gate 2', 'Beside Park', 'Lift 3 Lobby'].map((tag) => (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => setAddressForm((f) => ({ ...f, landmark: f.landmark ? `${f.landmark}, ${tag}` : tag }))}
+                              style={{
+                                background: '#f8fafc',
+                                border: '1px solid #cbd5e1',
+                                color: '#475569',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '4px 9px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              + {tag}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 5. Drop Instructions */}
+                      <div style={{ background: '#ffffff', borderRadius: '16px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                          Early Morning Drop Instructions (Optional)
+                        </label>
+                        <p style={{ margin: '0 0 8px', fontSize: '0.78rem', color: '#64748b' }}>
+                          Preferences for silent dawn drop between 5:00 AM – 7:30 AM:
+                        </p>
+                        <input
+                          type="text"
+                          placeholder="e.g. Hang in milk bag on door handle, don't ring bell"
+                          value={addressForm.deliveryInstructions}
+                          onChange={(e) => setAddressForm((f) => ({ ...f, deliveryInstructions: e.target.value }))}
+                          style={{
+                            width: '100%',
+                            padding: '11px 14px',
+                            borderRadius: '10px',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '0.90rem',
+                            boxSizing: 'border-box',
+                            outline: 'none',
+                            marginBottom: '8px',
+                          }}
+                        />
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {['Hang on door hook', 'Silent drop (No bell)', 'Ring bell once', 'Leave on shoe rack'].map((chip) => (
+                            <button
+                              key={chip}
+                              type="button"
+                              onClick={() => setAddressForm((f) => ({ ...f, deliveryInstructions: f.deliveryInstructions ? `${f.deliveryInstructions}. ${chip}` : chip }))}
+                              style={{
+                                background: '#f1f5f9',
+                                border: '1px solid #cbd5e1',
+                                color: '#475569',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '4px 9px',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              + {chip}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 6. Default Address Toggle */}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', marginBottom: '20px', background: '#ffffff', padding: '14px 16px', borderRadius: '14px', border: '1.5px solid #e2e8f0' }}>
+                        <input
+                          type="checkbox"
+                          checked={addressForm.isDefault}
+                          onChange={(e) => setAddressForm((f) => ({ ...f, isDefault: e.target.checked }))}
+                          style={{ width: '20px', height: '20px', accentColor: '#0d5c3a', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>
+                            Set as active default address for morning milk deliveries
+                          </span>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>
+                            Daily scheduled farm bottles will be routed directly to this address.
+                          </span>
+                        </div>
+                      </label>
+                    </form>
+                  </div>
+                </div>
+
+                {/* Sticky Bottom Action Bar */}
+                <footer
+                  style={{
+                    position: 'fixed',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: '#ffffff',
+                    borderTop: '1px solid #e2e8f0',
+                    padding: '12px 20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '12px',
+                    boxShadow: '0 -4px 18px rgba(0, 0, 0, 0.08)',
+                    zIndex: 100000,
+                  }}
+                >
+                  <div style={{ maxWidth: '640px', width: '100%', display: 'flex', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setAddressModalOpen(false)}
+                      style={{
+                        flex: 0.35,
+                        padding: '13px 18px',
+                        borderRadius: '12px',
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#475569',
+                        fontWeight: 750,
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="submit"
+                      form="fullscreen-address-form"
+                      disabled={addressSaving}
+                      style={{
+                        flex: 0.65,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '13px 22px',
+                        borderRadius: '12px',
+                        border: 'none',
+                        background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        fontSize: '0.94rem',
+                        cursor: addressSaving ? 'not-allowed' : 'pointer',
+                        boxShadow: '0 4px 14px rgba(13, 92, 58, 0.28)',
+                      }}
+                    >
+                      {addressSaving ? (
+                        <>
+                          <RefreshCw size={17} className="animate-spin" />
+                          <span>Saving & Notifying...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 size={17} />
+                          <span>{editingAddressId ? 'Update Delivery Address' : 'Save & Set Address'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </footer>
+              </div>
+            )}
           </div>
         )}
 
@@ -3634,7 +4635,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
-        {/* 3. SAVED DELIVERIES */}
+        {/* 3. DELIVERIES VIEW IN PROFILE */}
         {profileDetailView === 'deliveries' && (
           <div className="mobile-detail-body">
             {/* Quick Metrics */}
@@ -3644,22 +4645,34 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <span className="mobile-detail-metric-lbl">Total Drops</span>
               </div>
               <div className="mobile-detail-metric-card">
+                <span className="mobile-detail-metric-num" style={{ color: '#059669' }}>
+                  {allCustomerDeliveries.filter((d) => d.status === 'delivered').length}
+                </span>
+                <span className="mobile-detail-metric-lbl">Delivered</span>
+              </div>
+              <div className="mobile-detail-metric-card">
+                <span className="mobile-detail-metric-num" style={{ color: '#b45309' }}>
+                  {allCustomerDeliveries.filter((d) => d.status !== 'delivered').length}
+                </span>
+                <span className="mobile-detail-metric-lbl">Pending Drops</span>
+              </div>
+              <div className="mobile-detail-metric-card">
                 <span className="mobile-detail-metric-num" style={{ color: '#16a34a' }}>100%</span>
-                <span className="mobile-detail-metric-lbl">On-Time Rate</span>
-              </div>
-              <div className="mobile-detail-metric-card">
-                <span className="mobile-detail-metric-num" style={{ color: '#2563eb' }}>{allCustomerDeliveries.length || totalDeliveries}</span>
-                <span className="mobile-detail-metric-lbl">Bottles Swapped</span>
-              </div>
-              <div className="mobile-detail-metric-card">
-                <span className="mobile-detail-metric-num" style={{ color: '#0d9488' }}>4°C</span>
-                <span className="mobile-detail-metric-lbl">Cold-Chain</span>
+                <span className="mobile-detail-metric-lbl">On-Time</span>
               </div>
             </div>
 
-            {/* Deliveries Stream */}
+            {/* Deliveries Cards Stream */}
             <div className="mobile-detail-card">
-              <h4 className="mobile-detail-subheading">Delivery History & Doorstep Logs</h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                <h4 className="mobile-detail-subheading" style={{ margin: 0 }}>
+                  Doorstep Deliveries & Logs
+                </h4>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0369a1', background: '#e0f2fe', padding: '2px 8px', borderRadius: '999px' }}>
+                  {allCustomerDeliveries.length} Total
+                </span>
+              </div>
+
               {allCustomerDeliveries.length === 0 ? (
                 <div className="customer-empty-history" style={{ padding: '24px 12px' }}>
                   <Truck size={32} style={{ color: '#10b981', margin: '0 auto 12px' }} />
@@ -3667,51 +4680,183 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   <p>Your first delivery is scheduled for tomorrow morning between 5:00 AM and 6:30 AM.</p>
                 </div>
               ) : (
-                <div className="mobile-detail-drops-list">
-                  {allCustomerDeliveries.map((drop, idx) => (
-                    <div key={drop.id || idx} className="mobile-detail-drop-row">
-                      <div className="mobile-detail-drop-left">
-                        <div className="mobile-detail-drop-icon">
-                          <CheckCircle2 size={18} />
-                        </div>
-                        <div>
-                          <strong>{drop.deliveryDate || 'Morning Delivery'}</strong>
-                          <p>Delivered at 5:45 AM · Placed in doorstep bag</p>
-                          <div className="mobile-detail-drop-tags">
-                            <span className="mobile-detail-tag is-green">Delivered ✓</span>
-                            <span className="mobile-detail-tag is-blue">Bottle Swapped ✓</span>
+                <div className="mobile-detail-deliveries-list">
+                  {allCustomerDeliveries.map((delivery, index) => {
+                    const isDelivered = delivery.status === 'delivered';
+                    const isPaid = delivery.paymentStatus === 'paid';
+                    const isAdvance = delivery.paymentStatus === 'advance' || !delivery.paymentStatus;
+
+                    const formattedDetailDate = formatDeliveryDate(delivery.deliveryDate || delivery.date);
+
+                    return (
+                        <div
+                          key={delivery.id || `${delivery.deliveryDate}-${index}`}
+                          className="customer-delivery-mobile-card"
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '14px',
+                            padding: '14px 16px',
+                            marginBottom: '10px',
+                            boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {/* Header Row: Date & Status */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <div
+                                style={{
+                                  width: '32px',
+                                  height: '32px',
+                                  borderRadius: '8px',
+                                  background: isDelivered ? '#ecfdf5' : '#fffbeb',
+                                  color: isDelivered ? '#059669' : '#b45309',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Calendar size={16} />
+                              </div>
+                              <div>
+                                <strong style={{ fontSize: '0.94rem', fontWeight: 700, color: '#0f172a', display: 'block', lineHeight: 1.25 }}>
+                                  {formattedDetailDate}
+                                </strong>
+                                <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Morning Slot · 5:00 AM – 6:30 AM</span>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  padding: '3px 9px',
+                                  borderRadius: '6px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: isDelivered ? '#ecfdf5' : '#fffbeb',
+                                  color: isDelivered ? '#047857' : '#92400e',
+                                  border: isDelivered ? '1px solid #a7f3d0' : '1px solid #fde68a',
+                                }}
+                              >
+                                {isDelivered ? <Check size={12} strokeWidth={2.5} /> : <Clock3 size={12} />}
+                                <span>{isDelivered ? 'Delivered' : 'Pending'}</span>
+                              </span>
+
+                              {delivery.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUserHistory(delivery.id)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#94a3b8',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    transition: 'color 0.15s ease',
+                                  }}
+                                  title="Delete from history"
+                                  aria-label="Delete"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="mobile-detail-drop-right" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div>
-                          <span>{drop.actualMilk || milkQuantity} {milkUnit}</span>
-                          <small>₹{drop.totalAmount || 85}</small>
-                        </div>
-                        {drop.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUserHistory(drop.id)}
+
+                          {/* Stats Row: Milk, Curd, Payment */}
+                          <div
                             style={{
-                              background: '#fef2f2',
-                              border: '1px solid #fee2e2',
-                              borderRadius: '6px',
-                              padding: '5px',
-                              color: '#dc2626',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(3, 1fr)',
+                              gap: '8px',
+                              background: '#f8fafc',
+                              border: '1px solid #f1f5f9',
+                              padding: '10px 14px',
+                              borderRadius: '10px',
                             }}
-                            title="Delete from your history"
                           >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                            <div>
+                              <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Milk</span>
+                              <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0d5c3a' }}>
+                                {delivery.actualMilk || 0} L
+                              </span>
+                            </div>
+
+                            <div>
+                              <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Curd</span>
+                              <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>
+                                {delivery.actualCurd >= 1000 ? `${(delivery.actualCurd / 1000).toFixed(delivery.actualCurd % 1000 === 0 ? 0 : 1)} kg` : `${delivery.actualCurd || 0} g`}
+                              </span>
+                            </div>
+
+                            <div>
+                              <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Payment</span>
+                              <span
+                                style={{
+                                  display: 'inline-block',
+                                  padding: '2px 7px',
+                                  borderRadius: '5px',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  background: isPaid ? '#dcfce7' : isAdvance ? '#fef9c3' : '#fee2e2',
+                                  color: isPaid ? '#15803d' : isAdvance ? '#854d0e' : '#b91c1c',
+                                }}
+                              >
+                                {isPaid ? 'Paid' : isAdvance ? 'Advance' : (delivery.paymentStatus || 'Advance')}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Proof photo section if available */}
+                          {delivery.proofImage && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingTop: '10px',
+                                marginTop: '10px',
+                                borderTop: '1px solid #f1f5f9',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                <ShieldCheck size={14} color="#059669" /> Doorstep proof verified
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formattedDetailDate, delivery })}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '5px 12px',
+                                  borderRadius: '8px',
+                                  background: '#f0fdf4',
+                                  color: '#047857',
+                                  border: '1px solid #bbf7d0',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                }}
+                              >
+                                <Camera size={13} />
+                                <span>View Photo</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
               )}
             </div>
 
@@ -4837,7 +5982,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('subscription')}
+            onClick={() => navigateToPage('subscription')}
           >
             <div className="modern-profile-menu-left">
               <span className="modern-profile-menu-icon"><Milk size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
@@ -4941,20 +6086,25 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </button>
 
-          {/* 6. Past Delivery Receipts & Invoices */}
+          {/* 6. Deliveries & Doorstep Logs */}
           <button
             type="button"
             className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('deliveries')}
+            onClick={() => navigateToPage('deliveries')}
           >
             <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><FileText size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
+              <span className="modern-profile-menu-icon" style={{ background: '#ecfdf5', color: '#0d5c3a' }}>
+                <Truck size={20} color="#0d5c3a" strokeWidth={1.8} />
+              </span>
               <div>
-                <span className="modern-profile-menu-label">Delivery Receipts & History</span>
-                <span className="modern-profile-menu-sub">{totalDeliveries} Drops Completed · Daily proof logs</span>
+                <span className="modern-profile-menu-label">Deliveries</span>
+                <span className="modern-profile-menu-sub">Track latest doorstep deliveries, proof photos & payments</span>
               </div>
             </div>
             <div className="modern-profile-menu-right">
+              <span className="customer-profile-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                {allCustomerDeliveries.length || totalDeliveries} Drops
+              </span>
               <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
           </button>
@@ -5814,9 +6964,24 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       <div className="customer-app-main">
         {!(activePage === 'products' && selectedProductDetails) && (
           <header
-            className={`customer-app-header${activePage === 'profile' && isMobile ? ' is-profile-mobile-hidden' : ''}`}
-            style={{ justifyContent: 'flex-end' }}
+            className={`customer-app-header${activePage === 'profile' && isMobile && !profileDetailView ? ' is-profile-mobile-hidden' : ''}`}
+            style={{ justifyContent: 'space-between', alignItems: 'center' }}
           >
+            {/* Mobile Header Left: Back Button */}
+            {isMobile && (
+              <button
+                type="button"
+                className="customer-mobile-back-btn"
+                onClick={handleSmartBack}
+                aria-label="Back to recent page"
+                title="Go back"
+              >
+                <ArrowLeft size={17} strokeWidth={2.4} />
+                <span>Back</span>
+              </button>
+            )}
+            {!isMobile && <div />}
+
             <div className="customer-app-header-actions">
               <button
                 type="button"
@@ -5867,7 +7032,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           className="customer-bottom-nav customer-portal-bottom-nav"
           ariaLabel="Main navigation"
           items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage={activePage === 'profile' ? 'profile' : undefined}
+          activePage={['products', 'profile'].includes(activePage) ? activePage : undefined}
           onNavigate={(page) => {
             if (page === 'home') {
               if (typeof setActiveTab === 'function') {
@@ -6098,6 +7263,198 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {/* Product Booking Modal */}
       {bookingModalOpen && renderBookingModal()}
+
+      {/* Redesigned Clean & Professional Full-Page Proof Photo View */}
+      {viewingProofPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delivery Proof Photo"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 999999,
+            background: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+            height: '100%',
+            maxHeight: '100dvh',
+            overflow: 'hidden',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          {/* 1. Full Page Top Header */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 16px',
+              borderBottom: '1px solid #e2e8f0',
+              background: '#ffffff',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
+              flexShrink: 0,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setViewingProofPhoto(null)}
+              aria-label="Back"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#f1f5f9',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                color: '#1e293b',
+                fontSize: '0.85rem',
+                fontWeight: 650,
+                cursor: 'pointer',
+                transition: 'background 0.15s ease',
+              }}
+            >
+              <ArrowLeft size={16} strokeWidth={2.5} />
+              <span>Back</span>
+            </button>
+
+            <div style={{ textAlign: 'center', flex: 1, padding: '0 12px' }}>
+              <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 750, color: '#0f172a', lineHeight: 1.25 }}>
+                Delivery Photo Proof
+              </h3>
+              <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500 }}>
+                {viewingProofPhoto.date || 'Doorstep drop proof'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewingProofPhoto(null)}
+              aria-label="Close photo"
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: '#f1f5f9',
+                border: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <X size={16} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          {/* 2. Full Page Photo Display Area */}
+          <div
+            style={{
+              flex: 1,
+              width: '100%',
+              background: '#f8fafc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <img
+              src={viewingProofPhoto.url}
+              alt="Delivery proof"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+                background: '#ffffff',
+              }}
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                if (e.currentTarget.nextSibling) {
+                  e.currentTarget.nextSibling.style.display = 'block';
+                }
+              }}
+            />
+            <div
+              style={{
+                display: 'none',
+                color: '#64748b',
+                padding: '40px 20px',
+                textAlign: 'center',
+              }}
+            >
+              <p style={{ fontWeight: 650, fontSize: '0.92rem', color: '#0f172a' }}>Photo proof could not be loaded.</p>
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Please check your network connection or try again.</span>
+            </div>
+          </div>
+
+          {/* 3. Full Page Bottom Status & Action Bar */}
+          <div
+            style={{
+              padding: '14px 18px max(18px, env(safe-area-inset-bottom)) 18px',
+              borderTop: '1px solid #f1f5f9',
+              background: '#ffffff',
+              boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.03)',
+              flexShrink: 0,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                color: '#059669',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                marginBottom: '12px',
+                justifyContent: 'center',
+                background: '#ecfdf5',
+                border: '1px solid #a7f3d0',
+                borderRadius: '8px',
+                padding: '8px 12px',
+              }}
+            >
+              <ShieldCheck size={16} color="#059669" />
+              <span>Verified Contactless Doorstep Drop</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setViewingProofPhoto(null)}
+              style={{
+                width: '100%',
+                padding: '12px 18px',
+                borderRadius: '10px',
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                fontSize: '0.92rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'background 0.15s ease',
+                boxShadow: '0 2px 6px rgba(13, 92, 58, 0.25)',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

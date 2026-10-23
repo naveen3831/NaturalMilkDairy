@@ -168,7 +168,7 @@ export default function App() {
     }
     if (activeTab === 'customer-portal' && !window.location.pathname.startsWith('/customer/')) {
       const savedCustomerPage = localStorage.getItem('nmd_customer_page');
-      const customerPage = ['dashboard', 'subscription', 'deliveries', 'profile'].includes(savedCustomerPage)
+      const customerPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(savedCustomerPage)
         ? savedCustomerPage
         : 'dashboard';
       window.history.replaceState({ nmdCustomerPage: true }, '', `/customer/${customerPage}`);
