@@ -53,6 +53,13 @@ function initWebSocket(server) {
       }
 
       if (!ws.user) {
+        if (data?.type === 'GUEST' || (data?.type === 'AUTH' && (data?.token === 'guest' || !data?.token))) {
+          ws.user = { id: 'guest', role: 'guest' };
+          clearTimeout(authTimeout);
+          ws.send(JSON.stringify({ type: 'AUTHENTICATED', role: 'guest', timestamp: Date.now() }));
+          return;
+        }
+
         if (data?.type !== 'AUTH' || typeof data.token !== 'string' || data.token.length > 4096) {
           ws.close(1008, 'Authentication required');
           return;
@@ -61,7 +68,7 @@ function initWebSocket(server) {
           ws.user = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
           if (
             !ws.user.id ||
-            !['admin', 'delivery_boy', 'customer', 'user'].includes(ws.user.role)
+            !['admin', 'delivery_boy', 'customer', 'user', 'guest'].includes(ws.user.role)
           ) {
             ws.close(1008, 'Invalid authentication token');
             return;
@@ -76,6 +83,9 @@ function initWebSocket(server) {
 
       if (data?.type === 'PING') {
         ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
+      } else if (data?.type === 'AUTH' || data?.type === 'GUEST') {
+        // Idempotent AUTH acknowledgment if already authenticated
+        ws.send(JSON.stringify({ type: 'AUTHENTICATED', timestamp: Date.now() }));
       } else {
         ws.close(1008, 'Unsupported message');
       }
@@ -137,12 +147,30 @@ function broadcast(event, payload = {}) {
       'LOCATION_UPDATED',
       'NOTIFICATION_UPDATED',
       'PRODUCT_UPDATED',
+      'SUPPORT_CHAT_MESSAGE',
+      'SUPPORT_TICKET_UPDATED',
+      'SUPPORT_TICKET_CREATED',
     ].includes(event);
-    const isSafeForCustomer = ['PRODUCT_UPDATED', 'LOCATION_UPDATED', 'NOTIFICATION_UPDATED'].includes(event);
+    const isSafeForCustomer = [
+      'PRODUCT_UPDATED',
+      'LOCATION_UPDATED',
+      'NOTIFICATION_UPDATED',
+      'DELIVERY_UPDATED',
+      'CUSTOMER_UPDATED',
+      'SUBSCRIPTION_UPDATED',
+      'PAYMENT_RECORDED',
+      'ORDER_UPDATED',
+      'ORDER_CREATED',
+      'INVENTORY_UPDATED',
+      'STOCK_UPDATED',
+      'SUPPORT_CHAT_MESSAGE',
+      'SUPPORT_TICKET_UPDATED',
+      'SUPPORT_TICKET_CREATED',
+    ].includes(event);
     if (
       isAdmin ||
       (client.user.role === 'delivery_boy' && isSafeForDelivery) ||
-      (['customer', 'user'].includes(client.user.role) && isSafeForCustomer)
+      (['customer', 'user', 'guest'].includes(client.user.role) && isSafeForCustomer)
     ) {
       client.send(message);
     }

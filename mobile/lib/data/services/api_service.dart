@@ -13,17 +13,55 @@ class ApiService {
 
   String? _cachedToken;
   String? _customBaseUrl;
+  String? _activeBaseUrl;
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(AppConstants.keyAuthToken);
     _customBaseUrl = prefs.getString(AppConstants.keyCustomBaseUrl);
+    await resolveActiveBaseUrl();
   }
 
-  String get baseUrl => _customBaseUrl ?? AppConstants.defaultBaseUrl;
+  String get baseUrl => _customBaseUrl ?? _activeBaseUrl ?? AppConstants.defaultBaseUrl;
+
+  /// Quick ping to check if a backend server is live and responding
+  Future<bool> testConnection([String? candidateUrl]) async {
+    final target = (candidateUrl ?? baseUrl).trim();
+    if (target.isEmpty) return false;
+    try {
+      final res = await http.get(Uri.parse('$target/api/health')).timeout(const Duration(milliseconds: 1800));
+      return res.statusCode >= 200 && res.statusCode < 400;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Probes candidate URLs (127.0.0.1, 192.168.1.68, 10.0.2.2, localhost) and binds the active one
+  Future<String> resolveActiveBaseUrl() async {
+    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
+      final ok = await testConnection(_customBaseUrl);
+      if (ok) {
+        _activeBaseUrl = _customBaseUrl;
+        return _customBaseUrl!;
+      }
+    }
+
+    for (final url in AppConstants.candidateBaseUrls) {
+      final isAlive = await testConnection(url);
+      if (isAlive) {
+        _activeBaseUrl = url;
+        debugPrint('🌐 ApiService auto-resolved active server at: $url');
+        return url;
+      }
+    }
+
+    _activeBaseUrl = AppConstants.defaultBaseUrl;
+    return _activeBaseUrl!;
+  }
 
   Future<void> setCustomBaseUrl(String url) async {
     _customBaseUrl = url.trim();
+    _activeBaseUrl = _customBaseUrl;
     final prefs = await SharedPreferences.getInstance();
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       await prefs.setString(AppConstants.keyCustomBaseUrl, _customBaseUrl!);
@@ -56,10 +94,79 @@ class ApiService {
     return headers;
   }
 
+  /// Generic GET request with auto authentication
+  Future<Map<String, dynamic>> get(String endpoint) async {
+    final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final url = Uri.parse('$baseUrl$cleanPath');
+    try {
+      final response = await http
+          .get(url, headers: _getHeaders(requiresAuth: true))
+          .timeout(const Duration(seconds: 10));
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('ApiService GET error on $url: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Generic POST request with auto authentication
+  Future<Map<String, dynamic>> post(String endpoint, [Map<String, dynamic>? body]) async {
+    final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final url = Uri.parse('$baseUrl$cleanPath');
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: _getHeaders(requiresAuth: true),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(const Duration(seconds: 10));
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('ApiService POST error on $url: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Generic PUT request with auto authentication
+  Future<Map<String, dynamic>> put(String endpoint, [Map<String, dynamic>? body]) async {
+    final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final url = Uri.parse('$baseUrl$cleanPath');
+    try {
+      final response = await http
+          .put(
+            url,
+            headers: _getHeaders(requiresAuth: true),
+            body: body != null ? jsonEncode(body) : null,
+          )
+          .timeout(const Duration(seconds: 10));
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('ApiService PUT error on $url: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Generic DELETE request with auto authentication
+  Future<Map<String, dynamic>> delete(String endpoint) async {
+    final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+    final url = Uri.parse('$baseUrl$cleanPath');
+    try {
+      final response = await http
+          .delete(url, headers: _getHeaders(requiresAuth: true))
+          .timeout(const Duration(seconds: 10));
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      debugPrint('ApiService DELETE error on $url: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
   /// 1. Login user
   Future<Map<String, dynamic>> login({
     required String identifier,
     required String password,
+    bool retryIfFailed = true,
   }) async {
     final url = Uri.parse('$baseUrl/api/auth/login');
     try {
@@ -72,7 +179,7 @@ class ApiService {
               'password': password,
             }),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 10));
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -96,7 +203,16 @@ class ApiService {
         };
       }
     } catch (e) {
-      debugPrint('ApiService login error: $e');
+      debugPrint('ApiService login error on $baseUrl: $e');
+      if (retryIfFailed) {
+        for (final candidate in AppConstants.candidateBaseUrls) {
+          if (candidate != baseUrl && await testConnection(candidate)) {
+            _activeBaseUrl = candidate;
+            debugPrint('Switching baseUrl to active candidate: $candidate');
+            return login(identifier: identifier, password: password, retryIfFailed: false);
+          }
+        }
+      }
       return {
         'success': false,
         'message': 'Cannot reach server at $baseUrl. Ensure server is running on port 5000.',
@@ -193,7 +309,7 @@ class ApiService {
   }
 
   /// 5. Fetch product catalog
-  Future<List<ProductModel>> getProducts() async {
+  Future<List<ProductModel>> getProducts({bool retryIfFailed = true}) async {
     final url = Uri.parse('$baseUrl/api/products');
     try {
       final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 8));
@@ -210,7 +326,15 @@ class ApiService {
         }
       }
     } catch (e) {
-      debugPrint('ApiService getProducts fallback to defaults: $e');
+      debugPrint('ApiService getProducts error on $baseUrl: $e');
+      if (retryIfFailed) {
+        final prev = baseUrl;
+        final next = await resolveActiveBaseUrl();
+        if (next != prev) {
+          debugPrint('Retrying getProducts with newly resolved endpoint: $next');
+          return getProducts(retryIfFailed: false);
+        }
+      }
     }
     return ProductModel.defaultCatalog;
   }

@@ -38,6 +38,7 @@ class AppColors {
   // Badges & States
   static const Color badgeSuccessBg = Color(0xFFDCFCE7);
   static const Color badgeSuccessText = Color(0xFF166534);
+  static const Color badgeSuccessBorder = Color(0xFFBBF7D0);
   static const Color badgeWarningBg = Color(0xFFFEF3C7);
   static const Color badgeWarningText = Color(0xFF92400E);
   static const Color badgeDangerBg = Color(0xFFFEE2E2);

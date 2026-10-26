@@ -79,11 +79,41 @@ export default function AdminSupportDesk() {
     const unsubCreated = wsSubscribe('SUPPORT_TICKET_CREATED', () => fetchTickets());
     const unsubUpdated = wsSubscribe('SUPPORT_TICKET_UPDATED', () => fetchTickets());
     const unsubNotif = wsSubscribe('NOTIFICATION_UPDATED', () => fetchTickets());
+    const unsubChat = wsSubscribe('SUPPORT_CHAT_MESSAGE', (payload) => {
+      fetchTickets();
+      if (payload && payload.message && payload.ticket) {
+        setActiveTicket((prev) => {
+          if (!prev) return prev;
+          const targetId = payload.ticket.ticketId || payload.ticket.id || payload.ticket._id;
+          const currentId = prev.ticketId || prev.id || prev._id;
+          if (targetId && currentId && String(targetId) === String(currentId)) {
+            const msgs = Array.isArray(prev.messages) ? [...prev.messages] : [];
+            const already = msgs.some(
+              (m) =>
+                m.text === payload.message.text &&
+                m.sender === payload.message.sender &&
+                String(m.createdAt) === String(payload.message.createdAt)
+            );
+            if (!already) {
+              msgs.push(payload.message);
+            }
+            return {
+              ...prev,
+              messages: msgs,
+              status: payload.ticket.status || prev.status,
+              adminReply: payload.ticket.adminReply || prev.adminReply,
+            };
+          }
+          return prev;
+        });
+      }
+    });
 
     return () => {
       unsubCreated();
       unsubUpdated();
       unsubNotif();
+      unsubChat();
     };
   }, [wsSubscribe, fetchTickets]);
 
@@ -147,6 +177,54 @@ export default function AdminSupportDesk() {
     setActiveTicket(ticket);
     setReplyText(ticket.adminReply || '');
     setInternalNotes(ticket.adminNotes || '');
+  };
+
+  const handleSendChatReply = async (e) => {
+    if (e) e.preventDefault();
+    if (!replyText.trim() || !activeTicket) return;
+
+    const textToSend = replyText.trim();
+    setIsUpdating(true);
+
+    try {
+      const res = await fetch('/api/supports/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(getAuthHeaders ? getAuthHeaders() : {}),
+        },
+        body: JSON.stringify({
+          ticketId: activeTicket.ticketId || activeTicket.id || activeTicket._id,
+          text: textToSend,
+          senderRole: 'admin',
+          senderName: 'Naveen Kumar (Admin Desk)',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.ticket) {
+        setReplyText('');
+        setActiveTicket(data.ticket);
+        fetchTickets();
+        setActionFeedback('✓ Reply sent & delivered instantly to user mobile!');
+        setTimeout(() => setActionFeedback(''), 3000);
+      } else {
+        await handleUpdateTicket(activeTicket.ticketId || activeTicket.id, {
+          adminReply: textToSend,
+          adminNotes: internalNotes,
+        });
+        setReplyText('');
+      }
+    } catch (err) {
+      console.error('Failed sending chat reply:', err);
+      await handleUpdateTicket(activeTicket.ticketId || activeTicket.id, {
+        adminReply: textToSend,
+        adminNotes: internalNotes,
+      });
+      setReplyText('');
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   // Filtered tickets
@@ -977,46 +1055,144 @@ export default function AdminSupportDesk() {
               )}
             </div>
 
-            {/* Original Message */}
+            {/* Conversation Thread / Messages */}
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
-                Original Message:
-              </label>
-              <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '12px', fontSize: '0.86rem', color: '#0f172a', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                {activeTicket.message}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
+                  💬 Real-Time Conversation Thread
+                </label>
+                <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+                  Live Sync Active
+                </span>
+              </div>
+
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '12px',
+                  padding: '14px',
+                  maxHeight: '260px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                }}
+              >
+                {/* Fallback to original message if no messages array */}
+                {(!activeTicket.messages || activeTicket.messages.length === 0) && (
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0284c7', marginBottom: '4px' }}>
+                      {activeTicket.senderName || 'Customer'}
+                    </div>
+                    <div style={{ fontSize: '0.85rem', color: '#0f172a', whiteSpace: 'pre-wrap' }}>
+                      {activeTicket.message}
+                    </div>
+                  </div>
+                )}
+
+                {/* Render conversation thread */}
+                {Array.isArray(activeTicket.messages) &&
+                  activeTicket.messages.map((m, idx) => {
+                    const isAdmin = m.sender === 'admin';
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          alignSelf: isAdmin ? 'flex-end' : 'flex-start',
+                          maxWidth: '82%',
+                          background: isAdmin ? '#0d5c3a' : '#ffffff',
+                          color: isAdmin ? '#ffffff' : '#0f172a',
+                          border: isAdmin ? 'none' : '1px solid #e2e8f0',
+                          borderRadius: isAdmin ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+                          padding: '10px 12px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            color: isAdmin ? '#86efac' : '#0d5c3a',
+                            marginBottom: '3px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          {m.senderName || (isAdmin ? 'Naveen Kumar (Admin)' : 'Customer')}
+                          {isAdmin && (
+                            <span style={{ background: '#166534', color: '#ffffff', fontSize: '0.62rem', padding: '1px 4px', borderRadius: '3px' }}>
+                              ADMIN
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                          {m.text}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: '0.65rem',
+                            color: isAdmin ? 'rgba(255,255,255,0.7)' : '#94a3b8',
+                            marginTop: '4px',
+                            textAlign: 'right',
+                          }}
+                        >
+                          {m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
 
             {/* Form for Reply and Internal Notes */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleUpdateTicket(activeTicket.ticketId || activeTicket.id, {
-                  adminReply: replyText,
-                  adminNotes: internalNotes,
-                });
-              }}
-            >
+            <form onSubmit={handleSendChatReply}>
               {/* Admin Reply */}
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', display: 'block', marginBottom: '6px' }}>
-                  Admin Reply / Customer Communication:
+                <label style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span>Send Direct Reply (Delivers to User Instantly):</span>
+                  <span style={{ color: '#059669', fontSize: '0.72rem' }}>⚡ WebSocket Live Push</span>
                 </label>
-                <textarea
-                  rows={3}
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="Type reply or solution provided..."
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.86rem',
-                    boxSizing: 'border-box',
-                    fontFamily: 'inherit',
-                  }}
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Type message to send to user's mobile app..."
+                    style={{
+                      flex: 1,
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: '1.5px solid #0d5c3a',
+                      fontSize: '0.86rem',
+                      fontFamily: 'inherit',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={isUpdating || !replyText.trim()}
+                    style={{
+                      padding: '0 18px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: '#0d5c3a',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                      cursor: isUpdating || !replyText.trim() ? 'not-allowed' : 'pointer',
+                      opacity: isUpdating || !replyText.trim() ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Send size={15} />
+                    <span>Send</span>
+                  </button>
+                </div>
               </div>
 
               {/* Internal Notes */}

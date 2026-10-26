@@ -183,10 +183,42 @@ export function NotificationProvider({ children }) {
 
   useEffect(() => {
     fetchNotifications();
-    const unsub = wsSubscribe('NOTIFICATION_UPDATED', () => {
+    if (!wsSubscribe) return;
+
+    const unsubCreated = wsSubscribe('NOTIFICATION_CREATED', (payload) => {
+      fetchNotifications();
+      if (payload && payload.title) {
+        setLatestToast(payload);
+      }
+    });
+    const unsubUpdated = wsSubscribe('NOTIFICATION_UPDATED', () => {
       fetchNotifications();
     });
-    return () => unsub();
+    const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
+      fetchNotifications();
+    });
+    const unsubCompleted = wsSubscribe('DELIVERY_COMPLETED', () => {
+      fetchNotifications();
+    });
+    const unsubStatus = wsSubscribe('STATUS_CHANGED', () => {
+      fetchNotifications();
+    });
+    const unsubOrder = wsSubscribe('ORDER_UPDATED', () => {
+      fetchNotifications();
+    });
+    const unsubSub = wsSubscribe('SUBSCRIPTION_UPDATED', () => {
+      fetchNotifications();
+    });
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubDelivery();
+      unsubCompleted();
+      unsubStatus();
+      unsubOrder();
+      unsubSub();
+    };
   }, [fetchNotifications, wsSubscribe]);
 
   // Persist to local storage
@@ -262,9 +294,17 @@ export function NotificationProvider({ children }) {
 
   // Mark single as read
   const markAsRead = async (id) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
+    if (!id) return;
+    setNotifications((prev) => {
+      const updated = prev.map((n) =>
+        n.id === id || n._id === id || String(n.id) === String(id) || String(n._id) === String(id)
+          ? { ...n, isRead: true }
+          : n
+      );
+      setUnreadCount(updated.filter((n) => !n.isRead).length);
+      localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(updated));
+      return updated;
+    });
     try {
       await fetch(`/api/notifications/${id}/read`, {
         method: 'PUT',

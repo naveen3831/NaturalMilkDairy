@@ -4,8 +4,8 @@
  */
 export const CLOUDINARY_MEDIA = {
   cowMilk: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg',
-  cowMilk500ml: '/product-cow-milk-500ml.jpg',
-  buffaloMilk: '/product-buffalo-milk.jpg',
+  cowMilk500ml: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg',
+  buffaloMilk: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1793013264/natural-milk-dairy/product-buffalo-milk.jpg',
   curd: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg',
   ghee: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454808/natural-milk-dairy/product-ghee.jpg',
   paneer: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454809/natural-milk-dairy/product-paneer.jpg',

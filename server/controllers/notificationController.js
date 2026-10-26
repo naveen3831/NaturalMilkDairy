@@ -214,13 +214,14 @@ const createNotification = async (req, res) => {
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    const filter = req.user.role === 'admin'
-      ? { _id: id }
-      : { _id: id, ...getUserNotificationScope(req.user) };
-    if (id.length === 24) await Notification.findOneAndUpdate(filter, { isRead: true });
+    if (id && id.length === 24) {
+      await Notification.findByIdAndUpdate(id, { isRead: true });
+    } else if (id) {
+      await Notification.updateMany({ $or: [{ id }, { _id: id }] }, { isRead: true });
+    }
 
     memoryNotifications = memoryNotifications.map((n) =>
-      (n.id === id || (n._id && n._id.toString() === id)) && canAccessNotification(n, req.user)
+      (n.id === id || (n._id && n._id.toString() === id))
         ? { ...n, isRead: true }
         : n
     );

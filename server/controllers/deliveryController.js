@@ -426,6 +426,7 @@ const markDelivered = async (req, res) => {
     }
 
     broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
+    broadcast('CUSTOMER_UPDATED', { id: delivery.customerId, customerId: delivery.customerId });
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
@@ -698,6 +699,36 @@ const deleteDeliveryForAdminAndDriver = async (req, res) => {
   }
 };
 
+// Get recent delivered drops with photo proofs for live guest / customer feeds
+const getRecentDeliveryProofs = async (req, res) => {
+  try {
+    const recent = await Delivery.find({
+      status: 'delivered',
+      proofImage: { $exists: true, $ne: '' },
+    })
+      .sort({ deliveredAt: -1, createdAt: -1 })
+      .limit(10)
+      .select('deliveryDate deliveredAt actualMilk actualCurd deliveryBoyName proofImage status paymentMethod customerName')
+      .lean();
+
+    const formatted = recent.map((del) => ({
+      id: del._id.toString(),
+      date: del.deliveryDate,
+      time: del.deliveredAt,
+      milk: `${del.actualMilk || 1} L`,
+      curd: del.actualCurd ? `${del.actualCurd} g` : '0 g',
+      status: 'delivered',
+      paymentMethod: del.paymentMethod || 'Paid',
+      proofImage: del.proofImage || '',
+      deliveryBoyName: del.deliveryBoyName || 'Dairy Partner',
+    }));
+
+    return res.json({ success: true, deliveries: formatted });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getDeliveries,
   getAssignedCustomers,
@@ -706,4 +737,6 @@ module.exports = {
   batchSyncOfflineDeliveries,
   assignDelivery,
   deleteDeliveryForAdminAndDriver,
+  getRecentDeliveryProofs,
 };
+

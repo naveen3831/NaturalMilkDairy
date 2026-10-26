@@ -182,7 +182,7 @@ const authorizeCustomerAccess = async (req, res, next) => {
     }
   }
   const isOwner = ['customer', 'user'].includes(req.user?.role) &&
-    (requestedId === req.user.id || requestedId === req.user.customerId);
+    (requestedId === 'me' || requestedId === req.user.id || requestedId === req.user.customerId);
   if (!isOwner) {
     return res.status(403).json({
       success: false,

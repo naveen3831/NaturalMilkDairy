@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.naturalmilk.dairy.natural_milk_dairy"
-    compileSdk = 36
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -18,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "com.naturalmilk.dairy.natural_milk_dairy"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
     }

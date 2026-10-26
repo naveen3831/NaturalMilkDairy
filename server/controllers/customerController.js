@@ -97,7 +97,17 @@ const getCustomers = async (req, res) => {
 const getCustomerById = async (req, res) => {
   try {
     const { id } = req.params;
-    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    let query;
+    if (id === 'me') {
+      const candidates = [
+        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
+        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
+      ];
+      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
+    } else {
+      query = id.length === 24 ? { _id: id } : { customerId: id };
+    }
     const customer = await Customer.findOne(query).lean();
 
     if (!customer) {
@@ -587,7 +597,17 @@ const pauseDelivery = async (req, res) => {
   try {
     const { id } = req.params;
     const { pauseFrom, pauseUntil, reason, actor } = req.body;
-    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    let query;
+    if (id === 'me') {
+      const candidates = [
+        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
+        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
+      ];
+      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
+    } else {
+      query = id.length === 24 ? { _id: id } : { customerId: id };
+    }
 
     const customer = await Customer.findOne(query);
     if (!customer) {
@@ -674,7 +694,17 @@ const resumeDelivery = async (req, res) => {
   try {
     const { id } = req.params;
     const { actor } = req.body;
-    const query = id.length === 24 ? { _id: id } : { customerId: id };
+    let query;
+    if (id === 'me') {
+      const candidates = [
+        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
+        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
+      ];
+      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
+    } else {
+      query = id.length === 24 ? { _id: id } : { customerId: id };
+    }
 
     const customer = await Customer.findOne(query);
     if (!customer) {
@@ -819,7 +849,17 @@ const setTemporaryQty = async (req, res) => {
 const getCustomerLedger = async (req, res) => {
   try {
     const customerId = req.params.id;
-    const query = customerId.length === 24 ? { _id: customerId } : { customerId };
+    let query;
+    if (customerId === 'me') {
+      const candidates = [
+        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
+        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
+      ];
+      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
+    } else {
+      query = customerId.length === 24 ? { _id: customerId } : { customerId };
+    }
     const customer = await Customer.findOne(query).lean();
 
     if (!customer) {

@@ -4,20 +4,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_constants.dart';
 import '../data/models/user_model.dart';
 import '../data/services/api_service.dart';
+import '../data/services/realtime_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final RealtimeService _realtimeService = RealtimeService();
 
   UserModel? _user;
   String? _token;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _isGuest = false;
 
   UserModel? get user => _user;
   String? get token => _token;
   bool get isAuthenticated => _token != null && _token!.isNotEmpty;
+  bool get isGuest => _isGuest || _user?.isGuest == true;
+  bool get isAdmin => _user?.isAdmin == true;
+  bool get isDeliveryBoy => _user?.isDeliveryBoy == true;
+  bool get isCustomer => _user?.isCustomer == true;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  void continueAsGuest() {
+    _isGuest = true;
+    _user = UserModel.guest();
+    _token = null;
+    _errorMessage = null;
+    _realtimeService.updateToken('guest');
+    notifyListeners();
+  }
 
   /// Initialize auth on application startup
   Future<bool> initAuth() async {
@@ -42,6 +58,9 @@ class AuthProvider extends ChangeNotifier {
         _user = freshUser;
         await prefs.setString(AppConstants.keyUserData, jsonEncode(freshUser.toJson()));
       }
+      _realtimeService.updateToken(_token);
+    } else {
+      _realtimeService.updateToken('guest');
     }
 
     _isLoading = false;
@@ -59,10 +78,12 @@ class AuthProvider extends ChangeNotifier {
 
     _isLoading = false;
     if (res['success'] == true) {
+      _isGuest = false;
       _token = res['token']?.toString();
       if (res['user'] is Map<String, dynamic>) {
         _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
       }
+      _realtimeService.updateToken(_token);
       notifyListeners();
       return true;
     } else {
@@ -82,10 +103,12 @@ class AuthProvider extends ChangeNotifier {
 
     _isLoading = false;
     if (res['success'] == true) {
+      _isGuest = false;
       _token = res['token']?.toString();
       if (res['user'] is Map<String, dynamic>) {
         _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
       }
+      _realtimeService.updateToken(_token);
       notifyListeners();
       return true;
     } else {
@@ -99,7 +122,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     _user = null;
     _token = null;
+    _isGuest = false;
     await _apiService.setToken(null);
+    _realtimeService.updateToken('guest');
     notifyListeners();
   }
 

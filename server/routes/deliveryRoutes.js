@@ -8,8 +8,11 @@ const {
   batchSyncOfflineDeliveries,
   assignDelivery,
   deleteDeliveryForAdminAndDriver,
+  getRecentDeliveryProofs,
 } = require('../controllers/deliveryController');
 const { verifyToken, requireDeliveryStaff, requireAdmin } = require('../middleware/authMiddleware');
+
+router.get('/recent-proofs', getRecentDeliveryProofs);
 
 router.get('/assigned-customers', verifyToken, requireDeliveryStaff, getAssignedCustomers);
 router.get('/', verifyToken, requireDeliveryStaff, getDeliveries);

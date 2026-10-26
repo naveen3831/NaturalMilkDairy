@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../providers/auth_provider.dart';
 import '../auth/login_screen.dart';
 import '../auth/register_screen.dart';
+import '../home/home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -19,6 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final List<Map<String, dynamic>> _slides = [
     {
       'icon': Icons.eco_rounded,
+      'isLogo': true,
       'badge': '100% Organically Pure',
       'title': 'Pure Farm Milk,\nUntouched & Raw',
       'desc': 'Single-origin morning harvest from stress-free grass-fed cows & buffaloes. Chilled to 4°C within 30 minutes in glass bottles.',
@@ -57,6 +61,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leadingWidth: 180,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 18.0),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+                padding: const EdgeInsets.all(4),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Icon(Icons.water_drop, size: 18, color: AppColors.primaryGreen),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'Natural Milk',
+                style: TextStyle(
+                  color: AppColors.dairyBlue,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => _completeOnboarding(const LoginScreen()),
@@ -95,19 +130,41 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           width: 140,
                           height: 140,
                           decoration: BoxDecoration(
-                            color: accentColor.withValues(alpha: 0.08),
+                            color: Colors.white,
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: accentColor.withValues(alpha: 0.14),
+                                blurRadius: 20,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                             border: Border.all(
-                              color: accentColor.withValues(alpha: 0.18),
+                              color: accentColor.withValues(alpha: 0.22),
                               width: 2,
                             ),
                           ),
                           child: Center(
-                            child: Icon(
-                              slide['icon'] as IconData,
-                              size: 72,
-                              color: accentColor,
-                            ),
+                            child: slide['isLogo'] == true
+                                ? ClipOval(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(22.0),
+                                      child: Image.asset(
+                                        'assets/images/logo.png',
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (_, _, _) => Icon(
+                                          slide['icon'] as IconData,
+                                          size: 72,
+                                          color: accentColor,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Icon(
+                                    slide['icon'] as IconData,
+                                    size: 72,
+                                    color: accentColor,
+                                  ),
                           ),
                         ),
                         const SizedBox(height: 36),
@@ -169,11 +226,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 );
               }),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
 
             // Bottom Actions
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12),
               child: Column(
                 children: [
                   SizedBox(
@@ -202,7 +259,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
@@ -219,6 +276,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           color: AppColors.dairyBlue,
                           fontWeight: FontWeight.w700,
                         ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      context.read<AuthProvider>().continueAsGuest();
+                      _completeOnboarding(const HomeScreen());
+                    },
+                    icon: const Icon(Icons.explore_outlined, size: 18, color: AppColors.primaryGreen),
+                    label: const Text(
+                      'Explore App as Guest',
+                      style: TextStyle(
+                        color: AppColors.primaryGreen,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
                       ),
                     ),
                   ),

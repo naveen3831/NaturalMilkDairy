@@ -8,15 +8,23 @@ class AppConstants {
   static const String supportDisplayPhone = '+91 98765 43210';
   static const String morningSlotTime = '5:00 AM – 6:30 AM';
 
-  /// Resolves the backend base URL dynamically based on execution platform
+  /// Candidate backend URLs tested automatically by ApiService
+  static List<String> get candidateBaseUrls => const [
+        'http://127.0.0.1:5000', // USB reverse port forwarding (physical phone)
+        'http://192.168.1.68:5000', // Wi-Fi local network IP (physical phone)
+        'http://10.0.2.2:5000', // Android Emulator loopback
+        'http://localhost:5000', // Desktop & Web
+      ];
+
+  /// Resolves the default backend base URL dynamically
   static String get defaultBaseUrl {
     if (kIsWeb) {
       return 'http://localhost:5000';
     }
     try {
       if (Platform.isAndroid) {
-        // Android Emulator maps host machine localhost to 10.0.2.2
-        return 'http://10.0.2.2:5000';
+        // 127.0.0.1:5000 works on physical Android phones with adb reverse
+        return 'http://127.0.0.1:5000';
       }
     } catch (_) {}
     return 'http://localhost:5000';

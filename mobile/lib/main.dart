@@ -5,7 +5,9 @@ import 'core/constants/app_colors.dart';
 import 'core/constants/app_constants.dart';
 import 'core/theme/app_theme.dart';
 import 'data/services/api_service.dart';
+import 'data/services/realtime_service.dart';
 import 'providers/auth_provider.dart';
+import 'providers/customer_provider.dart';
 import 'providers/product_provider.dart';
 import 'screens/splash/splash_screen.dart';
 
@@ -22,8 +24,9 @@ void main() async {
     ),
   );
 
-  // Initialize API service and storage
+  // Initialize API service, detect connectivity, and start WebSocket
   await ApiService().init();
+  RealtimeService().connect();
 
   runApp(const NaturalMilkDairyApp());
 }
@@ -37,6 +40,8 @@ class NaturalMilkDairyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => CustomerProvider()),
+        ChangeNotifierProvider.value(value: RealtimeService()),
       ],
       child: MaterialApp(
         title: AppConstants.appName,
@@ -47,4 +52,6 @@ class NaturalMilkDairyApp extends StatelessWidget {
     );
   }
 }
+
+
 

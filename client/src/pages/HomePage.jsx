@@ -265,7 +265,7 @@ export default function HomePage({ setActiveTab }) {
                 <ArrowRight size={18} aria-hidden="true" />
               </button>
               <button
-                onClick={() => setActiveTab('products')}
+                onClick={() => setActiveTab('subscription')}
                 className="home-hero-button home-hero-button-secondary"
               >
                 <Milk size={18} aria-hidden="true" />

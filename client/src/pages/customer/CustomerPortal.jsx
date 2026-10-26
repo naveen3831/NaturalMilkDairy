@@ -7031,8 +7031,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <CustomerBottomNav
           className="customer-bottom-nav customer-portal-bottom-nav"
           ariaLabel="Main navigation"
-          items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage={['products', 'profile'].includes(activePage) ? activePage : undefined}
+          activePage={['products', 'subscription', 'profile'].includes(activePage) ? activePage : undefined}
           onNavigate={(page) => {
             if (page === 'home') {
               if (typeof setActiveTab === 'function') {
@@ -7048,6 +7047,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               } else {
                 window.location.href = `/${page}`;
               }
+              return;
+            }
+            if (page === 'subscription') {
+              navigateToPage('subscription');
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
               return;
             }
             if (page === 'profile') {

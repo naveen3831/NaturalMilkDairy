@@ -260,7 +260,7 @@ const updateSupportTicket = async (req, res) => {
     if (adminReply !== undefined) updates.adminReply = adminReply;
     if (adminNotes !== undefined) updates.adminNotes = adminNotes;
 
-    let updatedTicket = null;
+    // Also update in MongoDB if present
     try {
       if (id.length === 24) {
         updatedTicket = await SupportTicket.findByIdAndUpdate(id, updates, { new: true });
@@ -268,21 +268,209 @@ const updateSupportTicket = async (req, res) => {
       if (!updatedTicket) {
         updatedTicket = await SupportTicket.findOneAndUpdate({ ticketId: id }, updates, { new: true });
       }
+
+      if (adminReply && adminReply.trim()) {
+        await SupportTicket.updateOne(
+          { $or: [{ _id: id.length === 24 ? id : null }, { ticketId: id }] },
+          {
+            $push: {
+              messages: {
+                sender: 'admin',
+                senderName: 'Naveen Kumar (Admin Desk)',
+                text: adminReply.trim(),
+                createdAt: new Date(),
+              },
+            },
+          }
+        );
+      }
     } catch (err) {}
 
     // Update in memory if needed
     memoryTickets = memoryTickets.map((t) => {
       if (t.ticketId === id || (t._id && t._id.toString() === id)) {
-        return { ...t, ...updates };
+        const memMsgs = t.messages ? [...t.messages] : [];
+        if (adminReply && adminReply.trim()) {
+          memMsgs.push({
+            sender: 'admin',
+            senderName: 'Naveen Kumar (Admin Desk)',
+            text: adminReply.trim(),
+            createdAt: new Date(),
+          });
+        }
+        return { ...t, ...updates, messages: memMsgs };
       }
       return t;
     });
 
-    broadcast('SUPPORT_TICKET_UPDATED', { id, updates });
+    broadcast('SUPPORT_TICKET_UPDATED', { id, updates, ticket: updatedTicket });
+    if (adminReply && adminReply.trim()) {
+      broadcast('SUPPORT_CHAT_MESSAGE', {
+        ticketId: id,
+        message: {
+          sender: 'admin',
+          senderName: 'Naveen Kumar (Admin Desk)',
+          text: adminReply.trim(),
+          createdAt: new Date(),
+        },
+        ticket: updatedTicket,
+      });
+    }
 
     return res.json({
       success: true,
       ticket: updatedTicket || updates,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const sendChatMessage = async (req, res) => {
+  try {
+    const { ticketId, text, message, senderName, senderPhone, senderArea, senderRole } = req.body;
+    const cleanText = (text || message || '').trim();
+    if (!cleanText) {
+      return res.status(400).json({ success: false, message: 'Message text is required.' });
+    }
+
+    const role = req.user?.role || senderRole || 'customer';
+    const name = req.user?.name || senderName || (role === 'admin' ? 'Naveen Kumar (Admin Desk)' : 'Customer');
+    const phone = req.user?.mobile || senderPhone || '';
+
+    let ticket = null;
+    if (ticketId) {
+      ticket = await SupportTicket.findOne({
+        $or: [{ ticketId }, { _id: ticketId.length === 24 ? ticketId : null }],
+      });
+    }
+
+    if (!ticket && phone) {
+      ticket = await SupportTicket.findOne({
+        senderPhone: phone,
+        status: { $in: ['open', 'in_progress'] },
+      }).sort({ updatedAt: -1 });
+    }
+
+    const newMsg = {
+      sender: role,
+      senderName: name,
+      text: cleanText,
+      createdAt: new Date(),
+    };
+
+    if (!ticket) {
+      const newTicketId = 'TKT-' + Math.floor(1000 + Math.random() * 9000);
+      ticket = await SupportTicket.create({
+        ticketId: newTicketId,
+        senderRole: role === 'admin' ? 'customer' : role,
+        senderId: req.user?.id || req.user?.customerId || '',
+        senderName: name,
+        senderPhone: phone,
+        senderArea: senderArea || 'Madhapur',
+        category: 'Live Support Chat',
+        priority: 'normal',
+        status: role === 'admin' ? 'in_progress' : 'open',
+        subject: `Live Chat: ${name}`,
+        message: cleanText,
+        adminReply: role === 'admin' ? cleanText : '',
+        messages: [newMsg],
+      });
+    } else {
+      if (role === 'admin') {
+        ticket.adminReply = cleanText;
+        ticket.status = 'in_progress';
+      } else {
+        ticket.message = cleanText;
+        ticket.status = 'open';
+      }
+      ticket.messages = ticket.messages || [];
+      ticket.messages.push(newMsg);
+      await ticket.save();
+    }
+
+    // Broadcast to WebSocket clients (Admin desk and Customer screen)
+    broadcast('SUPPORT_CHAT_MESSAGE', {
+      ticketId: ticket.ticketId,
+      message: newMsg,
+      ticket,
+    });
+    broadcast('SUPPORT_TICKET_UPDATED', { id: ticket.ticketId, ticket });
+
+    if (role !== 'admin') {
+      try {
+        await Notification.create({
+          recipientRole: 'admin',
+          recipientId: '',
+          title: `💬 New Chat Message from ${name}`,
+          message: cleanText,
+          type: 'customer_message',
+          data: { ticketId: ticket.ticketId, senderName: name, message: cleanText },
+          isRead: false,
+        });
+        broadcast('NOTIFICATION_UPDATED', {});
+      } catch (_) {}
+    }
+
+    return res.status(200).json({
+      success: true,
+      ticket,
+      message: newMsg,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getMyChats = async (req, res) => {
+  try {
+    const phone = req.query.phone || req.user?.mobile || '';
+    const userId = req.user?.id || req.user?.customerId || '';
+
+    const query = {};
+    if (phone) {
+      query.senderPhone = phone;
+    } else if (userId) {
+      query.senderId = userId;
+    } else {
+      query.senderRole = 'customer';
+    }
+
+    let tickets = [];
+    try {
+      tickets = await SupportTicket.find(query).sort({ updatedAt: -1 }).limit(10).lean();
+    } catch (_) {
+      tickets = memoryTickets.filter((t) => (!phone || t.senderPhone === phone) && (!userId || t.senderId === userId));
+    }
+
+    tickets = tickets.map((t) => {
+      let msgs = Array.isArray(t.messages) && t.messages.length > 0 ? [...t.messages] : [];
+      if (msgs.length === 0 && t.message) {
+        msgs.push({
+          sender: t.senderRole || 'customer',
+          senderName: t.senderName || 'Customer',
+          text: t.message,
+          createdAt: t.createdAt,
+        });
+        if (t.adminReply) {
+          msgs.push({
+            sender: 'admin',
+            senderName: 'Naveen Kumar (Admin Desk)',
+            text: t.adminReply,
+            createdAt: t.updatedAt || t.createdAt,
+          });
+        }
+      }
+      return {
+        ...t,
+        id: t._id ? t._id.toString() : t.ticketId,
+        messages: msgs,
+      };
+    });
+
+    return res.json({
+      success: true,
+      tickets,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -313,5 +501,7 @@ module.exports = {
   getSupportTickets,
   createSupportTicket,
   updateSupportTicket,
+  sendChatMessage,
+  getMyChats,
   deleteSupportTicket,
 };

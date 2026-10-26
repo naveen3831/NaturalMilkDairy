@@ -4,13 +4,13 @@ let isMongoConnected = false;
 let mongoConnectionInfo = null;
 
 const initialProducts = [
-  { name: 'Farm Fresh Cow Milk 1L', category: 'milk', unit: '1 L', price: 65, status: 'active', description: 'Freshly milked pure organic farm cow milk chilled to 4°C in sterilized glass bottles', image: '/product-cow-milk.jpg' },
-  { name: 'Farm Fresh Cow Milk 500ml', category: 'milk', unit: '500 ml', price: 30, status: 'active', description: 'Convenient daily half-litre pack', image: '/product-cow-milk.jpg' },
-  { name: 'Pure Buffalo Milk 1L', category: 'milk', unit: '1 L', price: 75, status: 'active', description: 'Rich creamy high-fat pure buffalo milk', image: '/product-buffalo-milk.jpg' },
-  { name: 'Thick Farm Curd 500g', category: 'curd', unit: '500 g', price: 35, status: 'active', description: 'Traditional earthen pot set creamy dahi', image: '/product-curd.jpg' },
-  { name: 'Thick Farm Curd 1kg', category: 'curd', unit: '1 kg', price: 65, status: 'active', description: 'Family pack thick probiotic curd', image: '/product-curd.jpg' },
-  { name: 'A2 Vedic Desi Ghee 500ml', category: 'ghee', unit: '500 ml', price: 480, status: 'active', description: 'Traditional bilona churned pure cow ghee', image: '/product-ghee.jpg' },
-  { name: 'Fresh Malai Paneer 500g', category: 'paneer', unit: '500 g', price: 190, status: 'active', description: 'Soft, melt-in-mouth cottage cheese', image: '/product-paneer.jpg' },
+  { name: 'Farm Fresh Cow Milk 1L', category: 'milk', unit: '1 L', price: 65, status: 'active', description: 'Freshly milked pure organic farm cow milk chilled to 4°C in sterilized glass bottles', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg' },
+  { name: 'Farm Fresh Cow Milk 500ml', category: 'milk', unit: '500 ml', price: 30, status: 'active', description: 'Convenient daily half-litre pack', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg' },
+  { name: 'Pure Buffalo Milk 1L', category: 'milk', unit: '1 L', price: 75, status: 'active', description: 'Rich creamy high-fat pure buffalo milk', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1793013264/natural-milk-dairy/product-buffalo-milk.jpg' },
+  { name: 'Thick Farm Curd 500g', category: 'curd', unit: '500 g', price: 35, status: 'active', description: 'Traditional earthen pot set creamy dahi', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg' },
+  { name: 'Thick Farm Curd 1kg', category: 'curd', unit: '1 kg', price: 65, status: 'active', description: 'Family pack thick probiotic curd', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg' },
+  { name: 'A2 Vedic Desi Ghee 500ml', category: 'ghee', unit: '500 ml', price: 480, status: 'active', description: 'Traditional bilona churned pure cow ghee', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454808/natural-milk-dairy/product-ghee.jpg' },
+  { name: 'Fresh Malai Paneer 500g', category: 'paneer', unit: '500 g', price: 190, status: 'active', description: 'Soft, melt-in-mouth cottage cheese', image: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454809/natural-milk-dairy/product-paneer.jpg' },
 ];
 
 const connectDB = async (retryCount = 0) => {

@@ -36,14 +36,18 @@ class ProductCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
                 child: AspectRatio(
-                  aspectRatio: 1.35,
+                  aspectRatio: 1.45,
                   child: Image.network(
-                    product.imageUrl,
+                    ProductModel.resolveImageUrl(product.imageUrl, product.name, product.category),
                     fit: BoxFit.cover,
-                    errorBuilder: (ctx, err, stack) => Container(
-                      color: AppColors.primaryGreenSoft,
-                      child: const Center(
-                        child: Icon(Icons.water_drop_rounded, size: 40, color: AppColors.primaryGreen),
+                    errorBuilder: (ctx, err, stack) => Image.network(
+                      ProductModel.resolveImageUrl('', product.name, product.category),
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) => Container(
+                        color: AppColors.primaryGreenSoft,
+                        child: const Center(
+                          child: Icon(Icons.water_drop_rounded, size: 40, color: AppColors.primaryGreen),
+                        ),
                       ),
                     ),
                   ),
@@ -72,7 +76,7 @@ class ProductCard extends StatelessWidget {
           ),
 
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -85,14 +89,14 @@ class ProductCard extends StatelessWidget {
                     color: AppColors.emeraldGreen,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 // Title
                 Text(
                   product.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     fontWeight: FontWeight.w800,
                     color: AppColors.dairyBlue,
                   ),
@@ -107,7 +111,7 @@ class ProductCard extends StatelessWidget {
                     color: AppColors.textMuted,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
 
                 // Price and Action
                 Row(

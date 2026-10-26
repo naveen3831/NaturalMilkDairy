@@ -5,6 +5,8 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/product_provider.dart';
+import '../admin/admin_dashboard_screen.dart';
+import '../delivery/delivery_dashboard_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
@@ -61,8 +63,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (!mounted) return;
 
     if (isAuth) {
+      Widget target = const HomeScreen();
+      if (authProvider.isAdmin) {
+        target = const AdminDashboardScreen();
+      } else if (authProvider.isDeliveryBoy) {
+        target = const DeliveryPartnerDashboardScreen();
+      }
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => target),
       );
     } else if (onboardingSeen) {
       Navigator.of(context).pushReplacement(
@@ -107,11 +115,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       ),
                     ],
                   ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.water_drop_rounded,
-                      size: 56,
-                      color: AppColors.primaryGreen,
+                  child: ClipOval(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (ctx, err, stack) => const Icon(
+                          Icons.water_drop_rounded,
+                          size: 56,
+                          color: AppColors.primaryGreen,
+                        ),
+                      ),
                     ),
                   ),
                 ),

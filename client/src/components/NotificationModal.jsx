@@ -84,9 +84,6 @@ export default function NotificationModal() {
         item.type === 'ticket'
       );
     }
-    if (activeTab === 'system') {
-      return item.type === 'system' || !item.type;
-    }
     return true;
   });
 
@@ -356,39 +353,6 @@ export default function NotificationModal() {
                 </p>
               </div>
             </div>
-
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => setIsNotificationOpen(false)}
-              aria-label="Close notification panel"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '9px',
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#64748b',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s ease',
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f1f5f9';
-                e.currentTarget.style.color = '#0f172a';
-                e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#f8fafc';
-                e.currentTarget.style.color = '#64748b';
-                e.currentTarget.style.borderColor = '#e2e8f0';
-              }}
-            >
-              <X size={17} />
-            </button>
           </div>
         </div>
 
@@ -420,7 +384,6 @@ export default function NotificationModal() {
               { id: 'all', label: 'All', count: notifications.length },
               { id: 'unread', label: 'Unread', count: unreadCount },
               { id: 'deliveries', label: 'Deliveries' },
-              { id: 'system', label: 'Updates' },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
               return (
@@ -611,146 +574,377 @@ export default function NotificationModal() {
 
             {/* Detail Content Body */}
             <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
-              {/* Category Tag + Full Timestamp */}
               {(() => {
                 const meta = getTypeMeta(selectedNotification.type);
+                const isDelivery =
+                  selectedNotification.type === 'delivery_assigned' ||
+                  selectedNotification.type === 'delivery_completed' ||
+                  selectedNotification.type === 'delivery_missed' ||
+                  selectedNotification.type === 'route_update' ||
+                  Boolean(selectedNotification.data?.driverName || selectedNotification.data?.partnerName || selectedNotification.data?.proofUrl || selectedNotification.proofUrl);
+                const isDispatch = selectedNotification.type === 'delivery_assigned';
+                const isDelivered = selectedNotification.type === 'delivery_completed';
+                const driverName = selectedNotification.data?.partnerName || selectedNotification.data?.driverName || 'Naveen Kumar';
+                const deliveryDate = selectedNotification.data?.date || new Date(selectedNotification.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                const proofUrl = selectedNotification.data?.proofUrl || selectedNotification.proofUrl;
+
                 return (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                    <span
+                  <>
+                    {/* Category Tag + Full Timestamp */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.04em',
+                          color: isDelivery ? (isDispatch ? '#1d4ed8' : '#047857') : meta.tagColor,
+                          background: isDelivery ? (isDispatch ? '#dbeafe' : '#d1fae5') : meta.tagBg,
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        {isDelivery ? (isDispatch ? <Truck size={14} color="#1d4ed8" /> : <CheckCircle2 size={14} color="#047857" />) : meta.icon}
+                        {isDelivery ? (isDispatch ? 'OUT FOR DELIVERY' : 'DELIVERED TO DOORSTEP') : meta.tag}
+                      </span>
+
+                      <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <Clock size={12} />
+                        {new Date(selectedNotification.createdAt).toLocaleString('en-IN', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </span>
+                    </div>
+
+                    {/* Title */}
+                    <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.35 }}>
+                      {selectedNotification.title}
+                    </h3>
+
+                    {/* Full Message Box */}
+                    <div
                       style={{
-                        fontSize: '0.7rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.04em',
-                        color: meta.tagColor,
-                        background: meta.tagBg,
-                        padding: '3px 8px',
-                        borderRadius: '6px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
+                        background: isDelivery ? (isDispatch ? '#f0f7ff' : '#f4fbf7') : '#f8fafc',
+                        border: `1px solid ${isDelivery ? (isDispatch ? '#bfdbfe' : '#bbf7d0') : '#e2e8f0'}`,
+                        borderRadius: '12px',
+                        padding: '16px',
+                        fontSize: '0.88rem',
+                        color: '#1e293b',
+                        lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap',
                       }}
                     >
-                      {meta.icon}
-                      {meta.tag}
-                    </span>
+                      {selectedNotification.message}
+                    </div>
 
-                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                      <Clock size={12} />
-                      {new Date(selectedNotification.createdAt).toLocaleString('en-IN', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
-                    </span>
-                  </div>
+                    {/* EXACT DELIVERY DROP DETAILS & LIVE TRACKER */}
+                    {isDelivery && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {/* 4-Step Progress Tracker */}
+                        <div
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '14px',
+                            padding: '16px',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                              <Truck size={16} color="#059669" />
+                              <span>Live Delivery Progress Tracker</span>
+                            </div>
+                            <span
+                              style={{
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                background: isDispatch ? '#dbeafe' : '#d1fae5',
+                                color: isDispatch ? '#1d4ed8' : '#047857',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              {isDispatch ? 'IN TRANSIT' : 'COMPLETED'}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {[
+                              { title: 'Order Confirmed & Scheduled', sub: 'Farm fresh morning batch reserved', done: true, active: false },
+                              { title: 'Chilled & Bottled at 3.8°C', sub: 'Cold-chain verified & packed at depot', done: true, active: false },
+                              { title: `Out for Doorstep Delivery`, sub: `With delivery partner ${driverName}`, done: isDelivered, active: isDispatch },
+                              { title: isDelivered ? 'Doorstep Drop Completed' : 'Doorstep Drop Pending', sub: isDelivered ? 'Placed safely in your doorstep bag' : 'Estimated morning shift delivery (5:00 AM - 6:30 AM)', done: isDelivered, active: false },
+                            ].map((step, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                <div
+                                  style={{
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    background: step.done ? '#059669' : (step.active ? '#2563eb' : '#cbd5e1'),
+                                    color: '#ffffff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                    marginTop: '2px',
+                                  }}
+                                >
+                                  {step.done ? <Check size={12} strokeWidth={3} /> : (step.active ? <Truck size={11} /> : <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#fff' }} />)}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: step.done || step.active ? 800 : 600, color: step.done || step.active ? '#0f172a' : '#94a3b8' }}>
+                                    {step.title}
+                                  </div>
+                                  <div style={{ fontSize: '0.72rem', color: step.active ? '#2563eb' : '#64748b' }}>
+                                    {step.sub}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Delivery Drop Specifications */}
+                        <div
+                          style={{
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '14px',
+                            padding: '14px 16px',
+                            display: 'grid',
+                            gridTemplateColumns: '1fr 1fr',
+                            gap: '12px',
+                          }}
+                        >
+                          <div>
+                            <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Delivery Date</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{deliveryDate}</span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Delivery Slot</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>5:00 AM – 6:30 AM</span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Package</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>1.5L Farm Fresh Cow Milk</span>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Drop Point</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>Customer Doorstep Bag</span>
+                          </div>
+                        </div>
+
+                        {/* Assigned Delivery Partner Contact */}
+                        <div
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #bbf7d0',
+                            borderRadius: '14px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '10px',
+                                background: '#ecfdf5',
+                                border: '1px solid #a7f3d0',
+                                color: '#059669',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <User size={18} />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{driverName}</div>
+                              <div style={{ fontSize: '0.7rem', color: '#64748b' }}>Assigned Dairy Partner • TS 09 EA 4812</div>
+                            </div>
+                          </div>
+
+                          <a
+                            href="tel:+919876543210"
+                            style={{
+                              background: '#059669',
+                              color: '#ffffff',
+                              borderRadius: '8px',
+                              padding: '6px 12px',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Phone size={12} />
+                            <span>Call</span>
+                          </a>
+                        </div>
+
+                        {/* Direct Redirect to Delivery History */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsNotificationOpen(false);
+                            if (window.location.pathname.startsWith('/customer')) {
+                              window.location.href = '/customer?tab=deliveries';
+                            } else {
+                              window.location.href = '/customer-portal';
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px',
+                            borderRadius: '10px',
+                            background: '#e8f5ee',
+                            border: '1px solid #a7f3d0',
+                            color: '#0d5c3a',
+                            fontSize: '0.8rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#d1fae5')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = '#e8f5ee')}
+                        >
+                          <Truck size={14} />
+                          <span>View Full Delivery Drop Records</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Verified Doorstep Photo Proof (if available) */}
+                    {proofUrl && (
+                      <div
+                        style={{
+                          background: '#f0fdf4',
+                          border: '1px solid #bbf7d0',
+                          borderRadius: '14px',
+                          padding: '14px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', fontWeight: 800, color: '#166534' }}>
+                            <CheckCircle2 size={16} />
+                            <span>Verified Doorstep Delivery Photo Proof</span>
+                          </div>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 900, background: '#dcfce7', color: '#15803d', padding: '2px 6px', borderRadius: '4px' }}>
+                            VERIFIED
+                          </span>
+                        </div>
+                        <img
+                          src={proofUrl}
+                          alt="Doorstep Photo Proof"
+                          style={{
+                            width: '100%',
+                            height: '200px',
+                            objectFit: 'cover',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Extra Metadata (if available) */}
+                    {selectedNotification.data && Object.keys(selectedNotification.data).filter((k) => k !== 'originalType' && k !== 'partnerName' && k !== 'driverName' && k !== 'proofUrl' && k !== 'date').length > 0 && (
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '12px',
+                          padding: '14px 16px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          Event Information
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                          {selectedNotification.data.customerName && (
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Customer</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.customerName}</span>
+                            </div>
+                          )}
+                          {(selectedNotification.data.customerPhone || selectedNotification.data.phone) && (
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Phone</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                                {selectedNotification.data.customerPhone || selectedNotification.data.phone}
+                              </span>
+                            </div>
+                          )}
+                          {(selectedNotification.data.customerArea || selectedNotification.data.area) && (
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Area / Route</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                                {selectedNotification.data.customerArea || selectedNotification.data.area}
+                              </span>
+                            </div>
+                          )}
+                          {selectedNotification.data.category && (
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Category</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.category}</span>
+                            </div>
+                          )}
+                          {selectedNotification.data.priority && (
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Priority</span>
+                              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase' }}>{selectedNotification.data.priority}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Bottom Back Button */}
+                    <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedNotification(null)}
+                        style={{
+                          width: '100%',
+                          padding: '11px',
+                          borderRadius: '10px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          color: '#334155',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                      >
+                        ← Return to All Notifications
+                      </button>
+                    </div>
+                  </>
                 );
               })()}
-
-              {/* Title */}
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0, lineHeight: 1.35 }}>
-                {selectedNotification.title}
-              </h3>
-
-              {/* Full Message Box */}
-              <div
-                style={{
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  fontSize: '0.88rem',
-                  color: '#1e293b',
-                  lineHeight: 1.6,
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {selectedNotification.message}
-              </div>
-
-              {/* Extra Metadata (if available) */}
-              {selectedNotification.data && Object.keys(selectedNotification.data).filter((k) => k !== 'originalType').length > 0 && (
-                <div
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '12px',
-                    padding: '14px 16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                  }}
-                >
-                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Event Information
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
-                    {selectedNotification.data.customerName && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Customer</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.customerName}</span>
-                      </div>
-                    )}
-                    {selectedNotification.data.partnerName && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Delivery Partner</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.partnerName}</span>
-                      </div>
-                    )}
-                    {(selectedNotification.data.customerPhone || selectedNotification.data.partnerPhone || selectedNotification.data.phone) && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Phone</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                          {selectedNotification.data.customerPhone || selectedNotification.data.partnerPhone || selectedNotification.data.phone}
-                        </span>
-                      </div>
-                    )}
-                    {(selectedNotification.data.customerArea || selectedNotification.data.partnerArea || selectedNotification.data.area) && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Area / Route</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                          {selectedNotification.data.customerArea || selectedNotification.data.partnerArea || selectedNotification.data.area}
-                        </span>
-                      </div>
-                    )}
-                    {selectedNotification.data.category && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Category</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>{selectedNotification.data.category}</span>
-                      </div>
-                    )}
-                    {selectedNotification.data.priority && (
-                      <div>
-                        <span style={{ fontSize: '0.68rem', color: '#94a3b8', display: 'block' }}>Priority</span>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase' }}>{selectedNotification.data.priority}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Bottom Back Button */}
-              <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedNotification(null)}
-                  style={{
-                    width: '100%',
-                    padding: '11px',
-                    borderRadius: '10px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    color: '#334155',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                >
-                  ← Return to All Notifications
-                </button>
-              </div>
             </div>
           </div>
         ) : (
@@ -858,8 +1052,8 @@ export default function NotificationModal() {
                     key={item.id}
                     className="nmd-notification-card"
                     onClick={() => {
-                      if (isUnread) markAsRead(item.id);
-                      setSelectedNotification(item);
+                      markAsRead(item.id || item._id);
+                      setSelectedNotification({ ...item, isRead: true });
                     }}
                     style={{
                       padding: '14px 15px',
@@ -956,34 +1150,6 @@ export default function NotificationModal() {
                             <Clock size={11} />
                             <span>{getRelativeTime(item.createdAt)}</span>
                           </div>
-
-                          {/* Quick Delete Single Notification */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (deleteNotification) {
-                                deleteNotification(item.id);
-                              }
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#cbd5e1',
-                              padding: '2px',
-                              borderRadius: '4px',
-                              cursor: 'pointer',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all 0.15s ease',
-                            }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = '#cbd5e1')}
-                            title="Delete notification"
-                          >
-                            <X size={13} />
-                          </button>
                         </div>
                       </div>
 
@@ -1015,20 +1181,6 @@ export default function NotificationModal() {
                       >
                         {item.message}
                       </p>
-
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'flex-end',
-                          marginTop: '6px',
-                          fontSize: '0.7rem',
-                          color: '#059669',
-                          fontWeight: 600,
-                        }}
-                      >
-                        <span>View details →</span>
-                      </div>
                     </div>
                   </div>
                 );

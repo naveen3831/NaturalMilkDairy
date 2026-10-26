@@ -20,6 +20,7 @@ export const CUSTOMER_PORTAL_ITEMS = [
 export const CUSTOMER_HOME_NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'products', label: 'Products', icon: ShoppingBag },
+  { id: 'subscription', label: 'Subscription', icon: CalendarDays },
   { id: 'story', label: 'Story', icon: BookOpen },
   { id: 'profile', label: 'Profile', icon: UserRound },
 ];

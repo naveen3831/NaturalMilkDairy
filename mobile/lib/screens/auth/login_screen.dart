@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/services/api_service.dart';
 import '../../providers/auth_provider.dart';
+import '../admin/admin_dashboard_screen.dart';
+import '../delivery/delivery_dashboard_screen.dart';
 import '../home/home_screen.dart';
 import 'register_screen.dart';
 import 'forgot_password_screen.dart';
@@ -40,8 +42,15 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
+      final user = auth.user;
+      Widget target = const HomeScreen();
+      if (auth.isAdmin || user?.isAdmin == true) {
+        target = const AdminDashboardScreen();
+      } else if (auth.isDeliveryBoy || user?.isDeliveryBoy == true) {
+        target = const DeliveryPartnerDashboardScreen();
+      }
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => target),
         (route) => false,
       );
     }
@@ -50,48 +59,147 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showServerConfigDialog() {
     final apiService = ApiService();
     final urlController = TextEditingController(text: apiService.baseUrl);
+    bool? testResult;
+    bool isTesting = false;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Server Connection URL', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Specify backend URL (e.g. http://10.0.2.2:5000 for Android emulator or http://192.168.x.x:5000 for physical phone):',
-              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.wifi_tethering_rounded, color: AppColors.primaryGreen, size: 22),
+              SizedBox(width: 8),
+              Text('Server Connection', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Quick Presets (Tap to select):',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    ActionChip(
+                      label: const Text('USB (127.0.0.1)', style: TextStyle(fontSize: 11)),
+                      backgroundColor: AppColors.primaryGreenSoft,
+                      onPressed: () => setDialogState(() => urlController.text = 'http://127.0.0.1:5000'),
+                    ),
+                    ActionChip(
+                      label: const Text('Wi-Fi (192.168.1.68)', style: TextStyle(fontSize: 11)),
+                      backgroundColor: AppColors.primaryGreenSoft,
+                      onPressed: () => setDialogState(() => urlController.text = 'http://192.168.1.68:5000'),
+                    ),
+                    ActionChip(
+                      label: const Text('Emulator (10.0.2.2)', style: TextStyle(fontSize: 11)),
+                      backgroundColor: AppColors.primaryGreenSoft,
+                      onPressed: () => setDialogState(() => urlController.text = 'http://10.0.2.2:5000'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: urlController,
+                  decoration: const InputDecoration(
+                    labelText: 'Backend URL',
+                    hintText: 'http://192.168.1.68:5000',
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: isTesting
+                          ? null
+                          : () async {
+                              setDialogState(() {
+                                isTesting = true;
+                                testResult = null;
+                              });
+                              final ok = await apiService.testConnection(urlController.text.trim());
+                              setDialogState(() {
+                                isTesting = false;
+                                testResult = ok;
+                              });
+                            },
+                      icon: isTesting
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Icon(
+                              testResult == true
+                                  ? Icons.check_circle_rounded
+                                  : testResult == false
+                                      ? Icons.cancel_rounded
+                                      : Icons.network_check_rounded,
+                              size: 16,
+                              color: testResult == true
+                                  ? Colors.green
+                                  : testResult == false
+                                      ? Colors.red
+                                      : AppColors.primaryGreen,
+                            ),
+                      label: Text(
+                        testResult == true
+                            ? 'Connected (200 OK)'
+                            : testResult == false
+                                ? 'Unreachable'
+                                : 'Test Ping',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: testResult == true
+                              ? Colors.green
+                              : testResult == false
+                                  ? Colors.red
+                                  : AppColors.primaryGreen,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () async {
+                        setDialogState(() => isTesting = true);
+                        final detected = await apiService.resolveActiveBaseUrl();
+                        setDialogState(() {
+                          isTesting = false;
+                          urlController.text = detected;
+                          testResult = true;
+                        });
+                      },
+                      child: const Text('Auto-Detect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: urlController,
-              decoration: const InputDecoration(
-                hintText: 'http://10.0.2.2:5000',
-                isDense: true,
-              ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                await apiService.setCustomBaseUrl(urlController.text.trim());
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Server updated to ${apiService.baseUrl}')),
+                );
+                setState(() {});
+              },
+              child: const Text('Save & Apply'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final messenger = ScaffoldMessenger.of(context);
-              await apiService.setCustomBaseUrl(urlController.text.trim());
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              messenger.showSnackBar(
-                SnackBar(content: Text('Server updated to ${apiService.baseUrl}')),
-              );
-              setState(() {});
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -102,20 +210,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.creamBg,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, color: AppColors.textMuted, size: 22),
-            tooltip: 'Server Connection',
-            onPressed: _showServerConfigDialog,
-          ),
-        ],
-      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
           child: Form(
             key: _formKey,
             child: Column(
@@ -123,23 +220,42 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 // Brand Header
                 Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
+                  child: GestureDetector(
+                    onLongPress: _showServerConfigDialog,
+                    child: Container(
+                      width: 84,
+                      height: 84,
                     decoration: BoxDecoration(
-                      color: AppColors.primaryGreenSoft,
+                      color: Colors.white,
                       shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryGreen.withValues(alpha: 0.12),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                       border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.2), width: 1.5),
                     ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.water_drop_rounded,
-                        size: 38,
-                        color: AppColors.primaryGreen,
+                    child: ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, _, _) => const Center(
+                            child: Icon(
+                              Icons.water_drop_rounded,
+                              size: 40,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
+              ),
                 const SizedBox(height: 20),
                 Center(
                   child: Text(
@@ -300,7 +416,40 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 12),
+
+                // Guest Mode Button
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      context.read<AuthProvider>().continueAsGuest();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                        (route) => false,
+                      );
+                    },
+                    icon: const Icon(Icons.person_outline_rounded, color: AppColors.primaryGreen, size: 20),
+                    label: const Text(
+                      'Continue as Guest',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primaryGreen,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: AppColors.primaryGreen, width: 1.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
 
                 // Sign Up Footer
                 Row(

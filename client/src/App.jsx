@@ -10,6 +10,7 @@ import FaqsPage from './pages/FaqsPage';
 import ContactPage from './pages/ContactPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import PublicSubscriptionPage from './pages/SubscriptionPage';
 import FloatingContactButton from './components/FloatingContactButton';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -102,7 +103,7 @@ export default function App() {
 
       const directTab = pathParts[0];
       const knownTabs = [
-        'home', 'products', 'story', 'faqs', 'contact', 'register',
+        'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
@@ -533,6 +534,10 @@ export default function App() {
 
             {activeTab === 'products' && (
               <ProductsPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'subscription' && (
+              <PublicSubscriptionPage setActiveTab={navigateToTab} />
             )}
 
             {activeTab === 'story' && (

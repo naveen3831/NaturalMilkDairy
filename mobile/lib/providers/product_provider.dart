@@ -1,14 +1,49 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../data/models/product_model.dart';
 import '../data/services/api_service.dart';
+import '../data/services/realtime_service.dart';
 
 class ProductProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService();
+  final RealtimeService _realtimeService = RealtimeService();
 
   List<ProductModel> _products = [];
   String _selectedCategory = 'all';
   bool _isLoading = false;
   final Map<String, int> _cart = {}; // productId -> quantity
+  StreamSubscription? _wsSubscription;
+  Timer? _pollingTimer;
+
+  ProductProvider() {
+    _initRealtime();
+  }
+
+  void _initRealtime() {
+    _realtimeService.connect();
+    _wsSubscription = _realtimeService.eventStream.listen((event) {
+      final type = event['type']?.toString();
+      if (type == 'PRODUCT_UPDATED' ||
+          type == 'INVENTORY_UPDATED' ||
+          type == 'STOCK_UPDATED' ||
+          type == 'PRICE_UPDATED') {
+        debugPrint('⚡ Realtime $type event received, syncing catalog');
+        loadProducts(silent: true);
+      }
+    });
+
+    // Quiet backup polling every 30 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      loadProducts(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _wsSubscription?.cancel();
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
 
   List<ProductModel> get products => _products;
   String get selectedCategory => _selectedCategory;
@@ -19,16 +54,30 @@ class ProductProvider extends ChangeNotifier {
 
   List<ProductModel> get filteredProducts {
     if (_selectedCategory == 'all') return _products;
-    return _products.where((p) => p.category.toLowerCase() == _selectedCategory.toLowerCase()).toList();
+    final sel = _selectedCategory.toLowerCase();
+    return _products.where((p) {
+      final c = p.category.toLowerCase();
+      if (sel == 'curd') {
+        return c == 'curd' || c == 'paneer';
+      }
+      return c == sel;
+    }).toList();
   }
 
-  Future<void> loadProducts() async {
-    _isLoading = true;
-    notifyListeners();
+  Future<void> loadProducts({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
-    _products = await _apiService.getProducts();
+    final fresh = await _apiService.getProducts();
+    if (fresh.isNotEmpty) {
+      _products = fresh;
+    }
 
-    _isLoading = false;
+    if (!silent) {
+      _isLoading = false;
+    }
     notifyListeners();
   }
 

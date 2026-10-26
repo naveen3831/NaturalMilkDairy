@@ -1515,7 +1515,8 @@ table.dairy-table tr:hover {
     left: 0 !important;
     height: calc(64px + env(safe-area-inset-bottom)) !important;
     display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: minmax(0, 1fr) !important;
     gap: 4px !important;
     padding: 6px 12px calc(6px + env(safe-area-inset-bottom)) !important;
     border-top: 1px solid #e2ece4 !important;

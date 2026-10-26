@@ -32,7 +32,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const isLoggedInCustomer = user?.role === 'customer';
 
-  const publicTabs = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'login', 'register'];
+  const publicTabs = ['home', 'landing', 'products', 'subscription', 'story', 'faqs', 'contact', 'login', 'register'];
   const isPublicView = publicTabs.includes(activeTab);
 
   const navigatePage = (tab) => {
@@ -464,6 +464,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 return;
               }
               navigatePage('login');
+              return;
+            }
+            if (page === 'subscription') {
+              if (user?.role === 'customer') {
+                openUserPortal('subscription');
+                return;
+              }
+              navigatePage('subscription');
               return;
             }
             navigatePage(page);

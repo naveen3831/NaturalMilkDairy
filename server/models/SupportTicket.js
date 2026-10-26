@@ -74,6 +74,27 @@ const supportTicketSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    messages: [
+      {
+        sender: {
+          type: String,
+          enum: ['customer', 'admin', 'delivery_boy', 'driver'],
+          default: 'customer',
+        },
+        senderName: {
+          type: String,
+          default: '',
+        },
+        text: {
+          type: String,
+          required: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
