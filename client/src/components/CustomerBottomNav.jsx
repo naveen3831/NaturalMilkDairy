@@ -17,11 +17,19 @@ export const CUSTOMER_PORTAL_ITEMS = [
   { id: 'profile', label: 'Profile', icon: UserRound },
 ];
 
+export const CUSTOMER_MOBILE_PORTAL_ITEMS = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'products', label: 'Products', icon: ShoppingBag },
+  { id: 'subscription', label: 'Subscription', icon: CalendarDays },
+  { id: 'deliveries', label: 'Deliveries', icon: Truck },
+  { id: 'profile', label: 'Profile', icon: UserRound },
+];
+
 export const CUSTOMER_HOME_NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'products', label: 'Products', icon: ShoppingBag },
   { id: 'subscription', label: 'Subscription', icon: CalendarDays },
-  { id: 'story', label: 'Story', icon: BookOpen },
+  { id: 'deliveries', label: 'Deliveries', icon: Truck },
   { id: 'profile', label: 'Profile', icon: UserRound },
 ];
 

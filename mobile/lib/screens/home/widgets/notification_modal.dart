@@ -19,110 +19,47 @@ class NotificationModal extends StatefulWidget {
   State<NotificationModal> createState() => _NotificationModalState();
 }
 
-class _NotificationModalState extends State<NotificationModal> with SingleTickerProviderStateMixin {
+class _NotificationModalState extends State<NotificationModal> {
   final ApiService _api = ApiService();
   String _activeTab = 'all'; // 'all', 'unread', 'deliveries'
 
-  late AnimationController _pulseController;
   StreamSubscription? _realtimeSub;
 
   // Track marked-read notification IDs locally so server sync never reverts them
   final Set<String> _readIds = {};
 
-  // Realtime notification list matching design
-  List<Map<String, dynamic>> _notifications = [
-    {
-      'id': 'notif-1',
-      'type': 'delivery_assigned',
-      'tag': 'DISPATCH',
-      'tagColor': const Color(0xFF1D4ED8),
-      'tagBg': const Color(0xFFDBEAFE),
-      'icon': Icons.local_shipping_outlined,
-      'iconColor': const Color(0xFF2563EB),
-      'iconBg': const Color(0xFFEFF6FF),
-      'title': '🥛 Morning Milk Dispatched',
-      'body':
-          'Your 1.5L Farm Fresh Cow Milk is out for doorstep delivery with delivery partner Naveen Kumar.',
-      'time': '38m ago',
-      'isRead': false,
-      'date': '2026-10-17',
-      'proofUrl':
-          'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=800&q=80',
-      'driverName': 'Naveen Kumar',
-    },
-    {
-      'id': 'notif-2',
-      'type': 'delivery_completed',
-      'tag': 'DELIVERED',
-      'tagColor': const Color(0xFF047857),
-      'tagBg': const Color(0xFFD1FAE5),
-      'icon': Icons.check_circle_outline_rounded,
-      'iconColor': const Color(0xFF059669),
-      'iconBg': const Color(0xFFECFDF5),
-      'title': 'Delivery Completed',
-      'body':
-          'Your delivery for 2026-10-16 is complete. View the doorstep photo proof in your delivery records.',
-      'time': '10d ago',
-      'isRead': false,
-      'date': '2026-10-16',
-      'proofUrl':
-          'https://images.unsplash.com/photo-1527153857715-3908f2ae5e81?auto=format&fit=crop&w=800&q=80',
-      'driverName': 'Naveen Kumar',
-    },
-    {
-      'id': 'notif-3',
-      'type': 'delivery_completed',
-      'tag': 'DELIVERED',
-      'tagColor': const Color(0xFF047857),
-      'tagBg': const Color(0xFFD1FAE5),
-      'icon': Icons.check_circle_outline_rounded,
-      'iconColor': const Color(0xFF059669),
-      'iconBg': const Color(0xFFECFDF5),
-      'title': 'Delivery Completed',
-      'body':
-          'Your delivery for 2026-10-15 is complete. View the doorstep photo proof in your delivery records.',
-      'time': '11d ago',
-      'isRead': false,
-      'date': '2026-10-15',
-      'proofUrl':
-          'https://images.unsplash.com/photo-1563636619-e9143da7973b?auto=format&fit=crop&w=800&q=80',
-      'driverName': 'Naveen Kumar',
-    },
-    {
-      'id': 'notif-4',
-      'type': 'delivery_completed',
-      'tag': 'DELIVERED',
-      'tagColor': const Color(0xFF047857),
-      'tagBg': const Color(0xFFD1FAE5),
-      'icon': Icons.check_circle_outline_rounded,
-      'iconColor': const Color(0xFF059669),
-      'iconBg': const Color(0xFFECFDF5),
-      'title': 'Delivery Completed',
-      'body':
-          'Your delivery for 2026-10-14 is complete. View the doorstep photo proof in your delivery records.',
-      'time': '12d ago',
-      'isRead': false,
-      'date': '2026-10-14',
-      'proofUrl':
-          'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=800&q=80',
-      'driverName': 'Naveen Kumar',
-    },
-  ];
+  // Realtime notification list from server
+  List<Map<String, dynamic>> _notifications = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
     _fetchServerNotifications();
 
-    // Subscribe to real-time events for instant live updates
+    // Subscribe to real-time events for instant live updates across all dashboards
     _realtimeSub = RealtimeService().eventStream.listen((event) {
       final type = event['type']?.toString();
-      if (type == 'NOTIFICATION_CREATED' ||
+      if (type == 'NOTIFICATION_DELETED') {
+        final delId = event['id']?.toString() ?? event['payload']?['id']?.toString();
+        if (delId != null && delId.isNotEmpty && mounted) {
+          setState(() {
+            _notifications.removeWhere((n) => n['id'] == delId || n['_id'] == delId);
+            _readIds.remove(delId);
+          });
+          widget.onNotificationChanged?.call();
+        }
+        _fetchServerNotifications();
+      } else if (type == 'NOTIFICATIONS_CLEARED') {
+        if (mounted) {
+          setState(() {
+            _notifications.clear();
+            _readIds.clear();
+          });
+          widget.onNotificationChanged?.call();
+        }
+        _fetchServerNotifications();
+      } else if (type == 'NOTIFICATION_CREATED' ||
           type == 'NOTIFICATION_UPDATED' ||
           type == 'DELIVERY_UPDATED' ||
           type == 'DELIVERY_COMPLETED' ||
@@ -137,57 +74,58 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
   @override
   void dispose() {
     _realtimeSub?.cancel();
-    _pulseController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchServerNotifications() async {
     try {
       final res = await _api.get('/api/notifications');
-      if (res['success'] == true && res['notifications'] is List) {
+      if (res['success'] == true && res['notifications'] is List && mounted) {
         final serverList = res['notifications'] as List;
-        if (serverList.isNotEmpty && mounted) {
-          setState(() {
-            _notifications = serverList.map((item) {
-              final type = item['type']?.toString() ?? 'system';
-              final isDispatch = type == 'delivery_assigned';
-              final isDelivered = type == 'delivery_completed';
-              final notifId = item['_id']?.toString() ?? item['id']?.toString() ?? '';
-              final isMarkedReadLocally = _readIds.contains(notifId);
+        setState(() {
+          _notifications = serverList.map((item) {
+            final type = item['type']?.toString() ?? 'system';
+            final isDispatch = type == 'delivery_assigned';
+            final isDelivered = type == 'delivery_completed';
+            final notifId = item['_id']?.toString() ?? item['id']?.toString() ?? '';
+            final isMarkedReadLocally = _readIds.contains(notifId);
 
-              return {
-                'id': notifId,
-                'type': type,
-                'tag': isDispatch ? 'DISPATCH' : (isDelivered ? 'DELIVERED' : 'ALERT'),
-                'tagColor': isDispatch
-                    ? const Color(0xFF1D4ED8)
-                    : (isDelivered ? const Color(0xFF047857) : const Color(0xFF065F46)),
-                'tagBg': isDispatch
-                    ? const Color(0xFFDBEAFE)
-                    : (isDelivered ? const Color(0xFFD1FAE5) : const Color(0xFFECFDF5)),
-                'icon': isDispatch
-                    ? Icons.local_shipping_outlined
-                    : (isDelivered ? Icons.check_circle_outline_rounded : Icons.notifications_active_rounded),
-                'iconColor': isDispatch
-                    ? const Color(0xFF2563EB)
-                    : (isDelivered ? const Color(0xFF059669) : const Color(0xFF0D5C3A)),
-                'iconBg': isDispatch
-                    ? const Color(0xFFEFF6FF)
-                    : (isDelivered ? const Color(0xFFECFDF5) : const Color(0xFFE8F5EE)),
-                'title': item['title']?.toString() ?? 'Delivery Notification',
-                'body': item['message']?.toString() ?? '',
-                'time': _formatRelativeTime(item['createdAt']?.toString()),
-                'isRead': isMarkedReadLocally || item['isRead'] == true,
-                'date': item['data']?['date']?.toString() ?? 'Today',
-                'proofUrl': item['data']?['proofUrl']?.toString() ?? item['proofUrl']?.toString(),
-                'driverName': item['data']?['driverName']?.toString() ?? 'Naveen Kumar',
-              };
-            }).toList();
-          });
-          widget.onNotificationChanged?.call();
-        }
+            return {
+              'id': notifId,
+              '_id': notifId,
+              'type': type,
+              'tag': isDispatch ? 'DISPATCH' : (isDelivered ? 'DELIVERED' : 'ALERT'),
+              'tagColor': isDispatch
+                  ? const Color(0xFF1D4ED8)
+                  : (isDelivered ? const Color(0xFF047857) : const Color(0xFF065F46)),
+              'tagBg': isDispatch
+                  ? const Color(0xFFDBEAFE)
+                  : (isDelivered ? const Color(0xFFD1FAE5) : const Color(0xFFECFDF5)),
+              'icon': isDispatch
+                  ? Icons.local_shipping_outlined
+                  : (isDelivered ? Icons.check_circle_outline_rounded : Icons.notifications_active_rounded),
+              'iconColor': isDispatch
+                  ? const Color(0xFF2563EB)
+                  : (isDelivered ? const Color(0xFF059669) : const Color(0xFF0D5C3A)),
+              'iconBg': isDispatch
+                  ? const Color(0xFFEFF6FF)
+                  : (isDelivered ? const Color(0xFFECFDF5) : const Color(0xFFE8F5EE)),
+              'title': item['title']?.toString() ?? 'Delivery Notification',
+              'body': item['message']?.toString() ?? '',
+              'time': _formatRelativeTime(item['createdAt']?.toString()),
+              'isRead': isMarkedReadLocally || item['isRead'] == true,
+              'date': item['data']?['date']?.toString() ?? 'Today',
+              'proofUrl': item['data']?['proofUrl']?.toString() ?? item['proofUrl']?.toString(),
+              'driverName': item['data']?['driverName']?.toString() ?? 'Naveen Kumar',
+            };
+          }).toList();
+          _isLoading = false;
+        });
+        widget.onNotificationChanged?.call();
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   String _formatRelativeTime(String? dateStr) {
@@ -234,6 +172,7 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
   void _clearAll() {
     setState(() {
       _notifications.clear();
+      _readIds.clear();
     });
     widget.onNotificationChanged?.call();
     try {
@@ -243,7 +182,7 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
 
   void _deleteNotification(String id) {
     setState(() {
-      _notifications.removeWhere((n) => n['id'] == id);
+      _notifications.removeWhere((n) => n['id'] == id || n['_id'] == id);
       _readIds.remove(id);
     });
     widget.onNotificationChanged?.call();
@@ -311,97 +250,93 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
     final String? proofUrl = item['proofUrl']?.toString();
     final String driverName = item['driverName']?.toString() ?? 'Naveen Kumar';
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.90,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Drag Handle
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2E8F0),
-                  borderRadius: BorderRadius.circular(2),
-                ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          backgroundColor: Colors.white,
+          appBar: AppBar(
+            backgroundColor: Colors.white,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+            title: Text(
+              isDelivery ? 'Delivery Details' : 'Notification Details',
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
-
-            // Top Header: Tag Badge + Time + Delete Icon
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: tagBg,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444)),
+                tooltip: 'Delete Notification',
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _deleteNotification(id);
+                },
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(1),
+              child: Container(color: const Color(0xFFF1F5F9), height: 1),
+            ),
+          ),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(icon, size: 14, color: tagColor),
-                        const SizedBox(width: 6),
-                        Text(
-                          isDelivery ? (isDispatch ? 'OUT FOR DELIVERY' : 'DELIVERED TO DOORSTEP') : tag,
-                          style: TextStyle(
-                            color: tagColor,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.3,
-                          ),
+                        // Tag Badge + Time Strip
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: tagBg,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(icon, size: 14, color: tagColor),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    isDelivery ? (isDispatch ? 'OUT FOR DELIVERY' : 'DELIVERED TO DOORSTEP') : tag,
+                                    style: TextStyle(
+                                      color: tagColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Row(
+                              children: [
+                                const Icon(Icons.access_time_rounded, size: 13, color: Color(0xFF94A3B8)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  time,
+                                  style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time_rounded, size: 13, color: Color(0xFF94A3B8)),
-                      const SizedBox(width: 4),
-                      Text(
-                        time,
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(width: 14),
-                      InkWell(
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _deleteNotification(id);
-                        },
-                        child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                        const SizedBox(height: 14),
 
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
-
-            // Body Content (Scrollable)
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Main Title
-                    Text(
+                        // Main Title
+                        Text(
                       title,
                       style: const TextStyle(
                         fontSize: 19,
@@ -768,27 +703,40 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
               ),
             ),
 
-            // Bottom Close Bar
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0D5C3A),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 0,
+                // Bottom Action Bar Redirecting directly
+                Container(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
                   ),
-                  child: Text(
-                    isDelivery ? 'Close Delivery Details' : 'Close Notification Details',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (isDelivery && widget.onOpenDeliveries != null) {
+                          Navigator.pop(ctx);
+                          widget.onOpenDeliveries!();
+                        } else {
+                          Navigator.pop(ctx);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D5C3A),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        isDelivery ? 'Go to Delivery Details' : 'Back to Notifications',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1051,151 +999,139 @@ class _NotificationModalState extends State<NotificationModal> with SingleTicker
               ),
             ),
 
-            // 3. ACTION BAR (Mark all read only shown when unread notifications are available!)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              child: Row(
-                mainAxisAlignment: _unreadCount > 0 ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
-                children: [
-                  if (_unreadCount > 0)
+            // 3. ACTION BAR (Only shown when notifications are available)
+            if (list.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: _unreadCount > 0 ? MainAxisAlignment.spaceBetween : MainAxisAlignment.end,
+                  children: [
+                    if (_unreadCount > 0)
+                      InkWell(
+                        onTap: _markAllAsRead,
+                        borderRadius: BorderRadius.circular(6),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                          child: Row(
+                            children: [
+                              Icon(Icons.check_rounded, size: 15, color: Color(0xFF059669)),
+                              SizedBox(width: 5),
+                              Text(
+                                'Mark all read',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF059669),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     InkWell(
-                      onTap: _markAllAsRead,
+                      onTap: _clearAll,
                       borderRadius: BorderRadius.circular(6),
                       child: const Padding(
                         padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
                         child: Row(
                           children: [
-                            Icon(Icons.check_rounded, size: 15, color: Color(0xFF059669)),
+                            Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFF64748B)),
                             SizedBox(width: 5),
                             Text(
-                              'Mark all read',
+                              'Clear all',
                               style: TextStyle(
                                 fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF059669),
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
                               ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                  InkWell(
-                    onTap: _clearAll,
-                    borderRadius: BorderRadius.circular(6),
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFF64748B)),
-                          SizedBox(width: 5),
-                          Text(
-                            'Clear all',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
             // 4. NOTIFICATIONS CARDS LIST
             Expanded(
-              child: list.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(Icons.notifications_off_outlined, size: 40, color: Color(0xFF94A3B8)),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'No Notifications Found',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'You are all caught up with your deliveries and alerts.',
-                            style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                          ),
-                        ],
-                      ),
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Color(0xFF0D5C3A)),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                  : list.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Icon(Icons.notifications_off_outlined, size: 40, color: Color(0xFF94A3B8)),
+                              ),
+                              const SizedBox(height: 14),
+                              const Text(
+                                'No Notifications Found',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'You are all caught up with your deliveries and alerts.',
+                                style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 20),
                       itemCount: list.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (ctx, i) {
                         final item = list[i];
-                        return _buildNotificationCard(item);
-                      },
-                    ),
-            ),
-
-            // 5. BOTTOM STATUS BAR
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Pulsing Live Indicator
-                    Row(
-                      children: [
-                        FadeTransition(
-                          opacity: _pulseController,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF10B981),
-                              shape: BoxShape.circle,
+                        final notifId = item['id']?.toString() ?? 'notif-$i';
+                        return Dismissible(
+                          key: Key(notifId),
+                          direction: DismissDirection.endToStart, // Swipe left to delete
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEF4444),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Delete',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+                              ],
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Live Real-Time Sync',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ],
+                          onDismissed: (direction) {
+                            _deleteNotification(notifId);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Notification deleted'),
+                                duration: Duration(seconds: 2),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          child: _buildNotificationCard(item),
+                        );
+                      },
                     ),
-
-                    // Close Button
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0F172A),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        minimumSize: Size.zero,
-                      ),
-                      child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    ),
-                  ],
-                ),
-              ),
             ),
           ],
         ),

@@ -26,6 +26,10 @@ class RealtimeService extends ChangeNotifier {
   DateTime? get lastEventTime => _lastEventTime;
 
   void connect() {
+    if (kIsWeb) {
+      debugPrint('⚡ RealtimeService: Web platform detected, skipping dart:io WebSocket');
+      return;
+    }
     if (_isConnected || _isConnecting) return;
     _isConnecting = true;
     notifyListeners();

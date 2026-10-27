@@ -24,6 +24,257 @@ import {
   MapPin,
 } from 'lucide-react';
 
+function SwipeableNotificationCard({ item, meta, isUnread, getRelativeTime, onSelect, onDelete }) {
+  const [startX, setStartX] = useState(null);
+  const [currentX, setCurrentX] = useState(null);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const diffX = startX !== null && currentX !== null ? currentX - startX : 0;
+  // Swipe to left: negative translateX capped at -120px
+  const translateX = Math.max(-120, Math.min(0, diffX));
+
+  const handleTouchStart = (e) => {
+    setStartX(e.touches[0].clientX);
+    setCurrentX(e.touches[0].clientX);
+    setIsSwiping(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isSwiping) return;
+    setCurrentX(e.touches[0].clientX);
+  };
+
+  const handleTouchEnd = () => {
+    setIsSwiping(false);
+    if (diffX < -70) {
+      // Swiped left sufficiently to delete
+      setIsDeleting(true);
+      setTimeout(() => {
+        onDelete(item.id || item._id);
+      }, 200);
+    } else {
+      setStartX(null);
+      setCurrentX(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        borderRadius: '13px',
+        overflow: 'hidden',
+        transition: 'opacity 0.2s ease, max-height 0.25s ease, margin 0.25s ease',
+        opacity: isDeleting ? 0 : 1,
+        maxHeight: isDeleting ? '0px' : '220px',
+        marginBottom: isDeleting ? '0px' : '10px',
+      }}
+    >
+      {/* Red Delete Background Revealed on Swipe Left */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          background: 'linear-gradient(90deg, #f87171 0%, #ef4444 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          paddingRight: '18px',
+          color: '#ffffff',
+          fontWeight: 800,
+          fontSize: '0.8rem',
+          gap: '6px',
+          borderRadius: '13px',
+        }}
+      >
+        <span>Delete</span>
+        <Trash2 size={16} />
+      </div>
+
+      {/* Card Content (Slides Left on Touch Drag) */}
+      <div
+        className="nmd-notification-card"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={() => {
+          if (Math.abs(diffX) < 10 && !isDeleting) {
+            onSelect(item);
+          }
+        }}
+        style={{
+          padding: '14px 15px',
+          borderRadius: '13px',
+          background: isUnread ? '#fbfdfc' : '#ffffff',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
+          display: 'flex',
+          gap: '12px',
+          cursor: 'pointer',
+          position: 'relative',
+          transform: isDeleting ? 'translateX(-100%)' : `translateX(${translateX}px)`,
+          transition: isSwiping ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+        onMouseEnter={(e) => {
+          if (!isSwiping && diffX === 0) {
+            e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.04)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
+            e.currentTarget.style.borderColor = '#cbd5e1';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isSwiping && diffX === 0) {
+            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.02)';
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }
+        }}
+      >
+        {/* Category Type Icon Box */}
+        <div
+          style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: meta.bg,
+            border: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            marginTop: '1px',
+          }}
+        >
+          {meta.icon}
+        </div>
+
+        {/* Body Details */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Top Meta Strip: Category Tag + Relative Time + Direct Delete Button */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '6px',
+              marginBottom: '4px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  color: meta.tagColor,
+                  background: meta.tagBg,
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                }}
+              >
+                {meta.tag}
+              </span>
+              {isUnread && (
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#059669',
+                    display: 'inline-block',
+                  }}
+                />
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  color: '#94a3b8',
+                  fontSize: '0.68rem',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <Clock size={11} />
+                <span>{getRelativeTime(item.createdAt)}</span>
+              </div>
+
+              {/* Direct Desktop / Tap Delete Button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(item.id || item._id);
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: '2px',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = '#ef4444';
+                  e.currentTarget.style.background = '#fee2e2';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = '#94a3b8';
+                  e.currentTarget.style.background = 'transparent';
+                }}
+                title="Delete notification"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          </div>
+
+          {/* Card Title */}
+          <h4
+            style={{
+              fontSize: '0.86rem',
+              fontWeight: isUnread ? 800 : 700,
+              color: isUnread ? '#0f172a' : '#334155',
+              margin: 0,
+              lineHeight: 1.35,
+            }}
+          >
+            {item.title}
+          </h4>
+
+          {/* Notification Description Preview */}
+          <p
+            style={{
+              fontSize: '0.78rem',
+              color: isUnread ? '#334155' : '#64748b',
+              margin: '4px 0 0 0',
+              lineHeight: 1.45,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {item.message}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function NotificationModal() {
   const {
     notifications,
@@ -353,6 +604,39 @@ export default function NotificationModal() {
                 </p>
               </div>
             </div>
+
+            {/* Header Close Button (Accessible across mobile and desktop) */}
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(false)}
+              aria-label="Close notification panel"
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                width: '34px',
+                height: '34px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                flexShrink: 0,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#fee2e2';
+                e.currentTarget.style.color = '#ef4444';
+                e.currentTarget.style.borderColor = '#fca5a5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f8fafc';
+                e.currentTarget.style.color = '#64748b';
+                e.currentTarget.style.borderColor = '#e2e8f0';
+              }}
+            >
+              <X size={18} />
+            </button>
           </div>
         </div>
 
@@ -427,36 +711,36 @@ export default function NotificationModal() {
             })}
           </div>
 
-          {/* Quick Header Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={markAllAsRead}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#059669',
-                  fontSize: '0.74rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '5px 8px',
-                  borderRadius: '6px',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#ecfdf5')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title="Mark all notifications as read"
-              >
-                <CheckCheck size={14} />
-                <span>Mark all read</span>
-              </button>
-            )}
+          {/* Quick Header Actions (Only shown when notifications are available) */}
+          {filteredNotifications.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllAsRead}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#059669',
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#ecfdf5')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  title="Mark all notifications as read"
+                >
+                  <CheckCheck size={14} />
+                  <span>Mark all read</span>
+                </button>
+              )}
 
-            {notifications.length > 0 && (
               <button
                 type="button"
                 onClick={() => {
@@ -490,8 +774,8 @@ export default function NotificationModal() {
                 <Trash2 size={13} />
                 <span>Clear all</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Content Body: Either Single Notification Detail View or Cards Feed */}
@@ -1048,149 +1332,29 @@ export default function NotificationModal() {
                 const isUnread = !item.isRead;
 
                 return (
-                  <div
-                    key={item.id}
-                    className="nmd-notification-card"
-                    onClick={() => {
-                      markAsRead(item.id || item._id);
-                      setSelectedNotification({ ...item, isRead: true });
+                  <SwipeableNotificationCard
+                    key={item.id || item._id}
+                    item={item}
+                    meta={meta}
+                    isUnread={isUnread}
+                    getRelativeTime={getRelativeTime}
+                    onSelect={(selected) => {
+                      markAsRead(selected.id || selected._id);
+                      setSelectedNotification({ ...selected, isRead: true });
                     }}
-                    style={{
-                      padding: '14px 15px',
-                      borderRadius: '13px',
-                      background: isUnread ? '#fbfdfc' : '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.02)',
-                      display: 'flex',
-                      gap: '12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
-                      position: 'relative',
+                    onDelete={(id) => {
+                      deleteNotification(id);
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.04)';
-                      e.currentTarget.style.transform = 'translateY(-1px)';
-                      e.currentTarget.style.borderColor = '#cbd5e1';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.02)';
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.borderColor = '#e2e8f0';
-                    }}
-                  >
-                    {/* Category Type Icon Box */}
-                    <div
-                      style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '10px',
-                        background: meta.bg,
-                        border: '1px solid #e2e8f0',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        marginTop: '1px',
-                      }}
-                    >
-                      {meta.icon}
-                    </div>
-
-                    {/* Body Details */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* Top Meta Strip: Category Tag + Relative Time + Single Dismiss */}
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '6px',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span
-                            style={{
-                              fontSize: '0.62rem',
-                              fontWeight: 800,
-                              letterSpacing: '0.04em',
-                              color: meta.tagColor,
-                              background: meta.tagBg,
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                            }}
-                          >
-                            {meta.tag}
-                          </span>
-                          {isUnread && (
-                            <span
-                              style={{
-                                width: '6px',
-                                height: '6px',
-                                borderRadius: '50%',
-                                background: '#059669',
-                                display: 'inline-block',
-                              }}
-                            />
-                          )}
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              color: '#94a3b8',
-                              fontSize: '0.68rem',
-                              fontWeight: 500,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            <Clock size={11} />
-                            <span>{getRelativeTime(item.createdAt)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Card Title */}
-                      <h4
-                        style={{
-                          fontSize: '0.86rem',
-                          fontWeight: isUnread ? 800 : 700,
-                          color: isUnread ? '#0f172a' : '#334155',
-                          margin: 0,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        {item.title}
-                      </h4>
-
-                      {/* Notification Description Preview */}
-                      <p
-                        style={{
-                          fontSize: '0.78rem',
-                          color: isUnread ? '#334155' : '#64748b',
-                          margin: '4px 0 0 0',
-                          lineHeight: 1.45,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                        }}
-                      >
-                        {item.message}
-                      </p>
-                    </div>
-                  </div>
+                  />
                 );
               })
             )}
           </div>
         )}
 
-        {/* Professional Drawer Footer */}
+        {/* Professional Drawer Footer (Hidden on mobile response) */}
         <div
+          className="nmd-notification-footer"
           style={{
             padding: '14px 22px',
             borderTop: '1px solid #f1f5f9',
@@ -1284,9 +1448,12 @@ export default function NotificationModal() {
           background: #94a3b8;
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 768px) {
           .nmd-notification-drawer {
             width: 100vw !important;
+          }
+          .nmd-notification-footer {
+            display: none !important;
           }
         }
       `}</style>

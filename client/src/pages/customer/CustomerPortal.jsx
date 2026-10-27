@@ -7,6 +7,9 @@ import {
   ArrowLeft,
   ArrowUpRight,
   BadgeCheck,
+  Leaf,
+  Snowflake,
+  Pause,
   Bell,
   CalendarDays,
   CheckCircle2,
@@ -60,16 +63,18 @@ import {
   Tag,
   Briefcase,
   Building,
+  Globe,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
   CUSTOMER_HOME_NAV_ITEMS,
+  CUSTOMER_MOBILE_PORTAL_ITEMS,
   CUSTOMER_PORTAL_ITEMS,
 } from '../../components/CustomerBottomNav';
 import ProductDetailsView from '../ProductDetailsView';
 
 const CUSTOMER_PROFILE_NAV_ITEMS = [
-  { id: 'dashboard', label: 'Home', icon: Home },
+  { id: 'home', label: 'Home', icon: Home },
   { id: 'products', label: 'Products', icon: ShoppingBag },
   { id: 'subscription', label: 'Subscription', icon: CalendarDays },
   { id: 'deliveries', label: 'Deliveries', icon: Truck },
@@ -281,6 +286,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
   });
   const [selectedProductDetails, setSelectedProductDetails] = useState(null);
+  const [selectedWeekdayIndex, setSelectedWeekdayIndex] = useState(0);
 
   const getProductImage = (p) => {
     if (!p) return '/product-cow-milk.jpg';
@@ -931,6 +937,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       backToProfile();
       return;
     }
+    if (selectedProductDetails) {
+      setSelectedProductDetails(null);
+      return;
+    }
 
     // 2. Retrieve recent history stack from sessionStorage
     try {
@@ -964,18 +974,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       return;
     }
 
-    // 5. Context-aware fallback:
-    if (activePage === 'deliveries' || activePage === 'subscription') {
-      navigateToPage('profile', false);
-    } else if (activePage === 'profile' || activePage === 'products') {
-      navigateToPage('dashboard', false);
+    // 5. Default fallback: reliably return to Home page
+    localStorage.setItem('nmd_current_tab', 'home');
+    if (typeof setActiveTab === 'function') {
+      setActiveTab('home');
     } else {
-      if (typeof setActiveTab === 'function') {
-        setActiveTab('home');
-      } else {
-        navigateToPage('dashboard', false);
-      }
+      window.location.href = '/';
     }
+    if (window.location.pathname !== '/') {
+      window.history.pushState({ nmdPage: 'home' }, '', '/');
+    }
+    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
   const backToProfile = () => {
@@ -1632,21 +1641,544 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const renderSubscriptionDetailsModal = () => {
     if (!selectedSubForDetails) return null;
     const sub = selectedSubForDetails;
-    const isSubActive = sub.status === 'active';
+    const isSubActive = sub.status === 'active' || !sub.status;
     const isSubPaused = sub.status === 'paused' || sub.status === 'stopped';
     const plan = sub.plan || {};
     const planMilk = plan.milkQty || milkQuantity || 1;
     const planMilkUnit = plan.milkUnit || milkUnit || 'L';
-    const planCurd = plan.curdQty || curdQuantity || 0;
-    const planCurdUnit = plan.curdUnit || curdUnit || 'g';
-    const freqLabel = plan.frequency === 'selected'
-      ? `Selected Days (${(plan.deliveryDays || []).join(', ')})`
-      : (plan.frequency === 'alternate' ? 'Alternate Days Delivery' : 'Everyday Morning Delivery');
-    const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Assigned Route Partner';
-    const dropAddress = sub.deliveryAddress || currentCustomer.address || 'Doorstep drop';
-    const areaName = sub.area || currentCustomer.area || '';
-    const landmarkName = sub.landmark || currentCustomer.landmark || '';
-    const phoneContact = sub.whatsapp || currentCustomer.whatsapp || currentCustomer.mobile || user?.mobile || '';
+    const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || 'Naveen';
+    const customerId = sub.customerId || currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const areaName = sub.area || currentCustomer.area || user?.area || 'Madhupur';
+    const displayAddress = sub.deliveryAddress || currentCustomer.address || address || 'Madhupur, Hyderabad, Telangana - 500081';
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    const content = (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
+        {/* Top Header */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingBottom: '8px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedSubForDetails(null)}
+            aria-label="Back"
+            style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: '#f3f7f4',
+              border: '1px solid #e2ebe5',
+              color: '#0d5c3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <ArrowLeft size={20} />
+          </button>
+
+          <h3
+            style={{
+              margin: 0,
+              fontSize: '1.05rem',
+              fontWeight: 900,
+              color: '#0c2340',
+              textAlign: 'center',
+            }}
+          >
+            Subscription Details
+          </h3>
+
+          <button
+            type="button"
+            onClick={() => setIsNotificationOpen(true)}
+            aria-label="Notifications"
+            style={{
+              position: 'relative',
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: '#f3f7f4',
+              border: '1px solid #e2ebe5',
+              color: '#0d5c3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <Bell size={19} />
+            <span
+              style={{
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#e53935',
+              }}
+            />
+          </button>
+        </div>
+
+        {/* 1. Summary Card */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '20px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+          }}
+        >
+          <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+            <img
+              src="/product-cow-milk.jpg"
+              alt="Farm Pure Milk"
+              style={{
+                width: '68px',
+                height: '72px',
+                borderRadius: '14px',
+                objectFit: 'cover',
+                border: '1px solid #e2ebe5',
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '3px' }}>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Daily Farm Pure Milk Plan
+                </h4>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '3px 8px',
+                    borderRadius: '20px',
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    background: isSubActive ? '#e2f1ea' : '#fef3c7',
+                    color: isSubActive ? '#0d5c3a' : '#b45309',
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isSubActive ? '#0d5c3a' : '#d97706' }} />
+                  {isSubActive ? 'Active' : 'Paused'}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.76rem', color: '#6b7280', fontWeight: 600 }}>
+                ID: {customerId} • Daily Morning
+              </span>
+            </div>
+          </div>
+
+          {/* 2 Metric Boxes */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div
+              style={{
+                background: '#f7faf8',
+                borderRadius: '12px',
+                border: '1px solid #e5ede8',
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <Milk size={18} color="#0d5c3a" />
+              <div>
+                <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                  {planMilk} {planMilkUnit} / day
+                </strong>
+                <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Pure A2 Milk</span>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#f7faf8',
+                borderRadius: '12px',
+                border: '1px solid #e5ede8',
+                padding: '10px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <Clock3 size={18} color="#0d5c3a" />
+              <div>
+                <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                  Before 6:30 AM
+                </strong>
+                <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Morning Delivery</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Partner & Delivery Area Row */}
+          <div
+            style={{
+              background: '#fafbfb',
+              borderRadius: '12px',
+              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.76rem',
+              color: '#4b5563',
+              fontWeight: 600,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <UserRound size={15} color="#6b7280" />
+              <span>Partner {partnerName}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <MapPin size={15} color="#6b7280" />
+              <span>Delivery Area {areaName}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. Order Schedule */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '20px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Calendar size={18} color="#0d5c3a" />
+              <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Order Schedule</strong>
+            </div>
+            <button
+              type="button"
+              onClick={() => alert('Daily doorstep schedule active. You can customize daily quantities anytime.')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#0d5c3a',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              Change →
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+            {weekdays.map((day, idx) => {
+              const isSelected = selectedWeekdayIndex === idx;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => setSelectedWeekdayIndex(idx)}
+                  style={{
+                    height: '38px',
+                    borderRadius: '10px',
+                    border: isSelected ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                    background: isSelected ? '#0d5c3a' : '#f3f7f4',
+                    color: isSelected ? '#ffffff' : '#4b5563',
+                    fontSize: '0.74rem',
+                    fontWeight: isSelected ? 900 : 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 3. Delivery Address */}
+        <div
+          onClick={() => {
+            setSelectedSubForDetails(null);
+            openProfileDetail('delivery-address');
+          }}
+          style={{
+            background: '#ffffff',
+            borderRadius: '20px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <MapPin size={18} color="#0d5c3a" />
+            <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Delivery Address</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: '#f3f7f4',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Home size={19} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Home</strong>
+                <span style={{ fontSize: '0.76rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                  {displayAddress}
+                </span>
+              </div>
+            </div>
+            <ChevronRight size={19} color="#9ca3af" />
+          </div>
+        </div>
+
+        {/* 4. Next Delivery */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '20px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+            <Truck size={18} color="#0d5c3a" />
+            <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Next Delivery</strong>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: '#f3f7f4',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <CalendarDays size={19} />
+              </div>
+              <div>
+                <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Tomorrow, 28 Oct 2026</strong>
+                <span style={{ fontSize: '0.76rem', color: '#6b7280' }}>Before 6:30 AM</span>
+              </div>
+            </div>
+            <ChevronRight size={19} color="#9ca3af" />
+          </div>
+        </div>
+
+        {/* 5. Manage Subscription */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '20px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+            <Settings size={18} color="#0d5c3a" />
+            <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Manage Subscription</strong>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Row 1: Pause Delivery for a Trip */}
+            <div
+              onClick={() => {
+                setSelectedSubForDetails(null);
+                onOpenPauseModal?.(currentCustomer);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderRadius: '14px',
+                background: '#fafbfb',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <PauseCircle size={19} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0c2340', fontWeight: 800 }}>Pause Delivery for a Trip</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Temporary pause your deliveries</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+
+            {/* Row 2: Change Tomorrow's Quantity */}
+            <div
+              onClick={() => {
+                setSelectedSubForDetails(null);
+                openProfileDetail('quantity');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderRadius: '14px',
+                background: '#fafbfb',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Edit3 size={19} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0c2340', fontWeight: 800 }}>Change Tomorrow's Quantity</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Update milk quantity for next delivery</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+
+            {/* Row 3: Change Delivery Address */}
+            <div
+              onClick={() => {
+                setSelectedSubForDetails(null);
+                openProfileDetail('delivery-address');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderRadius: '14px',
+                background: '#fafbfb',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Truck size={19} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', color: '#0c2340', fontWeight: 800 }}>Change Delivery Address</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>Update or add new address</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+
+            {/* Row 4: Stop Subscription */}
+            <div
+              onClick={() => {
+                if (window.confirm('Are you sure you want to stop your daily subscription? You can restart anytime.')) {
+                  handleToggleCustomerSub(sub, 'stop');
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderRadius: '14px',
+                background: '#fff5f5',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <X size={19} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', color: '#dc2626', fontWeight: 800 }}>Stop Subscription</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#ef4444' }}>Cancel your plan anytime</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#f87171" />
+            </div>
+          </div>
+        </div>
+
+        {/* 6. Explore More Plans Button */}
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedSubForDetails(null);
+            const el = document.getElementById('more-subscription-plans');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          style={{
+            width: '100%',
+            height: '50px',
+            borderRadius: '16px',
+            border: 'none',
+            background: '#0d5c3a',
+            color: '#ffffff',
+            fontWeight: 800,
+            fontSize: '0.92rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            boxShadow: '0 4px 14px rgba(13, 92, 58, 0.25)',
+          }}
+        >
+          <Sparkles size={18} />
+          <span>Explore More Plans</span>
+        </button>
+      </div>
+    );
+
+    if (isMobile) {
+      return (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: '#f9faf9',
+            overflowY: 'auto',
+            padding: '16px 16px 36px 16px',
+          }}
+        >
+          {content}
+        </div>
+      );
+    }
 
     return (
       <div
@@ -1668,524 +2200,540 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           className="modal-content"
           onClick={(e) => e.stopPropagation()}
           style={{
-            maxWidth: '560px',
+            maxWidth: '520px',
             width: '100%',
-            maxHeight: '90vh',
+            maxHeight: '92vh',
             overflowY: 'auto',
-            borderRadius: '20px',
-            background: '#ffffff',
+            borderRadius: '24px',
+            background: '#f9faf9',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-            padding: '24px',
+            padding: '20px',
             position: 'relative',
           }}
         >
-          {/* Modal Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '14px', borderBottom: '1px solid #f1f5f9', paddingBottom: '16px', marginBottom: '18px' }}>
-            <div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: '#059669', fontSize: '0.74rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
-                <BadgeCheck size={14} />
-                <span>Subscription Details</span>
-              </div>
-              <h3 style={{ margin: '0 0 4px 0', fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>
-                Daily Farm Fresh Dairy Plan
-              </h3>
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                Customer ID: <strong>{sub.customerId || currentCustomer.customerId || 'CUST-101'}</strong> · {sub._id && sub._id.length === 24 ? `Order ID: #${sub._id.slice(-6).toUpperCase()}` : 'Standard Daily Route'}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setSelectedSubForDetails(null)}
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                border: '1px solid #e2e8f0',
-                background: '#f8fafc',
-                color: '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                fontWeight: 700,
-                fontSize: '1rem',
-              }}
-              title="Close"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Status Alert Banner */}
-          <div
-            style={{
-              padding: '12px 16px',
-              borderRadius: '12px',
-              background: isSubActive ? '#ecfdf5' : '#fffbeb',
-              border: `1.5px solid ${isSubActive ? '#86efac' : '#fde68a'}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              marginBottom: '18px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
-              <span
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  background: isSubActive ? '#10b981' : '#f59e0b',
-                }}
-              />
-              <div>
-                <strong style={{ fontSize: '0.88rem', color: isSubActive ? '#065f46' : '#92400e', display: 'block' }}>
-                  {isSubActive ? 'Subscription is Active' : 'Subscription is Stopped / Paused'}
-                </strong>
-                <span style={{ fontSize: '0.74rem', color: isSubActive ? '#047857' : '#b45309' }}>
-                  {isSubActive ? 'Daily morning doorstep delivery is confirmed.' : 'Daily morning doorstep deliveries are temporarily on hold.'}
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Stop/Start in banner */}
-            <button
-              type="button"
-              disabled={subToggling}
-              onClick={() => handleToggleCustomerSub(sub, isSubActive ? 'stop' : 'start')}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                border: 'none',
-                background: isSubActive ? '#b45309' : '#059669',
-                color: '#ffffff',
-                fontSize: '0.76rem',
-                fontWeight: 800,
-                cursor: subToggling ? 'wait' : 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                flexShrink: 0,
-              }}
-            >
-              {isSubActive ? <PauseCircle size={13} /> : <PlayCircle size={13} />}
-              <span>{subToggling ? 'Updating...' : (isSubActive ? 'Stop Sub' : 'Start Sub')}</span>
-            </button>
-          </div>
-
-          {/* Section 1: Dairy Items */}
-          <div style={{ marginBottom: '16px' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-              Daily Dairy Quota
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block' }}>Fresh A2 Cow Milk</span>
-                <strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{planMilk} {planMilkUnit}</strong>
-                <span style={{ fontSize: '0.70rem', color: '#059669', display: 'block', marginTop: '2px' }}>Chilled Glass Bottle · 4°C</span>
-              </div>
-              <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block' }}>Fresh Desi Curd / Dahi</span>
-                <strong style={{ fontSize: '1.1rem', color: '#0f172a' }}>{planCurd > 0 ? `${planCurd} ${planCurdUnit}` : 'None Included'}</strong>
-                <span style={{ fontSize: '0.70rem', color: '#059669', display: 'block', marginTop: '2px' }}>Traditional Clay Pot Set</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Schedule & Delivery Route */}
-          <div style={{ marginBottom: '16px' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-              Delivery Schedule & Drop Details
-            </span>
-            <div style={{ background: '#f8fafc', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Delivery Timing:</span>
-                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>5:00 AM – 6:30 AM (Early Morning)</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Delivery Frequency:</span>
-                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>{freqLabel}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748b', fontSize: '0.80rem' }}>Assigned Partner:</span>
-                <strong style={{ color: '#059669', fontSize: '0.82rem' }}>{partnerName}</strong>
-              </div>
-              <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
-                <span style={{ color: '#64748b', fontSize: '0.74rem', display: 'block', marginBottom: '2px' }}>Doorstep Drop Address:</span>
-                <div style={{ color: '#0f172a', fontSize: '0.82rem', fontWeight: 600 }}>
-                  {dropAddress} {areaName ? `· ${areaName}` : ''} {landmarkName ? `(Near ${landmarkName})` : ''}
-                </div>
-                {phoneContact && (
-                  <span style={{ color: '#64748b', fontSize: '0.74rem', marginTop: '2px', display: 'block' }}>
-                    Phone for drop updates: {phoneContact}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Section 3: Billing & Validity */}
-          <div style={{ marginBottom: '20px' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '8px' }}>
-              Billing & Validity
-            </span>
-            <div style={{ background: '#f8fafc', borderRadius: '14px', border: '1px solid #f1f5f9', padding: '14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>Subscription Duration</span>
-                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>
-                  {formatProfileDate(sub.startDate)} – {formatProfileDate(sub.endDate || subscriptionThrough)}
-                </strong>
-              </div>
-              <div>
-                <span style={{ color: '#64748b', fontSize: '0.72rem', display: 'block' }}>Payment Reference</span>
-                <strong style={{ color: '#0f172a', fontSize: '0.82rem' }}>
-                  {sub.providerPaymentId || currentCustomer.subscription?.paymentId || 'Prepaid Account'}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Modal Actions */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-            {isSubActive ? (
-              <button
-                type="button"
-                disabled={subToggling}
-                onClick={() => handleToggleCustomerSub(sub, 'stop')}
-                style={{
-                  padding: '11px',
-                  borderRadius: '10px',
-                  border: '1.5px solid #fde68a',
-                  background: '#fffbeb',
-                  color: '#b45309',
-                  fontWeight: 800,
-                  fontSize: '0.86rem',
-                  cursor: subToggling ? 'wait' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <PauseCircle size={16} />
-                <span>{subToggling ? 'Updating...' : 'Stop Subscription'}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={subToggling}
-                onClick={() => handleToggleCustomerSub(sub, 'start')}
-                style={{
-                  padding: '11px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: '#059669',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.86rem',
-                  cursor: subToggling ? 'wait' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <PlayCircle size={16} />
-                <span>{subToggling ? 'Updating...' : 'Start Subscription'}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setSelectedSubForDetails(null)}
-              style={{
-                padding: '11px',
-                borderRadius: '10px',
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#475569',
-                fontWeight: 750,
-                fontSize: '0.86rem',
-                cursor: 'pointer',
-              }}
-            >
-              Close Details
-            </button>
-          </div>
+          {content}
         </div>
       </div>
     );
   };
 
   const renderSubscriptionPage = () => {
+    const primarySub = allCustomerSubscriptions[0] || {
+      id: currentCustomer.customerId || 'CUST-101',
+      customerId: currentCustomer.customerId || 'CUST-101',
+      status: isPaused ? 'paused' : 'active',
+      plan: { milkQty: milkQuantity || 1, milkUnit: milkUnit || 'L', frequency: 'daily' },
+      deliveryBoyName: currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || 'Naveen',
+      area: currentCustomer.area || user?.area || 'Madhupur',
+    };
+
     return (
       <section className="customer-dashboard-main customer-subscription-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        {/* Banner with stats */}
+        {/* Hero Card */}
         <div
           style={{
             background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)',
-            borderRadius: '18px',
-            padding: '24px',
+            borderRadius: '22px',
+            padding: isMobile ? '20px' : '28px',
             color: '#ffffff',
-            boxShadow: '0 8px 24px rgba(13, 92, 58, 0.18)',
+            boxShadow: '0 8px 24px rgba(13, 92, 58, 0.22)',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            flexWrap: 'wrap',
+            justifyContent: 'space-between',
             gap: '16px',
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.18)', padding: '4px 10px', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase', marginBottom: '8px' }}>
+          <div style={{ flex: 1, zIndex: 2 }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: 'rgba(255,255,255,0.18)',
+                backdropFilter: 'blur(8px)',
+                padding: '5px 12px',
+                borderRadius: '20px',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+                marginBottom: '10px',
+                color: '#fef08a',
+              }}
+            >
               <Sparkles size={12} />
-              <span>Doorstep Delivery Plans</span>
+              <span>DOORSTEP DELIVERY PLANS</span>
             </div>
-            <h2 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 6px 0', color: '#ffffff' }}>
-              My Dairy Subscriptions
+            <h2 style={{ fontSize: isMobile ? '1.35rem' : '1.7rem', fontWeight: 900, margin: '0 0 8px 0', color: '#ffffff', lineHeight: 1.25 }}>
+              Fresh Dairy Every Morning
             </h2>
-            <p style={{ margin: 0, fontSize: '0.86rem', color: '#d1fae5', maxWidth: '520px', lineHeight: 1.5 }}>
-              Review your active daily morning milk drop, tap any card to view full delivery details, or stop & restart anytime.
+            <p style={{ margin: '0 0 16px 0', fontSize: '0.84rem', color: '#d1fae5', maxWidth: '460px', lineHeight: 1.5 }}>
+              Healthy milk, curd, paneer and more delivered to your doorstep before 6:30 AM.
             </p>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('more-subscription-plans');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              style={{
+                background: '#ffffff',
+                color: '#0d5c3a',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '9px 18px',
+                fontWeight: 800,
+                fontSize: '0.86rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}
+            >
+              <span>Explore Plans</span>
+              <ArrowUpRight size={15} />
+            </button>
           </div>
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-            <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '10px 16px', textAlign: 'center', minWidth: '100px' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>{allCustomerSubscriptions.length}</div>
-              <div style={{ fontSize: '0.70rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Total Plans</div>
+          <div style={{ width: isMobile ? '82px' : '110px', height: isMobile ? '96px' : '130px', flexShrink: 0, zIndex: 2 }}>
+            <img
+              src="/glass-bottles.jpg"
+              alt="Fresh glass milk bottles"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                borderRadius: '14px',
+                boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+                border: '2px solid rgba(255,255,255,0.3)',
+              }}
+              onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+            />
+          </div>
+        </div>
+
+        {/* 4 Feature Badges */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+            gap: '10px',
+          }}
+        >
+          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Leaf size={16} />
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(10px)', borderRadius: '12px', padding: '10px 16px', textAlign: 'center', minWidth: '100px' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff' }}>{milkQuantity} <span style={{ fontSize: '0.85rem' }}>{milkUnit}</span></div>
-              <div style={{ fontSize: '0.70rem', color: '#a7f3d0', textTransform: 'uppercase', fontWeight: 700 }}>Daily Milk</div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>100% Pure & Natural</span>
+          </div>
+
+          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Snowflake size={16} />
+            </div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Chilled to 4°C</span>
+          </div>
+
+          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Truck size={16} />
+            </div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Doorstep Delivery</span>
+          </div>
+
+          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <CalendarDays size={16} />
+            </div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Flexible Plans</span>
+          </div>
+        </div>
+
+        {/* Active Subscriptions Section */}
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: '#0c2340' }}>
+              Active Subscriptions
+            </h3>
+            <button
+              type="button"
+              onClick={() => setSelectedSubForDetails(primarySub)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#0d5c3a',
+                fontSize: '0.80rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              View All →
+            </button>
+          </div>
+
+          {/* Active Subscription Card */}
+          <div
+            onClick={() => setSelectedSubForDetails(primarySub)}
+            style={{
+              background: '#ffffff',
+              borderRadius: '20px',
+              border: '1px solid #e2ebe5',
+              padding: '18px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              transition: 'transform 0.15s ease',
+            }}
+          >
+            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+              <img
+                src="/product-cow-milk.jpg"
+                alt="Daily Farm Pure Milk Plan"
+                style={{
+                  width: '64px',
+                  height: '68px',
+                  borderRadius: '14px',
+                  objectFit: 'cover',
+                  border: '1px solid #e2ebe5',
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Daily Farm Pure Milk Plan
+                  </h4>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 9px',
+                      borderRadius: '20px',
+                      fontSize: '0.70rem',
+                      fontWeight: 800,
+                      background: '#e2f1ea',
+                      color: '#0d5c3a',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#0d5c3a' }} />
+                    Active
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>
+                  ID: {primarySub.customerId || 'CUST-101'} • Daily Morning
+                </span>
+              </div>
+            </div>
+
+            {/* 2 Metric Boxes */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div
+                style={{
+                  background: '#f7faf8',
+                  borderRadius: '12px',
+                  border: '1px solid #e5ede8',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Milk size={18} color="#0d5c3a" />
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                    {primarySub.plan?.milkQty || milkQuantity || 1} {primarySub.plan?.milkUnit || milkUnit || 'L'} / day
+                  </strong>
+                  <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Pure A2 Milk</span>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  background: '#f7faf8',
+                  borderRadius: '12px',
+                  border: '1px solid #e5ede8',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                <Clock3 size={18} color="#0d5c3a" />
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                    Before 6:30 AM
+                  </strong>
+                  <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Morning Delivery</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Delivery Area */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600 }}>
+              <MapPin size={15} color="#0d5c3a" />
+              <span>{primarySub.area || currentCustomer.area || 'Madhupur'} Delivery Area</span>
+            </div>
+
+            {/* Two Action Buttons: View Details (outline) & Manage Plan (solid green) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '4px' }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedSubForDetails(primarySub);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  border: '1.5px solid #0d5c3a',
+                  background: '#ffffff',
+                  color: '#0d5c3a',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Eye size={15} />
+                <span>View Details</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedSubForDetails(primarySub);
+                }}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                <Settings size={15} />
+                <span>Manage Plan</span>
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Subscription Cards List */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-              Active & Scheduled Subscriptions
+        {/* More Subscription Plans Section */}
+        <div id="more-subscription-plans">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: '#0c2340' }}>
+              More Subscription Plans
             </h3>
-            <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
-              Tap any card to view complete details
-            </span>
+            <button
+              type="button"
+              onClick={() => navigateToPage('products')}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#0d5c3a',
+                fontSize: '0.80rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >
+              View All →
+            </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
-            {allCustomerSubscriptions.map((sub, index) => {
-              const isSubActive = sub.status === 'active';
-              const isSubPaused = sub.status === 'paused' || sub.status === 'stopped';
-              const plan = sub.plan || {};
-              const planMilk = plan.milkQty || milkQuantity || 1;
-              const planMilkUnit = plan.milkUnit || milkUnit || 'L';
-              const planCurd = plan.curdQty || curdQuantity || 0;
-              const planCurdUnit = plan.curdUnit || curdUnit || 'g';
-              const freqLabel = plan.frequency === 'selected'
-                ? `Days: ${(plan.deliveryDays || []).join(', ')}`
-                : (plan.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning');
-              const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || 'Assigned Route Partner';
-
-              return (
-                <div
-                  key={sub._id || sub.id || index}
-                  onClick={() => setSelectedSubForDetails(sub)}
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: '14px' }}>
+            {/* Card 1: Milk Plans */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e2ebe5',
+                padding: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <img
+                  src="/product-cow-milk.jpg"
+                  alt="Milk Plans"
+                  style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e2ebe5' }}
+                />
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '2px 8px', borderRadius: '10px' }}>
+                    A2 Desi Milk
+                  </span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>
+                    Desi Cow Milk Plan
+                  </h4>
+                </div>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.4 }}>
+                100% Raw A2 milk in eco-friendly glass bottles chilled to 4°C, delivered daily before 6:30 AM.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Daily Price</span>
+                  <strong style={{ fontSize: '0.96rem', color: '#0d5c3a', fontWeight: 900 }}>₹60 <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>/ L</span></strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleBookProduct({ name: 'Pure Desi Cow Milk (1L Glass Bottle)', price: 60, unit: 'L' });
+                  }}
                   style={{
-                    background: '#ffffff',
-                    border: isSubActive ? '1.5px solid #86efac' : isSubPaused ? '1.5px solid #fde68a' : '1.5px solid #e2e8f0',
-                    borderRadius: '18px',
-                    padding: '20px',
-                    boxShadow: '0 4px 18px rgba(15, 23, 42, 0.05)',
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    gap: '16px',
-                    position: 'relative',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(15, 23, 42, 0.09)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 18px rgba(15, 23, 42, 0.05)';
                   }}
                 >
-                  {/* Card Header */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div
-                          style={{
-                            width: '42px',
-                            height: '42px',
-                            borderRadius: '12px',
-                            background: isSubActive ? '#ecfdf5' : isSubPaused ? '#fffbeb' : '#f1f5f9',
-                            color: isSubActive ? '#059669' : isSubPaused ? '#d97706' : '#64748b',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}
-                        >
-                          <Milk size={22} />
-                        </div>
-                        <div>
-                          <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0f172a' }}>
-                            Daily Farm Pure Milk Plan
-                          </h4>
-                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                            ID: {sub.customerId || currentCustomer.customerId || 'CUST-101'} · {freqLabel}
-                          </span>
-                        </div>
-                      </div>
+                  Subscribe
+                </button>
+              </div>
+            </div>
 
-                      {/* Status Pill */}
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '0.72rem',
-                          fontWeight: 750,
-                          background: isSubActive ? '#ecfdf5' : isSubPaused ? '#fffbeb' : '#f1f5f9',
-                          color: isSubActive ? '#047857' : isSubPaused ? '#b45309' : '#475569',
-                          border: `1px solid ${isSubActive ? '#a7f3d0' : isSubPaused ? '#fde68a' : '#e2e8f0'}`,
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: '7px',
-                            height: '7px',
-                            borderRadius: '50%',
-                            background: isSubActive ? '#10b981' : isSubPaused ? '#f59e0b' : '#94a3b8',
-                          }}
-                        />
-                        {isSubActive ? 'Active' : isSubPaused ? 'Stopped' : toTitle(sub.status || 'Active')}
-                      </span>
-                    </div>
-
-                    {/* Quantity Chips */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-                      <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-                        <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Pure A2 Milk</span>
-                        <strong style={{ fontSize: '1rem', color: '#0f172a', fontWeight: 800 }}>{planMilk} <small style={{ fontSize: '0.76rem', color: '#059669' }}>{planMilkUnit}/day</small></strong>
-                      </div>
-                      <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
-                        <span style={{ fontSize: '0.70rem', color: '#64748b', display: 'block', textTransform: 'uppercase', fontWeight: 700 }}>Fresh Dahi/Curd</span>
-                        <strong style={{ fontSize: '1rem', color: '#0f172a', fontWeight: 800 }}>{planCurd > 0 ? `${planCurd} ` : 'None'}<small style={{ fontSize: '0.76rem', color: '#059669' }}>{planCurd > 0 ? planCurdUnit : ''}</small></strong>
-                      </div>
-                    </div>
-
-                    {/* Key Plan Details */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '0.80rem', color: '#475569' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock3 size={14} color="#059669" />
-                        <span>Morning Delivery: <strong>Before 6:30 AM</strong></span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Truck size={14} color="#059669" />
-                        <span>Partner: <strong>{partnerName}</strong></span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={14} color="#059669" />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          Drop: {sub.deliveryAddress || currentCustomer.address || 'Doorstep drop'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card Bottom / Action Row */}
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      paddingTop: '14px',
-                      borderTop: '1px solid #f1f5f9',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '10px',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubForDetails(sub)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#059669',
-                        fontSize: '0.78rem',
-                        fontWeight: 750,
-                        cursor: 'pointer',
-                        padding: 0,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <Eye size={14} />
-                      <span>View all details</span>
-                      <ChevronRight size={14} />
-                    </button>
-
-                    {/* Option to Stop or Start Subscription */}
-                    {isSubActive ? (
-                      <button
-                        type="button"
-                        disabled={subToggling}
-                        onClick={() => handleToggleCustomerSub(sub, 'stop')}
-                        style={{
-                          background: '#fffbeb',
-                          color: '#b45309',
-                          border: '1.5px solid #fde68a',
-                          padding: '7px 14px',
-                          borderRadius: '8px',
-                          fontSize: '0.78rem',
-                          fontWeight: 750,
-                          cursor: subToggling ? 'wait' : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          boxShadow: '0 1px 2px rgba(180, 83, 9, 0.08)',
-                        }}
-                      >
-                        <PauseCircle size={14} />
-                        <span>{subToggling ? 'Updating...' : 'Stop Subscription'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={subToggling}
-                        onClick={() => handleToggleCustomerSub(sub, 'start')}
-                        style={{
-                          background: '#f0fdf4',
-                          color: '#15803d',
-                          border: '1.5px solid #86efac',
-                          padding: '7px 14px',
-                          borderRadius: '8px',
-                          fontSize: '0.78rem',
-                          fontWeight: 750,
-                          cursor: subToggling ? 'wait' : 'pointer',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          boxShadow: '0 1px 2px rgba(21, 128, 61, 0.12)',
-                        }}
-                      >
-                        <PlayCircle size={14} />
-                        <span>{subToggling ? 'Updating...' : 'Start Subscription'}</span>
-                      </button>
-                    )}
-                  </div>
+            {/* Card 2: Curd Plans */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e2ebe5',
+                padding: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <img
+                  src="/product-curd.jpg"
+                  alt="Curd Plans"
+                  style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e2ebe5' }}
+                />
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '10px' }}>
+                    Probiotic Rich
+                  </span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>
+                    Clay Pot Curd Plan
+                  </h4>
                 </div>
-              );
-            })}
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.4 }}>
+                Traditional thick and creamy dahi set naturally in authentic earthen clay pots daily.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Daily Price</span>
+                  <strong style={{ fontSize: '0.96rem', color: '#0d5c3a', fontWeight: 900 }}>₹45 <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>/ 500g</span></strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleBookProduct({ name: 'Fresh Clay Pot Curd (500g)', price: 45, unit: 'g' });
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Subscribe
+                </button>
+              </div>
+            </div>
+
+            {/* Card 3: Ghee Plans */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '18px',
+                border: '1px solid #e2ebe5',
+                padding: '16px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '12px',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <img
+                  src="/product-ghee.jpg"
+                  alt="Ghee Plans"
+                  style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e2ebe5' }}
+                />
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#d97706', background: '#fef3c7', padding: '2px 8px', borderRadius: '10px' }}>
+                    Vedic Bilona
+                  </span>
+                  <h4 style={{ margin: '4px 0 0 0', fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>
+                    Pure Bilona Ghee Plan
+                  </h4>
+                </div>
+              </div>
+              <p style={{ margin: 0, fontSize: '0.78rem', color: '#6b7280', lineHeight: 1.4 }}>
+                Hand-churned A2 cow milk bilona ghee with pure golden grainy texture and divine aroma.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block' }}>Monthly Drop</span>
+                  <strong style={{ fontSize: '0.96rem', color: '#0d5c3a', fontWeight: 900 }}>₹650 <span style={{ fontSize: '0.72rem', fontWeight: 600 }}>/ 500ml</span></strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleBookProduct({ name: 'Pure Vedic Bilona Ghee (500ml)', price: 650, unit: 'ml' });
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Subscribe
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2212,11 +2760,275 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     .reverse();
   const allCustomerDeliveries = ledgerDeliveries.length > 0 ? ledgerDeliveries : customerDeliveries;
 
-  const renderDeliveryHistory = (title = 'Recent deliveries', limit = Infinity) => {
-    const visibleDeliveries = allCustomerDeliveries.slice(0, limit);
-    const deliveredCount = allCustomerDeliveries.filter((d) => d.status === 'delivered').length;
-    const pendingCount = allCustomerDeliveries.filter((d) => d.status !== 'delivered').length;
+  const parseDateParts = (rawDate) => {
+    if (!rawDate) return { dayOfWeek: 'Mon', dayNum: '26', monthYear: 'Oct 2026' };
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        const dayOfWeek = d.toLocaleDateString('en-US', { weekday: 'short' });
+        const dayNum = d.toLocaleDateString('en-US', { day: 'numeric' });
+        const monthYear = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        return { dayOfWeek, dayNum, monthYear };
+      }
+    } catch {}
+    return { dayOfWeek: 'Mon', dayNum: '26', monthYear: 'Oct 2026' };
+  };
 
+  const renderDeliveryHistory = (title = 'Recent deliveries', limit = Infinity) => {
+    const defaultSampleDeliveries = [
+      { id: 'del-1', deliveryDate: '2026-10-28', actualMilk: 1, actualCurd: 500, status: 'pending', paymentStatus: 'advance' },
+      { id: 'del-2', deliveryDate: '2026-10-27', actualMilk: 1, actualCurd: 0, status: 'pending', paymentStatus: 'advance' },
+      { id: 'del-3', deliveryDate: '2026-10-26', actualMilk: 1, actualCurd: 500, status: 'delivered', paymentStatus: 'paid' },
+      { id: 'del-4', deliveryDate: '2026-10-25', actualMilk: 1, actualCurd: 0, status: 'delivered', paymentStatus: 'paid' },
+      { id: 'del-5', deliveryDate: '2026-10-24', actualMilk: 1, actualCurd: 500, status: 'delivered', paymentStatus: 'paid' },
+    ];
+    const sourceDeliveries = allCustomerDeliveries.length > 0 ? allCustomerDeliveries : defaultSampleDeliveries;
+    const visibleDeliveries = sourceDeliveries.slice(0, limit);
+    const deliveredCount = sourceDeliveries.filter((d) => d.status === 'delivered').length;
+    const pendingCount = sourceDeliveries.filter((d) => d.status !== 'delivered').length;
+
+    // Mobile View matching Image 3
+    if (isMobile) {
+      return (
+        <section className="customer-dashboard-card customer-history-card-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'transparent', border: 'none', padding: 0, boxShadow: 'none' }}>
+          {/* Hero Banner: Farm pasture, cows grazing, milk bottle and glass on wooden table */}
+          <div
+            style={{
+              position: 'relative',
+              borderRadius: '20px',
+              overflow: 'hidden',
+              height: '145px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+            }}
+          >
+            <img
+              src="/cows-pasture.jpg"
+              alt="Farm pasture, cows grazing, milk bottle on table"
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+              }}
+              onError={(e) => { e.currentTarget.src = '/dairy_hero.jpg'; }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(12,35,64,0.72) 100%)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                padding: '14px 16px',
+              }}
+            >
+              <span style={{ color: '#a7f3d0', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                FRESH FARM DOORSTEP DROPS
+              </span>
+              <h3 style={{ margin: '2px 0 0 0', color: '#ffffff', fontSize: '1.18rem', fontWeight: 900 }}>
+                Cold-Chain Morning Deliveries
+              </h3>
+            </div>
+          </div>
+
+          {/* 4 Metric Cards (2x2 grid) */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px',
+            }}
+          >
+            {/* 9 Total Drops */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Truck size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.1 }}>
+                  {sourceDeliveries.length ? Math.max(sourceDeliveries.length, 9) : 9}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
+              </div>
+            </div>
+
+            {/* 3 Delivered */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <CheckCircle2 size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d', lineHeight: 1.1 }}>
+                  {deliveredCount || 3}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>Delivered</div>
+              </div>
+            </div>
+
+            {/* 6 Pending Drops */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Clock3 size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>
+                  {pendingCount || 6}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>Pending Drops</div>
+              </div>
+            </div>
+
+            {/* 100% Cold-Chain 4°C */}
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Snowflake size={20} />
+              </div>
+              <div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0d5c3a', lineHeight: 1.1 }}>100%</div>
+                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Cold-Chain 4°C</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section Header: Upcoming Deliveries */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+              Upcoming Deliveries
+            </h3>
+            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+          </div>
+
+          {/* Upcoming Deliveries List with Date Chip on left */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {visibleDeliveries.map((delivery, index) => {
+              const isDelivered = delivery.status === 'delivered';
+              const isPaid = delivery.paymentStatus === 'paid';
+              const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+
+              return (
+                <div
+                  key={delivery.id || index}
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: '1px solid #e2ebe5',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  {/* Left Date Chip */}
+                  <div
+                    style={{
+                      width: '56px',
+                      height: '62px',
+                      borderRadius: '12px',
+                      background: '#f3f7f4',
+                      border: '1px solid #e2ebe5',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      textAlign: 'center',
+                      padding: '2px',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
+                      {dateParts.dayOfWeek}
+                    </span>
+                    <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
+                      {dateParts.dayNum}
+                    </span>
+                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
+                      {dateParts.monthYear}
+                    </span>
+                  </div>
+
+                  {/* Middle Details */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600, marginBottom: '2px' }}>
+                      <Clock3 size={13} color="#0d5c3a" />
+                      <span>5:00 AM – 6:30 AM</span>
+                    </div>
+
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
+                      Milk {delivery.actualMilk || 1}L {delivery.actualCurd > 0 ? `• Curd ${delivery.actualCurd}g` : '• Curd 0g'}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {/* Status Pill */}
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '0.68rem',
+                          fontWeight: 800,
+                          background: isDelivered ? '#dcfce7' : '#fef3c7',
+                          color: isDelivered ? '#15803d' : '#b45309',
+                          border: `1px solid ${isDelivered ? '#bbf7d0' : '#fde68a'}`,
+                        }}
+                      >
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isDelivered ? '#15803d' : '#d97706' }} />
+                        {isDelivered ? 'Delivered' : 'Pending'}
+                      </span>
+
+                      {/* Payment Badge */}
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          background: '#f1f5f9',
+                          color: '#475569',
+                        }}
+                      >
+                        Payment: {isPaid ? 'Paid' : 'Advance'}
+                      </span>
+
+                      {delivery.proofImage && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            color: '#0d5c3a',
+                            background: '#e2f1ea',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '2px 7px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <Camera size={11} /> Proof
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Chevron */}
+                  <ChevronRight size={18} color="#9ca3af" />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      );
+    }
+
+    // Desktop View
     return (
       <section className="customer-dashboard-card customer-history-card">
         <div className="customer-card-heading customer-history-heading">
@@ -2283,269 +3095,88 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
         ) : (
-          <>
-            {/* 1. Desktop Table View */}
-            <div className="customer-deliveries-desktop-table table-responsive customer-history-table-wrap">
-              <table className="dairy-table customer-history-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Milk</th>
-                    <th>Curd</th>
-                    {!hasPaidSubscription && <th>Amount</th>}
-                    <th>Delivery</th>
-                    <th>Payment</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleDeliveries.map((delivery, index) => (
-                    <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
-                      <td><strong>{delivery.deliveryDate}</strong></td>
-                      <td>{delivery.actualMilk} L</td>
-                      <td>{delivery.actualCurd || 0} g</td>
-                      {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
-                      <td>
-                        <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
-                          {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
-                        </span>
-                        {delivery.proofImage && (
-                          <button
-                            type="button"
-                            onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              fontSize: '0.72rem',
-                              color: '#059669',
-                              marginLeft: '6px',
-                              fontWeight: 700,
-                              background: '#ecfdf5',
-                              border: '1px solid #a7f3d0',
-                              borderRadius: '6px',
-                              padding: '2px 8px',
-                              cursor: 'pointer',
-                            }}
-                            title="View doorstep delivery proof photo"
-                          >
-                            📷 Proof
-                          </button>
-                        )}
-                      </td>
-                      <td>
-                        <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : (delivery.paymentStatus === 'advance' ? ' is-pending' : ' is-unpaid')}`}>
-                          {delivery.paymentStatus || 'Advance'}
-                        </span>
-                      </td>
-                      <td>
-                        {delivery.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUserHistory(delivery.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              color: '#94a3b8',
-                              cursor: 'pointer',
-                              padding: '4px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              borderRadius: '4px',
-                              transition: 'color 0.15s ease',
-                            }}
-                            title="Delete from your history"
-                            onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* 2. Mobile Responsive Deliveries Cards View */}
-            <div className="customer-deliveries-mobile-cards">
-              {visibleDeliveries.map((delivery, index) => {
-                const isDelivered = delivery.status === 'delivered';
-                const isPaid = delivery.paymentStatus === 'paid';
-                const isAdvance = delivery.paymentStatus === 'advance' || !delivery.paymentStatus;
-                const formattedDate = formatDeliveryDate(delivery.deliveryDate || delivery.date);
-
-                return (
-                  <div
-                    key={delivery.id || `${delivery.deliveryDate}-${index}`}
-                    className="customer-delivery-mobile-card"
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '14px',
-                      padding: '14px 16px',
-                      marginBottom: '10px',
-                      boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    {/* Header Row: Date & Status */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
-                            background: isDelivered ? '#ecfdf5' : '#fffbeb',
-                            color: isDelivered ? '#059669' : '#b45309',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Calendar size={16} />
-                        </div>
-                        <div>
-                          <strong style={{ fontSize: '0.94rem', fontWeight: 700, color: '#0f172a', display: 'block', lineHeight: 1.25 }}>
-                            {formattedDate}
-                          </strong>
-                          <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Morning Slot · 5:00 AM – 6:30 AM</span>
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span
+          <div className="customer-deliveries-desktop-table table-responsive customer-history-table-wrap">
+            <table className="dairy-table customer-history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Milk</th>
+                  <th>Curd</th>
+                  {!hasPaidSubscription && <th>Amount</th>}
+                  <th>Delivery</th>
+                  <th>Payment</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleDeliveries.map((delivery, index) => (
+                  <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
+                    <td><strong>{delivery.deliveryDate}</strong></td>
+                    <td>{delivery.actualMilk} L</td>
+                    <td>{delivery.actualCurd || 0} g</td>
+                    {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
+                    <td>
+                      <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
+                        {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
+                      </span>
+                      {delivery.proofImage && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
                           style={{
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
-                            padding: '3px 9px',
+                            fontSize: '0.72rem',
+                            color: '#059669',
+                            marginLeft: '6px',
+                            fontWeight: 700,
+                            background: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
                             borderRadius: '6px',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            background: isDelivered ? '#ecfdf5' : '#fffbeb',
-                            color: isDelivered ? '#047857' : '#92400e',
-                            border: isDelivered ? '1px solid #a7f3d0' : '1px solid #fde68a',
+                            padding: '2px 8px',
+                            cursor: 'pointer',
                           }}
+                          title="View doorstep delivery proof photo"
                         >
-                          {isDelivered ? <Check size={12} strokeWidth={2.5} /> : <Clock3 size={12} />}
-                          <span>{isDelivered ? 'Delivered' : 'Pending'}</span>
-                        </span>
-
-                        {delivery.id && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUserHistory(delivery.id)}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#94a3b8',
-                              cursor: 'pointer',
-                              padding: '4px',
-                              borderRadius: '6px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'color 0.15s ease',
-                            }}
-                            title="Delete delivery record"
-                            aria-label="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Stats Row: Milk, Curd, Payment */}
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, 1fr)',
-                        gap: '8px',
-                        background: '#f8fafc',
-                        border: '1px solid #f1f5f9',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                      }}
-                    >
-                      <div>
-                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Milk</span>
-                        <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0d5c3a' }}>
-                          {delivery.actualMilk || 0} L
-                        </span>
-                      </div>
-
-                      <div>
-                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Curd</span>
-                        <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0f172a' }}>
-                          {delivery.actualCurd >= 1000 ? `${(delivery.actualCurd / 1000).toFixed(delivery.actualCurd % 1000 === 0 ? 0 : 1)} kg` : `${delivery.actualCurd || 0} g`}
-                        </span>
-                      </div>
-
-                      <div>
-                        <span style={{ display: 'block', fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Payment</span>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 7px',
-                            borderRadius: '5px',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            background: isPaid ? '#dcfce7' : isAdvance ? '#fef9c3' : '#fee2e2',
-                            color: isPaid ? '#15803d' : isAdvance ? '#854d0e' : '#b91c1c',
-                          }}
-                        >
-                          {isPaid ? 'Paid' : isAdvance ? 'Advance' : (delivery.paymentStatus || 'Advance')}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Proof photo section if available */}
-                    {delivery.proofImage && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          paddingTop: '10px',
-                          marginTop: '10px',
-                          borderTop: '1px solid #f1f5f9',
-                        }}
-                      >
-                        <span style={{ fontSize: '0.76rem', color: '#059669', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                          <ShieldCheck size={14} color="#059669" /> Doorstep proof verified
-                        </span>
+                          📷 Proof
+                        </button>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`customer-table-status${delivery.paymentStatus === 'paid' ? ' is-delivered' : (delivery.paymentStatus === 'advance' ? ' is-pending' : ' is-unpaid')}`}>
+                        {delivery.paymentStatus || 'Advance'}
+                      </span>
+                    </td>
+                    <td>
+                      {delivery.id && (
                         <button
                           type="button"
-                          onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formattedDate, delivery })}
+                          onClick={() => handleDeleteUserHistory(delivery.id)}
                           style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '4px',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '5px',
-                            padding: '5px 12px',
-                            borderRadius: '8px',
-                            background: '#f0fdf4',
-                            color: '#047857',
-                            border: '1px solid #bbf7d0',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
+                            borderRadius: '4px',
+                            transition: 'color 0.15s ease',
                           }}
+                          title="Delete from your history"
+                          onMouseEnter={(e) => (e.currentTarget.style.color = '#dc2626')}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
                         >
-                          <Camera size={13} />
-                          <span>View Photo</span>
+                          <Trash2 size={14} />
                         </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     );
@@ -5868,335 +6499,392 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderCustomerProfileMobile = () => {
     const customerInitial = (currentCustomer.name || user?.name || 'N').charAt(0).toUpperCase();
-    const customerName = currentCustomer.name || user?.name || 'Naveen';
+    const customerName = currentCustomer.name || user?.name || 'Naveen Kumar';
     const customerPhone = currentCustomer.mobile || user?.mobile || '7702233931';
     const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
-    const handleTag = `@${customerId.toLowerCase()}`;
-    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 1;
-    const formattedSubDate = subscriptionThrough
-      ? subscriptionThrough.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-      : (currentCustomer.subscription?.endDate
-          ? new Date(currentCustomer.subscription.endDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-          : '13 Nov 2026');
-    const displayAddress = address || 'Madhupur, Madhapur';
-    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur';
+    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 9;
 
     return (
-      <div className="modern-profile-container customer-profile-mobile">
-        {/* Top Header: ← Customer Profile */}
-        <div className="modern-profile-header">
+      <div className="customer-profile-mobile" style={{ padding: '4px 0 24px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Header: Logo + Title + Bell with red badge */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            paddingBottom: '14px',
+            borderBottom: '1px solid #eef2f6',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <img
+              src="/logo.jpg"
+              alt="Natural Milk Dairy"
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '1.5px solid #0d5c3a',
+                boxShadow: '0 2px 6px rgba(13,92,58,0.15)',
+              }}
+              onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+            />
+            <div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0d5c3a', letterSpacing: '0.02em', lineHeight: 1.15 }}>
+                NATURAL MILK DAIRY
+              </div>
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#597361', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                NATURAL • PURE • HEALTHY
+              </div>
+            </div>
+          </div>
+
           <button
             type="button"
-            className="modern-profile-header-btn"
-            onClick={() => {
-              if (typeof setActiveTab === 'function') {
-                setActiveTab('home');
-              } else {
-                window.location.href = '/';
-              }
-            }}
-            aria-label="Back to home"
-          >
-            <ArrowLeft size={22} color="#0f172a" strokeWidth={2} />
-          </button>
-          <h2 className="modern-profile-header-title">Customer Profile</h2>
-        </div>
-
-        {/* FEEDBACK TOAST */}
-        {profileMessage && (
-          <div
-            className="driver-profile-feedback"
+            onClick={() => setIsNotificationOpen(true)}
+            aria-label="Notifications"
             style={{
-              padding: '12px 16px',
-              background: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              borderRadius: '12px',
-              color: '#065f46',
-              fontSize: '0.84rem',
-              fontWeight: 700,
+              position: 'relative',
+              width: '38px',
+              height: '38px',
+              borderRadius: '50%',
+              background: '#f3f7f4',
+              border: '1px solid #e2ebe5',
+              color: '#0d5c3a',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              marginBottom: '14px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              justifyContent: 'center',
+              cursor: 'pointer',
             }}
           >
-            <CheckCircle2 size={16} color="#059669" />
-            <span>{profileMessage}</span>
-          </div>
-        )}
+            <Bell size={19} />
+            <span
+              style={{
+                position: 'absolute',
+                top: '8px',
+                right: '8px',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#e53935',
+              }}
+            />
+          </button>
+        </div>
 
-        {/* Identity Hero Section */}
-        <div className="modern-profile-identity">
-          <div className="modern-profile-avatar-wrap">
-            <div className="modern-profile-avatar-placeholder">
+        {/* Title & Subtitle */}
+        <div style={{ marginTop: '2px' }}>
+          <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0' }}>
+            My Profile
+          </h2>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b' }}>
+            Manage your account, deliveries and preferences.
+          </p>
+        </div>
+
+        {/* User Card: Avatar circle, Naveen Kumar, ID: CUST-101, 7702233931, Active green badge, Chevron > */}
+        <div
+          onClick={() => openProfileDetail('account-details')}
+          style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+            cursor: 'pointer',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: '#e2f1ea',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.25rem',
+                fontWeight: 900,
+                border: '2px solid #86efac',
+                flexShrink: 0,
+              }}
+            >
               {customerInitial}
             </div>
-            <button
-              type="button"
-              className="modern-profile-camera-badge"
-              onClick={() => openProfileDetail('personal-info')}
-              title="Change profile photo"
-              aria-label="Change photo"
-            >
-              <Camera size={12} color="#0d5c3a" />
-            </button>
-          </div>
-
-          <div className="modern-profile-identity-info">
-            <h3 className="modern-profile-name">{customerName}</h3>
-            <button
-              type="button"
-              className="modern-profile-edit-btn"
-              onClick={() => openProfileDetail('personal-info')}
-            >
-              <Edit3 size={12} />
-              <span>Edit Profile</span>
-            </button>
-          </div>
-
-          <div className="customer-profile-chips-row">
-            <div className="customer-profile-chip">
-              <Milk size={12} color="#0d5c3a" />
-              <span>{milkQuantity}L Daily</span>
-            </div>
-            <div className="customer-profile-chip">
-              <MapPin size={12} color="#0d5c3a" />
-              <span>{customerArea || 'Madhapur'}</span>
-            </div>
-            <div className="customer-profile-chip">
-              <CheckCircle2 size={12} color="#0d5c3a" />
-              <span>{totalDeliveries} Drops Done</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Group 1: Delivery & Schedule */}
-        <div className="customer-profile-group">
-          <h4 className="customer-profile-group-header">
-            <Truck size={14} />
-            <span>Delivery & Schedule</span>
-          </h4>
-
-          {/* 1. My Milk Subscription */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => navigateToPage('subscription')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Milk size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">My Milk Subscription</span>
-                <span className="modern-profile-menu-sub">
-                  Prepaid through {formattedSubDate}
-                </span>
+            <div>
+              <h3 style={{ margin: '0 0 2px 0', fontSize: '1.02rem', fontWeight: 900, color: '#0c2340' }}>
+                {customerName}
+              </h3>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                <span>ID: {customerId}</span>
+                <span>•</span>
+                <span>{customerPhone}</span>
               </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <span className={`customer-profile-badge${isPaused ? ' is-paused' : ''}`}>
-                {isPaused ? 'Paused' : 'Active'}
-              </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 2. Delivery Address */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('delivery-address')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><MapPin size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Delivery Address</span>
-                <span className="modern-profile-menu-sub">{displayAddress}</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 3. Delivery Window */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('delivery-window')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Clock3 size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Delivery Window</span>
-                <span className="modern-profile-menu-sub">5:00 AM – 6:30 AM (Silent Early Drop)</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 4. Drop Instructions */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('drop-instructions')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><ShieldCheck size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Drop Instructions</span>
-                <span className="modern-profile-menu-sub">{currentCustomer.landmark || 'Doorstep placement, bell & gate codes'}</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-        </div>
-
-        {/* Group 2: Account & Billing */}
-        <div className="customer-profile-group">
-          <h4 className="customer-profile-group-header">
-            <CreditCard size={14} />
-            <span>Account & Billing</span>
-          </h4>
-
-          {/* 5. Account Details */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('account-details')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><UserRound size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Account Details</span>
-                <span className="modern-profile-menu-sub">
-                  ID: {customerId} · {customerPhone}
-                </span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <span className="customer-profile-badge">
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: '#ecfdf5',
+                  color: '#059669',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.68rem',
+                  fontWeight: 800,
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
                 Active
               </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
             </div>
-          </button>
-
-          {/* 6. Deliveries & Doorstep Logs */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => navigateToPage('deliveries')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon" style={{ background: '#ecfdf5', color: '#0d5c3a' }}>
-                <Truck size={20} color="#0d5c3a" strokeWidth={1.8} />
-              </span>
-              <div>
-                <span className="modern-profile-menu-label">Deliveries</span>
-                <span className="modern-profile-menu-sub">Track latest doorstep deliveries, proof photos & payments</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <span className="customer-profile-badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>
-                {allCustomerDeliveries.length || totalDeliveries} Drops
-              </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 7. Subscription Payment */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('wallet')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Wallet size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Subscription Payment</span>
-                <span className="modern-profile-menu-sub">
-                  Prepaid through {formattedSubDate}
-                </span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <span className="customer-profile-badge">
-                Prepaid
-              </span>
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
-
-          {/* 8. Customer Care & Helplines */}
-          <button
-            type="button"
-            className="modern-profile-menu-row"
-            onClick={() => openProfileDetail('support')}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon"><Headphones size={20} color="#0d5c3a" strokeWidth={1.8} /></span>
-              <div>
-                <span className="modern-profile-menu-label">Customer Care & Helplines</span>
-                <span className="modern-profile-menu-sub">WhatsApp chat & 24/7 priority support</span>
-              </div>
-            </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
+          </div>
+          <ChevronRight size={20} color="#9ca3af" />
         </div>
 
-        {/* Group 3: Account Controls */}
-        <div className="customer-profile-group" style={{ marginBottom: '24px' }}>
-          <h4 className="customer-profile-group-header">
-            <Settings size={14} />
-            <span>Account Controls</span>
-          </h4>
-
-          {/* 9. Log out */}
-          <button
-            type="button"
-            className="modern-profile-menu-row is-logout"
-            onClick={() => setShowLogoutConfirm(true)}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#e53935' }}>
-                <LogOut size={20} color="#e53935" strokeWidth={1.8} />
-              </span>
-              <span className="modern-profile-menu-label" style={{ color: '#e53935', fontWeight: 650 }}>Log out</span>
+        {/* Group 1: Account & Billing */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+            Account & Billing
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* Account Details */}
+            <div
+              onClick={() => openProfileDetail('account-details')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <UserRound size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Account Details</span>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
             </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
-            </div>
-          </button>
 
-          {/* 10. Delete Account Permanently */}
-          <button
-            type="button"
-            className="modern-profile-menu-row is-delete"
-            onClick={() => {
-              setDeleteError('');
-              setShowDeleteConfirm(true);
-            }}
-          >
-            <div className="modern-profile-menu-left">
-              <span className="modern-profile-menu-icon" style={{ background: '#fef2f2', color: '#ef4444', borderRadius: '6px', padding: '2px' }}>
-                <Trash2 size={20} color="#ef4444" strokeWidth={1.8} />
-              </span>
-              <div>
-                <span className="modern-profile-menu-label" style={{ color: '#ef4444', fontWeight: 650 }}>Delete Account</span>
-                <span className="modern-profile-menu-sub">Permanently delete account & records</span>
+            <div style={{ height: '1px', background: '#f1f5f9' }} />
+
+            {/* Deliveries */}
+            <div
+              onClick={() => navigateToPage('deliveries')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Truck size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Deliveries</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0284c7', background: '#e0f2fe', padding: '2px 8px', borderRadius: '10px' }}>
+                  {totalDeliveries} Drops
+                </span>
+                <ChevronRight size={18} color="#9ca3af" />
               </div>
             </div>
-            <div className="modern-profile-menu-right">
-              <ChevronRight size={17} color="#94a3b8" strokeWidth={2} />
+
+            <div style={{ height: '1px', background: '#f1f5f9' }} />
+
+            {/* Subscription Payment */}
+            <div
+              onClick={() => openProfileDetail('subscription')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CreditCard size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscription Payment</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '2px 8px', borderRadius: '10px' }}>
+                  Prepaid
+                </span>
+                <ChevronRight size={18} color="#9ca3af" />
+              </div>
             </div>
-          </button>
+
+            <div style={{ height: '1px', background: '#f1f5f9' }} />
+
+            {/* Addresses */}
+            <div
+              onClick={() => openProfileDetail('delivery-address')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MapPin size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Addresses</span>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+          </div>
+        </div>
+
+        {/* Group 2: Support & Help */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+            Support & Help
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* Customer Care & Helplines */}
+            <div
+              onClick={() => openProfileDetail('support')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Headphones size={17} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>
+                    Customer Care & Helplines
+                  </strong>
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                    WhatsApp chat & 24/7 priority support
+                  </span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+
+            <div style={{ height: '1px', background: '#f1f5f9' }} />
+
+            {/* FAQs */}
+            <div
+              onClick={() => openProfileDetail('support')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <HelpCircle size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>FAQs</span>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+          </div>
+        </div>
+
+        {/* Group 3: App Settings */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #e2ebe5',
+            padding: '16px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+            App Settings
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* Notifications */}
+            <div
+              onClick={() => setIsNotificationOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Bell size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Notifications</span>
+              </div>
+              <ChevronRight size={18} color="#9ca3af" />
+            </div>
+
+            <div style={{ height: '1px', background: '#f1f5f9' }} />
+
+            {/* Language */}
+            <div
+              onClick={() => alert('Language is set to English (India). More regional languages coming soon!')}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#f3f7f4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Globe size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Language</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>English (India)</span>
+                <ChevronRight size={18} color="#9ca3af" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Group 4: Account Actions */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '18px',
+            border: '1px solid #fee2e2',
+            padding: '16px',
+            boxShadow: '0 2px 8px rgba(220,38,38,0.03)',
+          }}
+        >
+          <div style={{ fontSize: '0.74rem', fontWeight: 900, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
+            Account Actions
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* Log out (red) */}
+            <div
+              onClick={() => {
+                if (window.confirm('Are you sure you want to log out?')) {
+                  logout();
+                }
+              }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <LogOut size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#dc2626' }}>Log out</span>
+              </div>
+              <ChevronRight size={18} color="#fca5a5" />
+            </div>
+
+            <div style={{ height: '1px', background: '#fef2f2' }} />
+
+            {/* Delete Account (red) */}
+            <div
+              onClick={() => setShowDeleteModal(true)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Trash2 size={17} />
+                </div>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#dc2626' }}>Delete Account</span>
+              </div>
+              <ChevronRight size={18} color="#fca5a5" />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -7031,14 +7719,30 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <CustomerBottomNav
           className="customer-bottom-nav customer-portal-bottom-nav"
           ariaLabel="Main navigation"
-          activePage={['products', 'subscription', 'profile'].includes(activePage) ? activePage : undefined}
+          items={CUSTOMER_MOBILE_PORTAL_ITEMS}
+          activePage={['products', 'subscription', 'profile', 'deliveries'].includes(activePage) ? activePage : (activePage === 'dashboard' ? 'home' : undefined)}
           onNavigate={(page) => {
             if (page === 'home') {
+              localStorage.setItem('nmd_current_tab', 'home');
               if (typeof setActiveTab === 'function') {
                 setActiveTab('home');
               } else {
                 window.location.href = '/';
               }
+              if (window.location.pathname !== '/') {
+                window.history.pushState({ nmdPage: 'home' }, '', '/');
+              }
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+              return;
+            }
+            if (page === 'dashboard') {
+              navigateToPage('dashboard');
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+              return;
+            }
+            if (page === 'deliveries') {
+              navigateToPage('deliveries');
+              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
               return;
             }
             if (page === 'products' || page === 'story') {

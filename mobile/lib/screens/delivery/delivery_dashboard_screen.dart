@@ -61,11 +61,33 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   void _initRealtime() {
     _wsSub = _realtime.eventStream.listen((event) {
       final type = event['type']?.toString();
-      if (type == 'DELIVERY_UPDATED' ||
+      if (type == 'NOTIFICATION_DELETED') {
+        final delId = event['id']?.toString() ?? event['payload']?['id']?.toString();
+        if (delId != null && delId.isNotEmpty && mounted) {
+          setState(() {
+            _notifications.removeWhere((n) =>
+                n['_id'] == delId ||
+                n['id'] == delId ||
+                n['_id']?.toString() == delId ||
+                n['id']?.toString() == delId);
+            _unreadNotifCount = _notifications.where((n) => n['isRead'] != true).length;
+          });
+        }
+        _loadNotifications(silent: true);
+      } else if (type == 'NOTIFICATIONS_CLEARED') {
+        if (mounted) {
+          setState(() {
+            _notifications.clear();
+            _unreadNotifCount = 0;
+          });
+        }
+        _loadNotifications(silent: true);
+      } else if (type == 'DELIVERY_UPDATED' ||
           type == 'DELIVERY_BOY_UPDATED' ||
           type == 'CUSTOMER_UPDATED' ||
           type == 'ORDER_UPDATED' ||
-          type == 'NOTIFICATION_UPDATED') {
+          type == 'NOTIFICATION_UPDATED' ||
+          type == 'NOTIFICATION_CREATED') {
         _loadData(silent: true);
         _loadNotifications(silent: true);
       }
@@ -88,52 +110,12 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         return;
       }
     } catch (_) {}
-
-    // Initial seed notifications if server is empty or offline
-    if (_notifications.isEmpty && mounted) {
-      setState(() {
-        _notifications = [
-          {
-            '_id': 'seed-drv-1',
-            'title': '📦 Shift Route Assigned',
-            'message': 'Dispatch Admin assigned your morning route with 5 customer doorstep deliveries in Madhapur.',
-            'type': 'delivery_assigned',
-            'isRead': false,
-            'createdAt': DateTime.now().subtract(const Duration(minutes: 15)).toIso8601String(),
-          },
-          {
-            '_id': 'seed-drv-2',
-            'title': '⏰ Shift Start Reminder',
-            'message': 'Morning delivery window begins at 04:30 AM. Vehicle TS 09 EA 4812 battery at 88%.',
-            'type': 'system',
-            'isRead': false,
-            'createdAt': DateTime.now().subtract(const Duration(minutes: 45)).toIso8601String(),
-          },
-          {
-            '_id': 'seed-drv-3',
-            'title': '🥛 Cold Chain Quality Verification',
-            'message': 'Batch milk temperature verified at 3.8°C at Madhapur chilling center.',
-            'type': 'system',
-            'isRead': true,
-            'createdAt': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
-          },
-          {
-            '_id': 'seed-drv-4',
-            'title': '🗺️ Route Optimization Complete',
-            'message': 'Doorstep route stops ordered by closest proximity in Madhapur sector 2.',
-            'type': 'route_update',
-            'isRead': true,
-            'createdAt': DateTime.now().subtract(const Duration(hours: 3)).toIso8601String(),
-          },
-        ];
-        _unreadNotifCount = _notifications.where((n) => n['isRead'] != true).length;
-      });
-    }
   }
 
   Future<void> _markNotifAsRead(String id) async {
     setState(() {
-      final idx = _notifications.indexWhere((n) => n['_id'] == id || n['id'] == id);
+      final idx = _notifications.indexWhere((n) =>
+          n['_id'] == id || n['id'] == id || n['_id']?.toString() == id || n['id']?.toString() == id);
       if (idx != -1) {
         _notifications[idx]['isRead'] = true;
         _unreadNotifCount = _notifications.where((n) => n['isRead'] != true).length;
@@ -163,7 +145,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
   Future<void> _deleteNotif(String id) async {
     setState(() {
-      _notifications.removeWhere((n) => n['_id'] == id || n['id'] == id);
+      _notifications.removeWhere((n) =>
+          n['_id'] == id || n['id'] == id || n['_id']?.toString() == id || n['id']?.toString() == id);
       _unreadNotifCount = _notifications.where((n) => n['isRead'] != true).length;
     });
     try {

@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
+  Heart,
   Milk,
   CheckCircle,
   Truck,
   Calendar,
   ShieldCheck,
   Smartphone,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Sparkles,
@@ -224,69 +226,379 @@ export default function HomePage({ setActiveTab }) {
       : products.filter((p) => p.category === activeCategory);
   }, [products, activeCategory]);
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const DEFAULT_BANNERS = [
+    {
+      title: 'Pure Milk. Healthier Lives.',
+      subtitle: 'Fresh farm harvest delivered to your doorstep daily before 6:30 AM.',
+      imageUrl: '/hero_banner_card.png',
+      category: 'milk',
+    },
+    {
+      title: 'Artisanal Curd & Soft Paneer',
+      subtitle: 'Naturally set in traditional clay pots. Rich, creamy, and probiotic.',
+      imageUrl: '/banner_curd_paneer.png',
+      category: 'curd',
+    },
+    {
+      title: 'A2 Vedic Desi Cow Ghee',
+      subtitle: 'Slow-simmered bilona method with authentic granular golden aroma.',
+      imageUrl: '/banner_ghee_butter.png',
+      category: 'ghee',
+    },
+    {
+      title: 'Pure Milk Dairy Sweets',
+      subtitle: 'Delicious handcrafted traditional sweets made 100% from farm dairy.',
+      imageUrl: '/banner_dairy_sweets.png',
+      category: 'sweets',
+    },
+  ];
+
+  const [bannersList, setBannersList] = useState(DEFAULT_BANNERS);
+  const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/banners')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.banners && data.banners.length > 0) {
+          setBannersList(data.banners);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (bannersList.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveBannerIndex((prev) => (prev + 1) % bannersList.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [bannersList.length]);
+
+  const handleBannerClick = (banner) => {
+    const cat = banner?.category || 'milk';
+    localStorage.setItem('nmd_selected_category', cat);
+    setActiveTab('products');
+  };
+
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+    if (isLeftSwipe) {
+      setActiveBannerIndex((prev) => (prev + 1) % bannersList.length);
+    }
+    if (isRightSwipe) {
+      setActiveBannerIndex((prev) => (prev - 1 + bannersList.length) % bannersList.length);
+    }
+    setTouchStart(null);
+    setTouchEnd(null);
+  };
+  const [favProducts, setFavProducts] = useState(new Set());
+  const toggleFav = (id) => {
+    setFavProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour >= 12 && hour < 17) return 'Good Afternoon,';
+    if (hour >= 17 || hour < 5) return 'Good Evening,';
+    return 'Good Morning,';
+  };
+
+  const displayName = user?.name?.trim() || user?.fullName?.trim() || (user ? 'Customer' : 'Welcome');
+  const salutation = getGreeting();
+
+  const renderMobileHome = () => {
+    const categories = [
+      { id: 'milk', title: 'Fresh Milks', bg: '#FFF8E7', img: '/cat_img_milk.png' },
+      { id: 'curd', title: 'Curd & Paneer', bg: '#EAF7EE', img: '/cat_img_curd.png' },
+      { id: 'ghee', title: 'Ghee & Butter', bg: '#FFF3D6', img: '/cat_img_ghee.png' },
+      { id: 'sweets', title: 'Dairy Sweets', bg: '#FDF0ED', img: '/cat_img_sweets.png' },
+    ];
+
+    const bestSellers = products.slice(0, 4);
+
+    return (
+      <div className="mobile-home-container">
+
+        {/* Dynamic User Greeting matching Screenshot */}
+        <div className="mobile-home-greeting-box">
+          <span className="mobile-home-greeting-salutation">{salutation}</span>
+          <h2 className="mobile-home-greeting-name">
+            {displayName} <span className="greeting-sun-emoji">☀️</span>
+          </h2>
+          <p className="mobile-home-greeting-sub">
+            Fresh farm goodness delivered to your doorstep every morning.
+          </p>
+        </div>
+
+        {/* 1. Dynamic Carousel matching Image 2 */}
+        <div
+          className="mobile-home-carousel-wrapper"
+          onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientX)}
+          onTouchMove={(e) => setTouchEnd(e.targetTouches[0].clientX)}
+          onTouchEnd={handleTouchEnd}
+        >
+          <div
+            className="mobile-home-carousel-track"
+            style={{ transform: 'translateX(-' + (activeBannerIndex * 100) + '%)' }}
+          >
+            {bannersList.map((banner, idx) => (
+              <div
+                key={banner._id || idx}
+                className="mobile-home-carousel-slide"
+                onClick={() => handleBannerClick(banner)}
+                style={{ cursor: 'pointer' }}
+              >
+                <img
+                  src={banner.imageUrl}
+                  alt={banner.title}
+                  className="mobile-home-hero-full-img"
+                  onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Carousel Dots */}
+          <div className="mobile-home-carousel-dots">
+            {bannersList.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={`mobile-home-carousel-dot${idx === activeBannerIndex ? ' is-active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveBannerIndex(idx);
+                }}
+                aria-label={'Go to slide ' + (idx + 1)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 2. Feature Badges Strip (4 columns) matching Image 1 */}
+        <div className="mobile-feature-strip-card">
+          <div className="mobile-feature-item">
+            <div className="mobile-feature-icon-circle">
+              <Leaf size={20} />
+            </div>
+            <span className="mobile-feature-text">100%<br />Pure & Natural</span>
+          </div>
+          <div className="mobile-feature-item">
+            <div className="mobile-feature-icon-circle">
+              <ShieldCheck size={20} />
+            </div>
+            <span className="mobile-feature-text">No<br />Adulteration</span>
+          </div>
+          <div className="mobile-feature-item">
+            <div className="mobile-feature-icon-circle">
+              <Droplets size={20} />
+            </div>
+            <span className="mobile-feature-text">Chilled at<br />4°C</span>
+          </div>
+          <div className="mobile-feature-item">
+            <div className="mobile-feature-icon-circle">
+              <Truck size={20} />
+            </div>
+            <span className="mobile-feature-text">Daily Delivery<br />before 6:30 AM</span>
+          </div>
+        </div>
+
+        {/* 3. Shop by Category matching Image 1 */}
+        <div className="mobile-home-section-header">
+          <h3 className="mobile-home-section-title">Shop by Category</h3>
+          <button
+            type="button"
+            className="mobile-home-section-viewall"
+            onClick={() => setActiveTab('products')}
+          >
+            <span>View All</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+        <div className="mobile-categories-row">
+          {categories.map((cat, idx) => (
+            <div
+              key={idx}
+              className="mobile-category-pill-card"
+              style={{ background: cat.bg }}
+              onClick={() => {
+                localStorage.setItem('nmd_selected_category', cat.id);
+                setActiveTab('products');
+              }}
+            >
+              <div className="mobile-category-img-wrap">
+                <img src={cat.img} alt={cat.title} onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }} />
+              </div>
+              <span className="mobile-category-label">{cat.title}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* 4. Best Selling Products matching Image 1 */}
+        <div className="mobile-home-section-header">
+          <h3 className="mobile-home-section-title">Best Selling Products</h3>
+          <button
+            type="button"
+            className="mobile-home-section-viewall"
+            onClick={() => setActiveTab('products')}
+          >
+            <span>View All</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+        <div className="mobile-bestsellers-row">
+          {bestSellers.map((prod, idx) => {
+            const isFav = favProducts.has(prod.id);
+            const badgeLabel = idx === 0 ? 'BESTSELLER' : (idx === 1 ? 'FARM FRESH' : (prod.badge || 'FRESH'));
+            return (
+              <div
+                key={prod.id || idx}
+                className="mobile-bestseller-item"
+                onClick={() => {
+                  const prodKey = prod.id || prod.name;
+                  localStorage.setItem('nmd_selected_product_id', String(prodKey));
+                  setActiveTab('products');
+                }}
+              >
+                <div className="mobile-bestseller-img-box">
+                  <img src={prod.image || '/product-cow-milk.jpg'} alt={prod.name} />
+                  <span className="mobile-bestseller-badge">{badgeLabel}</span>
+                  <button
+                    type="button"
+                    className={`mobile-card-heart-btn${isFav ? ' is-fav' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFav(prod.id);
+                    }}
+                  >
+                    <Heart size={15} fill={isFav ? '#e11d48' : 'none'} color={isFav ? '#e11d48' : '#475569'} />
+                  </button>
+                </div>
+                <h4 className="mobile-bestseller-title">{prod.name}</h4>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Floating Contact Us Pill matching Image 1 */}
+        <button
+          type="button"
+          className="mobile-floating-contact-pill"
+          onClick={() => setActiveTab('contact')}
+          aria-label="Contact us"
+        >
+          <PhoneCall size={17} />
+          <span>Contact Us</span>
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
+      {isMobile ? renderMobileHome() : (
+        <>
+      {/* Same Dynamic Hero Carousel in Desktop Website */}
       
-      <section className="home-hero-banner">
-        <div
-          className="home-hero-bg"
-          style={{
-            backgroundImage: `url(${CLOUDINARY_MEDIA.heroDairy}), url(/hero-dairy.jpg)`,
-          }}
-          role="img"
-          aria-label="Fresh farm milk, glass bottle, and dairy pasture"
-        />
-        <div className="home-hero-overlay" />
-        <div className="home-hero-inner">
-          <div className="home-hero-copy">
-            <div className="home-hero-eyebrow">
-              <Sparkles size={15} aria-hidden="true" />
-              <span>Fresh from our farm to your family</span>
-            </div>
-
-            <h1>
-              A better start to
-              <br />
-              every morning.
-              <span className="home-hero-title-accent">Pure dairy. Simply delivered.</span>
-            </h1>
-
-            <p className="home-hero-description">
-              Thoughtfully sourced milk and dairy, prepared fresh and delivered to your
-              doorstep each morning.
+      {/* Desktop Greeting Section: only shown on first carousel slide */}
+      {activeBannerIndex === 0 && (
+        <div className="desktop-home-greeting-section">
+          <div className="desktop-home-greeting-inner">
+            <span className="desktop-home-greeting-salutation">{salutation}</span>
+            <h2 className="desktop-home-greeting-name">
+              {displayName} <span className="greeting-sun-emoji">☀️</span>
+            </h2>
+            <p className="desktop-home-greeting-sub">
+              Fresh farm goodness delivered to your doorstep every morning.
             </p>
+          </div>
+        </div>
+      )}
 
-            <div className="home-hero-actions">
-              <button
-                onClick={() => setActiveTab('products')}
-                className="home-hero-button home-hero-button-primary"
+      <section className="desktop-hero-carousel-container">
+        <div className="desktop-hero-carousel-inner">
+          <div
+            className="desktop-hero-carousel-track"
+            style={{ transform: 'translateX(-' + (activeBannerIndex * 100) + '%)' }}
+          >
+            {bannersList.map((banner, idx) => (
+              <div
+                key={banner._id || idx}
+                className="desktop-hero-carousel-slide"
+                onClick={() => handleBannerClick(banner)}
+                style={{ cursor: 'pointer' }}
               >
-                <span>Explore our dairy</span>
-                <ArrowRight size={18} aria-hidden="true" />
-              </button>
-              <button
-                onClick={() => setActiveTab('subscription')}
-                className="home-hero-button home-hero-button-secondary"
-              >
-                <Milk size={18} aria-hidden="true" />
-                <span>Start a subscription</span>
-              </button>
-            </div>
+                <img
+                  src={banner.imageUrl}
+                  alt={banner.title}
+                  className="desktop-hero-carousel-img"
+                  onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                />
+              </div>
+            ))}
+          </div>
 
-            <div className="home-hero-trust">
-              <div>
-                <CheckCircle size={17} aria-hidden="true" />
-                <span>Carefully sourced</span>
-              </div>
-              <div>
-                <Clock size={17} aria-hidden="true" />
-                <span>Morning delivery</span>
-              </div>
-              <div>
-                <ShieldCheck size={17} aria-hidden="true" />
-                <span>Quality you can trust</span>
-              </div>
-            </div>
+          {/* Prev / Next Controls */}
+          <button
+            type="button"
+            className="desktop-carousel-arrow is-prev"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveBannerIndex((prev) => (prev - 1 + bannersList.length) % bannersList.length);
+            }}
+            aria-label="Previous Slide"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className="desktop-carousel-arrow is-next"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveBannerIndex((prev) => (prev + 1) % bannersList.length);
+            }}
+            aria-label="Next Slide"
+          >
+            ›
+          </button>
+
+          {/* Indicator Dots */}
+          <div className="desktop-carousel-dots">
+            {bannersList.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className={`desktop-carousel-dot${idx === activeBannerIndex ? ' is-active' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveBannerIndex(idx);
+                }}
+                aria-label={'Go to slide ' + (idx + 1)}
+              />
+            ))}
           </div>
         </div>
       </section>
@@ -1254,6 +1566,8 @@ export default function HomePage({ setActiveTab }) {
 
       {/* Full Brand Footer */}
       <Footer setActiveTab={setActiveTab} />
+        </>
+      )}
     </div>
   );
 }

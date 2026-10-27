@@ -1,16 +1,19 @@
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../../providers/product_provider.dart';
-import '../auth/login_screen.dart';
+import '../../data/services/api_service.dart';
+import '../../data/services/realtime_service.dart';
+import '../onboarding/onboarding_screen.dart';
 import '../../data/models/product_model.dart';
-import 'widgets/dairy_collection_card.dart';
-import 'widgets/luxury_product_card.dart';
+import 'widgets/product_card.dart';
 import 'widgets/notification_modal.dart';
-import 'widgets/story_tab.dart';
 import 'contact_support_screen.dart';
+import 'product_details_screen.dart';
+import 'subscription_details_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,15 +24,118 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  String _collectionFilter = 'all';
+  final Set<String> _favoriteProductIds = {};
+  String _productSearchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  int _unreadNotifCount = 0;
+  StreamSubscription? _notifRealtimeSub;
+  final ApiService _api = ApiService();
+  late final PageController _bannerPageController = PageController();
+  int _currentBannerIndex = 0;
+  Timer? _bannerTimer;
+
+  final List<Map<String, dynamic>> _defaultBanners = [
+    {
+      'title': 'Pure Milk. Healthier Lives.',
+      'category': 'milk',
+      'image': 'assets/images/hero_banner_card.png',
+    },
+    {
+      'title': 'Artisanal Curd & Soft Paneer',
+      'category': 'curd',
+      'image': 'assets/images/banner_curd_paneer.png',
+    },
+    {
+      'title': 'A2 Vedic Desi Cow Ghee',
+      'category': 'ghee',
+      'image': 'assets/images/banner_ghee_butter.png',
+    },
+    {
+      'title': 'Pure Milk Dairy Sweets',
+      'category': 'sweets',
+      'image': 'assets/images/banner_dairy_sweets.png',
+    },
+  ];
+  List<Map<String, dynamic>> _banners = [];
 
   @override
   void initState() {
     super.initState();
+    _fetchUnreadNotifCount();
+    _initNotifRealtime();
+    _banners = List.from(_defaultBanners);
+    _fetchBanners();
+    _startBannerTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProductProvider>().loadProducts();
       context.read<CustomerProvider>().loadAllCustomerData();
     });
+  }
+
+  void _initNotifRealtime() {
+    _notifRealtimeSub = RealtimeService().eventStream.listen((event) {
+      final type = event['type']?.toString();
+      if (type == 'NOTIFICATION_CREATED' ||
+          type == 'NOTIFICATION_UPDATED' ||
+          type == 'NOTIFICATION_DELETED' ||
+          type == 'NOTIFICATIONS_CLEARED' ||
+          type == 'DELIVERY_UPDATED') {
+        _fetchUnreadNotifCount();
+      }
+    });
+  }
+
+  Future<void> _fetchUnreadNotifCount() async {
+    try {
+      final res = await _api.get('/api/notifications');
+      if (res['success'] == true && res['notifications'] is List && mounted) {
+        final list = res['notifications'] as List;
+        setState(() {
+          _unreadNotifCount = list.where((n) => n['isRead'] != true).length;
+        });
+      }
+    } catch (_) {}
+  }
+
+
+  Future<void> _fetchBanners() async {
+    try {
+      final res = await _api.get('/api/banners');
+      if (res['success'] == true && res['banners'] is List && mounted) {
+        final list = (res['banners'] as List).cast<Map<String, dynamic>>();
+        if (list.isNotEmpty) {
+          setState(() {
+            _banners = list.map((b) => {
+              'title': b['title']?.toString() ?? '',
+              'category': b['category']?.toString() ?? 'milk',
+              'image': b['imageUrl']?.toString() ?? 'assets/images/hero_banner_card.png',
+            }).toList();
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _startBannerTimer() {
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (timer) {
+      if (!mounted || _banners.isEmpty || !_bannerPageController.hasClients) return;
+      final next = (_currentBannerIndex + 1) % _banners.length;
+      _bannerPageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _bannerTimer?.cancel();
+    _bannerPageController.dispose();
+    _notifRealtimeSub?.cancel();
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _showProofPhotoDialog(String date, String? proofUrl, String? driverName) {
@@ -240,8 +346,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showNotificationsSheet() {
-    Navigator.push(
+  void _showNotificationsSheet() async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (ctx) => NotificationModal(
@@ -252,11 +358,12 @@ class _HomeScreenState extends State<HomeScreen> {
             _showDeliveriesModal(context.read<CustomerProvider>());
           },
           onNotificationChanged: () {
-            setState(() {});
+            _fetchUnreadNotifCount();
           },
         ),
       ),
     );
+    _fetchUnreadNotifCount();
   }
 
   void _showContactSupportSheet() {
@@ -287,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatDeliveryTime(String raw) {
-    if (raw.isEmpty) return '5:00 AM – 6:30 AM';
+    if (raw.isEmpty) return '5:00 AM - 6:30 AM';
     if (raw.contains(':') && (raw.contains('AM') || raw.contains('PM'))) return raw;
     if (raw.contains('T')) {
       try {
@@ -310,7 +417,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _buildHomeFeed(user),
       _buildProductsTab(),
       _buildSubscriptionTab(user),
-      StoryTab(onExploreProducts: () => setState(() => _currentIndex = 1)),
+      _buildDeliveriesTab(user),
       _buildProfileTab(user, auth),
     ];
 
@@ -330,10 +437,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 1. TOP BRAND HEADER (Matching Image 1)
+  // 1. TOP BRAND HEADER (Matching Images 1, 2, 3, 4)
   Widget _buildTopBrandHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFEAEFEB), width: 1)),
@@ -343,73 +450,103 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(color: const Color(0xFFE2EBE5), width: 1.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ClipOval(
-                    child: Padding(
-                      padding: const EdgeInsets.all(4.0),
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (ctx, err, stack) => const Icon(
-                          Icons.water_drop_rounded,
+            Expanded(
+              child: Row(
+                children: [
+                  if (_currentIndex != 0) ...[
+                    InkWell(
+                      onTap: () => setState(() => _currentIndex = 0),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F7F4),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back_rounded,
                           color: Color(0xFF0D5C3A),
-                          size: 24,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                  ],
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFBCE3CE), width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0D5C3A).withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: Padding(
+                        padding: const EdgeInsets.all(2.5),
+                        child: Image.asset(
+                          'assets/images/logo.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (ctx, err, stack) => const Icon(
+                            Icons.water_drop_rounded,
+                            color: Color(0xFF0D5C3A),
+                            size: 24,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'NATURAL MILK DAIRY',
-                      style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0D5C3A),
-                        letterSpacing: 0.5,
-                      ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'NATURAL MILK DAIRY',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0D5C3A),
+                            letterSpacing: 0.4,
+                          ),
+                        ),
+                        Text(
+                          'NATURAL • PURE • HEALTHY',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF15803D),
+                            letterSpacing: 0.7,
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      'NATURAL • PURE • HEALTHY',
-                      style: TextStyle(
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1E5E41),
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
 
-            // Notification Bell with Badge "4"
+            // Notification Bell with Badge
             Stack(
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: Colors.white,
@@ -424,29 +561,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    icon: const Icon(Icons.notifications_outlined, color: Color(0xFF0D5C3A), size: 21),
+                    icon: const Icon(Icons.notifications_outlined, color: Color(0xFF0D5C3A), size: 20),
                     onPressed: _showNotificationsSheet,
                   ),
                 ),
-                Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(4.5),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE11D48),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Text(
-                      '4',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w900,
+                if (_unreadNotifCount >= 0)
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE11D48),
+                        shape: BoxShape.circle,
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ],
@@ -455,189 +586,553 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 2. HERO BANNER (Matching Image 1)
-  Widget _buildHeroBanner() {
+  // 3. HERO BANNER CAROUSEL (Matching Image 2, Admin-manageable with category redirects)
+  Widget _buildHeroBanner(List<ProductModel> products) {
+    if (_banners.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        image: DecorationImage(
-          image: NetworkImage(
-            'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454813/natural-milk-dairy/hero-dairy.jpg',
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
-          fit: BoxFit.cover,
-        ),
+        ],
       ),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 34),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withValues(alpha: 0.25),
-              Colors.black.withValues(alpha: 0.72),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: AspectRatio(
+          aspectRatio: 455 / 298,
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _bannerPageController,
+                itemCount: _banners.length,
+                onPageChanged: (idx) {
+                  if (mounted) setState(() => _currentBannerIndex = idx);
+                },
+                itemBuilder: (context, idx) {
+                  final banner = _banners[idx];
+                  final String imgPath = banner['image']?.toString() ?? '';
+                  final isNet = imgPath.startsWith('http://') || imgPath.startsWith('https://');
+
+                  return Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () {
+                        final cat = banner['category']?.toString() ?? 'milk';
+                        context.read<ProductProvider>().selectCategory(cat);
+                        setState(() => _currentIndex = 1);
+                      },
+                      child: isNet
+                          ? Image.network(
+                              imgPath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Image.asset(
+                                'assets/images/hero_banner_card.png',
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : Image.asset(
+                              imgPath.startsWith('/')
+                                  ? 'assets/images$imgPath'
+                                  : (imgPath.startsWith('assets/') ? imgPath : 'assets/images/$imgPath'),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Image.asset(
+                                'assets/images/hero_banner_card.png',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                    ),
+                  );
+                },
+              ),
+
+              // Carousel Dots Indicator
+              Positioned(
+                bottom: 12,
+                left: 18,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(_banners.length, (i) {
+                    final isSel = i == _currentBannerIndex;
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      margin: const EdgeInsets.only(right: 5),
+                      width: isSel ? 18 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isSel ? const Color(0xFF0D5C3A) : const Color(0xFF0D5C3A).withValues(alpha: 0.25),
+                        borderRadius: BorderRadius.circular(3),
+                        boxShadow: isSel
+                            ? [
+                                BoxShadow(
+                                  color: const Color(0xFF0D5C3A).withValues(alpha: 0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 1),
+                                )
+                              ]
+                            : null,
+                      ),
+                    );
+                  }),
+                ),
+              ),
             ],
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Sparkle Eyebrow Tag
-            const Row(
-              children: [
-                Icon(Icons.auto_awesome, color: Color(0xFFF5C249), size: 16),
-                SizedBox(width: 8),
-                Text(
-                  'FRESH FROM OUR FARM TO YOUR FAMILY',
-                  style: TextStyle(
-                    color: Color(0xFFF5C249),
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.9,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Headline
-            const Text(
-              'A better start to\nevery morning.',
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                height: 1.15,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Accent Subtitle
-            const Text(
-              'Pure dairy. Simply delivered.',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFE5C07B),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Description Paragraph
-            Text(
-              'Thoughtfully sourced milk and dairy, prepared fresh and delivered to your doorstep each morning.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.white.withValues(alpha: 0.92),
-                height: 1.45,
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Primary Golden Button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => setState(() => _currentIndex = 1),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE5C07B),
-                  foregroundColor: const Color(0xFF1A202C),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Explore our dairy',
-                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward_rounded, size: 18),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Secondary Translucent Button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () {
-                  final auth = context.read<AuthProvider>();
-                  if (auth.isGuest || auth.user == null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  } else {
-                    setState(() => _currentIndex = 2);
-                  }
-                },
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.black.withValues(alpha: 0.40),
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.5), width: 1.2),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.water_drop_outlined, size: 19, color: Colors.white),
-                    SizedBox(width: 8),
-                    Text(
-                      'Start a subscription',
-                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Trust highlights
-            Wrap(
-              spacing: 16,
-              runSpacing: 10,
-              children: [
-                _buildTrustItem(Icons.check_circle_outline_rounded, 'Carefully sourced'),
-                _buildTrustItem(Icons.schedule_rounded, 'Morning delivery'),
-                _buildTrustItem(Icons.verified_user_outlined, 'Quality you can trust'),
-              ],
-            ),
-          ],
-        ),
+      ),
+    );
+  }
+  // 4. FEATURE BADGES STRIP (Matching Image 1)
+  Widget _buildFeatureBadgesStrip() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE8EFEA), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildFeatureBadgeItem(
+            icon: Icons.eco_rounded,
+            title: '100%\nPure & Natural',
+          ),
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F2)),
+          _buildFeatureBadgeItem(
+            icon: Icons.verified_user_rounded,
+            title: 'No\nAdulteration',
+          ),
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F2)),
+          _buildFeatureBadgeItem(
+            icon: Icons.ac_unit_rounded,
+            title: 'Chilled at\n4°C',
+          ),
+          Container(width: 1, height: 36, color: const Color(0xFFF1F5F2)),
+          _buildFeatureBadgeItem(
+            icon: Icons.local_shipping_rounded,
+            title: 'Daily Delivery\nbefore 6:30 AM',
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildTrustItem(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+  Widget _buildFeatureBadgeItem({required IconData icon, required String title}) {
+    return Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE8F5E9),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: const Color(0xFF0D5C3A), size: 22),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1E293B),
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 5. SHOP BY CATEGORY (Matching Image 1)
+  Widget _buildShopByCategory() {
+    final categories = [
+      {
+        'id': 'milk',
+        'title': 'Fresh Milks',
+        'color': const Color(0xFFFFF8E7),
+        'image': 'assets/images/cat_img_milk.png',
+      },
+      {
+        'id': 'curd',
+        'title': 'Curd & Paneer',
+        'color': const Color(0xFFEAF7EE),
+        'image': 'assets/images/cat_img_curd.png',
+      },
+      {
+        'id': 'ghee',
+        'title': 'Ghee & Butter',
+        'color': const Color(0xFFFFF3D6),
+        'image': 'assets/images/cat_img_ghee.png',
+      },
+      {
+        'id': 'curd',
+        'title': 'Dairy Sweets',
+        'color': const Color(0xFFFDF0ED),
+        'image': 'assets/images/cat_img_sweets.png',
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 17, color: const Color(0xFFE5C07B)),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Shop by Category',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0C2340),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              InkWell(
+                onTap: () {
+                  context.read<ProductProvider>().selectCategory('all');
+                  setState(() => _currentIndex = 1);
+                },
+                child: const Row(
+                  children: [
+                    Text(
+                      'View All',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0D5C3A),
+                      ),
+                    ),
+                    SizedBox(width: 3),
+                    Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 140,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            itemCount: categories.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final cat = categories[i];
+              return InkWell(
+                onTap: () {
+                  context.read<ProductProvider>().selectCategory(cat['id'] as String);
+                  setState(() => _currentIndex = 1);
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 105,
+                  decoration: BoxDecoration(
+                    color: cat['color'] as Color,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
+                  ),
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.asset(
+                              cat['image'] as String,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                child: const Icon(Icons.inventory_2_rounded, color: Color(0xFF0D5C3A)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10, left: 6, right: 6),
+                        child: Text(
+                          cat['title'] as String,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0C2340),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
     );
   }
 
-  // TAB 0: HOME FEED
+  // 6. BEST SELLING PRODUCTS (Matching Image 1)
+  Widget _buildBestSellingProducts(List<ProductModel> products) {
+    final bestSellers = products.isNotEmpty ? products : ProductModel.defaultCatalog;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 20, 18, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Best Selling Products',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0C2340),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              InkWell(
+                onTap: () {
+                  context.read<ProductProvider>().selectCategory('all');
+                  setState(() => _currentIndex = 1);
+                },
+                child: const Row(
+                  children: [
+                    Text(
+                      'View All',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0D5C3A),
+                      ),
+                    ),
+                    SizedBox(width: 3),
+                    Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 14),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            scrollDirection: Axis.horizontal,
+            itemCount: bestSellers.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, i) {
+              final prod = bestSellers[i];
+              final isFav = _favoriteProductIds.contains(prod.id);
+              return InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => ProductDetailsScreen(product: prod)),
+                  );
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 150,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8EFEA)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                            child: SizedBox(
+                              height: 110,
+                              width: double.infinity,
+                              child: Image.network(
+                                ProductModel.resolveImageUrl(prod.imageUrl, prod.name, prod.category),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Image.asset(
+                                  ProductModel.resolveAssetFallback(prod.name, prod.category),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0D5C3A),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                i == 0 ? 'BESTSELLER' : (i == 1 ? 'FARM FRESH' : (prod.badge.isNotEmpty ? prod.badge : 'FRESH')),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 6,
+                            right: 6,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  if (isFav) {
+                                    _favoriteProductIds.remove(prod.id);
+                                  } else {
+                                    _favoriteProductIds.add(prod.id);
+                                  }
+                                });
+                              },
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.95),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.1),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                  size: 16,
+                                  color: isFav ? const Color(0xFFE11D48) : const Color(0xFF475569),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          prod.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0C2340),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+
+  // GREETING HEADER (Matching Image)
+  Widget _buildGreetingHeader(dynamic user) {
+    final now = DateTime.now();
+    final hour = now.hour;
+    String salutation = 'Good Morning,';
+    if (hour >= 12 && hour < 17) {
+      salutation = 'Good Afternoon,';
+    } else if (hour >= 17 || hour < 5) {
+      salutation = 'Good Evening,';
+    }
+
+    final String name = (user?.name != null && user.name.toString().trim().isNotEmpty)
+        ? user.name.toString().trim()
+        : 'Naveen Kumar';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            salutation,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0C2340),
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                '☀️',
+                style: TextStyle(fontSize: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Fresh farm goodness delivered to your doorstep every morning.',
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // TAB 0: HOME FEED (Matching Image 1)
   Widget _buildHomeFeed(dynamic user) {
     final productProvider = context.watch<ProductProvider>();
     final customerProvider = context.watch<CustomerProvider>();
@@ -646,22 +1141,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final rawProducts = productProvider.products.isNotEmpty
         ? productProvider.products
         : ProductModel.defaultCatalog;
-    final displayProducts = rawProducts;
-    final filteredCollectionProducts = displayProducts.where((p) {
-      if (_collectionFilter == 'all') return true;
-      final cat = p.category.toLowerCase();
-      final name = p.name.toLowerCase();
-      if (_collectionFilter == 'milk') {
-        return cat == 'milk' || name.contains('milk');
-      }
-      if (_collectionFilter == 'curd_paneer') {
-        return cat == 'curd' || cat == 'paneer' || name.contains('curd') || name.contains('paneer');
-      }
-      if (_collectionFilter == 'ghee') {
-        return cat == 'ghee' || name.contains('ghee');
-      }
-      return true;
-    }).toList();
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -676,434 +1155,214 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Hero Section (Image 1)
-            _buildHeroBanner(),
+            // 0. Greeting Header matching Image
+            _buildGreetingHeader(user),
 
-            Padding(
-              padding: const EdgeInsets.all(18.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Active Subscription / Drop Status Card if logged in
-                  if (!isGuest) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF0D5C3A), Color(0xFF083C25)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
-                            blurRadius: 14,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.18),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.alarm_rounded, color: Color(0xFFF5C249), size: 14),
-                                      SizedBox(width: 5),
-                                      Expanded(
-                                        child: Text(
-                                          'Morning Slot · 5:00 AM – 6:30 AM',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: customerProvider.isPaused ? AppColors.badgeDangerBg : const Color(0xFF059669),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  customerProvider.isPaused ? 'Paused' : 'Active Drop',
-                                  style: TextStyle(
-                                    color: customerProvider.isPaused ? AppColors.badgeDangerText : Colors.white,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            customerProvider.isPaused
-                                ? 'Morning Deliveries Paused'
-                                : 'Tomorrow Morning Delivery Drop',
-                            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            customerProvider.isPaused
-                                ? 'Resume anytime in the Profile tab.'
-                                : '${customerProvider.milkQuantity} Litre Farm Fresh Milk${customerProvider.curdQuantity > 0 ? " + ${customerProvider.curdQuantity}g Curd" : ""} to your door',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+            // 1. Hero Banner matching Image 1
+            _buildHeroBanner(rawProducts),
 
-                  // OUR PURE DAIRY COLLECTION (Matching Image 1)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.auto_awesome_rounded, color: Color(0xFFD97706), size: 15),
-                          SizedBox(width: 6),
-                          Text(
-                            'DIRECT FROM SINGLE-SOURCE FARM',
-                            style: TextStyle(
-                              color: Color(0xFF059669),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11.5,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: () => setState(() => _currentIndex = 1),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('View All', style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 12)),
-                            Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF0D5C3A)),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Our Pure Dairy Collection',
-                    style: TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0C2340),
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Zero adulteration, raw farm chilling to 4°C within 30 minutes, delivered in sterilized glass bottles before 6:30 AM across Mumbai.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF526E5C),
-                      height: 1.45,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
+            // 2. Feature Badges Strip (4 columns) matching Image 1
+            _buildFeatureBadgesStrip(),
 
-                  // Category Filter Pills (Matching Image 1)
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildCollectionFilterChip('all', 'All Products (${displayProducts.length})'),
-                        const SizedBox(width: 8),
-                        _buildCollectionFilterChip('milk', 'Fresh Milks'),
-                        const SizedBox(width: 8),
-                        _buildCollectionFilterChip('curd_paneer', 'Curd & Paneer'),
-                        const SizedBox(width: 8),
-                        _buildCollectionFilterChip('ghee', 'Desi A2 Ghee'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+            // 3. Shop by Category matching Image 1
+            _buildShopByCategory(),
 
-                  // 2-Column Product Grid (Matching Image 1)
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: filteredCollectionProducts.length,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 14,
-                      childAspectRatio: 0.465,
-                    ),
-                    itemBuilder: (ctx, i) {
-                      final product = filteredCollectionProducts[i];
-                      return DairyCollectionCard(
-                        product: product,
-                        onSubscribe: () => setState(() => _currentIndex = 2),
-                      );
-                    },
-                  ),
+            // 4. Best Selling Products matching Image 1
+            _buildBestSellingProducts(rawProducts),
 
-                  const SizedBox(height: 16),
-
-                  // Dairy Purity Promise Card
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2EBE5)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.verified_user_rounded, color: Color(0xFF0D5C3A), size: 22),
-                            SizedBox(width: 8),
-                            Text(
-                              'The Natural Milk Dairy Promise',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _buildPromiseItem(Icons.eco_rounded, 'Zero Hormones & Oxytocin', '100% natural organic fodder fed cattle.'),
-                        const SizedBox(height: 10),
-                        _buildPromiseItem(Icons.ac_unit_rounded, 'Chilled to 4°C within 30 mins', 'Locks in vital vitamins, minerals & natural sweetness.'),
-                        const SizedBox(height: 10),
-                        _buildPromiseItem(Icons.wine_bar_rounded, 'Sterilized Glass Bottle Packaging', 'Eco-friendly and free from harmful microplastics.'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                ],
-              ),
-            ),
+            const SizedBox(height: 70),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildCollectionFilterChip(String key, String label) {
-    final bool isSelected = _collectionFilter == key;
-
-    return InkWell(
-      onTap: () => setState(() => _collectionFilter = key),
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE5E7EB),
-            width: 1.2,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.18),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-            color: isSelected ? Colors.white : const Color(0xFF4B5563),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPromiseItem(IconData icon, String title, String subtitle) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: const Color(0xFFE2F1EA),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 16, color: const Color(0xFF0D5C3A)),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0C2340))),
-              Text(subtitle, style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280))),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
   // TAB 1: PRODUCTS TAB (Matching Image 2)
   Widget _buildProductsTab() {
     final productProvider = context.watch<ProductProvider>();
+    final rawList = productProvider.filteredProducts.isNotEmpty
+        ? productProvider.filteredProducts
+        : ProductModel.defaultCatalog;
+
+    final displayList = rawList.where((p) {
+      if (_productSearchQuery.trim().isEmpty) return true;
+      final q = _productSearchQuery.trim().toLowerCase();
+      return p.name.toLowerCase().contains(q) ||
+             p.description.toLowerCase().contains(q) ||
+             p.category.toLowerCase().contains(q);
+    }).toList();
+
+    final categories = [
+      {'id': 'all', 'label': 'All Products', 'icon': null},
+      {'id': 'milk', 'label': 'Fresh Milk', 'icon': Icons.water_drop_outlined},
+      {'id': 'curd', 'label': 'Curd & Paneer', 'icon': Icons.restaurant_outlined},
+      {'id': 'ghee', 'label': 'Ghee', 'icon': Icons.local_dining_outlined},
+    ];
 
     return RefreshIndicator(
       onRefresh: () => productProvider.loadProducts(),
       color: const Color(0xFF0D5C3A),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 20.0),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Headline matching Image 2
+            // Centered Title matching Image 2
             const Text(
               'Our Products',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 30,
+                fontSize: 26,
                 fontWeight: FontWeight.w900,
-                color: Color(0xFF0D5C3A),
-                letterSpacing: -0.5,
+                color: Color(0xFF0C2340),
+                letterSpacing: -0.4,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
 
-            // Subtitle Description matching Image 2
+            // Centered Subtitle matching Image 2
             const Text(
-              'Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd, and artisanal desi ghee delivered fresh every dawn.',
+              'Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 13.5,
-                color: Color(0xFF4B5563),
-                height: 1.5,
+                fontSize: 12.5,
+                color: Color(0xFF526E5C),
+                height: 1.45,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
 
-            // Category Filter Buttons in 2x2 Grid matching Image 2
-            Row(
-              children: [
-                Expanded(child: _buildCategoryBtn('all', 'All Products', productProvider)),
-                const SizedBox(width: 10),
-                Expanded(child: _buildCategoryBtn('milk', 'Fresh Milk', productProvider)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _buildCategoryBtn('curd', 'Curd & Paneer', productProvider)),
-                const SizedBox(width: 10),
-                Expanded(child: _buildCategoryBtn('ghee', 'Vedic Desi Ghee', productProvider)),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // List of Luxury Product Cards (matching Image 2)
-            if (productProvider.isLoading)
-              const Padding(
-                padding: EdgeInsets.all(40.0),
-                child: Center(
-                  child: CircularProgressIndicator(color: Color(0xFF0D5C3A)),
-                ),
-              )
-            else if (productProvider.filteredProducts.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(40.0),
-                child: Column(
-                  children: [
-                    const Icon(Icons.inventory_2_outlined, size: 48, color: Color(0xFF9CA3AF)),
-                    const SizedBox(height: 12),
-                    const Text('No products in this category', style: TextStyle(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () => productProvider.selectCategory('all'),
-                      child: const Text('Show All Products'),
+            // Search Bar matching Image 2
+            Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F2),
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) {
+                        setState(() {
+                          _productSearchQuery = val;
+                        });
+                      },
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0C2340)),
+                      decoration: const InputDecoration(
+                        hintText: 'Search products...',
+                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.zero,
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  if (_productSearchQuery.isNotEmpty)
+                    InkWell(
+                      onTap: () {
+                        _searchController.clear();
+                        setState(() => _productSearchQuery = '');
+                      },
+                      child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF94A3B8)),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Category Filter Pills matching Image 2
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: categories.map((cat) {
+                  final catId = cat['id'] as String;
+                  final isSelected = productProvider.selectedCategory == catId;
+                  final icon = cat['icon'] as IconData?;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: InkWell(
+                      onTap: () => productProvider.selectCategory(catId),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7.5),
+                        decoration: BoxDecoration(
+                          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFF0D5C3A).withValues(alpha: 0.35),
+                            width: 1.2,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (icon != null) ...[
+                              Icon(
+                                icon,
+                                size: 14,
+                                color: isSelected ? Colors.white : const Color(0xFF0D5C3A),
+                              ),
+                              const SizedBox(width: 5),
+                            ],
+                            Text(
+                              cat['label'] as String,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected ? Colors.white : const Color(0xFF0C2340),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 2-Column Product Grid matching Image 2
+            if (displayList.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Text('No products match your search.', style: TextStyle(color: Color(0xFF64748B))),
               )
             else
-              ...productProvider.filteredProducts.map(
-                (prod) => LuxuryProductCard(product: prod),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: displayList.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 14,
+                  childAspectRatio: 0.58,
+                ),
+                itemBuilder: (ctx, i) => ProductCard(product: displayList[i]),
               ),
 
-            const SizedBox(height: 40),
+            const SizedBox(height: 70),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCategoryBtn(String id, String label, ProductProvider provider) {
-    final bool isSelected = provider.selectedCategory == id;
-    return InkWell(
-      onTap: () => provider.selectCategory(id),
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFF3F7F4),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE2EBE5),
-            width: 1.2,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : null,
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : const Color(0xFF1E3A2B),
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // TAB 2: SUBSCRIPTION TAB (Placed right after Products)
+  // TAB 2: SUBSCRIPTION TAB (Matching Image 2 - Left Screen)
   Widget _buildSubscriptionTab(dynamic user) {
-    final bool isGuest = user == null || user.isGuest == true;
     final customerProvider = context.watch<CustomerProvider>();
     final productProvider = context.watch<ProductProvider>();
+    final isGuest = user == null || user.isGuest == true;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -1115,266 +1374,230 @@ class _HomeScreenState extends State<HomeScreen> {
       color: const Color(0xFF0D5C3A),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // Title & Subtitle matching Image 2
+            const Text(
+              'Subscription',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0C2340),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Manage your daily dairy plans and upcoming deliveries.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 1. HERO BANNER CARD (Fresh Dairy Every Morning)
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFE8F5EE), Color(0xFFD4EDE0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0xFFCEE7D9)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.06),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Pill: DOORSTEP DELIVERY PLANS
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFBCE3CE)),
+                          ),
+                          child: const Text(
+                            'DOORSTEP DELIVERY PLANS',
+                            style: TextStyle(
+                              color: Color(0xFF0D5C3A),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const SizedBox(
+                          width: 190,
+                          child: Text(
+                            'Fresh Dairy Every Morning',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                              height: 1.2,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const SizedBox(
+                          width: 175,
+                          child: Text(
+                            'Healthy milk, curd, paneer and more delivered to your doorstep before 6:30 AM.',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Color(0xFF4B5563),
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        // Dark green button: Explore Plans
+                        InkWell(
+                          onTap: () => setState(() => _currentIndex = 1),
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D5C3A),
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Explore Plans',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                SizedBox(width: 5),
+                                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 14),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Image on the Right
+                  Positioned(
+                    right: -10,
+                    bottom: -10,
+                    child: SizedBox(
+                      width: 140,
+                      height: 160,
+                      child: Image.asset(
+                        'assets/images/cat_img_milk.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (c, e, s) => Image.network(
+                          'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 2. 4 FEATURE BADGES (Row of 4 cards)
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE2F1EA),
-                    borderRadius: BorderRadius.circular(12),
+                Expanded(child: _buildSubFeatureBadge(Icons.eco_rounded, '100% Pure & Natural')),
+                const SizedBox(width: 8),
+                Expanded(child: _buildSubFeatureBadge(Icons.ac_unit_rounded, 'Chilled to 4°C')),
+                const SizedBox(width: 8),
+                Expanded(child: _buildSubFeatureBadge(Icons.local_shipping_outlined, 'Doorstep Delivery')),
+                const SizedBox(width: 8),
+                Expanded(child: _buildSubFeatureBadge(Icons.calendar_month_outlined, 'Flexible Plans')),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // 3. ACTIVE SUBSCRIPTIONS SECTION (with View All)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Active Subscriptions',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0C2340),
                   ),
-                  child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF0D5C3A), size: 22),
                 ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscriptionDetailsScreen(),
+                      ),
+                    );
+                  },
+                  child: const Row(
                     children: [
                       Text(
-                        'Doorstep Subscription',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                        'View All',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0D5C3A),
+                        ),
                       ),
-                      Text(
-                        'Fresh pure milk delivered daily before 6:30 AM',
-                        style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
-                      ),
+                      SizedBox(width: 3),
+                      Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 13),
                     ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 12),
 
-            // Active Customer Section OR Guest Section
-            if (!isGuest) ...[
-              // 1. ACTIVE SUBSCRIPTION STATUS CARD
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0D5C3A), Color(0xFF083C25)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+            // ACTIVE SUBSCRIPTION CARD (Matching Image 2 Left Screen)
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SubscriptionDetailsScreen(),
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Container(
-                            margin: const EdgeInsets.only(right: 8),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.alarm_rounded, color: Color(0xFFF5C249), size: 14),
-                                const SizedBox(width: 5),
-                                Expanded(
-                                  child: Text(
-                                    customerProvider.deliverySlot,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: customerProvider.isPaused ? const Color(0xFFDC2626) : const Color(0xFF10B981),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            customerProvider.isPaused ? 'PAUSED' : 'ACTIVE PLAN',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      customerProvider.isPaused
-                          ? 'Morning Deliveries Paused'
-                          : 'Your Daily Doorstep Plan',
-                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      customerProvider.isPaused
-                          ? 'Tap resume below to restart fresh morning drops.'
-                          : 'Delivered in sterile glass bottles to your doorstep before 6:30 AM.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 13),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Daily Quantities Box
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  children: const [
-                                    Icon(Icons.water_drop_rounded, color: Color(0xFFE5C07B), size: 17),
-                                    SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Farm Fresh Cow Milk',
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${customerProvider.milkQuantity} Litre / Day',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
-                              ),
-                            ],
-                          ),
-                          if (customerProvider.curdQuantity > 0) ...[
-                            const SizedBox(height: 10),
-                            const Divider(color: Colors.white24, height: 1),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Row(
-                                    children: const [
-                                      Icon(Icons.breakfast_dining_rounded, color: Color(0xFFE5C07B), size: 17),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Clay Pot Farm Curd',
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${customerProvider.curdQuantity}g / Day',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Action Buttons Row: Pause/Resume + History
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: customerProvider.isLoading
-                                ? null
-                                : () async {
-                                    final messenger = ScaffoldMessenger.of(context);
-                                    if (customerProvider.isPaused) {
-                                      final ok = await customerProvider.resumeSubscription();
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text(ok ? 'Daily deliveries resumed!' : 'Failed to resume delivery drop.'),
-                                          backgroundColor: ok ? const Color(0xFF0D5C3A) : Colors.red,
-                                        ),
-                                      );
-                                    } else {
-                                      final ok = await customerProvider.pauseSubscription();
-                                      messenger.showSnackBar(
-                                        SnackBar(
-                                          content: Text(ok ? 'Daily deliveries paused.' : 'Failed to pause delivery drop.'),
-                                          backgroundColor: ok ? const Color(0xFF0D5C3A) : Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  },
-                            icon: Icon(
-                              customerProvider.isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                              size: 18,
-                            ),
-                            label: Text(customerProvider.isPaused ? 'Resume Drop' : 'Pause Drop'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: customerProvider.isPaused ? const Color(0xFF10B981) : Colors.white,
-                              foregroundColor: customerProvider.isPaused ? Colors.white : const Color(0xFF083C25),
-                              elevation: 0,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        OutlinedButton.icon(
-                          onPressed: () => _showDeliveriesModal(customerProvider),
-                          icon: const Icon(Icons.history_rounded, size: 17),
-                          label: const Text('Proofs'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: BorderSide(color: Colors.white.withValues(alpha: 0.45)),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-
-              // 2. UPCOMING 7-DAY DELIVERY SCHEDULE
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: const Color(0xFFE2EBE5)),
                   boxShadow: [
                     BoxShadow(
@@ -1385,349 +1608,264 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.event_note_rounded, color: Color(0xFF0D5C3A), size: 20),
-                        SizedBox(width: 8),
-                        Text(
-                          'Upcoming Morning Schedule',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                        // Thumbnail
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: 60,
+                            height: 64,
+                            color: const Color(0xFFF3F7F4),
+                            child: Image.asset(
+                              'assets/images/cat_img_milk.png',
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) => Image.network(
+                                'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=300&q=80',
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Daily Farm Pure Milk Plan',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF0C2340),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE2F1EA),
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.circle, color: Color(0xFF0D5C3A), size: 6),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Active',
+                                          style: TextStyle(
+                                            color: Color(0xFF0D5C3A),
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'ID: ${user?.customerId ?? "CUST-101"} \u2022 Daily Morning',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF6B7280),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 4,
+                                children: [
+                                  _buildSubMiniInfo(Icons.water_drop_outlined, '1 L / day Pure A2 Milk'),
+                                  _buildSubMiniInfo(Icons.access_time_rounded, 'Before 6:30 AM Morning Delivery'),
+                                  _buildSubMiniInfo(Icons.location_on_outlined, 'Madhupur Delivery Area'),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      'Doorstep drops scheduled every morning by 6:30 AM',
-                      style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
-                    ),
                     const SizedBox(height: 14),
-                    _buildWeeklyScheduleCards(customerProvider),
+                    const Divider(height: 1, color: Color(0xFFF0F3F1)),
+                    const SizedBox(height: 12),
+
+                    // Two Buttons: View Details (outlined) & Manage Plan (dark green)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 38,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SubscriptionDetailsScreen(),
+                                  ),
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFD4E2D8)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: EdgeInsets.zero,
+                              ),
+                              child: const Text(
+                                'View Details',
+                                style: TextStyle(
+                                  color: Color(0xFF0C2340),
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SizedBox(
+                            height: 38,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const SubscriptionDetailsScreen(),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0D5C3A),
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: EdgeInsets.zero,
+                              ),
+                              child: const Text(
+                                'Manage Plan',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 22),
-            ] else ...[
-              // GUEST HERO BANNER
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0D5C3A), Color(0xFF083C25)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+            ),
+            const SizedBox(height: 22),
+
+            // 4. MORE SUBSCRIPTION PLANS (Horizontal scroll)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'More Subscription Plans',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0C2340),
                   ),
-                  borderRadius: BorderRadius.circular(22),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'ZERO DEPOSIT · PAUSE ANYTIME',
-                        style: TextStyle(color: Color(0xFFE5C07B), fontSize: 10.5, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Pure Milk at Your Doorstep Every Morning by 6:30 AM',
-                      style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900, height: 1.25),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Milked at 3:30 AM, chilled instantly to 4°C, and delivered fresh to your door in eco-friendly glass bottles.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 13, height: 1.4),
-                    ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          );
-                        },
-                        icon: const Icon(Icons.login_rounded, size: 18),
-                        label: const Text('Sign In to Start Subscription'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFE5C07B),
-                          foregroundColor: const Color(0xFF1A202C),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
-                          textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                InkWell(
+                  onTap: () => setState(() => _currentIndex = 1),
+                  child: const Row(
+                    children: [
+                      Text(
+                        'View All',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0D5C3A),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 22),
-            ],
-
-            // 3. EXPLORE ALL SUBSCRIPTION PLANS
-            const Text(
-              'Select a Daily Plan',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Choose your daily morning essentials. Adjust or pause anytime.',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 14),
-
-            // Plan 1: Desi Cow Milk
-            _buildSubscriptionPlanCard(
-              title: 'Desi Cow Milk (A2)',
-              badge: 'Most Popular',
-              price: '₹60',
-              unit: '/ Litre',
-              features: const [
-                '100% Raw, unpasteurized natural A2 milk',
-                'Delivered cold before 6:30 AM',
-                'Sterilized returnable glass bottles',
-                'Pause anytime with 1 tap from app',
-              ],
-              color: const Color(0xFF0D5C3A),
-              bgColor: const Color(0xFFE2F1EA),
-              onSelect: () => _handlePlanSelect(context, 'cow-milk', isGuest),
-            ),
-            const SizedBox(height: 14),
-
-            // Plan 2: Rich Buffalo Milk
-            _buildSubscriptionPlanCard(
-              title: 'Rich Buffalo Milk',
-              badge: 'Creamy & Thick',
-              price: '₹75',
-              unit: '/ Litre',
-              features: const [
-                'High-fat, rich whole milk with thick malai',
-                'Delivered cold before 6:30 AM',
-                'Zero preservatives or chemicals',
-                'Flexible alternate day or daily drop',
-              ],
-              color: const Color(0xFF0284C7),
-              bgColor: const Color(0xFFE0F2FE),
-              onSelect: () => _handlePlanSelect(context, 'buffalo-milk', isGuest),
-            ),
-            const SizedBox(height: 14),
-
-            // Plan 3: Morning Essentials Combo
-            _buildSubscriptionPlanCard(
-              title: 'Morning Essentials Combo',
-              badge: 'Best Value',
-              price: '₹95',
-              unit: '/ Day',
-              features: const [
-                '1L Farm Fresh Milk + 500g Clay Pot Curd',
-                'Save ₹15 daily on breakfast bundle',
-                'Freshly set artisanal dahi with live cultures',
-                'Skip or pause drops when traveling',
-              ],
-              color: const Color(0xFFD97706),
-              bgColor: const Color(0xFFFEF3C7),
-              onSelect: () => _handlePlanSelect(context, 'combo', isGuest),
-            ),
-            const SizedBox(height: 24),
-
-            // 4. HOW SUBSCRIPTIONS WORK
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE2EBE5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'How Doorstep Subscription Works',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                      SizedBox(width: 3),
+                      Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 13),
+                    ],
                   ),
-                  const SizedBox(height: 14),
-                  _buildHowStep('1', 'Choose Your Quantity', 'Select daily milk (1L, 2L) and optional curd.'),
-                  const SizedBox(height: 10),
-                  _buildHowStep('2', 'Morning Drop by 6:30 AM', 'Delivered fresh in chilled glass bottles.'),
-                  const SizedBox(height: 10),
-                  _buildHowStep('3', 'Pause Anytime with 1 Tap', 'Going on vacation? Pause drop directly in app.'),
-                  const SizedBox(height: 10),
-                  _buildHowStep('4', 'Live Photo Delivery Proofs', 'Every drop photographed and recorded in ledger.'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  _buildMorePlanCard(
+                    title: 'Milk Plans',
+                    subtitle: 'Cow & Buffalo Milk',
+                    imageAsset: 'assets/images/cat_img_milk.png',
+                    onTap: () => setState(() => _currentIndex = 1),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildMorePlanCard(
+                    title: 'Curd Plans',
+                    subtitle: 'Fresh & Thick Curd',
+                    imageAsset: 'assets/images/cat_img_curd.png',
+                    onTap: () => setState(() => _currentIndex = 1),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildMorePlanCard(
+                    title: 'Ghee Plans',
+                    subtitle: 'Vedic Desi Ghee',
+                    imageAsset: 'assets/images/cat_img_ghee.png',
+                    onTap: () => setState(() => _currentIndex = 1),
+                  ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildWeeklyScheduleCards(CustomerProvider cp) {
-    final now = DateTime.now();
-    final days = List.generate(7, (i) => now.add(Duration(days: i)));
-    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-    return SizedBox(
-      height: 90,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: days.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (ctx, i) {
-          final d = days[i];
-          final isToday = i == 0;
-          final isTomorrow = i == 1;
-          final weekday = weekdays[d.weekday - 1];
-          final isPaused = cp.isPaused;
-
-          return Container(
-            width: 72,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
-            decoration: BoxDecoration(
-              color: isToday
-                  ? const Color(0xFF0D5C3A)
-                  : (isTomorrow ? const Color(0xFFE2F1EA) : const Color(0xFFF9FAF9)),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isToday
-                    ? const Color(0xFF0D5C3A)
-                    : (isTomorrow ? const Color(0xFF0D5C3A) : const Color(0xFFE2EBE5)),
-                width: isToday || isTomorrow ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  weekday,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: isToday ? Colors.white70 : const Color(0xFF6B7280),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${d.day}',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: isToday ? Colors.white : const Color(0xFF0C2340),
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  isPaused
-                      ? 'Paused'
-                      : (isToday ? 'Today' : (isTomorrow ? '6:30 AM' : '${cp.milkQuantity}L')),
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: isToday
-                        ? const Color(0xFFF5C249)
-                        : (isPaused ? Colors.red : const Color(0xFF0D5C3A)),
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSubscriptionPlanCard({
-    required String title,
-    required String badge,
-    required String price,
-    required String unit,
-    required List<String> features,
-    required Color color,
-    required Color bgColor,
-    required VoidCallback onSelect,
-  }) {
+  Widget _buildSubFeatureBadge(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2EBE5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: bgColor,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  badge,
-                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
-                ),
-              ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(price, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0C2340))),
-                  Text(unit, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE2F1EA),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: const Color(0xFF0D5C3A), size: 16),
           ),
-          const SizedBox(height: 10),
-          Text(title, style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340))),
-          const SizedBox(height: 10),
-          ...features.map((f) => Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: color, size: 15),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: Text(
-                        f,
-                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
-                ),
-              )),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onSelect,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-              child: const Text('Subscribe Daily', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0C2340),
+              height: 1.15,
             ),
           ),
         ],
@@ -1735,61 +1873,84 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _handlePlanSelect(BuildContext ctx, String planType, bool isGuest) {
-    if (isGuest) {
-      Navigator.push(ctx, MaterialPageRoute(builder: (_) => const LoginScreen()));
-    } else {
-      ScaffoldMessenger.of(ctx).showSnackBar(
-        const SnackBar(
-          content: Text('Your daily doorstep plan is active and synchronized in realtime!'),
-          backgroundColor: Color(0xFF0D5C3A),
-        ),
-      );
-    }
-  }
-
-  Widget _buildHowStep(String num, String title, String subtitle) {
+  Widget _buildSubMiniInfo(IconData icon, String text) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: const Color(0xFFE2F1EA),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              num,
-              style: const TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w900, fontSize: 13),
-            ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0C2340)),
-              ),
-              Text(
-                subtitle,
-                style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-              ),
-            ],
-          ),
+        Icon(icon, color: const Color(0xFF0D5C3A), size: 13),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 10.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w600),
         ),
       ],
     );
   }
 
-  // TAB 4: PROFILE TAB (Subscription, Deliveries, Balance, Support)
-  Widget _buildProfileTab(dynamic user, AuthProvider auth) {
-    final bool isGuest = user == null || user.isGuest == true;
+  Widget _buildMorePlanCard({
+    required String title,
+    required String subtitle,
+    required String imageAsset,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: 136,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2EBE5)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                height: 72,
+                width: double.infinity,
+                color: const Color(0xFFF3F7F4),
+                child: Image.asset(
+                  imageAsset,
+                  fit: BoxFit.cover,
+                  errorBuilder: (c, e, s) => const Icon(Icons.water_drop_rounded, color: Color(0xFF0D5C3A)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 16),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // TAB 3: DELIVERIES TAB (Matching Image 3)
+  Widget _buildDeliveriesTab(dynamic user) {
     final customerProvider = context.watch<CustomerProvider>();
+    final isGuest = user == null || user.isGuest == true;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -1798,12 +1959,540 @@ class _HomeScreenState extends State<HomeScreen> {
       color: const Color(0xFF0D5C3A),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // User Profile Card
+            // Title & Subtitle matching Image 3
+            const Text(
+              'Deliveries',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0C2340),
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Track your doorstep deliveries and payments.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Hero Illustration Banner (Farm pasture with bottle and glass)
             Container(
-              padding: const EdgeInsets.all(20),
+              height: 140,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFCEE7D9)),
+                image: const DecorationImage(
+                  image: AssetImage('assets/images/dairy_hero.jpg'),
+                  fit: BoxFit.cover,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 4 Stat Metric Cards (2x2 Grid matching Image 3)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDeliveryMetricCard(
+                    icon: Icons.local_shipping_outlined,
+                    iconBg: const Color(0xFFE0F2FE),
+                    iconColor: const Color(0xFF0284C7),
+                    value: '9',
+                    label: 'Total Drops',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDeliveryMetricCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    iconBg: const Color(0xFFDCFCE7),
+                    iconColor: const Color(0xFF16A34A),
+                    value: '3',
+                    label: 'Delivered',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildDeliveryMetricCard(
+                    icon: Icons.access_time_rounded,
+                    iconBg: const Color(0xFFFEF3C7),
+                    iconColor: const Color(0xFFD97706),
+                    value: '6',
+                    label: 'Pending Drops',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildDeliveryMetricCard(
+                    icon: Icons.ac_unit_rounded,
+                    iconBg: const Color(0xFFE2F1EA),
+                    iconColor: const Color(0xFF0D5C3A),
+                    value: '100%',
+                    label: 'Cold-Chain 4°C',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 22),
+
+            // Upcoming Deliveries Header with View Calendar >
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Upcoming Deliveries',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0C2340),
+                  ),
+                ),
+                InkWell(
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Delivery calendar schedule view opened!'),
+                        backgroundColor: Color(0xFF0D5C3A),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  child: const Row(
+                    children: [
+                      Icon(Icons.calendar_month_outlined, color: Color(0xFF0D5C3A), size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'View Calendar',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0D5C3A),
+                        ),
+                      ),
+                      SizedBox(width: 2),
+                      Icon(Icons.chevron_right_rounded, color: Color(0xFF0D5C3A), size: 15),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Delivery Cards matching Image 3
+            _buildUpcomingDeliveryCard(
+              day: 'Mon',
+              date: '26',
+              monthYear: 'Oct 2026',
+              timeSlot: '5:00 AM - 6:30 AM',
+              milkQty: '1 L',
+              curdQty: '0 g',
+              isDelivered: false,
+              paymentStatus: 'Advance',
+              onTap: () => _showDeliveriesModal(customerProvider),
+            ),
+            const SizedBox(height: 10),
+            _buildUpcomingDeliveryCard(
+              day: 'Tue',
+              date: '27',
+              monthYear: 'Oct 2026',
+              timeSlot: '5:00 AM - 6:30 AM',
+              milkQty: '1 L',
+              curdQty: '500 g',
+              isDelivered: false,
+              paymentStatus: 'Advance',
+              onTap: () => _showDeliveriesModal(customerProvider),
+            ),
+            const SizedBox(height: 10),
+            _buildUpcomingDeliveryCard(
+              day: 'Wed',
+              date: '28',
+              monthYear: 'Oct 2026',
+              timeSlot: '5:00 AM - 6:30 AM',
+              milkQty: '1 L',
+              curdQty: '500 g',
+              isDelivered: true,
+              paymentStatus: 'Paid',
+              onTap: () => _showDeliveriesModal(customerProvider),
+            ),
+            const SizedBox(height: 10),
+            _buildUpcomingDeliveryCard(
+              day: 'Thu',
+              date: '29',
+              monthYear: 'Oct 2026',
+              timeSlot: '5:00 AM - 6:30 AM',
+              milkQty: '1 L',
+              curdQty: '0 g',
+              isDelivered: true,
+              paymentStatus: 'Paid',
+              onTap: () => _showDeliveriesModal(customerProvider),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeliveryMetricCard({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String value,
+    required String label,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2EBE5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 19),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0C2340),
+                  ),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUpcomingDeliveryCard({
+    required String day,
+    required String date,
+    required String monthYear,
+    required String timeSlot,
+    required String milkQty,
+    required String curdQty,
+    required bool isDelivered,
+    required String paymentStatus,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2EBE5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Left Date Box matching Image 3
+            Container(
+              width: 58,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF3F7F4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2EBE5)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    day,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                  Text(
+                    date,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0C2340),
+                      height: 1.1,
+                    ),
+                  ),
+                  Text(
+                    monthYear,
+                    style: const TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Middle: Time Slot & Products
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time_rounded, color: Color(0xFF0D5C3A), size: 12),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          timeSlot,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0C2340),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: SizedBox(
+                              width: 16,
+                              height: 18,
+                              child: Image.asset('assets/images/cat_img_milk.png', fit: BoxFit.cover),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Milk $milkQty',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF0C2340)),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: SizedBox(
+                              width: 16,
+                              height: 18,
+                              child: Image.asset('assets/images/cat_img_curd.png', fit: BoxFit.cover),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Curd $curdQty',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF0C2340)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+
+            // Right: Status Pill & Payment Badge
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isDelivered ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isDelivered ? Icons.check_circle_rounded : Icons.access_time_rounded,
+                        color: isDelivered ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                        size: 11,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        isDelivered ? 'Delivered' : 'Pending',
+                        style: TextStyle(
+                          color: isDelivered ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Payment ', style: TextStyle(fontSize: 9.5, color: Color(0xFF6B7280))),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: paymentStatus == 'Paid' ? const Color(0xFFDCFCE7) : const Color(0xFFFEF9C3),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        paymentStatus,
+                        style: TextStyle(
+                          color: paymentStatus == 'Paid' ? const Color(0xFF15803D) : const Color(0xFF854D0E),
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 16),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // TAB 4: PROFILE TAB (Matching Image 4)
+  Widget _buildProfileTab(dynamic user, AuthProvider auth) {
+    final customerProvider = context.watch<CustomerProvider>();
+    final isGuest = user == null || user.isGuest == true;
+
+    final String name = isGuest ? 'Guest Explorer' : (user?.name ?? 'Naveen Kumar');
+    final String customerId = isGuest ? 'GUEST-001' : (user?.customerId ?? 'CUST-101');
+    final String mobile = isGuest ? '+91 77022 33931' : (user?.mobile ?? '7702233931');
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        if (!isGuest) await customerProvider.loadAllCustomerData(silent: true);
+      },
+      color: const Color(0xFF0D5C3A),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Title & Subtitle + Top-Right Milk Illustration
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        'My Profile',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0C2340),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Manage your account, deliveries and preferences.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Image.asset(
+                      'assets/images/cat_img_milk.png',
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) => const SizedBox(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+
+            // User Identity Card matching Image 4
+            Container(
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
@@ -1812,265 +2501,215 @@ class _HomeScreenState extends State<HomeScreen> {
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.03),
                     blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    offset: const Offset(0, 3),
                   ),
                 ],
               ),
-              child: Column(
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: const Color(0xFFE2F1EA),
-                    child: isGuest
-                        ? const Icon(Icons.person_rounded, size: 36, color: Color(0xFF0D5C3A))
-                        : Text(
-                            (user?.name.isNotEmpty == true) ? user.name[0].toUpperCase() : 'U',
-                            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A)),
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    isGuest ? 'Guest Explorer' : (user?.name ?? 'Customer Profile'),
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isGuest ? 'Browsing Natural Milk Dairy' : (user?.mobile ?? '+91 98765 43210'),
-                    style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13),
-                  ),
-                  const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    width: 54,
+                    height: 54,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE2F1EA),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      color: Color(0xFF0D5C3A),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0C2340),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID: $customerId',
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          mobile,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFE2F1EA),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Text(
-                      isGuest ? 'Guest Mode' : 'Assigned Route: ${user?.area ?? "Madhapur"}',
-                      style: const TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w700, fontSize: 12),
+                    child: const Text(
+                      'Active',
+                      style: TextStyle(
+                        color: Color(0xFF0D5C3A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
-            if (!isGuest) ...[
-              // Summary Stats Card
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE2EBE5)),
+            // 1. SECTION: Account & Billing
+            _buildProfileSectionGroup(
+              headerIcon: Icons.credit_card_outlined,
+              headerTitle: 'Account & Billing',
+              items: [
+                _buildProfileItemRow(
+                  icon: Icons.person_outline_rounded,
+                  title: 'Account Details',
+                  subtitle: 'View and update your personal information',
+                  onTap: () {
+                    _showActionSnackbar('Account Details opened');
+                  },
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Column(
-                      children: [
-                        const Text('BALANCE', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF))),
-                        const SizedBox(height: 4),
-                        Text(
-                          '₹${customerProvider.currentBalance}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 17,
-                            color: customerProvider.currentBalance > 0 ? Colors.redAccent : const Color(0xFF0D5C3A),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Container(height: 36, width: 1, color: const Color(0xFFE2EBE5)),
-                    Column(
-                      children: [
-                        const Text('DELIVERED', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF))),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${customerProvider.ledgerSummary?['totalMilkDelivered'] ?? 0} L',
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: Color(0xFF0C2340)),
-                        ),
-                      ],
-                    ),
-                    Container(height: 36, width: 1, color: const Color(0xFFE2EBE5)),
-                    Column(
-                      children: [
-                        const Text('DROP STATUS', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF9CA3AF))),
-                        const SizedBox(height: 4),
-                        Text(
-                          customerProvider.isPaused ? 'Paused' : 'Active',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                            color: customerProvider.isPaused ? Colors.redAccent : const Color(0xFF0D5C3A),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                _buildProfileItemRow(
+                  icon: Icons.local_shipping_outlined,
+                  title: 'Deliveries',
+                  subtitle: 'Track your latest doorstep deliveries',
+                  badgeText: '9 Drops',
+                  badgeBg: const Color(0xFFE2F1EA),
+                  badgeColor: const Color(0xFF0D5C3A),
+                  onTap: () {
+                    setState(() => _currentIndex = 3);
+                  },
                 ),
-              ),
-              const SizedBox(height: 18),
-
-              // Daily Morning Drop Plan Card
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFE2EBE5)),
+                _buildProfileItemRow(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Subscription Payment',
+                  subtitle: 'Manage payments and view invoices',
+                  badgeText: 'Prepaid',
+                  badgeBg: const Color(0xFFE2F1EA),
+                  badgeColor: const Color(0xFF0D5C3A),
+                  onTap: () {
+                    _showActionSnackbar('Subscription payment ledger opened');
+                  },
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Daily Milk Plan', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0C2340))),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: customerProvider.isPaused ? AppColors.badgeDangerBg : const Color(0xFFE2F1EA),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            customerProvider.isPaused ? 'PAUSED' : 'ACTIVE',
-                            style: TextStyle(
-                              color: customerProvider.isPaused ? AppColors.badgeDangerText : const Color(0xFF0D5C3A),
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Morning Cow Milk', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
-                        Text('${customerProvider.milkQuantity} Litre / day', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0C2340))),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Thick Farm Curd', style: TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
-                        Text('${customerProvider.curdQuantity} Grams / day', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0C2340))),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: customerProvider.isLoading
-                            ? null
-                            : () async {
-                                final messenger = ScaffoldMessenger.of(context);
-                                if (customerProvider.isPaused) {
-                                  final ok = await customerProvider.resumeSubscription();
-                                  messenger.showSnackBar(SnackBar(content: Text(ok ? 'Delivery drop resumed!' : 'Failed to resume drop.')));
-                                } else {
-                                  final ok = await customerProvider.pauseSubscription();
-                                  messenger.showSnackBar(SnackBar(content: Text(ok ? 'Delivery drop paused.' : 'Failed to pause drop.')));
-                                }
-                              },
-                        icon: Icon(customerProvider.isPaused ? Icons.play_circle_outline : Icons.pause_circle_outline, size: 18),
-                        label: Text(customerProvider.isPaused ? 'Resume Drop' : 'Pause Drop'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF0D5C3A),
-                          side: const BorderSide(color: Color(0xFF0D5C3A)),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ),
-                  ],
+                _buildProfileItemRow(
+                  icon: Icons.location_on_outlined,
+                  title: 'Addresses',
+                  subtitle: 'Manage your delivery addresses',
+                  onTap: () {
+                    _showActionSnackbar('Delivery addresses opened');
+                  },
                 ),
-              ),
-              const SizedBox(height: 18),
-            ],
-
-            if (isGuest)
-              Container(
-                margin: const EdgeInsets.only(bottom: 20),
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE2F1EA),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.2)),
-                ),
-                child: Column(
-                  children: [
-                    const Icon(Icons.lock_open_rounded, size: 30, color: Color(0xFF0D5C3A)),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Sign In to Subscribe',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF0C2340)),
-                    ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Access 5:00 AM daily doorstep drops, pause deliveries, and view real-time photo proofs.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFF4B5563), fontSize: 12.5),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0D5C3A),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text('Sign In or Register', style: TextStyle(fontWeight: FontWeight.w800)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-            if (!isGuest) ...[
-              _buildProfileTile(
-                icon: Icons.camera_alt_outlined,
-                title: 'Verified Delivery Records',
-                subtitle: 'View doorstep drop history & photo proofs',
-                onTap: () => _showDeliveriesModal(customerProvider),
-              ),
-            ],
-
-            // Quick Support Tile
-            _buildProfileTile(
-              icon: Icons.support_agent_rounded,
-              title: 'Helpline & Support',
-              subtitle: '5:00 AM – 9:00 PM Helpline',
-              onTap: _showContactSupportSheet,
+              ],
             ),
+            const SizedBox(height: 14),
 
-            if (!isGuest)
-              _buildProfileTile(
-                icon: Icons.logout_rounded,
-                title: 'Sign Out',
-                subtitle: 'Log out of your dairy account',
-                isDestructive: true,
-                onTap: () async {
-                  final navigator = Navigator.of(context);
-                  await auth.logout();
-                  if (!mounted) return;
-                  navigator.pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const HomeScreen()),
-                    (route) => false,
-                  );
-                },
-              ),
+            // 2. SECTION: Support & Help
+            _buildProfileSectionGroup(
+              headerIcon: Icons.headset_mic_outlined,
+              headerTitle: 'Support & Help',
+              items: [
+                _buildProfileItemRow(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  title: 'Customer Care & Helplines',
+                  subtitle: 'WhatsApp chat & 24/7 priority support',
+                  onTap: _showContactSupportSheet,
+                ),
+                _buildProfileItemRow(
+                  icon: Icons.help_outline_rounded,
+                  title: 'FAQs',
+                  subtitle: 'Find answers to common questions',
+                  onTap: () {
+                    _showActionSnackbar('FAQs & help center opened');
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // 3. SECTION: App Settings
+            _buildProfileSectionGroup(
+              headerIcon: Icons.settings_outlined,
+              headerTitle: 'App Settings',
+              items: [
+                _buildProfileItemRow(
+                  icon: Icons.notifications_none_rounded,
+                  title: 'Notifications',
+                  subtitle: 'Manage alerts and reminders',
+                  onTap: () {
+                    _showActionSnackbar('Notification settings opened');
+                  },
+                ),
+                _buildProfileItemRow(
+                  icon: Icons.language_rounded,
+                  title: 'Language',
+                  subtitle: 'English (India)',
+                  onTap: () {
+                    _showActionSnackbar('Language set to English (India)');
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // 4. SECTION: Account Actions
+            _buildProfileSectionGroup(
+              headerIcon: Icons.security_outlined,
+              headerTitle: 'Account Actions',
+              items: [
+                _buildProfileItemRow(
+                  icon: Icons.logout_rounded,
+                  title: 'Log out',
+                  subtitle: 'Sign out from your account',
+                  isDestructive: true,
+                  onTap: () async {
+                    final navigator = Navigator.of(context);
+                    await auth.logout();
+                    if (!mounted) return;
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                      (route) => false,
+                    );
+                  },
+                ),
+                _buildProfileItemRow(
+                  icon: Icons.delete_outline_rounded,
+                  title: 'Delete Account',
+                  subtitle: 'Permanently delete account & records',
+                  isDestructive: true,
+                  onTap: () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Delete Account?'),
+                        content: const Text('Are you sure you want to permanently delete your account and records?'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _showActionSnackbar('Account deletion request submitted');
+                            },
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
             const SizedBox(height: 40),
           ],
         ),
@@ -2078,45 +2717,132 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildProfileTile({
+  Widget _buildProfileSectionGroup({
+    required IconData headerIcon,
+    required String headerTitle,
+    required List<Widget> items,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2EBE5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(headerIcon, color: const Color(0xFF0D5C3A), size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    headerTitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0C2340),
+                    ),
+                  ),
+                ],
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Column(children: items),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileItemRow({
     required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    String? badgeText,
+    Color? badgeBg,
+    Color? badgeColor,
     bool isDestructive = false,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2EBE5)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(16),
-        child: ListTile(
-          onTap: onTap,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isDestructive ? const Color(0xFFFEE2E2) : const Color(0xFFE2F1EA),
-              borderRadius: BorderRadius.circular(10),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9.0, horizontal: 4.0),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDestructive ? const Color(0xFFFEE2E2) : const Color(0xFFF3F7F4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: isDestructive ? const Color(0xFFDC2626) : const Color(0xFF0D5C3A),
+                size: 19,
+              ),
             ),
-            child: Icon(icon, color: isDestructive ? Colors.red : const Color(0xFF0D5C3A), size: 20),
-          ),
-          title: Text(
-            title,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 14,
-              color: isDestructive ? Colors.red : const Color(0xFF0C2340),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: isDestructive ? const Color(0xFFDC2626) : const Color(0xFF0C2340),
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                  ),
+                ],
+              ),
             ),
-          ),
-          subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))),
-          trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF)),
+            if (badgeText != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badgeBg ?? const Color(0xFFE2F1EA),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                    color: badgeColor ?? const Color(0xFF0D5C3A),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 18),
+          ],
         ),
+      ),
+    );
+  }
+
+  void _showActionSnackbar(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: const Color(0xFF0D5C3A),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -2167,7 +2893,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {'index': 0, 'label': 'Home', 'icon': Icons.home_outlined, 'activeIcon': Icons.home_rounded},
       {'index': 1, 'label': 'Products', 'icon': Icons.shopping_bag_outlined, 'activeIcon': Icons.shopping_bag_rounded},
       {'index': 2, 'label': 'Subscription', 'icon': Icons.calendar_today_outlined, 'activeIcon': Icons.calendar_month_rounded},
-      {'index': 3, 'label': 'Story', 'icon': Icons.menu_book_outlined, 'activeIcon': Icons.menu_book_rounded},
+      {'index': 3, 'label': 'Deliveries', 'icon': Icons.local_shipping_outlined, 'activeIcon': Icons.local_shipping_rounded},
       {'index': 4, 'label': 'Profile', 'icon': Icons.person_outline_rounded, 'activeIcon': Icons.person_rounded},
     ];
 

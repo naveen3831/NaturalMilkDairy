@@ -34,6 +34,12 @@ class UserModel {
 
   String get assignedArea => area ?? 'madhapur';
 
+  String get customerId {
+    if (id.isEmpty || isGuest) return 'CUST-101';
+    final clean = id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    return clean.length > 4 ? 'CUST-${clean.substring(clean.length - 4).toUpperCase()}' : 'CUST-$clean';
+  }
+
   factory UserModel.guest() {
     return UserModel(
       id: 'guest_user',

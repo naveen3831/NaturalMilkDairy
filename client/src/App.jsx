@@ -224,6 +224,10 @@ export default function App() {
   }, [activeTab]);
 
   const navigateToTab = (tab, optionsOrProductId = null) => {
+    let targetTab = tab;
+    if (user?.role === 'customer' && adminTabs.includes(tab)) {
+      targetTab = (tab === 'dashboard' || tab === 'home') ? 'home' : 'customer-portal';
+    }
     const targetProductId = typeof optionsOrProductId === 'string'
       ? optionsOrProductId
       : (optionsOrProductId?.productId || (typeof optionsOrProductId === 'object' && (optionsOrProductId?.id || optionsOrProductId?._id || optionsOrProductId?.name)));
@@ -240,19 +244,19 @@ export default function App() {
       localStorage.removeItem('nmd_selected_product_obj');
     }
 
-    setActiveTab(tab);
-    const activeTargetId = targetProductId || (tab === 'products' ? localStorage.getItem('nmd_selected_product_id') : null);
-    const routePath = tab === 'customer-portal'
+    setActiveTab(targetTab);
+    const activeTargetId = targetProductId || (targetTab === 'products' ? localStorage.getItem('nmd_selected_product_id') : null);
+    const routePath = targetTab === 'customer-portal'
       ? `/customer/${localStorage.getItem('nmd_customer_page') || 'dashboard'}`
-      : tab === 'delivery-boy-app'
+      : targetTab === 'delivery-boy-app'
         ? `/delivery/${localStorage.getItem('nmd_driver_tab') || 'deliveries'}`
-        : tab === 'home' || tab === 'landing'
+        : targetTab === 'home' || targetTab === 'landing'
           ? '/'
-          : tab === 'products' && activeTargetId
+          : targetTab === 'products' && activeTargetId
             ? `/products?product=${encodeURIComponent(activeTargetId)}`
-            : `/${tab}`;
+            : `/${targetTab}`;
     if (window.location.pathname + window.location.search !== routePath) {
-      window.history.pushState({ nmdPage: tab }, '', routePath);
+      window.history.pushState({ nmdPage: targetTab }, '', routePath);
     }
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
     setTimeout(() => {
@@ -340,7 +344,7 @@ export default function App() {
   };
 
   const publicTabsList = ['home', 'landing', 'products', 'story', 'faqs', 'contact'];
-  const isAdminView = adminTabs.includes(activeTab) || (user?.role === 'admin' && !publicTabsList.includes(activeTab));
+  const isAdminView = user?.role === 'admin' && (adminTabs.includes(activeTab) || !publicTabsList.includes(activeTab));
 
   return (
     <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

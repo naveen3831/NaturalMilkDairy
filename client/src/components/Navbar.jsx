@@ -105,10 +105,10 @@ export default function Navbar({ activeTab, setActiveTab }) {
   if (isPublicView) {
     // On mobile: hide only the top header on products page, story page, and product details page
     const hideTopHeader =
-      isMobile &&
-      (isProductDetailsActive ||
+      isMobile && isProductDetailsActive; //
+      /* (isProductDetailsActive ||
         activeTab === 'products' ||
-        activeTab === 'story');
+        activeTab === 'story'); */
 
     return (
       <>
@@ -472,6 +472,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 return;
               }
               navigatePage('subscription');
+              return;
+            }
+            if (page === 'deliveries') {
+              if (user?.role === 'customer') {
+                openUserPortal('deliveries');
+                return;
+              }
+              navigatePage('login');
               return;
             }
             navigatePage(page);

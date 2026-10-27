@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
+import BannerManagerModal from '../../components/BannerManagerModal';
+import { Layers } from 'lucide-react';
 import {
   Milk,
   Edit2,
@@ -37,6 +39,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
 
   // Modals & Drawers
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showBannerManager, setShowBannerManager] = useState(false);
 
   // Full Edit Product Modal State
   const [editingFullProduct, setEditingFullProduct] = useState(null);
@@ -261,6 +264,25 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
             </button>
           </div>
 
+                    <button
+            onClick={() => setShowBannerManager(true)}
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              color: '#0f172a',
+              fontWeight: 700,
+              fontSize: '0.84rem',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <Layers size={15} color="#059669" />
+            <span>Carousel Banners</span>
+          </button>
           <button
             onClick={() => {
               if (onNavigateToAdd) onNavigateToAdd();
@@ -1200,6 +1222,8 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
           </div>
         </div>
       )}
-    </div>
+    
+      <BannerManagerModal isOpen={showBannerManager} onClose={() => setShowBannerManager(false)} />
+</div>
   );
 }

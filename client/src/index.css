@@ -1,4 +1,4 @@
-
+﻿
 :root {
   /* Brand Color Palette matching the Logo */
   --primary-green: #0d5c3a;
@@ -12024,7 +12024,7 @@ body::-webkit-scrollbar,
 
   .public-mobile-bottom-nav,
   .customer-bottom-nav.customer-home-bottom-nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
     gap: 1px !important;
     padding-right: 5px !important;
     padding-left: 5px !important;
@@ -13594,4 +13594,829 @@ body::-webkit-scrollbar,
   border-color: #cbd5e1;
   color: #0d5c3a;
   transform: translateX(-2px);
+}
+
+
+/* =========================================================
+   MOBILE RESPONSIVE VIEWS: MATCHING REFERENCE IMAGES 1 & 2
+   ========================================================= */
+
+/* Floating Contact Us Pill (Visible across Mobile Home & Products) */
+.mobile-floating-contact-pill {
+  position: fixed;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  right: 16px;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #0d5c3a;
+  color: #ffffff;
+  padding: 10px 18px;
+  border-radius: 30px;
+  font-weight: 800;
+  font-size: 0.88rem;
+  box-shadow: 0 4px 16px rgba(13, 92, 58, 0.35);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-floating-contact-pill:active {
+  transform: scale(0.96);
+}
+
+/* --- HOME MOBILE VIEW (Image 1) --- */
+.mobile-home-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding-bottom: 90px;
+  background: #f9faf9;
+}
+
+.mobile-home-hero-card {
+  position: relative;
+  margin: 14px 16px 12px 16px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  line-height: 0;
+}
+
+.mobile-home-hero-full-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+  border-radius: 20px;
+}
+
+.mobile-home-hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.85) 48%, rgba(255, 255, 255, 0.25) 72%, transparent 100%);
+  pointer-events: none;
+}
+
+.mobile-home-hero-content {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  bottom: 14px;
+  width: 195px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  z-index: 2;
+}
+
+.mobile-home-hero-eyebrow {
+  font-size: 0.65rem;
+  font-weight: 900;
+  color: #0d5c3a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-home-hero-title {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #0c2340;
+  line-height: 1.15;
+  margin: 3px 0 4px 0;
+}
+
+.mobile-home-hero-desc {
+  font-size: 0.72rem;
+  color: #526e5c;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.mobile-home-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #0d5c3a;
+  color: #ffffff;
+  padding: 7px 15px;
+  border-radius: 22px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 3px 8px rgba(13, 92, 58, 0.3);
+  width: fit-content;
+}
+
+.mobile-home-hero-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.mobile-home-hero-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #cbd5e1;
+}
+
+.mobile-home-hero-dot.is-active {
+  width: 14px;
+  border-radius: 3px;
+  background: #0d5c3a;
+}
+
+.mobile-home-hero-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(232, 245, 233, 0.95);
+  border: 1px solid #c8e6c9;
+  border-radius: 20px;
+  padding: 5px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+}
+
+.mobile-home-hero-bottle {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  top: 25px;
+  max-width: 140px;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Feature Badges Strip (4 columns) */
+.mobile-feature-strip-card {
+  margin: 8px 16px;
+  padding: 12px 6px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e8efea;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+}
+
+.mobile-feature-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 4px;
+  border-right: 1px solid #f1f5f2;
+}
+.mobile-feature-item:last-child {
+  border-right: none;
+}
+
+.mobile-feature-icon-circle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #e8f5e9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #0d5c3a;
+  margin-bottom: 6px;
+}
+
+.mobile-feature-text {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.25;
+}
+
+/* Mobile Sections Header */
+.mobile-home-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 18px 12px 18px;
+}
+
+.mobile-home-section-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.mobile-home-section-viewall {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #0d5c3a;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Categories Horizontal Scroll */
+.mobile-categories-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 0 16px 6px 16px;
+  scrollbar-width: none;
+}
+.mobile-categories-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-category-pill-card {
+  flex: 0 0 102px;
+  height: 135px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  cursor: pointer;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  text-align: center;
+  transition: transform 0.15s ease;
+  user-select: none;
+}
+.mobile-category-pill-card:active {
+  transform: scale(0.96);
+}
+
+.mobile-category-img-wrap {
+  width: 100%;
+  flex: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.mobile-category-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-category-label {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: #0c2340;
+}
+
+/* Best Selling Products Horizontal Scroll */
+.mobile-bestsellers-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 0 16px 8px 16px;
+  scrollbar-width: none;
+}
+.mobile-bestsellers-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-bestseller-item {
+  flex: 0 0 150px;
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e8efea;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.mobile-bestseller-img-box {
+  position: relative;
+  width: 100%;
+  height: 110px;
+}
+.mobile-bestseller-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-bestseller-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #0d5c3a;
+  color: #ffffff;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 2.5px 6px;
+  border-radius: 5px;
+}
+
+.mobile-card-heart-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  color: #475569;
+}
+.mobile-card-heart-btn.is-fav {
+  color: #e11d48;
+}
+
+.mobile-bestseller-title {
+  padding: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0c2340;
+  margin: 0;
+  line-height: 1.25;
+}
+
+/* --- PRODUCTS MOBILE VIEW (Image 2) --- */
+.mobile-products-page-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 16px 16px 90px 16px;
+  background: #f9faf9;
+  box-sizing: border-box;
+}
+
+.mobile-products-header-box {
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+.mobile-products-title {
+  font-size: 1.65rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.02em;
+}
+
+.mobile-products-subtitle {
+  font-size: 0.76rem;
+  color: #526e5c;
+  line-height: 1.45;
+  margin: 0 auto;
+  max-width: 320px;
+}
+
+.mobile-products-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  background: #f1f5f2;
+  border: 1px solid #e2ebe5;
+  border-radius: 25px;
+  padding: 0 14px;
+  margin-bottom: 14px;
+}
+.mobile-products-search-box input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.82rem;
+  color: #0c2340;
+}
+.mobile-products-search-box input::placeholder {
+  color: #94a3b8;
+}
+
+.mobile-products-pills-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.mobile-products-pills-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-category-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 15px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1.2px solid rgba(13, 92, 58, 0.35);
+  background: #ffffff;
+  color: #0c2340;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.mobile-category-chip-btn.is-active {
+  background: #0d5c3a;
+  border-color: #0d5c3a;
+  color: #ffffff;
+}
+
+/* 2-Column Product Grid (Image 2) */
+.mobile-products-2col-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  width: 100%;
+}
+
+.mobile-grid-product-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e2ebe5;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-card-top-image {
+  position: relative;
+  width: 100%;
+  height: 125px;
+}
+.mobile-card-top-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mobile-grid-card-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: #0d5c3a;
+  color: #ffffff;
+  font-size: 0.55rem;
+  font-weight: 900;
+  padding: 3px 7px;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+}
+
+.mobile-card-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.mobile-card-title {
+  font-size: 0.84rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0 0 3px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-card-desc {
+  font-size: 0.65rem;
+  color: #64748b;
+  line-height: 1.3;
+  margin: 0 0 8px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mobile-card-features-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.mobile-card-feat-tag {
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  flex: 1;
+  font-size: 0.58rem;
+  color: #475569;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.mobile-card-feat-tag svg {
+  color: #0d5c3a;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.mobile-card-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.mobile-card-price-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-card-price-line {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.mobile-card-price-val {
+  font-size: 1rem;
+  font-weight: 900;
+  color: #0d5c3a;
+}
+
+.mobile-card-price-unit {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.mobile-card-delivery-tag {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #059669;
+  margin-top: 2px;
+}
+
+.mobile-card-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #0d5c3a;
+  color: #ffffff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(13, 92, 58, 0.25);
+}
+.mobile-card-add-btn:active {
+  transform: scale(0.96);
+}
+
+/* Home Mobile Carousel Styles */
+.mobile-home-carousel-wrapper {
+  position: relative;
+  margin: 14px 16px 12px 16px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  background: #f1f5f9;
+}
+
+.mobile-home-carousel-track {
+  display: flex;
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  width: 100%;
+}
+
+.mobile-home-carousel-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  line-height: 0;
+}
+
+.mobile-home-carousel-dots {
+  position: absolute;
+  bottom: 14px;
+  left: 22px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 5;
+}
+
+.mobile-home-carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(13, 92, 58, 0.25);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.mobile-home-carousel-dot.is-active {
+  width: 18px;
+  border-radius: 4px;
+  background: #0d5c3a;
+  box-shadow: 0 1px 3px rgba(13, 92, 58, 0.3);
+}
+/* Desktop Carousel Styles */
+.desktop-hero-carousel-container {
+  width: 100%;
+  max-width: 980px;
+  margin: 10px auto 32px auto;
+  padding: 0 20px;
+}
+
+.desktop-hero-carousel-inner {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  box-shadow: 0 12px 32px rgba(13, 92, 58, 0.14);
+  background: #f8fafc;
+  aspect-ratio: 455 / 298;
+}
+
+.desktop-hero-carousel-track {
+  display: flex;
+  transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+  width: 100%;
+  height: 100%;
+}
+
+.desktop-hero-carousel-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  line-height: 0;
+}
+
+.desktop-hero-carousel-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.desktop-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0d5c3a;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+
+.desktop-carousel-arrow:hover {
+  background: #0d5c3a;
+  color: #ffffff;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.desktop-carousel-arrow.is-prev {
+  left: 20px;
+}
+
+.desktop-carousel-arrow.is-next {
+  right: 20px;
+}
+
+.desktop-carousel-dots {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+
+.desktop-carousel-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(13, 92, 58, 0.25);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.25s ease;
+}
+
+.desktop-carousel-dot.is-active {
+  width: 28px;
+  border-radius: 6px;
+  background: #0d5c3a;
+  box-shadow: 0 2px 6px rgba(13, 92, 58, 0.35);
+}
+/* Greeting Box Styles */
+.mobile-home-greeting-box {
+  padding: 14px 18px 4px 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-home-greeting-salutation {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.mobile-home-greeting-name {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: -0.02em;
+}
+
+.mobile-home-greeting-sub {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  line-height: 1.35;
+}
+
+.desktop-home-greeting-section {
+  width: 100%;
+  max-width: 980px;
+  margin: 20px auto 0 auto;
+  padding: 0 20px;
+}
+
+.desktop-home-greeting-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-home-greeting-salutation {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.desktop-home-greeting-name {
+  font-size: 1.85rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: -0.02em;
+}
+
+.desktop-home-greeting-sub {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
+.greeting-sun-emoji {
+  font-size: 1.4rem;
+  display: inline-block;
 }

@@ -4,6 +4,12 @@ import { useWebSocket } from './WebSocketContext';
 
 const NotificationContext = createContext(null);
 
+const isSameId = (n, id) => {
+  if (!n || !id) return false;
+  const target = String(id);
+  return String(n.id) === target || String(n._id) === target;
+};
+
 export function NotificationProvider({ children }) {
   const { user, getAuthHeaders } = useAuth();
   const { subscribe: wsSubscribe } = useWebSocket();
@@ -194,6 +200,18 @@ export function NotificationProvider({ children }) {
     const unsubUpdated = wsSubscribe('NOTIFICATION_UPDATED', () => {
       fetchNotifications();
     });
+    const unsubDeleted = wsSubscribe('NOTIFICATION_DELETED', (payload) => {
+      if (payload?.id) {
+        setNotifications((prev) => prev.filter((n) => !isSameId(n, payload.id)));
+      }
+      fetchNotifications();
+    });
+    const unsubCleared = wsSubscribe('NOTIFICATIONS_CLEARED', () => {
+      setNotifications([]);
+      setUnreadCount(0);
+      localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify([]));
+      fetchNotifications();
+    });
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchNotifications();
     });
@@ -211,15 +229,17 @@ export function NotificationProvider({ children }) {
     });
 
     return () => {
-      unsubCreated();
-      unsubUpdated();
-      unsubDelivery();
-      unsubCompleted();
-      unsubStatus();
-      unsubOrder();
-      unsubSub();
+      if (unsubCreated) unsubCreated();
+      if (unsubUpdated) unsubUpdated();
+      if (unsubDeleted) unsubDeleted();
+      if (unsubCleared) unsubCleared();
+      if (unsubDelivery) unsubDelivery();
+      if (unsubCompleted) unsubCompleted();
+      if (unsubStatus) unsubStatus();
+      if (unsubOrder) unsubOrder();
+      if (unsubSub) unsubSub();
     };
-  }, [fetchNotifications, wsSubscribe]);
+  }, [fetchNotifications, wsSubscribe, currentRole]);
 
   // Persist to local storage
   useEffect(() => {
@@ -297,9 +317,7 @@ export function NotificationProvider({ children }) {
     if (!id) return;
     setNotifications((prev) => {
       const updated = prev.map((n) =>
-        n.id === id || n._id === id || String(n.id) === String(id) || String(n._id) === String(id)
-          ? { ...n, isRead: true }
-          : n
+        isSameId(n, id) ? { ...n, isRead: true } : n
       );
       setUnreadCount(updated.filter((n) => !n.isRead).length);
       localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(updated));
@@ -328,8 +346,9 @@ export function NotificationProvider({ children }) {
 
   // Delete single notification
   const deleteNotification = async (id) => {
+    if (!id) return;
     setNotifications((prev) => {
-      const updated = prev.filter((n) => n.id !== id);
+      const updated = prev.filter((n) => !isSameId(n, id));
       setUnreadCount(updated.filter((n) => !n.isRead).length);
       localStorage.setItem(`nmd_notifs_${currentRole}`, JSON.stringify(updated));
       return updated;

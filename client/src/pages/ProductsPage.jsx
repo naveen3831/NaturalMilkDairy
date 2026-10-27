@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye } from 'lucide-react';
+import { Heart, Search, ShoppingCart, Leaf, PhoneCall, Truck, X, Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
@@ -205,6 +205,193 @@ export default function ProductsPage({ setActiveTab }) {
       : catalogProducts.filter((p) => p.category === activeCategory);
   }, [catalogProducts, activeCategory]);
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [favProducts, setFavProducts] = useState(new Set());
+  const toggleFav = (id) => {
+    setFavProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const renderMobileProducts = () => {
+    const categories = [
+      { id: 'all', label: 'All Products', icon: null },
+      { id: 'milk', label: 'Fresh Milk', icon: Droplets },
+      { id: 'curd', label: 'Curd & Paneer', icon: Sparkles },
+      { id: 'ghee', label: 'Ghee', icon: Milk },
+    ];
+
+    const displayProducts = filteredProducts.filter((p) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return p.name.toLowerCase().includes(q) || (p.desc && p.desc.toLowerCase().includes(q));
+    });
+
+    return (
+      <div className="mobile-products-page-container">
+        {/* Centered Heading matching Image 2 */}
+        <div className="mobile-products-header-box">
+          <h2 className="mobile-products-title">Our Products</h2>
+          <p className="mobile-products-subtitle">
+            Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.
+          </p>
+        </div>
+
+        {/* Search Bar matching Image 2 */}
+        <div className="mobile-products-search-box">
+          <Search size={18} color="#64748B" />
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8' }}
+            >
+              <X size={16} />
+            </button>
+          )}
+        </div>
+
+        {/* Category Filter Chips matching Image 2 */}
+        <div className="mobile-products-pills-row">
+          {categories.map((cat) => {
+            const isSelected = activeCategory === cat.id;
+            const IconComp = cat.icon;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                className={`mobile-category-chip-btn${isSelected ? ' is-active' : ''}`}
+                onClick={() => setActiveCategory(cat.id)}
+              >
+                {IconComp && <IconComp size={13} />}
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 2-Column Product Grid matching Image 2 */}
+        <div className="mobile-products-2col-grid">
+          {displayProducts.map((p, idx) => {
+            const isFav = favProducts.has(p.id);
+            const badge = idx === 0 ? 'BESTSELLER' : (idx === 1 ? 'BESTSELLER' : (p.badge || 'FARM FRESH'));
+            const isMilk = p.category === 'milk' || p.name.toLowerCase().includes('milk');
+            const isCurd = p.category === 'curd' || p.name.toLowerCase().includes('curd');
+            const isGhee = p.category === 'ghee' || p.name.toLowerCase().includes('ghee');
+
+            const feat1 = isMilk ? 'Glass Bottle Packaging' : (isCurd ? 'No Preservatives' : '100% Pure');
+            const feat2 = isMilk ? 'Chilled to 4°C in 30 Mins' : (isCurd ? '100% Natural' : 'No Additives');
+
+            return (
+              <div
+                key={p.id}
+                className="mobile-grid-product-card"
+                onClick={() => {
+                  setSelectedProductDetails(p);
+                  const prodKey = p.id || p.name;
+                  localStorage.setItem('nmd_selected_product_id', String(prodKey));
+                  window.history.replaceState({ nmdPage: 'products' }, '', `/products?product=${encodeURIComponent(prodKey)}`);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                {/* Top Image */}
+                <div className="mobile-card-top-image">
+                  <img src={p.image || '/product-cow-milk.jpg'} alt={p.name} />
+                  <span className="mobile-grid-card-badge">{badge}</span>
+                  <button
+                    type="button"
+                    className={`mobile-card-heart-btn${isFav ? ' is-fav' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFav(p.id);
+                    }}
+                  >
+                    <Heart size={15} fill={isFav ? '#e11d48' : 'none'} color={isFav ? '#e11d48' : '#475569'} />
+                  </button>
+                </div>
+
+                {/* Body Details */}
+                <div className="mobile-card-body">
+                  <div>
+                    <h3 className="mobile-card-title">{p.name}</h3>
+                    <p className="mobile-card-desc">{p.desc}</p>
+
+                    <div className="mobile-card-features-row">
+                      <div className="mobile-card-feat-tag">
+                        <Leaf size={11} />
+                        <span>{feat1}</span>
+                      </div>
+                      <div className="mobile-card-feat-tag">
+                        <Droplets size={11} />
+                        <span>{feat2}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Price & Add Button */}
+                  <div className="mobile-card-bottom-row">
+                    <div className="mobile-card-price-col">
+                      <div className="mobile-card-price-line">
+                        <span className="mobile-card-price-val">{p.price}</span>
+                        <span className="mobile-card-price-unit">/{p.unit?.replace('per ', '') || '1L'}</span>
+                      </div>
+                      <div className="mobile-card-delivery-tag">
+                        <Truck size={10} />
+                        <span>Free 5:00 AM Delivery</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="mobile-card-add-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartSubscription(p);
+                      }}
+                    >
+                      <ShoppingCart size={12} />
+                      <span>Add</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Floating Contact Us Button */}
+        <button
+          type="button"
+          className="mobile-floating-contact-pill"
+          onClick={() => setActiveTab('contact')}
+          aria-label="Contact us"
+        >
+          <PhoneCall size={17} />
+          <span>Contact Us</span>
+        </button>
+      </div>
+    );
+  };
+
   useEffect(() => {
     const handleReset = () => {
       lastTargetKeyRef.current = null;
@@ -338,6 +525,8 @@ export default function ProductsPage({ setActiveTab }) {
 
   return (
     <div className="public-products-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {isMobile ? renderMobileProducts() : (
+        <>
       {/* Page Header with Real Glass Bottles Background Banner */}
       <div
         className="public-page-hero"
@@ -700,6 +889,8 @@ export default function ProductsPage({ setActiveTab }) {
 
       {/* Footer */}
       <Footer setActiveTab={setActiveTab} />
+        </>
+      )}
 
       <SubscribeModal
         isOpen={isSubscribeOpen}

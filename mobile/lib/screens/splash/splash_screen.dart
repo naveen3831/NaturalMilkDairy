@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/product_provider.dart';
 import '../admin/admin_dashboard_screen.dart';
 import '../delivery/delivery_dashboard_screen.dart';
 import '../onboarding/onboarding_screen.dart';
-import '../auth/login_screen.dart';
 import '../home/home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -28,7 +25,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1200),
     );
 
     _scaleAnimation = CurvedAnimation(
@@ -54,15 +51,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     final authProvider = context.read<AuthProvider>();
     final isAuth = await authProvider.initAuth();
 
-    final prefs = await SharedPreferences.getInstance();
-    final onboardingSeen = prefs.getBool(AppConstants.keyOnboardingSeen) ?? false;
-
-    // Minimum splash display duration for smooth brand animation
-    await Future.delayed(const Duration(milliseconds: 1600));
+    // Minimum splash duration for smooth logo reveal
+    await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
 
     if (isAuth) {
+      // If user is logged in, DO NOT show onboarding screens
       Widget target = const HomeScreen();
       if (authProvider.isAdmin) {
         target = const AdminDashboardScreen();
@@ -72,11 +67,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => target),
       );
-    } else if (onboardingSeen) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
     } else {
+      // Without login -> show onboarding screens
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const OnboardingScreen()),
       );
@@ -92,39 +84,45 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.primaryGreen,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
+
+              // Brand Logo in Circular Emblem
               ScaleTransition(
                 scale: _scaleAnimation,
                 child: Container(
-                  width: 104,
-                  height: 104,
+                  width: 124,
+                  height: 124,
                   decoration: BoxDecoration(
-                    color: AppColors.milkWhite,
+                    color: Colors.white,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
+                        color: const Color(0xFF0D5C3A).withValues(alpha: 0.12),
+                        blurRadius: 30,
+                        offset: const Offset(0, 10),
                       ),
                     ],
+                    border: Border.all(
+                      color: const Color(0xFFE2EBE5),
+                      width: 1.5,
+                    ),
                   ),
                   child: ClipOval(
                     child: Padding(
-                      padding: const EdgeInsets.all(12.0),
+                      padding: const EdgeInsets.all(16.0),
                       child: Image.asset(
                         'assets/images/logo.png',
                         fit: BoxFit.contain,
                         errorBuilder: (ctx, err, stack) => const Icon(
                           Icons.water_drop_rounded,
-                          size: 56,
-                          color: AppColors.primaryGreen,
+                          size: 64,
+                          color: Color(0xFF0D5C3A),
                         ),
                       ),
                     ),
@@ -132,35 +130,38 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ),
               const SizedBox(height: 28),
+
+              // Brand Name & Tagline
               FadeTransition(
                 opacity: _fadeAnimation,
                 child: Column(
                   children: [
-                    Text(
+                    const Text(
                       AppConstants.appName,
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            color: AppColors.milkWhite,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
+                      style: TextStyle(
+                        color: Color(0xFF0C2340),
+                        fontSize: 27,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.6,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryGreenLight.withValues(alpha: 0.6),
+                        color: const Color(0xFFE8F5EE),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppColors.milkWhite.withValues(alpha: 0.2),
+                          color: const Color(0xFFD1FAE5),
                         ),
                       ),
-                      child: Text(
-                        AppConstants.appTagline,
-                        style: const TextStyle(
-                          color: AppColors.milkWhite,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8,
+                      child: const Text(
+                        '100% Raw • Unadulterated • Farm Fresh',
+                        style: TextStyle(
+                          color: Color(0xFF047857),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
                         ),
                       ),
                     ),
@@ -168,6 +169,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 ),
               ),
               const Spacer(),
+
+              // Bottom Brand Promise Footnote
               FadeTransition(
                 opacity: _fadeAnimation,
                 child: Padding(
@@ -179,17 +182,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         width: 8,
                         height: 8,
                         decoration: const BoxDecoration(
-                          color: AppColors.butterGold,
+                          color: Color(0xFF059669),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Direct Farm-to-Doorstep Daily',
+                      const Text(
+                        'Direct Farm-to-Doorstep Daily by 6:30 AM',
                         style: TextStyle(
-                          color: AppColors.milkWhite.withValues(alpha: 0.8),
+                          color: Color(0xFF597361),
                           fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],

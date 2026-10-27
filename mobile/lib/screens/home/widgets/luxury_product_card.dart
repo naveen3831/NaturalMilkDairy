@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../../data/models/product_model.dart';
-import '../../../providers/product_provider.dart';
+import '../product_details_screen.dart';
 
 class LuxuryProductCard extends StatelessWidget {
   final ProductModel product;
@@ -15,9 +14,6 @@ class LuxuryProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final productProvider = context.watch<ProductProvider>();
-    final int qty = productProvider.getQuantity(product.id);
-
     final highlights = product.highlights.isNotEmpty
         ? product.highlights
         : const ['100% Unadulterated', 'Chilled to 4°C', 'Eco Glass Bottle'];
@@ -27,6 +23,15 @@ class LuxuryProductCard extends StatelessWidget {
       product.name,
       product.category,
     );
+
+    void openDetails() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ProductDetailsScreen(product: product),
+        ),
+      );
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 24),
@@ -42,9 +47,14 @@ class LuxuryProductCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: openDetails,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // Image Area with Badges matching Image 2
           Stack(
             children: [
@@ -68,8 +78,8 @@ class LuxuryProductCard extends StatelessWidget {
                         ),
                       );
                     },
-                    errorBuilder: (ctx, err, stack) => Image.network(
-                      ProductModel.resolveImageUrl('', product.name, product.category),
+                    errorBuilder: (ctx, err, stack) => Image.asset(
+                      ProductModel.resolveAssetFallback(product.name, product.category),
                       fit: BoxFit.cover,
                       errorBuilder: (c, e, s) => Container(
                         color: const Color(0xFFF0F5F2),
@@ -237,59 +247,20 @@ class LuxuryProductCard extends StatelessWidget {
                       ],
                     ),
 
-                    Row(
-                      children: [
-                        if (qty == 0)
-                          ElevatedButton.icon(
-                            onPressed: () => productProvider.updateQuantity(product.id, 1),
-                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
-                            label: const Text('Add to Drop'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0D5C3A),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                              elevation: 0,
-                            ),
-                          )
-                        else
-                          Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0D5C3A),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () => productProvider.updateQuantity(product.id, -1),
-                                  icon: const Icon(Icons.remove_rounded, color: Colors.white, size: 18),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                  padding: EdgeInsets.zero,
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                                  child: Text(
-                                    '$qty',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                                IconButton(
-                                  onPressed: () => productProvider.updateQuantity(product.id, 1),
-                                  icon: const Icon(Icons.add_rounded, color: Colors.white, size: 18),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                  padding: EdgeInsets.zero,
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
+                    ElevatedButton.icon(
+                      onPressed: openDetails,
+                      icon: const Icon(Icons.calendar_month_rounded, size: 16),
+                      label: const Text('Subscribe'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0D5C3A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                        elevation: 0,
+                      ),
                     ),
                   ],
                 ),
@@ -298,6 +269,8 @@ class LuxuryProductCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+  ),
+);
   }
 }

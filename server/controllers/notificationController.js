@@ -1,7 +1,8 @@
+const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 const { broadcast } = require('../config/websocket');
 
-// Default initial notifications to seed if collection is empty
+// Default initial notifications to seed if collection is truly brand new
 const defaultSeedNotifications = [
   {
     recipientRole: 'delivery_boy',
@@ -10,7 +11,7 @@ const defaultSeedNotifications = [
     message: 'Dispatch Admin assigned your morning route with 5 customer doorstep deliveries in Madhapur.',
     type: 'delivery_assigned',
     isRead: false,
-    createdAt: new Date(Date.now() - 15 * 60 * 1000), // 15 mins ago
+    createdAt: new Date(Date.now() - 15 * 60 * 1000),
   },
   {
     recipientRole: 'delivery_boy',
@@ -28,7 +29,7 @@ const defaultSeedNotifications = [
     message: 'Naveen Kumar delivered 2L Farm Fresh Cow Milk to K. Rajesh Varma (Sai Teja Residency). Collected ₹150 cash.',
     type: 'delivery_completed',
     isRead: false,
-    createdAt: new Date(Date.now() - 8 * 60 * 1000), // 8 mins ago
+    createdAt: new Date(Date.now() - 8 * 60 * 1000),
   },
   {
     recipientRole: 'admin',
@@ -77,7 +78,6 @@ const defaultSeedNotifications = [
   },
 ];
 
-// In-memory fallback if MongoDB is not reachable
 let memoryNotifications = [...defaultSeedNotifications];
 let hasSeededDB = false;
 
@@ -95,9 +95,11 @@ const getUserNotificationScope = (user) => {
 const canAccessNotification = (notification, user) => {
   if (user.role === 'admin') return true;
   const ids = [user.id, user.customerId, user.boyId].filter(Boolean).map(String);
-  return notification.recipientRole === user.role ||
+  return (
+    notification.recipientRole === user.role ||
     notification.recipientRole === 'all' ||
-    ids.includes(String(notification.recipientId || ''));
+    ids.includes(String(notification.recipientId || ''))
+  );
 };
 
 const getNotifications = async (req, res) => {
@@ -106,6 +108,8 @@ const getNotifications = async (req, res) => {
     const filter = role === 'admin' ? {} : getUserNotificationScope(req.user);
 
     let list = [];
+    let isDbConnected = false;
+
     try {
       if (!hasSeededDB) {
         hasSeededDB = true;
@@ -114,32 +118,27 @@ const getNotifications = async (req, res) => {
           await Notification.insertMany(defaultSeedNotifications);
         }
       }
-      list = await Notification.find(filter).sort({ createdAt: -1 }).limit(50).lean();
+      list = await Notification.find(filter).sort({ createdAt: -1 }).limit(100).lean();
+      isDbConnected = true;
     } catch (dbErr) {
       list = [];
+      isDbConnected = false;
     }
 
-    // Always merge in-memory notifications matching filter
-    const memMatching = memoryNotifications.filter((n) => {
-      return canAccessNotification(n, req.user);
-    });
-
-    const existingIds = new Set(list.map((n) => (n._id ? n._id.toString() : n.id)));
-    for (const memItem of memMatching) {
-      const memId = memItem._id ? memItem._id.toString() : memItem.id;
-      if (!existingIds.has(memId)) {
-        list.unshift(memItem);
-        existingIds.add(memId);
-      }
+    // Only fallback to in-memory store if DB query failed
+    if (!isDbConnected) {
+      list = memoryNotifications.filter((n) => canAccessNotification(n, req.user));
     }
 
-    // Restore originalType if stored inside data
+    // Format list with consistent ID and type
     list = list.map((n) => {
       const rawType = n.data?.originalType || n.type;
+      const notifId = n._id ? n._id.toString() : (n.id || '');
       return {
         ...n,
         type: rawType,
-        id: n._id ? n._id.toString() : (n.id || Math.random().toString(36).substr(2, 9)),
+        id: notifId,
+        _id: notifId,
       };
     });
 
@@ -177,9 +176,9 @@ const createNotification = async (req, res) => {
     let savedItem;
     try {
       savedItem = await Notification.create(itemData);
+      savedItem = savedItem.toObject();
     } catch (dbErr) {
       try {
-        // Retry with system type if enum failed
         const fallbackItem = {
           ...itemData,
           type: 'system',
@@ -196,15 +195,21 @@ const createNotification = async (req, res) => {
       memoryNotifications.unshift(savedItem);
     }
 
-    broadcast('NOTIFICATION_UPDATED', {});
+    const finalId = savedItem._id ? savedItem._id.toString() : savedItem.id;
+    const formattedNotification = {
+      ...savedItem,
+      type: itemData.type,
+      id: finalId,
+      _id: finalId,
+    };
+
+    // Realtime broadcast to all portals
+    broadcast('NOTIFICATION_CREATED', formattedNotification);
+    broadcast('NOTIFICATION_UPDATED', { action: 'created', notification: formattedNotification });
 
     return res.status(201).json({
       success: true,
-      notification: {
-        ...savedItem,
-        type: itemData.type,
-        id: savedItem._id ? savedItem._id.toString() : savedItem.id,
-      },
+      notification: formattedNotification,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -214,19 +219,23 @@ const createNotification = async (req, res) => {
 const markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
-    if (id && id.length === 24) {
-      await Notification.findByIdAndUpdate(id, { isRead: true });
-    } else if (id) {
-      await Notification.updateMany({ $or: [{ id }, { _id: id }] }, { isRead: true });
+    if (!id) return res.status(400).json({ success: false, message: 'ID required' });
+
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const idFilter = isObjectId ? { $or: [{ _id: id }, { id }] } : { id };
+
+    try {
+      await Notification.updateMany(idFilter, { isRead: true });
+    } catch (dbErr) {
+      console.warn('markAsRead DB warning:', dbErr.message);
     }
 
-    memoryNotifications = memoryNotifications.map((n) =>
-      (n.id === id || (n._id && n._id.toString() === id))
-        ? { ...n, isRead: true }
-        : n
-    );
+    memoryNotifications = memoryNotifications.map((n) => {
+      const match = (n._id && n._id.toString() === id) || (n.id && String(n.id) === String(id));
+      return match ? { ...n, isRead: true } : n;
+    });
 
-    broadcast('NOTIFICATION_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', { action: 'read', id });
 
     return res.json({ success: true, message: 'Notification marked as read' });
   } catch (err) {
@@ -237,13 +246,18 @@ const markAsRead = async (req, res) => {
 const markAllAsRead = async (req, res) => {
   try {
     const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
-    await Notification.updateMany(filter, { isRead: true });
+
+    try {
+      await Notification.updateMany(filter, { isRead: true });
+    } catch (dbErr) {
+      console.warn('markAllAsRead DB warning:', dbErr.message);
+    }
 
     memoryNotifications = memoryNotifications.map((n) => {
       return canAccessNotification(n, req.user) ? { ...n, isRead: true } : n;
     });
 
-    broadcast('NOTIFICATION_UPDATED', {});
+    broadcast('NOTIFICATION_UPDATED', { action: 'read_all', role: req.user.role });
 
     return res.json({ success: true, message: 'All notifications marked as read' });
   } catch (err) {
@@ -254,15 +268,22 @@ const markAllAsRead = async (req, res) => {
 const clearAll = async (req, res) => {
   try {
     const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
-    await Notification.deleteMany(filter);
+
+    try {
+      await Notification.deleteMany(filter);
+    } catch (dbErr) {
+      console.warn('clearAll DB warning:', dbErr.message);
+    }
 
     memoryNotifications = memoryNotifications.filter((n) => {
       return !canAccessNotification(n, req.user);
     });
 
-    broadcast('NOTIFICATION_UPDATED', {});
+    // Realtime broadcast permanent clearing to all dashboards & mobile apps
+    broadcast('NOTIFICATIONS_CLEARED', { role: req.user.role, userId: req.user.id });
+    broadcast('NOTIFICATION_UPDATED', { action: 'clear_all', role: req.user.role });
 
-    return res.json({ success: true, message: 'Notifications cleared' });
+    return res.json({ success: true, message: 'All notifications permanently deleted' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -271,19 +292,31 @@ const clearAll = async (req, res) => {
 const deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    const filter = req.user.role === 'admin'
-      ? { _id: id }
-      : { _id: id, ...getUserNotificationScope(req.user) };
-    if (id.length === 24) await Notification.findOneAndDelete(filter);
+    if (!id) return res.status(400).json({ success: false, message: 'ID required' });
+
+    const isObjectId = mongoose.Types.ObjectId.isValid(id);
+    const idFilter = isObjectId ? { $or: [{ _id: id }, { id }] } : { id };
+
+    const queryFilter = req.user.role === 'admin'
+      ? idFilter
+      : { ...idFilter, ...getUserNotificationScope(req.user) };
+
+    try {
+      await Notification.deleteMany(queryFilter);
+    } catch (dbErr) {
+      console.warn('deleteNotification DB warning:', dbErr.message);
+    }
 
     memoryNotifications = memoryNotifications.filter((n) => {
-      const matchesId = n.id === id || (n._id && n._id.toString() === id);
-      return !matchesId || !canAccessNotification(n, req.user);
+      const match = (n._id && n._id.toString() === id) || (n.id && String(n.id) === String(id));
+      return !match;
     });
 
-    broadcast('NOTIFICATION_UPDATED', {});
+    // Realtime broadcast permanent deletion to all dashboards & mobile apps
+    broadcast('NOTIFICATION_DELETED', { id });
+    broadcast('NOTIFICATION_UPDATED', { action: 'delete', id });
 
-    return res.json({ success: true, message: 'Notification deleted' });
+    return res.json({ success: true, message: 'Notification permanently deleted', id });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
