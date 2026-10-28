@@ -404,58 +404,69 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
                       // Price Strip Box (Mint container with Free Doorstep Delivery tag)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF4F9F5),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(color: const Color(0xFFDCEBDF), width: 1),
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text(
-                                  '₹${_unitPrice.toInt()}',
-                                  style: const TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.w900,
-                                    color: Color(0xFF059669),
-                                  ),
-                                ),
-                                const SizedBox(width: 5),
-                                Text(
-                                  '/ $_cleanUnit',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF55725F),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE0F2E4),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
+                            Expanded(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
                                 children: [
-                                  Icon(Icons.check_rounded, color: Color(0xFF0A633B), size: 14),
-                                  SizedBox(width: 4),
                                   Text(
-                                    'Free Doorstep Delivery',
-                                    style: TextStyle(
-                                      color: Color(0xFF0A633B),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
+                                    '₹${_unitPrice.toInt()}',
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF059669),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      '/ $_cleanUnit',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF55725F),
+                                      ),
                                     ),
                                   ),
                                 ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F2E4),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_rounded, color: Color(0xFF0A633B), size: 14),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Free Doorstep Delivery',
+                                        style: TextStyle(
+                                          color: Color(0xFF0A633B),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
                           ],

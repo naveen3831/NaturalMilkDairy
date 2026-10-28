@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PageController _bannerPageController = PageController();
   int _currentBannerIndex = 0;
   Timer? _bannerTimer;
+  String _deliveryFilterTab = 'all'; // 'all', 'upcoming', 'history'
 
   final List<Map<String, dynamic>> _defaultBanners = [
     {
@@ -239,6 +240,590 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showUpcomingDeliveryDetails(Map<String, dynamic> delivery) {
+    final authProvider = context.read<AuthProvider>();
+    final customerProvider = context.read<CustomerProvider>();
+    final user = authProvider.user;
+    final String address = user?.address?.isNotEmpty == true
+        ? user!.address!
+        : (customerProvider.customer['address']?.toString() ?? 'Madhapur, Hyderabad, Telangana - 500081');
+    final String driverName = delivery['driver']?.toString() ?? 'Naveen Kumar';
+    final String milkQty = delivery['milkQty']?.toString() ?? '1 L';
+    final String curdQty = delivery['curdQty']?.toString() ?? '0 g';
+    final bool hasCurd = curdQty != '0 g' && curdQty != '0g' && curdQty != '0';
+    final String dayStr = delivery['day']?.toString() ?? 'Wed';
+    final String dayNum = delivery['dayNum']?.toString() ?? '28';
+    final String monthYear = delivery['monthYear']?.toString() ?? 'Oct 2026';
+    final String paymentStatus = delivery['paymentStatus']?.toString() ?? 'Advance';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            // Drag Handle
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            // Header Bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2F1EA),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.local_shipping_rounded, color: Color(0xFF0D5C3A), size: 22),
+                      ),
+                      const SizedBox(width: 10),
+                      const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Upcoming Delivery',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                          Text(
+                            'Scheduled morning doorstep drop',
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFE2EBE5)),
+            // Scrollable Content
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // Schedule Card with Green Gradient
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0D5C3A), Color(0xFF166534)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0D5C3A).withOpacity(0.2),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.circle, color: Color(0xFF86EFAC), size: 7),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'SCHEDULED DROP',
+                                    style: TextStyle(
+                                      color: Color(0xFFBBF7D0),
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.ac_unit_rounded, color: Color(0xFFDCFCE7), size: 12),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Chilled to 4°C',
+                                    style: TextStyle(color: Color(0xFFDCFCE7), fontSize: 11, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          '$dayStr, $dayNum $monthYear',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Row(
+                          children: [
+                            Icon(Icons.access_time_filled_rounded, color: Color(0xFFF0FDF4), size: 15),
+                            SizedBox(width: 6),
+                            Text(
+                              '5:00 AM – 6:30 AM (Daily Morning Slot)',
+                              style: TextStyle(
+                                color: Color(0xFFF0FDF4),
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Items In This Drop Card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2EBE5)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'ITEMS IN THIS DROP',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF6B7280),
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Milk Item
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAF9),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFEEF3F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE2F1EA),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(Icons.water_drop_rounded, color: Color(0xFF0D5C3A), size: 24),
+                              ),
+                              const SizedBox(width: 12),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Farm Fresh Cow Milk',
+                                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Pure A2 • Glass Bottle • Chilled 4°C',
+                                      style: TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    milkQty,
+                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0D5C3A)),
+                                  ),
+                                  const Text(
+                                    'Packed fresh',
+                                    style: TextStyle(fontSize: 10, color: Color(0xFF059669), fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (hasCurd) ...[
+                          const SizedBox(height: 10),
+                          // Curd Item
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAF9),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFEEF3F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(Icons.lunch_dining_rounded, color: Color(0xFFB45309), size: 22),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Fresh Artisanal Curd',
+                                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Thick & Probiotic • Traditional clay setting',
+                                        style: TextStyle(fontSize: 11, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      curdQty,
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFFB45309)),
+                                    ),
+                                    const Text(
+                                      'Packed fresh',
+                                      style: TextStyle(fontSize: 10, color: Color(0xFFD97706), fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Delivery Address Card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2EBE5)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'DOORSTEP DROP LOCATION',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF6B7280),
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2FE),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.location_on_rounded, color: Color(0xFF0284C7), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Home Doorstep',
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    address,
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.35),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF0FDF4),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFFDCFCE7)),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.check_circle_rounded, color: Color(0xFF0D5C3A), size: 12),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Drop at door milk bag / ring bell once',
+                                          style: TextStyle(color: Color(0xFF0D5C3A), fontSize: 10.5, fontWeight: FontWeight.w700),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Assigned Delivery Partner Card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE2EBE5)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'MORNING DELIVERY PARTNER',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF6B7280),
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 20,
+                              backgroundColor: const Color(0xFFDCFCE7),
+                              child: Text(
+                                driverName.isNotEmpty ? driverName[0] : 'N',
+                                style: const TextStyle(color: Color(0xFF15803D), fontWeight: FontWeight.w900, fontSize: 16),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        driverName,
+                                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFDCFCE7),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: const Text(
+                                          'Assigned',
+                                          style: TextStyle(color: Color(0xFF15803D), fontSize: 9.5, fontWeight: FontWeight.w800),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Madhapur Station Hub • Insulated Carrier',
+                                    style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: const Icon(Icons.phone_rounded, color: Color(0xFF0D5C3A), size: 18),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // Payment & Proof Guarantee Box
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'PAYMENT STATUS',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              paymentStatus == 'Paid' ? 'Paid in Advance' : 'Advance Active Plan',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: paymentStatus == 'Paid' ? const Color(0xFF15803D) : const Color(0xFF0369A1),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'VERIFICATION',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w700),
+                            ),
+                            SizedBox(height: 2),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.verified_user_rounded, color: Color(0xFF0D5C3A), size: 14),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Doorstep Photo Proof',
+                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            setState(() {
+                              _currentIndex = 2; // Switch to Subscription tab
+                            });
+                          },
+                          icon: const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF0D5C3A)),
+                          label: const Text('Manage Plan', style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 13)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: Color(0xFF0D5C3A)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0D5C3A),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                          child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showDeliveriesModal(CustomerProvider customerProvider) {
     final deliveries = customerProvider.deliveries;
     showModalBottomSheet(
@@ -421,19 +1006,32 @@ class _HomeScreenState extends State<HomeScreen> {
       _buildProfileTab(user, auth),
     ];
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9FAF9),
-      body: Column(
-        children: [
-          // Top Brand Header matching Image 1
-          _buildTopBrandHeader(),
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _currentIndex != 0) {
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF9FAF9),
+        body: Column(
+          children: [
+            // Top Brand Header: Only show on Home tab (_currentIndex == 0)
+            // Removed on Products, Subscription, Deliveries, Profile screens as requested
+            if (_currentIndex == 0) _buildTopBrandHeader(),
 
-          // Active Tab Page Body
-          Expanded(child: pages[_currentIndex]),
-        ],
+            // Active Tab Page Body
+            Expanded(
+              child: _currentIndex == 0
+                  ? pages[0]
+                  : SafeArea(bottom: false, child: pages[_currentIndex]),
+            ),
+          ],
+        ),
+        floatingActionButton: _currentIndex == 0 ? _buildFloatingContactButton() : null,
+        bottomNavigationBar: _buildCustomBottomNav(),
       ),
-      floatingActionButton: _buildFloatingContactButton(),
-      bottomNavigationBar: _buildCustomBottomNav(),
     );
   }
 
@@ -1070,6 +1668,199 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 
+  // 7. HOW TO SUBSCRIBE (Simple & Professional 3-Step Guide)
+  Widget _buildHowToSubscribe() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5EDE7), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D5C3A).withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF6F1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text(
+              'HOW IT WORKS',
+              style: TextStyle(
+                color: Color(0xFF0D5C3A),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'How to Subscribe',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0C2340),
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Pure farm dairy at your doorstep in 3 simple steps',
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 18),
+          _buildStepRow(
+            number: '1',
+            icon: Icons.check_circle_outline_rounded,
+            title: 'Choose Your Product',
+            desc: 'Select farm-fresh cow milk, buffalo milk, thick curd, or ghee.',
+            isLast: false,
+          ),
+          _buildStepRow(
+            number: '2',
+            icon: Icons.calendar_today_rounded,
+            title: 'Set Your Schedule',
+            desc: 'Pick daily, alternate days, or custom days. Pause anytime with 0 charges.',
+            isLast: false,
+          ),
+          _buildStepRow(
+            number: '3',
+            icon: Icons.local_shipping_outlined,
+            title: 'Doorstep Delivery by 6:30 AM',
+            desc: 'Chilled at 4°C in sterilized bottles, placed silently at your door.',
+            isLast: true,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() => _currentIndex = 2);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0D5C3A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                elevation: 0,
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Start Subscription',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(width: 6),
+                  Icon(Icons.arrow_forward_rounded, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepRow({
+    required String number,
+    required IconData icon,
+    required String title,
+    required String desc,
+    required bool isLast,
+  }) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0D5C3A),
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  number,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    color: const Color(0xFFD4E7DC),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(icon, size: 14, color: const Color(0xFF0D5C3A)),
+                      const SizedBox(width: 6),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0C2340),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    desc,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF55725F),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // GREETING HEADER (Matching Image)
   Widget _buildGreetingHeader(dynamic user) {
     final now = DateTime.now();
@@ -1170,6 +1961,9 @@ class _HomeScreenState extends State<HomeScreen> {
             // 4. Best Selling Products matching Image 1
             _buildBestSellingProducts(rawProducts),
 
+            // 5. How to Subscribe (Simple & Professional 3-Step Guide)
+            _buildHowToSubscribe(),
+
             const SizedBox(height: 70),
           ],
         ),
@@ -1193,10 +1987,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
 
     final categories = [
-      {'id': 'all', 'label': 'All Products', 'icon': null},
-      {'id': 'milk', 'label': 'Fresh Milk', 'icon': Icons.water_drop_outlined},
-      {'id': 'curd', 'label': 'Curd & Paneer', 'icon': Icons.restaurant_outlined},
-      {'id': 'ghee', 'label': 'Ghee', 'icon': Icons.local_dining_outlined},
+      {'id': 'all', 'label': 'All Products', 'icon': Icons.grid_view_rounded},
+      {'id': 'milk', 'label': 'Fresh Milk', 'icon': Icons.local_drink_outlined},
+      {'id': 'curd', 'label': 'Curd & Paneer', 'icon': Icons.radio_button_checked_rounded},
+      {'id': 'ghee', 'label': 'Ghee & Butter', 'icon': Icons.local_dining_outlined},
     ];
 
     return RefreshIndicator(
@@ -1208,29 +2002,45 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Centered Title matching Image 2
-            const Text(
-              'Our Products',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0C2340),
-                letterSpacing: -0.4,
-              ),
-            ),
-            const SizedBox(height: 6),
-
-            // Centered Subtitle matching Image 2
-            const Text(
-              'Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12.5,
-                color: Color(0xFF526E5C),
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-              ),
+            // Left-Aligned Heading matching Image with Milk Splash
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Our Products',
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0C2340),
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF64748B),
+                          height: 1.35,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Image.asset(
+                  'assets/images/header_milk_splash.png',
+                  width: 90,
+                  height: 75,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -1358,7 +2168,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // TAB 2: SUBSCRIPTION TAB (Matching Image 2 - Left Screen)
+  // TAB 2: SUBSCRIPTION TAB (Matching Image 2 - Subscription Overview Screen)
   Widget _buildSubscriptionTab(dynamic user) {
     final customerProvider = context.watch<CustomerProvider>();
     final productProvider = context.watch<ProductProvider>();
@@ -1374,7 +2184,7 @@ class _HomeScreenState extends State<HomeScreen> {
       color: const Color(0xFF0D5C3A),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 36),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1398,147 +2208,68 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 1. HERO BANNER CARD (Fresh Dairy Every Morning)
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFE8F5EE), Color(0xFFD4EDE0)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFCEE7D9)),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.06),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Pill: DOORSTEP DELIVERY PLANS
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFBCE3CE)),
-                          ),
-                          child: const Text(
-                            'DOORSTEP DELIVERY PLANS',
-                            style: TextStyle(
-                              color: Color(0xFF0D5C3A),
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const SizedBox(
-                          width: 190,
-                          child: Text(
-                            'Fresh Dairy Every Morning',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0C2340),
-                              height: 1.2,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const SizedBox(
-                          width: 175,
-                          child: Text(
-                            'Healthy milk, curd, paneer and more delivered to your doorstep before 6:30 AM.',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: Color(0xFF4B5563),
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        // Dark green button: Explore Plans
-                        InkWell(
-                          onTap: () => setState(() => _currentIndex = 1),
-                          borderRadius: BorderRadius.circular(24),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0D5C3A),
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Explore Plans',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                SizedBox(width: 5),
-                                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 14),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+            // 1. HERO BANNER CARD (Fresh Dairy Every Morning - Unified card matching Image 2 perfectly)
+            InkWell(
+              onTap: () => setState(() => _currentIndex = 1),
+              borderRadius: BorderRadius.circular(22),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: const Color(0xFFCEE7D9)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0D5C3A).withValues(alpha: 0.08),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-
-                  // Image on the Right
-                  Positioned(
-                    right: -10,
-                    bottom: -10,
-                    child: SizedBox(
-                      width: 140,
-                      height: 160,
-                      child: Image.asset(
-                        'assets/images/cat_img_milk.png',
-                        fit: BoxFit.contain,
-                        errorBuilder: (c, e, s) => Image.network(
-                          'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
-                          fit: BoxFit.contain,
-                        ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(21),
+                  child: AspectRatio(
+                    aspectRatio: 1376 / 768,
+                    child: Image.asset(
+                      'assets/images/sub_hero_banner.png',
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (c, e, s) => Image.asset(
+                        'assets/images/hero_banner_card.png',
+                        fit: BoxFit.cover,
+                        filterQuality: FilterQuality.high,
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // 2. 4 FEATURE BADGES (Row of 4 cards)
-            Row(
-              children: [
-                Expanded(child: _buildSubFeatureBadge(Icons.eco_rounded, '100% Pure & Natural')),
-                const SizedBox(width: 8),
-                Expanded(child: _buildSubFeatureBadge(Icons.ac_unit_rounded, 'Chilled to 4°C')),
-                const SizedBox(width: 8),
-                Expanded(child: _buildSubFeatureBadge(Icons.local_shipping_outlined, 'Doorstep Delivery')),
-                const SizedBox(width: 8),
-                Expanded(child: _buildSubFeatureBadge(Icons.calendar_month_outlined, 'Flexible Plans')),
-              ],
+            // 2. 4 FEATURE BADGES (Single card with 4 columns matching Image 2)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2EBE5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _buildSubFeatureBadge(Icons.eco_rounded, '100%\nPure & Natural')),
+                  Container(width: 1, height: 28, color: const Color(0xFFE5EDE7)),
+                  Expanded(child: _buildSubFeatureBadge(Icons.ac_unit_rounded, 'Chilled\nto 4°C')),
+                  Container(width: 1, height: 28, color: const Color(0xFFE5EDE7)),
+                  Expanded(child: _buildSubFeatureBadge(Icons.local_shipping_outlined, 'Doorstep\nDelivery')),
+                  Container(width: 1, height: 28, color: const Color(0xFFE5EDE7)),
+                  Expanded(child: _buildSubFeatureBadge(Icons.calendar_month_outlined, 'Flexible\nPlans')),
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
@@ -1582,7 +2313,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
 
-            // ACTIVE SUBSCRIPTION CARD (Matching Image 2 Left Screen)
+            // ACTIVE SUBSCRIPTION CARD (Matching Image 2)
             InkWell(
               onTap: () {
                 Navigator.push(
@@ -1620,11 +2351,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 64,
                             color: const Color(0xFFF3F7F4),
                             child: Image.asset(
-                              'assets/images/cat_img_milk.png',
+                              'assets/images/sub_active_thumb.png',
                               fit: BoxFit.cover,
-                              errorBuilder: (c, e, s) => Image.network(
-                                'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=300&q=80',
+                              filterQuality: FilterQuality.high,
+                              errorBuilder: (c, e, s) => Image.asset(
+                                'assets/images/best_cow_milk.png',
                                 fit: BoxFit.cover,
+                                filterQuality: FilterQuality.high,
+                                errorBuilder: (c2, e2, s2) => Image.network(
+                                  'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=300&q=80',
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             ),
                           ),
@@ -1682,17 +2419,133 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 10,
-                                runSpacing: 4,
-                                children: [
-                                  _buildSubMiniInfo(Icons.water_drop_outlined, '1 L / day Pure A2 Milk'),
-                                  _buildSubMiniInfo(Icons.access_time_rounded, 'Before 6:30 AM Morning Delivery'),
-                                  _buildSubMiniInfo(Icons.location_on_outlined, 'Madhupur Delivery Area'),
-                                ],
-                              ),
                             ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 3 Spec Boxes in a Row (Overflow-safe with FittedBox so text never truncates)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF2F8F4),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFDEEDE2)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.local_drink_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                                SizedBox(width: 3),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          '1 L / day',
+                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                        ),
+                                      ),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Pure A2 Milk',
+                                          style: TextStyle(fontSize: 8.5, color: Color(0xFF6B7280)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF2F8F4),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFDEEDE2)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.access_time_rounded, size: 13, color: Color(0xFF0D5C3A)),
+                                SizedBox(width: 3),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Before 6:30 AM',
+                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                        ),
+                                      ),
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Morning Delivery',
+                                          style: TextStyle(fontSize: 8.5, color: Color(0xFF6B7280)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF2F8F4),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFDEEDE2)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                                const SizedBox(width: 3),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          user?.area ?? 'Madhupur',
+                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                        ),
+                                      ),
+                                      const FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Delivery Area',
+                                          style: TextStyle(fontSize: 8.5, color: Color(0xFF6B7280)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -1717,14 +2570,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 );
                               },
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFFD4E2D8)),
+                                side: const BorderSide(color: Color(0xFF0D5C3A), width: 1.2),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 padding: EdgeInsets.zero,
                               ),
                               child: const Text(
                                 'View Details',
                                 style: TextStyle(
-                                  color: Color(0xFF0C2340),
+                                  color: Color(0xFF0D5C3A),
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -1770,7 +2623,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 22),
 
-            // 4. MORE SUBSCRIPTION PLANS (Horizontal scroll)
+            // 4. MORE SUBSCRIPTION PLANS (Horizontal scroll matching Image 2)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -1812,6 +2665,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'Milk Plans',
                     subtitle: 'Cow & Buffalo Milk',
                     imageAsset: 'assets/images/cat_img_milk.png',
+                    cardBg: const Color(0xFFEBF6F0),
                     onTap: () => setState(() => _currentIndex = 1),
                   ),
                   const SizedBox(width: 10),
@@ -1819,6 +2673,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'Curd Plans',
                     subtitle: 'Fresh & Thick Curd',
                     imageAsset: 'assets/images/cat_img_curd.png',
+                    cardBg: const Color(0xFFEFF4FB),
                     onTap: () => setState(() => _currentIndex = 1),
                   ),
                   const SizedBox(width: 10),
@@ -1826,6 +2681,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     title: 'Ghee Plans',
                     subtitle: 'Vedic Desi Ghee',
                     imageAsset: 'assets/images/cat_img_ghee.png',
+                    cardBg: const Color(0xFFFEF7EE),
                     onTap: () => setState(() => _currentIndex = 1),
                   ),
                 ],
@@ -1839,49 +2695,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSubFeatureBadge(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2EBE5)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: const BoxDecoration(
-              color: Color(0xFFE2F1EA),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: const Color(0xFF0D5C3A), size: 16),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0C2340),
-              height: 1.15,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSubMiniInfo(IconData icon, String text) {
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: const Color(0xFF0D5C3A), size: 13),
-        const SizedBox(width: 4),
+        Container(
+          width: 36,
+          height: 36,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE2F1EA),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF0D5C3A), size: 18),
+        ),
+        const SizedBox(height: 6),
         Text(
-          text,
-          style: const TextStyle(fontSize: 10.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w600),
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0C2340),
+            height: 1.2,
+          ),
         ),
       ],
     );
@@ -1891,6 +2726,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required String title,
     required String subtitle,
     required String imageAsset,
+    required Color cardBg,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -1900,7 +2736,7 @@ class _HomeScreenState extends State<HomeScreen> {
         width: 136,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: cardBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFE2EBE5)),
         ),
@@ -1912,10 +2748,10 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Container(
                 height: 72,
                 width: double.infinity,
-                color: const Color(0xFFF3F7F4),
+                color: Colors.white.withValues(alpha: 0.7),
                 child: Image.asset(
                   imageAsset,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                   errorBuilder: (c, e, s) => const Icon(Icons.water_drop_rounded, color: Color(0xFF0D5C3A)),
                 ),
               ),
@@ -1931,7 +2767,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 16),
+                const Icon(Icons.chevron_right_rounded, color: Color(0xFF0D5C3A), size: 16),
               ],
             ),
             const SizedBox(height: 2),
@@ -1947,10 +2783,220 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // TAB 3: DELIVERIES TAB (Matching Image 3)
+  Map<String, String> _parseDateParts(String raw) {
+    if (raw.isEmpty) return {'day': 'Wed', 'dayNum': '28', 'monthYear': 'Oct 2026'};
+    try {
+      final dt = DateTime.parse(raw);
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final dayStr = days[dt.weekday - 1];
+      final monthStr = months[dt.month - 1];
+      return {'day': dayStr, 'dayNum': dt.day.toString(), 'monthYear': '$monthStr ${dt.year}'};
+    } catch (_) {
+      return {'day': 'Wed', 'dayNum': '28', 'monthYear': 'Oct 2026'};
+    }
+  }
+
+  Widget _buildDeliveryFilterTabPill(String tabKey, String label, int count) {
+    final bool isSelected = _deliveryFilterTab == tabKey;
+
+    return InkWell(
+      onTap: () => setState(() => _deliveryFilterTab = tabKey),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: isSelected ? 13 : 11,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE2EBE5),
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(width: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Colors.white.withValues(alpha: 0.25)
+                    : (tabKey == 'upcoming'
+                        ? const Color(0xFFFEF3C7)
+                        : (tabKey == 'history' ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9))),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count.toString(),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: isSelected
+                      ? Colors.white
+                      : (tabKey == 'upcoming'
+                          ? const Color(0xFFB45309)
+                          : (tabKey == 'history' ? const Color(0xFF15803D) : const Color(0xFF475569))),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // TAB 3: DELIVERIES TAB (Upcoming & Delivery History)
   Widget _buildDeliveriesTab(dynamic user) {
     final customerProvider = context.watch<CustomerProvider>();
     final isGuest = user == null || user.isGuest == true;
+    final serverDeliveries = customerProvider.deliveries;
+
+    // Build unified delivery entries list
+    final List<Map<String, dynamic>> allDeliveries = serverDeliveries.isNotEmpty
+        ? serverDeliveries.map((item) {
+            final String rawDate = item['date']?.toString() ?? '2026-10-28';
+            final bool isDelivered = item['status'] == 'delivered' || item['isDelivered'] == true;
+            final dateParts = _parseDateParts(rawDate);
+            return {
+              'id': item['id'] ?? item['_id'],
+              'date': rawDate,
+              'day': dateParts['day'] ?? 'Wed',
+              'dayNum': dateParts['dayNum'] ?? '28',
+              'monthYear': dateParts['monthYear'] ?? 'Oct 2026',
+              'timeSlot': isDelivered ? (_formatDeliveryTime(item['time']?.toString() ?? '6:15 AM')) : '5:00 AM - 6:30 AM',
+              'milkQty': '${item['milkQuantity'] ?? item['actualMilk'] ?? 1} L',
+              'curdQty': '${item['curdQuantity'] ?? item['actualCurd'] ?? 0} g',
+              'isDelivered': isDelivered,
+              'paymentStatus': isDelivered ? 'Paid' : 'Advance',
+              'proofImage': item['proofImage']?.toString(),
+              'driver': item['deliveryBoyName']?.toString() ?? 'Naveen Kumar',
+            };
+          }).toList()
+        : [
+            // Sample upcoming
+            {
+              'id': 'u1',
+              'date': '2026-10-29',
+              'day': 'Thu',
+              'dayNum': '29',
+              'monthYear': 'Oct 2026',
+              'timeSlot': '5:00 AM - 6:30 AM',
+              'milkQty': '1 L',
+              'curdQty': '0 g',
+              'isDelivered': false,
+              'paymentStatus': 'Advance',
+              'proofImage': null,
+              'driver': 'Naveen Kumar',
+            },
+            {
+              'id': 'u2',
+              'date': '2026-10-28',
+              'day': 'Wed',
+              'dayNum': '28',
+              'monthYear': 'Oct 2026',
+              'timeSlot': '5:00 AM - 6:30 AM',
+              'milkQty': '1 L',
+              'curdQty': '500 g',
+              'isDelivered': false,
+              'paymentStatus': 'Advance',
+              'proofImage': null,
+              'driver': 'Naveen Kumar',
+            },
+            {
+              'id': 'u3',
+              'date': '2026-10-27',
+              'day': 'Tue',
+              'dayNum': '27',
+              'monthYear': 'Oct 2026',
+              'timeSlot': '5:00 AM - 6:30 AM',
+              'milkQty': '1 L',
+              'curdQty': '0 g',
+              'isDelivered': false,
+              'paymentStatus': 'Advance',
+              'proofImage': null,
+              'driver': 'Naveen Kumar',
+            },
+            // Sample delivery history
+            {
+              'id': 'h1',
+              'date': '2026-10-26',
+              'day': 'Mon',
+              'dayNum': '26',
+              'monthYear': 'Oct 2026',
+              'timeSlot': 'Delivered 6:15 AM',
+              'milkQty': '1 L',
+              'curdQty': '500 g',
+              'isDelivered': true,
+              'paymentStatus': 'Paid',
+              'proofImage': 'assets/images/dairy_hero.jpg',
+              'driver': 'Naveen Kumar',
+            },
+            {
+              'id': 'h2',
+              'date': '2026-10-25',
+              'day': 'Sun',
+              'dayNum': '25',
+              'monthYear': 'Oct 2026',
+              'timeSlot': 'Delivered 6:05 AM',
+              'milkQty': '1 L',
+              'curdQty': '0 g',
+              'isDelivered': true,
+              'paymentStatus': 'Paid',
+              'proofImage': 'assets/images/dairy_hero.jpg',
+              'driver': 'Naveen Kumar',
+            },
+            {
+              'id': 'h3',
+              'date': '2026-10-24',
+              'day': 'Sat',
+              'dayNum': '24',
+              'monthYear': 'Oct 2026',
+              'timeSlot': 'Delivered 6:20 AM',
+              'milkQty': '1 L',
+              'curdQty': '500 g',
+              'isDelivered': true,
+              'paymentStatus': 'Paid',
+              'proofImage': 'assets/images/dairy_hero.jpg',
+              'driver': 'Naveen Kumar',
+            },
+            {
+              'id': 'h4',
+              'date': '2026-10-23',
+              'day': 'Fri',
+              'dayNum': '23',
+              'monthYear': 'Oct 2026',
+              'timeSlot': 'Delivered 6:10 AM',
+              'milkQty': '1 L',
+              'curdQty': '500 g',
+              'isDelivered': true,
+              'paymentStatus': 'Paid',
+              'proofImage': 'assets/images/dairy_hero.jpg',
+              'driver': 'Naveen Kumar',
+            },
+          ];
+
+    final upcomingDeliveries = allDeliveries.where((d) => d['isDelivered'] != true).toList();
+    final historyDeliveries = allDeliveries.where((d) => d['isDelivered'] == true).toList();
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -2005,7 +3051,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 4 Stat Metric Cards (2x2 Grid matching Image 3)
+            // 4 Stat Metric Cards (2x2 Grid)
             Row(
               children: [
                 Expanded(
@@ -2013,7 +3059,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.local_shipping_outlined,
                     iconBg: const Color(0xFFE0F2FE),
                     iconColor: const Color(0xFF0284C7),
-                    value: '9',
+                    value: allDeliveries.length.toString(),
                     label: 'Total Drops',
                   ),
                 ),
@@ -2023,7 +3069,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.check_circle_outline_rounded,
                     iconBg: const Color(0xFFDCFCE7),
                     iconColor: const Color(0xFF16A34A),
-                    value: '3',
+                    value: historyDeliveries.length.toString(),
                     label: 'Delivered',
                   ),
                 ),
@@ -2037,7 +3083,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.access_time_rounded,
                     iconBg: const Color(0xFFFEF3C7),
                     iconColor: const Color(0xFFD97706),
-                    value: '6',
+                    value: upcomingDeliveries.length.toString(),
                     label: 'Pending Drops',
                   ),
                 ),
@@ -2053,100 +3099,221 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
 
-            // Upcoming Deliveries Header with View Calendar >
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Upcoming Deliveries',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF0C2340),
+            // 3 Filter Pills: All, Upcoming, Delivery History
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildDeliveryFilterTabPill('all', 'All', allDeliveries.length),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill('upcoming', 'Upcoming', upcomingDeliveries.length),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill('history', 'Delivery History', historyDeliveries.length),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // SECTION 1: UPCOMING DELIVERIES
+            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'upcoming') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            'Upcoming Deliveries',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: Text(
+                            '${upcomingDeliveries.length} Scheduled',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFB45309),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                InkWell(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Delivery calendar schedule view opened!'),
-                        backgroundColor: Color(0xFF0D5C3A),
-                        duration: Duration(seconds: 2),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Morning Slot',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (upcomingDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No upcoming deliveries scheduled for this cycle.',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...upcomingDeliveries.map((delivery) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _buildUpcomingDeliveryCard(
+                        day: delivery['day'] ?? 'Wed',
+                        date: delivery['dayNum'] ?? '28',
+                        monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                        timeSlot: delivery['timeSlot'] ?? '5:00 AM - 6:30 AM',
+                        milkQty: delivery['milkQty'] ?? '1 L',
+                        curdQty: delivery['curdQty'] ?? '0 g',
+                        isDelivered: false,
+                        paymentStatus: delivery['paymentStatus'] ?? 'Advance',
+                        proofImage: delivery['proofImage'],
+                        driverName: delivery['driver'],
+                        onProofTap: () => _showProofPhotoDialog(
+                          delivery['date'] ?? 'Morning Drop',
+                          delivery['proofImage'],
+                          delivery['driver'],
+                        ),
+                        onTap: () => _showUpcomingDeliveryDetails(delivery),
                       ),
-                    );
-                  },
-                  child: const Row(
+                    )),
+              const SizedBox(height: 10),
+            ],
+
+            // SECTION 2: DELIVERY HISTORY (Past Verified Drops)
+            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'history') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            'Delivery History',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Text(
+                            '${historyDeliveries.length} Drops',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.calendar_month_outlined, color: Color(0xFF0D5C3A), size: 14),
-                      SizedBox(width: 4),
+                      Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
+                      SizedBox(width: 3),
                       Text(
-                        'View Calendar',
+                        'Verified',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0D5C3A),
+                          color: Color(0xFF059669),
                         ),
                       ),
-                      SizedBox(width: 2),
-                      Icon(Icons.chevron_right_rounded, color: Color(0xFF0D5C3A), size: 15),
                     ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 10),
 
-            // Delivery Cards matching Image 3
-            _buildUpcomingDeliveryCard(
-              day: 'Mon',
-              date: '26',
-              monthYear: 'Oct 2026',
-              timeSlot: '5:00 AM - 6:30 AM',
-              milkQty: '1 L',
-              curdQty: '0 g',
-              isDelivered: false,
-              paymentStatus: 'Advance',
-              onTap: () => _showDeliveriesModal(customerProvider),
-            ),
-            const SizedBox(height: 10),
-            _buildUpcomingDeliveryCard(
-              day: 'Tue',
-              date: '27',
-              monthYear: 'Oct 2026',
-              timeSlot: '5:00 AM - 6:30 AM',
-              milkQty: '1 L',
-              curdQty: '500 g',
-              isDelivered: false,
-              paymentStatus: 'Advance',
-              onTap: () => _showDeliveriesModal(customerProvider),
-            ),
-            const SizedBox(height: 10),
-            _buildUpcomingDeliveryCard(
-              day: 'Wed',
-              date: '28',
-              monthYear: 'Oct 2026',
-              timeSlot: '5:00 AM - 6:30 AM',
-              milkQty: '1 L',
-              curdQty: '500 g',
-              isDelivered: true,
-              paymentStatus: 'Paid',
-              onTap: () => _showDeliveriesModal(customerProvider),
-            ),
-            const SizedBox(height: 10),
-            _buildUpcomingDeliveryCard(
-              day: 'Thu',
-              date: '29',
-              monthYear: 'Oct 2026',
-              timeSlot: '5:00 AM - 6:30 AM',
-              milkQty: '1 L',
-              curdQty: '0 g',
-              isDelivered: true,
-              paymentStatus: 'Paid',
-              onTap: () => _showDeliveriesModal(customerProvider),
-            ),
-            const SizedBox(height: 40),
+              if (historyDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No completed deliveries in your history yet.',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...historyDeliveries.map((delivery) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _buildUpcomingDeliveryCard(
+                        day: delivery['day'] ?? 'Wed',
+                        date: delivery['dayNum'] ?? '28',
+                        monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                        timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
+                        milkQty: delivery['milkQty'] ?? '1 L',
+                        curdQty: delivery['curdQty'] ?? '0 g',
+                        isDelivered: true,
+                        paymentStatus: delivery['paymentStatus'] ?? 'Paid',
+                        proofImage: delivery['proofImage'],
+                        driverName: delivery['driver'],
+                        onProofTap: () => _showProofPhotoDialog(
+                          delivery['date'] ?? 'Morning Drop',
+                          delivery['proofImage'],
+                          delivery['driver'],
+                        ),
+                        onTap: () => _showDeliveriesModal(customerProvider),
+                      ),
+                    )),
+              const SizedBox(height: 30),
+            ],
           ],
         ),
       ),
@@ -2228,6 +3395,9 @@ class _HomeScreenState extends State<HomeScreen> {
     required String curdQty,
     required bool isDelivered,
     required String paymentStatus,
+    String? proofImage,
+    String? driverName,
+    VoidCallback? onProofTap,
     required VoidCallback onTap,
   }) {
     return InkWell(
@@ -2394,29 +3564,62 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Payment ', style: TextStyle(fontSize: 9.5, color: Color(0xFF6B7280))),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: paymentStatus == 'Paid' ? const Color(0xFFDCFCE7) : const Color(0xFFFEF9C3),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        paymentStatus,
-                        style: TextStyle(
-                          color: paymentStatus == 'Paid' ? const Color(0xFF15803D) : const Color(0xFF854D0E),
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Payment ', style: TextStyle(fontSize: 9.5, color: Color(0xFF6B7280))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: paymentStatus == 'Paid' ? const Color(0xFFDCFCE7) : const Color(0xFFFEF9C3),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          paymentStatus,
+                          style: TextStyle(
+                            color: paymentStatus == 'Paid' ? const Color(0xFF15803D) : const Color(0xFF854D0E),
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 16),
-                  ],
+                      const SizedBox(width: 4),
+                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 16),
+                    ],
+                  ),
                 ),
+                if (isDelivered) ...[
+                  const SizedBox(height: 5),
+                  InkWell(
+                    onTap: onProofTap ?? onTap,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2F1EA),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.camera_alt_outlined, size: 10, color: Color(0xFF0D5C3A)),
+                          SizedBox(width: 3),
+                          Text(
+                            'Proof',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0D5C3A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],

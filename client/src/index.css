@@ -1,4 +1,4 @@
-﻿
+
 :root {
   /* Brand Color Palette matching the Logo */
   --primary-green: #0d5c3a;
@@ -13969,24 +13969,46 @@ body::-webkit-scrollbar,
 }
 
 .mobile-products-header-box {
-  text-align: center;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 14px;
 }
 
+.mobile-products-header-text {
+  flex: 1;
+  text-align: left;
+}
+
 .mobile-products-title {
-  font-size: 1.65rem;
+  font-size: 1.7rem;
   font-weight: 900;
   color: #0c2340;
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
   letter-spacing: -0.02em;
 }
 
 .mobile-products-subtitle {
-  font-size: 0.76rem;
-  color: #526e5c;
-  line-height: 1.45;
-  margin: 0 auto;
-  max-width: 320px;
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+  margin: 0;
+  max-width: 270px;
+}
+
+.mobile-products-header-splash {
+  width: 96px;
+  height: 80px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  margin-top: -6px;
+}
+
+.mobile-products-header-splash img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .mobile-products-search-box {
@@ -14244,35 +14266,78 @@ body::-webkit-scrollbar,
   background: #0d5c3a;
   box-shadow: 0 1px 3px rgba(13, 92, 58, 0.3);
 }
-/* Desktop Carousel Styles */
+/* Desktop Carousel Styles - Large, Prominent, Ultra-Premium */
+.desktop-home-greeting-section {
+  width: 100%;
+  max-width: 1240px;
+  margin: 28px auto 14px auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.desktop-home-greeting-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-home-greeting-salutation {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #526e5c;
+  margin-bottom: 2px;
+}
+
+.desktop-home-greeting-name {
+  font-size: 2.1rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.02em;
+}
+
+.desktop-home-greeting-sub {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #64748b;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
 .desktop-hero-carousel-container {
   width: 100%;
-  max-width: 980px;
-  margin: 10px auto 32px auto;
-  padding: 0 20px;
+  max-width: 1240px;
+  margin: 0 auto 24px auto;
+  padding: 0 24px;
+  box-sizing: border-box;
 }
 
 .desktop-hero-carousel-inner {
   position: relative;
-  border-radius: 22px;
+  width: 100%;
+  border-radius: 24px;
   overflow: hidden;
-  box-shadow: 0 12px 32px rgba(13, 92, 58, 0.14);
+  box-shadow: 0 16px 44px rgba(13, 92, 58, 0.12);
   background: #f8fafc;
-  aspect-ratio: 455 / 298;
+  aspect-ratio: 16 / 5.8;
+  min-height: 380px;
 }
 
 .desktop-hero-carousel-track {
   display: flex;
-  transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
-  width: 100%;
   height: 100%;
+  transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+  will-change: transform;
 }
 
 .desktop-hero-carousel-slide {
-  flex: 0 0 100%;
-  width: 100%;
   height: 100%;
+  flex-shrink: 0;
   line-height: 0;
+  position: relative;
+  overflow: hidden;
 }
 
 .desktop-hero-carousel-img {
@@ -14286,10 +14351,10 @@ body::-webkit-scrollbar,
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   color: #0d5c3a;
   border: 1px solid rgba(0, 0, 0, 0.08);
   font-size: 26px;
@@ -14299,7 +14364,7 @@ body::-webkit-scrollbar,
   justify-content: center;
   cursor: pointer;
   z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   transition: all 0.2s ease;
 }
 
@@ -14325,14 +14390,20 @@ body::-webkit-scrollbar,
   display: flex;
   align-items: center;
   gap: 8px;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
 }
 
 .desktop-carousel-dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: rgba(13, 92, 58, 0.25);
+  background: #cbd5e1;
   border: none;
   cursor: pointer;
   padding: 0;
@@ -14340,12 +14411,69 @@ body::-webkit-scrollbar,
 }
 
 .desktop-carousel-dot.is-active {
-  width: 28px;
-  border-radius: 6px;
+  width: 24px;
+  border-radius: 4px;
   background: #0d5c3a;
-  box-shadow: 0 2px 6px rgba(13, 92, 58, 0.35);
+  box-shadow: 0 1px 4px rgba(13, 92, 58, 0.35);
 }
-/* Greeting Box Styles */
+
+/* 4 Feature Badges Strip Below Banner matching Image */
+.desktop-home-features-strip {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto 36px auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.desktop-home-features-card {
+  background: #ffffff;
+  border: 1px solid #e5ede7;
+  border-radius: 20px;
+  padding: 20px 32px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.desktop-home-feat-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.desktop-home-feat-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #eef6f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.desktop-home-feat-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.desktop-home-feat-text strong {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #0c2340;
+  line-height: 1.2;
+}
+
+.desktop-home-feat-text span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #55725f;
+  line-height: 1.3;
+}
+
+/* Mobile Greeting Box Styles */
 .mobile-home-greeting-box {
   padding: 14px 18px 4px 18px;
   display: flex;
@@ -14355,7 +14483,7 @@ body::-webkit-scrollbar,
 .mobile-home-greeting-salutation {
   font-size: 0.88rem;
   font-weight: 600;
-  color: #64748b;
+  color: #526e5c;
   margin-bottom: 2px;
 }
 
@@ -14378,45 +14506,213 @@ body::-webkit-scrollbar,
   line-height: 1.35;
 }
 
-.desktop-home-greeting-section {
-  width: 100%;
-  max-width: 980px;
-  margin: 20px auto 0 auto;
-  padding: 0 20px;
+.greeting-sun-emoji {
+  font-size: 1.4rem;
+  display: inline-block;
 }
 
-.desktop-home-greeting-inner {
+/* Mobile How to Subscribe Section - Simple & Professional */
+.mobile-how-to-subscribe-section {
+  margin: 18px 16px 22px 16px;
+  background: #ffffff;
+  border: 1.5px solid #e5ede7;
+  border-radius: 20px;
+  padding: 20px 18px;
+  box-shadow: 0 4px 16px rgba(13, 92, 58, 0.04);
+}
+
+.mobile-how-header {
+  margin-bottom: 16px;
+}
+
+.mobile-how-pill {
+  display: inline-block;
+  background: #eef6f1;
+  color: #0d5c3a;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.mobile-how-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #0c2340;
+  margin: 0 0 3px 0;
+  letter-spacing: -0.02em;
+}
+
+.mobile-how-subtitle {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.mobile-how-steps-card {
   display: flex;
   flex-direction: column;
 }
 
-.desktop-home-greeting-salutation {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #64748b;
-  margin-bottom: 2px;
+.mobile-how-step-item {
+  display: flex;
+  gap: 12px;
 }
 
-.desktop-home-greeting-name {
-  font-size: 1.85rem;
+.mobile-how-step-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.mobile-how-num-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #0d5c3a;
+  color: #ffffff;
+  font-size: 0.78rem;
   font-weight: 900;
-  color: #0c2340;
-  margin: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  letter-spacing: -0.02em;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.desktop-home-greeting-sub {
+.mobile-how-step-line {
+  width: 2px;
+  flex: 1;
+  background: #d4e7dc;
+  margin: 4px 0;
+  min-height: 22px;
+}
+
+.mobile-how-step-content {
+  padding-bottom: 16px;
+  flex: 1;
+}
+
+.mobile-how-step-icon-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.mobile-how-step-content h4 {
   font-size: 0.92rem;
-  font-weight: 500;
-  color: #64748b;
-  margin: 4px 0 0 0;
-  line-height: 1.4;
+  font-weight: 800;
+  color: #0c2340;
+  margin: 0;
 }
 
-.greeting-sun-emoji {
-  font-size: 1.4rem;
-  display: inline-block;
+.mobile-how-step-content p {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #55725f;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.mobile-how-subscribe-btn {
+  width: 100%;
+  background: #0d5c3a;
+  color: #ffffff;
+  border: none;
+  border-radius: 14px;
+  padding: 13px 18px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(13, 92, 58, 0.22);
+  transition: all 0.2s ease;
+}
+
+.mobile-how-subscribe-btn:active {
+  transform: scale(0.98);
+}
+
+/* Matching Image 2 Card Styles */
+.badge-bestseller {
+  background: #0d5c3a !important;
+  color: #ffffff !important;
+}
+
+.badge-farm-fresh {
+  background: #dcfce7 !important;
+  color: #14532d !important;
+}
+
+.badge-high-cream {
+  background: #fef08a !important;
+  color: #854d0e !important;
+}
+
+.badge-pure-dairy {
+  background: #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+.mobile-card-features-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.mobile-card-feat-col {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.mobile-card-feat-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.mobile-card-feat-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
+.mobile-card-feat-text span {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.mobile-card-subscribe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #0d5c3a;
+  color: #ffffff;
+  padding: 6px 11px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(13, 92, 58, 0.22);
+  transition: all 0.15s ease;
+}
+
+.mobile-card-subscribe-btn:active {
+  transform: scale(0.96);
 }

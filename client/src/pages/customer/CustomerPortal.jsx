@@ -223,6 +223,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
+  const [deliveryFilterTab, setDeliveryFilterTab] = useState('all');
+  const [selectedUpcomingDelivery, setSelectedUpcomingDelivery] = useState(null);
 
   const serviceableLocations = useMemo(() => {
     if (Array.isArray(locations) && locations.length > 0) {
@@ -1668,19 +1670,22 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             onClick={() => setSelectedSubForDetails(null)}
             aria-label="Back"
             style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '50%',
-              background: '#f3f7f4',
-              border: '1px solid #e2ebe5',
-              color: '#0d5c3a',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: '5px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              background: '#ffffff',
+              border: '1.2px solid #e2ebe5',
+              color: '#0c2340',
+              fontWeight: 700,
+              fontSize: '0.80rem',
               cursor: 'pointer',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
             }}
           >
-            <ArrowLeft size={20} />
+            <ArrowLeft size={16} />
+            <span>Back</span>
           </button>
 
           <h3
@@ -1959,14 +1964,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         </div>
 
-        {/* 4. Next Delivery */}
+        {/* 4. Next Delivery (Mint card matching Image 2) */}
         <div
           style={{
-            background: '#ffffff',
+            background: '#e8f5ee',
             borderRadius: '20px',
-            border: '1px solid #e2ebe5',
+            border: '1.2px solid #c8e6d5',
             padding: '16px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+            boxShadow: '0 2px 10px rgba(13, 92, 58, 0.04)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
@@ -1979,8 +1984,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 style={{
                   width: '38px',
                   height: '38px',
-                  borderRadius: '12px',
-                  background: '#f3f7f4',
+                  borderRadius: '50%',
+                  background: '#d4ede0',
                   color: '#0d5c3a',
                   display: 'flex',
                   alignItems: 'center',
@@ -1992,10 +1997,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
               <div>
                 <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Tomorrow, 28 Oct 2026</strong>
-                <span style={{ fontSize: '0.76rem', color: '#6b7280' }}>Before 6:30 AM</span>
+                <span style={{ fontSize: '0.76rem', color: '#4b5563' }}>Before 6:30 AM</span>
               </div>
             </div>
-            <ChevronRight size={19} color="#9ca3af" />
+            <ChevronRight size={19} color="#0d5c3a" />
           </div>
         </div>
 
@@ -2027,7 +2032,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 justifyContent: 'space-between',
                 padding: '10px 12px',
                 borderRadius: '14px',
-                background: '#fafbfb',
+                background: '#fef9ee',
+                border: '1.1px solid #fde68a',
                 cursor: 'pointer',
               }}
             >
@@ -2055,7 +2061,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 justifyContent: 'space-between',
                 padding: '10px 12px',
                 borderRadius: '14px',
-                background: '#fafbfb',
+                background: '#f0fdf4',
+                border: '1.1px solid #bbf7d0',
                 cursor: 'pointer',
               }}
             >
@@ -2083,7 +2090,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 justifyContent: 'space-between',
                 padding: '10px 12px',
                 borderRadius: '14px',
-                background: '#fafbfb',
+                background: '#f0f9ff',
+                border: '1.1px solid #bae6fd',
                 cursor: 'pointer',
               }}
             >
@@ -2112,7 +2120,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 justifyContent: 'space-between',
                 padding: '10px 12px',
                 borderRadius: '14px',
-                background: '#fff5f5',
+                background: '#fef2f2',
+                border: '1.1px solid #fecaca',
                 cursor: 'pointer',
               }}
             >
@@ -2217,6 +2226,322 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     );
   };
 
+  const renderUpcomingDeliveryDetailsModal = () => {
+    if (!selectedUpcomingDelivery) return null;
+
+    const delivery = selectedUpcomingDelivery;
+    const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+    const isPaid = delivery.paymentStatus === 'paid';
+    const milkQty = delivery.actualMilk || delivery.milkQuantity || 1;
+    const curdQty = delivery.actualCurd || delivery.curdQuantity || 0;
+    const partnerName = delivery.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || 'Naveen Kumar';
+    const address = currentCustomer.address || user?.address || 'Madhapur, Hyderabad, Telangana - 500081';
+
+    const content = (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Top Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px', borderBottom: '1px solid #e2ebe5' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a' }}>
+              <Truck size={22} />
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#0c2340' }}>Upcoming Delivery Details</h3>
+              <p style={{ margin: 0, fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>Scheduled morning doorstep drop</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedUpcomingDelivery(null)}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              border: 'none',
+              background: '#f1f5f9',
+              color: '#64748b',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Schedule & Slot Highlight Card */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #0d5c3a 0%, #166534 100%)',
+            borderRadius: '20px',
+            padding: '18px 20px',
+            color: '#ffffff',
+            boxShadow: '0 8px 20px rgba(13, 92, 58, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.6px', color: '#bbf7d0', background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: '12px' }}>
+              ● Scheduled Drop
+            </span>
+            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#dcfce7', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <Snowflake size={14} /> Chilled to 4°C
+            </span>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 900, letterSpacing: '-0.3px', marginBottom: '2px' }}>
+              {dateParts.dayOfWeek}, {dateParts.dayNum} {dateParts.monthYear}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', color: '#f0fdf4', fontWeight: 600 }}>
+              <Clock3 size={15} />
+              <span>5:00 AM – 6:30 AM (Daily Morning Window)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Items In This Drop */}
+        <div style={{ background: '#ffffff', borderRadius: '18px', border: '1px solid #e2ebe5', padding: '16px' }}>
+          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '12px' }}>
+            Items In This Drop
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Milk Item */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '14px', background: '#f8faf9', border: '1px solid #eef3f0' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a', flexShrink: 0 }}>
+                  <Milk size={22} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0c2340' }}>Farm Fresh Cow Milk</div>
+                  <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Pure A2 • Glass Bottle • Chilled 4°C</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#0d5c3a' }}>{milkQty} L</div>
+                <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>Packed fresh</div>
+              </div>
+            </div>
+
+            {/* Curd Item (if any) */}
+            {curdQty > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '14px', background: '#f8faf9', border: '1px solid #eef3f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b45309', flexShrink: 0 }}>
+                    <Package size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0c2340' }}>Fresh Artisanal Curd</div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>Thick & Probiotic • Traditional clay setting</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#b45309' }}>{curdQty} g</div>
+                  <div style={{ fontSize: '0.68rem', color: '#d97706', fontWeight: 700 }}>Packed fresh</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Delivery Address & Drop Location */}
+        <div style={{ background: '#ffffff', borderRadius: '18px', border: '1px solid #e2ebe5', padding: '16px' }}>
+          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+            Doorstep Drop Location
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+              <MapPin size={20} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0c2340', marginBottom: '2px' }}>
+                Home Doorstep
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#475569', lineHeight: 1.4, marginBottom: '6px' }}>
+                {address}
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.72rem', color: '#0d5c3a', fontWeight: 700, background: '#f0fdf4', padding: '3px 8px', borderRadius: '8px', border: '1px solid #dcfce7' }}>
+                <CheckCircle2 size={12} /> Leave at door milk bag / ring bell once
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Assigned Morning Partner */}
+        <div style={{ background: '#ffffff', borderRadius: '18px', border: '1px solid #e2ebe5', padding: '16px' }}>
+          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+            Morning Delivery Partner
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '1rem', border: '2px solid #86efac' }}>
+                {partnerName.charAt(0)}
+              </div>
+              <div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0c2340', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {partnerName}
+                  <span style={{ fontSize: '0.66rem', background: '#dcfce7', color: '#15803d', padding: '1px 6px', borderRadius: '6px', fontWeight: 800 }}>Assigned</span>
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
+                  Madhapur Station Hub • Insulated Carrier
+                </div>
+              </div>
+            </div>
+
+            <a
+              href="tel:+919876543210"
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: '#f0fdf4',
+                color: '#0d5c3a',
+                border: '1px solid #bbf7d0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textDecoration: 'none',
+              }}
+              title="Call Delivery Partner"
+            >
+              <Phone size={18} />
+            </a>
+          </div>
+        </div>
+
+        {/* Payment & Status Row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#f8fafc', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>PAYMENT STATUS</div>
+            <div style={{ fontSize: '0.88rem', fontWeight: 900, color: isPaid ? '#15803d' : '#0369a1' }}>
+              {isPaid ? 'Paid in Advance' : 'Advance Active Plan'}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>VERIFICATION</div>
+            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0d5c3a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ShieldCheck size={14} /> Doorstep Photo Proof
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedUpcomingDelivery(null);
+              if (typeof setActiveTab === 'function') {
+                setActiveTab('subscription');
+              }
+            }}
+            style={{
+              flex: 1,
+              height: '46px',
+              borderRadius: '14px',
+              border: '1px solid #0d5c3a',
+              background: '#f0fdf4',
+              color: '#0d5c3a',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+            }}
+          >
+            <Calendar size={16} />
+            <span>Manage Plan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedUpcomingDelivery(null)}
+            style={{
+              flex: 1,
+              height: '46px',
+              borderRadius: '14px',
+              border: 'none',
+              background: '#0d5c3a',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(13, 92, 58, 0.2)',
+            }}
+          >
+            <span>Done</span>
+          </button>
+        </div>
+      </div>
+    );
+
+    if (isMobile) {
+      return (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: '#f9faf9',
+            overflowY: 'auto',
+            padding: '16px 16px 36px 16px',
+          }}
+        >
+          {content}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className="modal-overlay"
+        onClick={() => setSelectedUpcomingDelivery(null)}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px',
+        }}
+      >
+        <div
+          className="modal-content"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            maxWidth: '520px',
+            width: '100%',
+            maxHeight: '92vh',
+            overflowY: 'auto',
+            borderRadius: '24px',
+            background: '#f9faf9',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+            padding: '20px',
+            position: 'relative',
+          }}
+        >
+          {content}
+        </div>
+      </div>
+    );
+  };
+
   const renderSubscriptionPage = () => {
     const primarySub = allCustomerSubscriptions[0] || {
       id: currentCustomer.customerId || 'CUST-101',
@@ -2230,126 +2555,195 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     return (
       <section className="customer-dashboard-main customer-subscription-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Hero Card */}
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)',
-            borderRadius: '22px',
-            padding: isMobile ? '20px' : '28px',
-            color: '#ffffff',
-            boxShadow: '0 8px 24px rgba(13, 92, 58, 0.22)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ flex: 1, zIndex: 2 }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'rgba(255,255,255,0.18)',
-                backdropFilter: 'blur(8px)',
-                padding: '5px 12px',
-                borderRadius: '20px',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                marginBottom: '10px',
-                color: '#fef08a',
-              }}
-            >
-              <Sparkles size={12} />
-              <span>DOORSTEP DELIVERY PLANS</span>
-            </div>
-            <h2 style={{ fontSize: isMobile ? '1.35rem' : '1.7rem', fontWeight: 900, margin: '0 0 8px 0', color: '#ffffff', lineHeight: 1.25 }}>
-              Fresh Dairy Every Morning
-            </h2>
-            <p style={{ margin: '0 0 16px 0', fontSize: '0.84rem', color: '#d1fae5', maxWidth: '460px', lineHeight: 1.5 }}>
-              Healthy milk, curd, paneer and more delivered to your doorstep before 6:30 AM.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                const el = document.getElementById('more-subscription-plans');
-                if (el) el.scrollIntoView({ behavior: 'smooth' });
-              }}
-              style={{
-                background: '#ffffff',
-                color: '#0d5c3a',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '9px 18px',
-                fontWeight: 800,
-                fontSize: '0.86rem',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-              }}
-            >
-              <span>Explore Plans</span>
-              <ArrowUpRight size={15} />
-            </button>
-          </div>
-          <div style={{ width: isMobile ? '82px' : '110px', height: isMobile ? '96px' : '130px', flexShrink: 0, zIndex: 2 }}>
+        {isMobile ? (
+          <div
+            onClick={() => {
+              const el = document.getElementById('more-subscription-plans');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            style={{
+              borderRadius: '22px',
+              border: '1px solid #cee7d9',
+              boxShadow: '0 4px 14px rgba(13, 92, 58, 0.08)',
+              overflow: 'hidden',
+              cursor: 'pointer',
+              lineHeight: 0,
+              background: '#e8f5ee',
+            }}
+          >
             <img
-              src="/glass-bottles.jpg"
-              alt="Fresh glass milk bottles"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: '14px',
-                boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
-                border: '2px solid rgba(255,255,255,0.3)',
-              }}
-              onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+              src="/sub_hero_banner.png"
+              alt="Doorstep Delivery Plans - Fresh Dairy Every Morning"
+              style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }}
             />
           </div>
-        </div>
-
-        {/* 4 Feature Badges */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
-            gap: '10px',
-          }}
-        >
-          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Leaf size={16} />
+        ) : (
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)',
+              borderRadius: '22px',
+              padding: '28px',
+              color: '#ffffff',
+              boxShadow: '0 8px 24px rgba(13, 92, 58, 0.22)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ flex: 1, zIndex: 2 }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(255,255,255,0.18)',
+                  backdropFilter: 'blur(8px)',
+                  padding: '5px 12px',
+                  borderRadius: '20px',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  marginBottom: '10px',
+                  color: '#fef08a',
+                }}
+              >
+                <Sparkles size={12} />
+                <span>DOORSTEP DELIVERY PLANS</span>
+              </div>
+              <h2 style={{ fontSize: '1.7rem', fontWeight: 900, margin: '0 0 8px 0', color: '#ffffff', lineHeight: 1.25 }}>
+                Fresh Dairy Every Morning
+              </h2>
+              <p style={{ margin: '0 0 16px 0', fontSize: '0.84rem', color: '#d1fae5', maxWidth: '460px', lineHeight: 1.5 }}>
+                Healthy milk, curd, paneer and more delivered to your doorstep before 6:30 AM.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('more-subscription-plans');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                style={{
+                  background: '#ffffff',
+                  color: '#0d5c3a',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '9px 18px',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                }}
+              >
+                <span>Explore Plans</span>
+                <ArrowUpRight size={15} />
+              </button>
             </div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>100% Pure & Natural</span>
-          </div>
-
-          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Snowflake size={16} />
+            <div style={{ width: '110px', height: '130px', flexShrink: 0, zIndex: 2 }}>
+              <img
+                src="/glass-bottles.jpg"
+                alt="Fresh glass milk bottles"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  borderRadius: '14px',
+                  boxShadow: '0 6px 16px rgba(0,0,0,0.25)',
+                  border: '2px solid rgba(255,255,255,0.3)',
+                }}
+                onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+              />
             </div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Chilled to 4°C</span>
           </div>
+        )}
 
-          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Truck size={16} />
+        {/* 4 Feature Badges (Single card with 4 columns matching Image 1 on mobile) */}
+        {isMobile ? (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1px solid #e2ebe5',
+              padding: '12px 4px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Leaf size={16} />
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>100%<br />Pure & Natural</span>
             </div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Doorstep Delivery</span>
-          </div>
+            <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
 
-          <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <CalendarDays size={16} />
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Snowflake size={16} />
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Chilled<br />to 4°C</span>
             </div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Flexible Plans</span>
+            <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Truck size={16} />
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Doorstep<br />Delivery</span>
+            </div>
+            <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
+
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CalendarDays size={16} />
+              </div>
+              <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Flexible<br />Plans</span>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '10px',
+            }}
+          >
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Leaf size={16} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>100% Pure & Natural</span>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Snowflake size={16} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Chilled to 4°C</span>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Truck size={16} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Doorstep Delivery</span>
+            </div>
+
+            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '14px', padding: '11px 12px', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: '#f3e8ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <CalendarDays size={16} />
+              </div>
+              <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0c2340' }}>Flexible Plans</span>
+            </div>
+          </div>
+        )}
 
         {/* Active Subscriptions Section */}
         <div>
@@ -2432,53 +2826,67 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
             </div>
 
-            {/* 2 Metric Boxes */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {/* 3 Metric Boxes matching Image 1 */}
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)', gap: '6px' }}>
               <div
                 style={{
-                  background: '#f7faf8',
-                  borderRadius: '12px',
-                  border: '1px solid #e5ede8',
-                  padding: '10px 12px',
+                  background: '#f2f8f4',
+                  borderRadius: '10px',
+                  border: '1px solid #deede2',
+                  padding: '8px 6px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '6px',
                 }}
               >
-                <Milk size={18} color="#0d5c3a" />
-                <div>
-                  <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                <Milk size={15} color="#0d5c3a" />
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {primarySub.plan?.milkQty || milkQuantity || 1} {primarySub.plan?.milkUnit || milkUnit || 'L'} / day
                   </strong>
-                  <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Pure A2 Milk</span>
+                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Pure A2 Milk</span>
                 </div>
               </div>
 
               <div
                 style={{
-                  background: '#f7faf8',
-                  borderRadius: '12px',
-                  border: '1px solid #e5ede8',
-                  padding: '10px 12px',
+                  background: '#f2f8f4',
+                  borderRadius: '10px',
+                  border: '1px solid #deede2',
+                  padding: '8px 6px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '6px',
                 }}
               >
-                <Clock3 size={18} color="#0d5c3a" />
-                <div>
-                  <strong style={{ display: 'block', fontSize: '0.84rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15 }}>
+                <Clock3 size={15} color="#0d5c3a" />
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     Before 6:30 AM
                   </strong>
-                  <span style={{ fontSize: '0.70rem', color: '#6b7280' }}>Morning Delivery</span>
+                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Morning Delivery</span>
                 </div>
               </div>
-            </div>
 
-            {/* Delivery Area */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600 }}>
-              <MapPin size={15} color="#0d5c3a" />
-              <span>{primarySub.area || currentCustomer.area || 'Madhupur'} Delivery Area</span>
+              <div
+                style={{
+                  background: '#f2f8f4',
+                  borderRadius: '10px',
+                  border: '1px solid #deede2',
+                  padding: '8px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <MapPin size={15} color="#0d5c3a" />
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {primarySub.area || currentCustomer.area || 'Madhupur'}
+                  </strong>
+                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Delivery Area</span>
+                </div>
+              </div>
             </div>
 
             {/* Two Action Buttons: View Details (outline) & Manage Plan (solid green) */}
@@ -2890,140 +3298,372 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
 
-          {/* Section Header: Upcoming Deliveries */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
-              Upcoming Deliveries
-            </h3>
-            <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+          {/* 3 Filter Pills Bar: All, Upcoming, Delivery History */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', marginTop: '2px' }}>
+            <button
+              type="button"
+              onClick={() => setDeliveryFilterTab('all')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                border: deliveryFilterTab === 'all' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                background: deliveryFilterTab === 'all' ? '#0d5c3a' : '#ffffff',
+                color: deliveryFilterTab === 'all' ? '#ffffff' : '#64748b',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: deliveryFilterTab === 'all' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+              }}
+            >
+              All
+              <span style={{
+                fontSize: '0.7rem',
+                background: deliveryFilterTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+                color: deliveryFilterTab === 'all' ? '#ffffff' : '#475569',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontWeight: 900,
+              }}>
+                {sourceDeliveries.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDeliveryFilterTab('upcoming')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                border: deliveryFilterTab === 'upcoming' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                background: deliveryFilterTab === 'upcoming' ? '#0d5c3a' : '#ffffff',
+                color: deliveryFilterTab === 'upcoming' ? '#ffffff' : '#64748b',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: deliveryFilterTab === 'upcoming' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+              }}
+            >
+              Upcoming
+              <span style={{
+                fontSize: '0.7rem',
+                background: deliveryFilterTab === 'upcoming' ? 'rgba(255,255,255,0.25)' : '#fef3c7',
+                color: deliveryFilterTab === 'upcoming' ? '#ffffff' : '#b45309',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontWeight: 900,
+              }}>
+                {pendingCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDeliveryFilterTab('history')}
+              style={{
+                padding: '7px 14px',
+                borderRadius: '20px',
+                fontSize: '0.78rem',
+                fontWeight: 800,
+                border: deliveryFilterTab === 'history' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                background: deliveryFilterTab === 'history' ? '#0d5c3a' : '#ffffff',
+                color: deliveryFilterTab === 'history' ? '#ffffff' : '#64748b',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: deliveryFilterTab === 'history' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+              }}
+            >
+              Delivery History
+              <span style={{
+                fontSize: '0.7rem',
+                background: deliveryFilterTab === 'history' ? 'rgba(255,255,255,0.25)' : '#dcfce7',
+                color: deliveryFilterTab === 'history' ? '#ffffff' : '#15803d',
+                padding: '1px 6px',
+                borderRadius: '10px',
+                fontWeight: 900,
+              }}>
+                {deliveredCount}
+              </span>
+            </button>
           </div>
 
-          {/* Upcoming Deliveries List with Date Chip on left */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {visibleDeliveries.map((delivery, index) => {
-              const isDelivered = delivery.status === 'delivered';
-              const isPaid = delivery.paymentStatus === 'paid';
-              const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+          {/* Section 1: Upcoming Deliveries */}
+          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                    Upcoming Deliveries
+                  </h3>
+                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                    {sourceDeliveries.filter((d) => d.status !== 'delivered').length} Scheduled
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+              </div>
 
-              return (
-                <div
-                  key={delivery.id || index}
-                  style={{
-                    background: '#ffffff',
-                    borderRadius: '16px',
-                    border: '1px solid #e2ebe5',
-                    padding: '12px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  {/* Left Date Chip */}
-                  <div
-                    style={{
-                      width: '56px',
-                      height: '62px',
-                      borderRadius: '12px',
-                      background: '#f3f7f4',
-                      border: '1px solid #e2ebe5',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      textAlign: 'center',
-                      padding: '2px',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
-                      {dateParts.dayOfWeek}
-                    </span>
-                    <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
-                      {dateParts.dayNum}
-                    </span>
-                    <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
-                      {dateParts.monthYear}
-                    </span>
-                  </div>
+              {sourceDeliveries.filter((d) => d.status !== 'delivered').length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '18px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No upcoming deliveries scheduled for this cycle.
+                </div>
+              ) : (
+                sourceDeliveries
+                  .filter((d) => d.status !== 'delivered')
+                  .slice(0, limit)
+                  .map((delivery, index) => {
+                    const isPaid = delivery.paymentStatus === 'paid';
+                    const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
 
-                  {/* Middle Details */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600, marginBottom: '2px' }}>
-                      <Clock3 size={13} color="#0d5c3a" />
-                      <span>5:00 AM – 6:30 AM</span>
-                    </div>
-
-                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
-                      Milk {delivery.actualMilk || 1}L {delivery.actualCurd > 0 ? `• Curd ${delivery.actualCurd}g` : '• Curd 0g'}
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      {/* Status Pill */}
-                      <span
+                    return (
+                      <div
+                        key={delivery.id || `up-${index}`}
+                        onClick={() => setSelectedUpcomingDelivery(delivery)}
                         style={{
-                          display: 'inline-flex',
+                          background: '#ffffff',
+                          borderRadius: '16px',
+                          border: '1px solid #e2ebe5',
+                          padding: '12px 14px',
+                          display: 'flex',
                           alignItems: 'center',
-                          gap: '4px',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                          background: isDelivered ? '#dcfce7' : '#fef3c7',
-                          color: isDelivered ? '#15803d' : '#b45309',
-                          border: `1px solid ${isDelivered ? '#bbf7d0' : '#fde68a'}`,
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                          cursor: 'pointer',
                         }}
                       >
-                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isDelivered ? '#15803d' : '#d97706' }} />
-                        {isDelivered ? 'Delivered' : 'Pending'}
-                      </span>
-
-                      {/* Payment Badge */}
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '2px 8px',
-                          borderRadius: '12px',
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          background: '#f1f5f9',
-                          color: '#475569',
-                        }}
-                      >
-                        Payment: {isPaid ? 'Paid' : 'Advance'}
-                      </span>
-
-                      {delivery.proofImage && (
-                        <button
-                          type="button"
-                          onClick={() => setViewingProofPhoto({ url: delivery.proofImage, date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
+                        {/* Left Date Chip */}
+                        <div
                           style={{
-                            display: 'inline-flex',
+                            width: '56px',
+                            height: '62px',
+                            borderRadius: '12px',
+                            background: '#f3f7f4',
+                            border: '1px solid #e2ebe5',
+                            display: 'flex',
+                            flexDirection: 'column',
                             alignItems: 'center',
-                            gap: '3px',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            color: '#0d5c3a',
-                            background: '#e2f1ea',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '2px 7px',
-                            cursor: 'pointer',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            textAlign: 'center',
+                            padding: '2px',
                           }}
                         >
-                          <Camera size={11} /> Proof
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
+                            {dateParts.dayOfWeek}
+                          </span>
+                          <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
+                            {dateParts.dayNum}
+                          </span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
+                            {dateParts.monthYear}
+                          </span>
+                        </div>
 
-                  {/* Right Chevron */}
-                  <ChevronRight size={18} color="#9ca3af" />
+                        {/* Middle Details */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600, marginBottom: '2px' }}>
+                            <Clock3 size={13} color="#0d5c3a" />
+                            <span>5:00 AM – 6:30 AM</span>
+                          </div>
+
+                          <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
+                            Milk {delivery.actualMilk || delivery.milkQuantity || 1}L {(delivery.actualCurd || delivery.curdQuantity) > 0 ? `• Curd ${delivery.actualCurd || delivery.curdQuantity}g` : '• Curd 0g'}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                background: '#fef3c7',
+                                color: '#b45309',
+                                border: '1px solid #fde68a',
+                              }}
+                            >
+                              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#d97706' }} />
+                              Pending
+                            </span>
+
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                background: '#f1f5f9',
+                                color: '#475569',
+                              }}
+                            >
+                              Payment: {isPaid ? 'Paid' : 'Advance'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <ChevronRight size={18} color="#9ca3af" />
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          )}
+
+          {/* Section 2: Delivery History (Past Verified Drops) */}
+          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'history') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                    Delivery History
+                  </h3>
+                  <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                    {sourceDeliveries.filter((d) => d.status === 'delivered').length} Completed Drops
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+                <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <CheckCircle2 size={13} /> Verified
+                </span>
+              </div>
+
+              {sourceDeliveries.filter((d) => d.status === 'delivered').length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '18px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No completed deliveries recorded in your history yet.
+                </div>
+              ) : (
+                sourceDeliveries
+                  .filter((d) => d.status === 'delivered')
+                  .slice(0, limit)
+                  .map((delivery, index) => {
+                    const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+
+                    return (
+                      <div
+                        key={delivery.id || `hist-${index}`}
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '16px',
+                          border: '1px solid #e2ebe5',
+                          padding: '12px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        {/* Left Date Chip */}
+                        <div
+                          style={{
+                            width: '56px',
+                            height: '62px',
+                            borderRadius: '12px',
+                            background: '#f3f7f4',
+                            border: '1px solid #e2ebe5',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            textAlign: 'center',
+                            padding: '2px',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
+                            {dateParts.dayOfWeek}
+                          </span>
+                          <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
+                            {dateParts.dayNum}
+                          </span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
+                            {dateParts.monthYear}
+                          </span>
+                        </div>
+
+                        {/* Middle Details */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#059669', fontWeight: 700, marginBottom: '2px' }}>
+                            <CheckCircle2 size={13} color="#059669" />
+                            <span>Delivered at 6:15 AM</span>
+                          </div>
+
+                          <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
+                            Milk {delivery.actualMilk || delivery.milkQuantity || 1}L {(delivery.actualCurd || delivery.curdQuantity) > 0 ? `• Curd ${delivery.actualCurd || delivery.curdQuantity}g` : '• Curd 0g'}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                background: '#dcfce7',
+                                color: '#15803d',
+                                border: '1px solid #bbf7d0',
+                              }}
+                            >
+                              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#15803d' }} />
+                              Delivered
+                            </span>
+
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                background: '#f1f5f9',
+                                color: '#475569',
+                              }}
+                            >
+                              Payment: Paid
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() => setViewingProofPhoto({ url: delivery.proofImage || '/dairy_hero.jpg', date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                color: '#0d5c3a',
+                                background: '#e2f1ea',
+                                border: 'none',
+                                borderRadius: '8px',
+                                padding: '2px 7px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Camera size={11} /> Proof
+                            </button>
+                          </div>
+                        </div>
+
+                        <ChevronRight size={18} color="#9ca3af" />
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          )}
         </section>
       );
     }
@@ -3084,7 +3724,72 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
-        {visibleDeliveries.length === 0 ? (
+        {/* Filter Pills for Desktop view */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+          <button
+            type="button"
+            onClick={() => setDeliveryFilterTab('all')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              border: deliveryFilterTab === 'all' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'all' ? '#0d5c3a' : '#ffffff',
+              color: deliveryFilterTab === 'all' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            All <span style={{ background: deliveryFilterTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f1f5f9', color: deliveryFilterTab === 'all' ? '#fff' : '#475569', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{sourceDeliveries.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeliveryFilterTab('upcoming')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              border: deliveryFilterTab === 'upcoming' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'upcoming' ? '#0d5c3a' : '#ffffff',
+              color: deliveryFilterTab === 'upcoming' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            Upcoming <span style={{ background: deliveryFilterTab === 'upcoming' ? 'rgba(255,255,255,0.25)' : '#fef3c7', color: deliveryFilterTab === 'upcoming' ? '#fff' : '#b45309', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{pendingCount}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeliveryFilterTab('history')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              border: deliveryFilterTab === 'history' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'history' ? '#0d5c3a' : '#ffffff',
+              color: deliveryFilterTab === 'history' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            Delivery History <span style={{ background: deliveryFilterTab === 'history' ? 'rgba(255,255,255,0.25)' : '#dcfce7', color: deliveryFilterTab === 'history' ? '#fff' : '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{deliveredCount}</span>
+          </button>
+        </div>
+
+        {visibleDeliveries.filter((d) => {
+          if (deliveryFilterTab === 'upcoming') return d.status !== 'delivered';
+          if (deliveryFilterTab === 'history') return d.status === 'delivered';
+          return true;
+        }).length === 0 ? (
           <div className="customer-empty-history">
             <span className="customer-dashboard-icon customer-dashboard-icon-green">
               <Truck size={20} aria-hidden="true" />
@@ -3109,7 +3814,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </tr>
               </thead>
               <tbody>
-                {visibleDeliveries.map((delivery, index) => (
+                {visibleDeliveries
+                  .filter((d) => {
+                    if (deliveryFilterTab === 'upcoming') return d.status !== 'delivered';
+                    if (deliveryFilterTab === 'history') return d.status === 'delivered';
+                    return true;
+                  })
+                  .map((delivery, index) => (
                   <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
                     <td><strong>{delivery.deliveryDate}</strong></td>
                     <td>{delivery.actualMilk} L</td>
@@ -3119,6 +3830,29 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                       <span className={`customer-table-status${delivery.status === 'delivered' ? ' is-delivered' : ''}`}>
                         {delivery.status === 'delivered' ? '✓ Delivered' : 'Pending'}
                       </span>
+                      {delivery.status !== 'delivered' && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUpcomingDelivery(delivery)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.72rem',
+                            color: '#0d5c3a',
+                            marginLeft: '6px',
+                            fontWeight: 700,
+                            background: '#e2f1ea',
+                            border: '1px solid #a7f3d0',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            cursor: 'pointer',
+                          }}
+                          title="View upcoming delivery details"
+                        >
+                          Details
+                        </button>
+                      )}
                       {delivery.proofImage && (
                         <button
                           type="button"
@@ -6505,74 +7239,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 9;
 
     return (
-      <div className="customer-profile-mobile" style={{ padding: '4px 0 24px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {/* Header: Logo + Title + Bell with red badge */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingBottom: '14px',
-            borderBottom: '1px solid #eef2f6',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img
-              src="/logo.jpg"
-              alt="Natural Milk Dairy"
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: '1.5px solid #0d5c3a',
-                boxShadow: '0 2px 6px rgba(13,92,58,0.15)',
-              }}
-              onError={(e) => { e.currentTarget.src = '/logo.png'; }}
-            />
-            <div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0d5c3a', letterSpacing: '0.02em', lineHeight: 1.15 }}>
-                NATURAL MILK DAIRY
-              </div>
-              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#597361', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                NATURAL • PURE • HEALTHY
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsNotificationOpen(true)}
-            aria-label="Notifications"
-            style={{
-              position: 'relative',
-              width: '38px',
-              height: '38px',
-              borderRadius: '50%',
-              background: '#f3f7f4',
-              border: '1px solid #e2ebe5',
-              color: '#0d5c3a',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <Bell size={19} />
-            <span
-              style={{
-                position: 'absolute',
-                top: '8px',
-                right: '8px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#e53935',
-              }}
-            />
-          </button>
-        </div>
-
+      <div className="customer-profile-mobile" style={{ padding: '8px 0 24px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* Title & Subtitle */}
         <div style={{ marginTop: '2px' }}>
           <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0' }}>
@@ -7650,7 +8317,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       </aside>
 
       <div className="customer-app-main">
-        {!(activePage === 'products' && selectedProductDetails) && (
+        {(!isMobile || (activePage === 'dashboard' || activePage === 'home')) && !(activePage === 'products' && selectedProductDetails) && (
           <header
             className={`customer-app-header${activePage === 'profile' && isMobile && !profileDetailView ? ' is-profile-mobile-hidden' : ''}`}
             style={{ justifyContent: 'space-between', alignItems: 'center' }}
@@ -7968,6 +8635,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {/* Subscription Details Modal */}
       {selectedSubForDetails && renderSubscriptionDetailsModal()}
+
+      {/* Upcoming Delivery Details Modal */}
+      {selectedUpcomingDelivery && renderUpcomingDeliveryDetailsModal()}
 
       {/* Product Booking Modal */}
       {bookingModalOpen && renderBookingModal()}

@@ -18,60 +18,79 @@ class _ProductCardState extends State<ProductCard> {
 
   @override
   Widget build(BuildContext context) {
-    final productProvider = context.watch<ProductProvider>();
-    final int qty = productProvider.getQuantity(widget.product.id);
     final p = widget.product;
     final nameLower = p.name.toLowerCase();
     final catLower = p.category.toLowerCase();
 
-    // Features
-    IconData feat1Icon = Icons.eco_rounded;
-    String feat1Text = 'Glass Bottle\nPackaging';
-    IconData feat2Icon = Icons.ac_unit_rounded;
-    String feat2Text = 'Chilled to\n4°C in 30 Mins';
+    // Badges & Colors matching Image
+    String badgeText = 'FARM FRESH';
+    Color badgeBg = const Color(0xFFDCFCE7);
+    Color badgeTextColor = const Color(0xFF14532D);
 
-    if (nameLower.contains('curd') || catLower == 'curd') {
-      feat1Icon = Icons.eco_rounded;
-      feat1Text = 'No Preservatives';
-      feat2Icon = Icons.spa_rounded;
-      feat2Text = '100% Natural';
-    } else if (nameLower.contains('ghee') || catLower == 'ghee') {
-      feat1Icon = Icons.eco_rounded;
-      feat1Text = '100% Pure';
-      feat2Icon = Icons.verified_user_rounded;
-      feat2Text = 'No Additives';
-    } else if (nameLower.contains('paneer') || catLower == 'paneer') {
-      feat1Icon = Icons.eco_rounded;
-      feat1Text = 'Melt in Mouth';
-      feat2Icon = Icons.fitness_center_rounded;
-      feat2Text = 'High Protein';
+    if (nameLower.contains('cow milk 1l') || nameLower == 'cow milk' || p.id == 'p1') {
+      badgeText = 'BESTSELLER';
+      badgeBg = const Color(0xFF0D5C3A);
+      badgeTextColor = Colors.white;
+    } else if (nameLower.contains('500ml') || p.id == 'p2') {
+      badgeText = 'FARM FRESH';
+      badgeBg = const Color(0xFFDCFCE7);
+      badgeTextColor = const Color(0xFF14532D);
+    } else if (nameLower.contains('buffalo') || p.id == 'p3') {
+      badgeText = 'HIGH CREAM';
+      badgeBg = const Color(0xFFFEF08A);
+      badgeTextColor = const Color(0xFF854D0E);
+    } else if (catLower == 'curd' || nameLower.contains('curd')) {
+      badgeText = 'PURE DAIRY';
+      badgeBg = const Color(0xFFBAE6FD);
+      badgeTextColor = const Color(0xFF0369A1);
+    } else if (catLower == 'ghee' || nameLower.contains('ghee')) {
+      badgeText = 'VEDIC A2';
+      badgeBg = const Color(0xFFFEF08A);
+      badgeTextColor = const Color(0xFF854D0E);
     }
 
-    // Description
-    String descText = p.description.trim();
-    if (descText.isEmpty) {
-      if (nameLower.contains('cow')) {
-        descText = 'Freshly milked pure organic cow milk, chilled to 4°C.';
-      } else if (nameLower.contains('buffalo')) {
-        descText = 'Rich, creamy and naturally nutritious buffalo milk.';
-      } else if (nameLower.contains('curd')) {
-        descText = 'Thick, creamy and probiotic curd made from pure milk.';
-      } else if (nameLower.contains('ghee')) {
-        descText = 'Traditionally crafted from pure bilona method.';
-      } else {
-        descText = 'Freshly harvested daily farm dairy product.';
-      }
+    // Description short line
+    String shortDesc = p.description.trim();
+    if (nameLower.contains('cow milk 1l')) {
+      shortDesc = 'Freshly milked pure organic cow milk chilled to 4°C.';
+    } else if (nameLower.contains('500ml')) {
+      shortDesc = 'Naturally rich A2 milk from healthy native cows.';
+    } else if (nameLower.contains('buffalo')) {
+      shortDesc = 'Rich creamy high-fat pure buffalo milk.';
+    } else if (nameLower.contains('curd')) {
+      shortDesc = 'Thick, creamy and naturally probiotic curd.';
     }
 
-    // Badge
-    String badgeText = p.badge.trim().toUpperCase();
-    if (badgeText.isEmpty || badgeText == 'FRESH DAILY' || badgeText == 'BESTSELLER') {
-      badgeText = nameLower.contains('cow') ? 'BESTSELLER' : (nameLower.contains('buffalo') ? 'HIGH CREAM' : (nameLower.contains('ghee') ? 'BILONA' : 'PROBIOTIC'));
+    // Features matching Image
+    IconData f1Icon = Icons.local_drink_outlined;
+    String f1Line1 = 'Glass Bottle';
+    String f1Line2 = 'Packaging';
+    IconData f2Icon = Icons.ac_unit_rounded;
+    String f2Line1 = 'Chilled to';
+    String f2Line2 = '4°C in 30 Mins';
+
+    if (catLower == 'curd' || nameLower.contains('curd')) {
+      f1Icon = Icons.verified_user_outlined;
+      f1Line1 = 'Hygienic';
+      f1Line2 = 'Packaging';
+      f2Icon = Icons.eco_outlined;
+      f2Line1 = 'No';
+      f2Line2 = 'Preservatives';
+    } else if (catLower == 'ghee' || nameLower.contains('ghee')) {
+      f1Icon = Icons.local_fire_department_outlined;
+      f1Line1 = 'Vedic Bilona';
+      f1Line2 = 'Process';
+      f2Icon = Icons.verified_user_outlined;
+      f2Line1 = '100% Pure';
+      f2Line2 = 'A2 Desi Ghee';
     }
 
     // Clean price
     final cleanPrice = p.price.startsWith('₹') ? p.price : '₹${p.price}';
-    final cleanUnit = p.unit.replaceAll('per ', '').replaceAll('/', '').trim();
+    String cleanUnit = p.unit.replaceAll('per ', '').replaceAll('/', '').trim();
+    if (cleanUnit.isEmpty) {
+      cleanUnit = nameLower.contains('500ml') ? '500ml' : (catLower == 'curd' ? '500g' : '1L');
+    }
 
     return InkWell(
       onTap: () {
@@ -82,12 +101,12 @@ class _ProductCardState extends State<ProductCard> {
           ),
         );
       },
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFE2EBE5), width: 1.1),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
@@ -100,7 +119,7 @@ class _ProductCardState extends State<ProductCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image with Bestseller badge & Heart button
+            // Top Image with Badge & Heart
             Stack(
               children: [
                 SizedBox(
@@ -122,30 +141,29 @@ class _ProductCardState extends State<ProductCard> {
                   ),
                 ),
 
-                // Top Left Badge
-                if (badgeText.isNotEmpty)
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D5C3A),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        badgeText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.4,
-                        ),
+                // Badge top-left
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      badgeText,
+                      style: TextStyle(
+                        color: badgeTextColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),
+                ),
 
-                // Top Right Heart Button
+                // Heart Button top-right
                 Positioned(
                   top: 7,
                   right: 7,
@@ -156,15 +174,15 @@ class _ProductCardState extends State<ProductCard> {
                       });
                     },
                     child: Container(
-                      width: 30,
-                      height: 30,
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.95),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 6,
+                            blurRadius: 5,
                             offset: const Offset(0, 2),
                           ),
                         ],
@@ -172,7 +190,7 @@ class _ProductCardState extends State<ProductCard> {
                       child: Center(
                         child: Icon(
                           _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          size: 16,
+                          size: 15,
                           color: _isFavorite ? const Color(0xFFE11D48) : const Color(0xFF475569),
                         ),
                       ),
@@ -182,10 +200,10 @@ class _ProductCardState extends State<ProductCard> {
               ],
             ),
 
-            // Content Area
+            // Card Body
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -199,26 +217,26 @@ class _ProductCardState extends State<ProductCard> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 13.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF0C2340),
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 2),
                         Text(
-                          descText,
+                          shortDesc,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            fontSize: 10.5,
+                            fontSize: 10,
                             color: Color(0xFF64748B),
-                            height: 1.3,
+                            height: 1.25,
                           ),
                         ),
                       ],
                     ),
 
-                    // Feature row (2 chips)
+                    // Feature row (2 columns matching Image)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -226,19 +244,25 @@ class _ProductCardState extends State<ProductCard> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(feat1Icon, size: 12, color: const Color(0xFF0D5C3A)),
+                              Icon(f1Icon, size: 12, color: const Color(0xFF0D5C3A)),
                               const SizedBox(width: 3),
                               Expanded(
-                                child: Text(
-                                  feat1Text,
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF475569),
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.15,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      f1Line1,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700, color: Color(0xFF475569), height: 1.15),
+                                    ),
+                                    Text(
+                                      f1Line2,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700, color: Color(0xFF475569), height: 1.15),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -249,19 +273,25 @@ class _ProductCardState extends State<ProductCard> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(feat2Icon, size: 12, color: const Color(0xFF0D5C3A)),
+                              Icon(f2Icon, size: 12, color: const Color(0xFF0D5C3A)),
                               const SizedBox(width: 3),
                               Expanded(
-                                child: Text(
-                                  feat2Text,
-                                  style: const TextStyle(
-                                    fontSize: 9,
-                                    color: Color(0xFF475569),
-                                    fontWeight: FontWeight.w600,
-                                    height: 1.15,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      f2Line1,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700, color: Color(0xFF475569), height: 1.15),
+                                    ),
+                                    Text(
+                                      f2Line2,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w700, color: Color(0xFF475569), height: 1.15),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -270,138 +300,91 @@ class _ProductCardState extends State<ProductCard> {
                       ],
                     ),
 
-                    // Price & Delivery & Add Button
+                    // Bottom Row: Price & Subscribe Button (Overflow-safe with FittedBox and Expanded)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Price & Delivery
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                children: [
-                                  Text(
-                                    cleanPrice,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF0D5C3A),
-                                    ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  cleanPrice,
+                                  style: const TextStyle(
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF0D5C3A),
                                   ),
-                                  if (cleanUnit.isNotEmpty) ...[
-                                    const SizedBox(width: 2),
-                                    Flexible(
-                                      child: Text(
-                                        '/ $cleanUnit',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF64748B),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              const Row(
-                                children: [
-                                  Icon(Icons.local_shipping_outlined, size: 10, color: Color(0xFF059669)),
-                                  SizedBox(width: 3),
-                                  Expanded(
-                                    child: Text(
-                                      'Free 5:00 AM Delivery',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF059669),
-                                      ),
-                                    ),
+                                ),
+                                const SizedBox(width: 1),
+                                Text(
+                                  '/$cleanUnit',
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF64748B),
                                   ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
 
-                        // [🛒 Add] Button or Counter
-                        qty == 0
-                            ? InkWell(
-                                onTap: () => productProvider.updateQuantity(p.id, 1),
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF0D5C3A),
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
+                        // Subscribe Button matching Image
+                        Flexible(
+                          flex: 0,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ProductDetailsScreen(product: p),
                                   ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 12),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        'Add',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              )
-                            : Container(
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4.5),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFF0D5C3A),
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(9),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1.5),
+                                    ),
+                                  ],
                                 ),
-                                child: Row(
+                                child: const Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    InkWell(
-                                      onTap: () => productProvider.updateQuantity(p.id, -1),
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                        child: Icon(Icons.remove, size: 14, color: Colors.white),
-                                      ),
-                                    ),
+                                    Icon(Icons.calendar_today_outlined, color: Colors.white, size: 10),
+                                    SizedBox(width: 3),
                                     Text(
-                                      '$qty',
-                                      style: const TextStyle(
+                                      'Subscribe',
+                                      style: TextStyle(
                                         color: Colors.white,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.w800,
-                                        fontSize: 11.5,
-                                      ),
-                                    ),
-                                    InkWell(
-                                      onTap: () => productProvider.updateQuantity(p.id, 1),
-                                      child: const Padding(
-                                        padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                        child: Icon(Icons.add, size: 14, color: Colors.white),
+                                        letterSpacing: -0.1,
                                       ),
                                     ),
                                   ],
                                 ),
                               ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ],

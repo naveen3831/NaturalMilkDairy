@@ -25,6 +25,7 @@ import {
   Leaf,
   Layers,
   Percent,
+  Snowflake,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { useAuth } from '../context/AuthContext';
@@ -263,6 +264,33 @@ export default function HomePage({ setActiveTab }) {
     },
   ];
 
+  const DEFAULT_DESKTOP_BANNERS = [
+    {
+      title: 'Pure Milk. Healthier Lives.',
+      subtitle: 'Fresh farm harvest delivered to your doorstep daily before 6:30 AM.',
+      imageUrl: '/premium_hero_milk_banner.png?v=3',
+      category: 'milk',
+    },
+    {
+      title: 'Artisanal Curd & Soft Paneer',
+      subtitle: 'Naturally set in authentic clay pots with rich, creamy texture and live probiotics.',
+      imageUrl: '/premium_hero_curd_banner.png?v=3',
+      category: 'curd',
+    },
+    {
+      title: 'A2 Vedic Desi Cow Ghee',
+      subtitle: 'Slow-simmered bilona method with golden granular aroma and ayurvedic goodness.',
+      imageUrl: '/premium_hero_ghee_banner.png?v=3',
+      category: 'ghee',
+    },
+    {
+      title: 'Pure Milk Dairy Sweets',
+      subtitle: 'Handcrafted traditional Indian sweets prepared daily from 100% whole fresh farm milk.',
+      imageUrl: '/premium_hero_sweets_banner.png?v=3',
+      category: 'sweets',
+    },
+  ];
+
   const [bannersList, setBannersList] = useState(DEFAULT_BANNERS);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
 
@@ -288,7 +316,7 @@ export default function HomePage({ setActiveTab }) {
   const handleBannerClick = (banner) => {
     const cat = banner?.category || 'milk';
     localStorage.setItem('nmd_selected_category', cat);
-    setActiveTab('products');
+    setActiveTab('subscription');
   };
 
   const [touchStart, setTouchStart] = useState(null);
@@ -503,6 +531,72 @@ export default function HomePage({ setActiveTab }) {
           })}
         </div>
 
+        {/* 5. How to Subscribe (Simple & Professional 3-Step Guide) */}
+        <div className="mobile-how-to-subscribe-section">
+          <div className="mobile-how-header">
+            <span className="mobile-how-pill">HOW IT WORKS</span>
+            <h3 className="mobile-how-title">How to Subscribe</h3>
+            <p className="mobile-how-subtitle">
+              Pure farm dairy at your doorstep in 3 simple steps
+            </p>
+          </div>
+
+          <div className="mobile-how-steps-card">
+            {/* Step 1 */}
+            <div className="mobile-how-step-item">
+              <div className="mobile-how-step-left">
+                <div className="mobile-how-num-badge">1</div>
+                <div className="mobile-how-step-line" />
+              </div>
+              <div className="mobile-how-step-content">
+                <div className="mobile-how-step-icon-wrap">
+                  <CheckCircle size={15} color="#0d5c3a" />
+                  <h4>Choose Your Product</h4>
+                </div>
+                <p>Pick farm-fresh cow milk, buffalo milk, thick clay-pot curd, or bilona ghee.</p>
+              </div>
+            </div>
+
+            {/* Step 2 */}
+            <div className="mobile-how-step-item">
+              <div className="mobile-how-step-left">
+                <div className="mobile-how-num-badge">2</div>
+                <div className="mobile-how-step-line" />
+              </div>
+              <div className="mobile-how-step-content">
+                <div className="mobile-how-step-icon-wrap">
+                  <Calendar size={15} color="#0d5c3a" />
+                  <h4>Set Your Schedule</h4>
+                </div>
+                <p>Pick daily, alternate days, or custom weekdays. Pause anytime with 0 charges.</p>
+              </div>
+            </div>
+
+            {/* Step 3 */}
+            <div className="mobile-how-step-item">
+              <div className="mobile-how-step-left">
+                <div className="mobile-how-num-badge">3</div>
+              </div>
+              <div className="mobile-how-step-content">
+                <div className="mobile-how-step-icon-wrap">
+                  <Truck size={15} color="#0d5c3a" />
+                  <h4>Doorstep Delivery by 6:30 AM</h4>
+                </div>
+                <p>Chilled at 4°C in sterilized bottles, silently delivered to your doorstep.</p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="mobile-how-subscribe-btn"
+            onClick={() => setActiveTab('subscription')}
+          >
+            <span>Start Subscription</span>
+            <ArrowRight size={15} />
+          </button>
+        </div>
+
         {/* Floating Contact Us Pill matching Image 1 */}
         <button
           type="button"
@@ -523,39 +617,41 @@ export default function HomePage({ setActiveTab }) {
         <>
       {/* Same Dynamic Hero Carousel in Desktop Website */}
       
-      {/* Desktop Greeting Section: only shown on first carousel slide */}
-      {activeBannerIndex === 0 && (
-        <div className="desktop-home-greeting-section">
-          <div className="desktop-home-greeting-inner">
-            <span className="desktop-home-greeting-salutation">{salutation}</span>
-            <h2 className="desktop-home-greeting-name">
-              {displayName} <span className="greeting-sun-emoji">☀️</span>
-            </h2>
-            <p className="desktop-home-greeting-sub">
-              Fresh farm goodness delivered to your doorstep every morning.
-            </p>
-          </div>
+      {/* 1. Desktop Greeting Section directly above banner matching Image */}
+      <div className="desktop-home-greeting-section">
+        <div className="desktop-home-greeting-inner">
+          <span className="desktop-home-greeting-salutation">{salutation?.replace(/,+$/, "")},</span>
+          <h2 className="desktop-home-greeting-name">
+            {displayName} <span className="greeting-sun-emoji">☀️</span>
+          </h2>
+          <p className="desktop-home-greeting-sub">
+            Fresh farm goodness delivered to your doorstep every morning.
+          </p>
         </div>
-      )}
+      </div>
 
+      {/* 2. Desktop Hero Carousel matching Image */}
       <section className="desktop-hero-carousel-container">
         <div className="desktop-hero-carousel-inner">
           <div
             className="desktop-hero-carousel-track"
-            style={{ transform: 'translateX(-' + (activeBannerIndex * 100) + '%)' }}
+            style={{
+              width: `${DEFAULT_DESKTOP_BANNERS.length * 100}%`,
+              transform: `translateX(-${activeBannerIndex * (100 / DEFAULT_DESKTOP_BANNERS.length)}%)`,
+            }}
           >
-            {bannersList.map((banner, idx) => (
+            {DEFAULT_DESKTOP_BANNERS.map((banner, idx) => (
               <div
                 key={banner._id || idx}
                 className="desktop-hero-carousel-slide"
                 onClick={() => handleBannerClick(banner)}
-                style={{ cursor: 'pointer' }}
+                style={{ width: (100 / DEFAULT_DESKTOP_BANNERS.length) + '%', cursor: 'pointer' }}
               >
                 <img
                   src={banner.imageUrl}
                   alt={banner.title}
                   className="desktop-hero-carousel-img"
-                  onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                  onError={(e) => { e.currentTarget.src = '/premium_hero_milk_banner.png'; }}
                 />
               </div>
             ))}
@@ -567,7 +663,7 @@ export default function HomePage({ setActiveTab }) {
             className="desktop-carousel-arrow is-prev"
             onClick={(e) => {
               e.stopPropagation();
-              setActiveBannerIndex((prev) => (prev - 1 + bannersList.length) % bannersList.length);
+              setActiveBannerIndex((prev) => (prev - 1 + DEFAULT_DESKTOP_BANNERS.length) % DEFAULT_DESKTOP_BANNERS.length);
             }}
             aria-label="Previous Slide"
           >
@@ -578,7 +674,7 @@ export default function HomePage({ setActiveTab }) {
             className="desktop-carousel-arrow is-next"
             onClick={(e) => {
               e.stopPropagation();
-              setActiveBannerIndex((prev) => (prev + 1) % bannersList.length);
+              setActiveBannerIndex((prev) => (prev + 1) % DEFAULT_DESKTOP_BANNERS.length);
             }}
             aria-label="Next Slide"
           >
@@ -587,7 +683,7 @@ export default function HomePage({ setActiveTab }) {
 
           {/* Indicator Dots */}
           <div className="desktop-carousel-dots">
-            {bannersList.map((_, idx) => (
+            {DEFAULT_DESKTOP_BANNERS.map((_, idx) => (
               <button
                 key={idx}
                 type="button"
@@ -599,6 +695,48 @@ export default function HomePage({ setActiveTab }) {
                 aria-label={'Go to slide ' + (idx + 1)}
               />
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Four Feature Badges Strip directly below banner matching Image */}
+      <section className="desktop-home-features-strip">
+        <div className="desktop-home-features-card">
+          <div className="desktop-home-feat-item">
+            <div className="desktop-home-feat-icon-circle">
+              <Leaf size={18} color="#0d5c3a" />
+            </div>
+            <div className="desktop-home-feat-text">
+              <strong>100%</strong>
+              <span>Pure & Natural</span>
+            </div>
+          </div>
+          <div className="desktop-home-feat-item">
+            <div className="desktop-home-feat-icon-circle">
+              <ShieldCheck size={18} color="#0d5c3a" />
+            </div>
+            <div className="desktop-home-feat-text">
+              <strong>No</strong>
+              <span>Adulteration</span>
+            </div>
+          </div>
+          <div className="desktop-home-feat-item">
+            <div className="desktop-home-feat-icon-circle">
+              <Snowflake size={18} color="#0d5c3a" />
+            </div>
+            <div className="desktop-home-feat-text">
+              <strong>Chilled at</strong>
+              <span>4°C</span>
+            </div>
+          </div>
+          <div className="desktop-home-feat-item">
+            <div className="desktop-home-feat-icon-circle">
+              <Truck size={18} color="#0d5c3a" />
+            </div>
+            <div className="desktop-home-feat-text">
+              <strong>Daily Delivery</strong>
+              <span>before 6:30 AM</span>
+            </div>
           </div>
         </div>
       </section>

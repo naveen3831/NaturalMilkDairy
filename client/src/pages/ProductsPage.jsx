@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Heart, Search, ShoppingCart, Leaf, PhoneCall, Truck, X, Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye } from 'lucide-react';
+import { Heart, LayoutGrid, Soup, Calendar, Search, ShoppingCart, Leaf, PhoneCall, Truck, X, Milk, Sparkles, Check, ArrowRight, ShieldCheck, Droplets, Clock, HeartHandshake, Eye, Snowflake, Flame } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
@@ -228,10 +228,10 @@ export default function ProductsPage({ setActiveTab }) {
 
   const renderMobileProducts = () => {
     const categories = [
-      { id: 'all', label: 'All Products', icon: null },
-      { id: 'milk', label: 'Fresh Milk', icon: Droplets },
-      { id: 'curd', label: 'Curd & Paneer', icon: Sparkles },
-      { id: 'ghee', label: 'Ghee', icon: Milk },
+      { id: 'all', label: 'All Products', icon: LayoutGrid },
+      { id: 'milk', label: 'Fresh Milk', icon: Milk },
+      { id: 'curd', label: 'Curd & Paneer', icon: Soup },
+      { id: 'ghee', label: 'Ghee & Butter', icon: Flame },
     ];
 
     const displayProducts = filteredProducts.filter((p) => {
@@ -242,12 +242,17 @@ export default function ProductsPage({ setActiveTab }) {
 
     return (
       <div className="mobile-products-page-container">
-        {/* Centered Heading matching Image 2 */}
+        {/* Left-Aligned Heading matching Image with Milk Splash */}
         <div className="mobile-products-header-box">
-          <h2 className="mobile-products-title">Our Products</h2>
-          <p className="mobile-products-subtitle">
-            Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.
-          </p>
+          <div className="mobile-products-header-text">
+            <h2 className="mobile-products-title">Our Products</h2>
+            <p className="mobile-products-subtitle">
+              Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd and artisanal desi ghee delivered fresh every dawn.
+            </p>
+          </div>
+          <div className="mobile-products-header-splash">
+            <img src="/header_milk_splash.png" alt="" />
+          </div>
         </div>
 
         {/* Search Bar matching Image 2 */}
@@ -293,13 +298,67 @@ export default function ProductsPage({ setActiveTab }) {
         <div className="mobile-products-2col-grid">
           {displayProducts.map((p, idx) => {
             const isFav = favProducts.has(p.id);
-            const badge = idx === 0 ? 'BESTSELLER' : (idx === 1 ? 'BESTSELLER' : (p.badge || 'FARM FRESH'));
-            const isMilk = p.category === 'milk' || p.name.toLowerCase().includes('milk');
-            const isCurd = p.category === 'curd' || p.name.toLowerCase().includes('curd');
-            const isGhee = p.category === 'ghee' || p.name.toLowerCase().includes('ghee');
+            const nameLower = p.name.toLowerCase();
 
-            const feat1 = isMilk ? 'Glass Bottle Packaging' : (isCurd ? 'No Preservatives' : '100% Pure');
-            const feat2 = isMilk ? 'Chilled to 4°C in 30 Mins' : (isCurd ? '100% Natural' : 'No Additives');
+            // Dynamic badge matching Image exactly
+            let badgeText = 'FARM FRESH';
+            let badgeClass = 'badge-farm-fresh';
+            if (nameLower.includes('cow milk 1l') || idx === 0) {
+              badgeText = 'BESTSELLER';
+              badgeClass = 'badge-bestseller';
+            } else if (nameLower.includes('500ml') || idx === 1) {
+              badgeText = 'FARM FRESH';
+              badgeClass = 'badge-farm-fresh';
+            } else if (nameLower.includes('buffalo') || idx === 2) {
+              badgeText = 'HIGH CREAM';
+              badgeClass = 'badge-high-cream';
+            } else if (p.category === 'curd' || nameLower.includes('curd')) {
+              badgeText = 'PURE DAIRY';
+              badgeClass = 'badge-pure-dairy';
+            } else if (p.category === 'ghee' || nameLower.includes('ghee')) {
+              badgeText = 'VEDIC A2';
+              badgeClass = 'badge-high-cream';
+            }
+
+            // Description short line
+            let shortDesc = p.desc || p.description || '';
+            if (nameLower.includes('cow milk 1l')) {
+              shortDesc = 'Freshly milked pure organic cow milk chilled to 4°C.';
+            } else if (nameLower.includes('500ml')) {
+              shortDesc = 'Naturally rich A2 milk from healthy native cows.';
+            } else if (nameLower.includes('buffalo')) {
+              shortDesc = 'Rich creamy high-fat pure buffalo milk.';
+            } else if (nameLower.includes('curd')) {
+              shortDesc = 'Thick, creamy and naturally probiotic curd.';
+            }
+
+            // Features (2 columns matching Image)
+            let f1Icon = <Milk size={13} color="#0d5c3a" />;
+            let f1Text1 = 'Glass Bottle';
+            let f1Text2 = 'Packaging';
+            let f2Icon = <Snowflake size={13} color="#0d5c3a" />;
+            let f2Text1 = 'Chilled to';
+            let f2Text2 = '4°C in 30 Mins';
+
+            if (p.category === 'curd' || nameLower.includes('curd')) {
+              f1Icon = <ShieldCheck size={13} color="#0d5c3a" />;
+              f1Text1 = 'Hygienic';
+              f1Text2 = 'Packaging';
+              f2Icon = <Leaf size={13} color="#0d5c3a" />;
+              f2Text1 = 'No';
+              f2Text2 = 'Preservatives';
+            } else if (p.category === 'ghee' || nameLower.includes('ghee')) {
+              f1Icon = <Flame size={13} color="#0d5c3a" />;
+              f1Text1 = 'Vedic Bilona';
+              f1Text2 = 'Process';
+              f2Icon = <ShieldCheck size={13} color="#0d5c3a" />;
+              f2Text1 = '100% Pure';
+              f2Text2 = 'A2 Desi Ghee';
+            }
+
+            // Clean price
+            const cleanPrice = p.price?.startsWith('₹') ? p.price : ('₹' + (p.price || '65'));
+            const cleanUnit = p.unit?.replace('per ', '').replace('/', '').trim() || (nameLower.includes('500ml') ? '500ml' : (p.category === 'curd' ? '500g' : '1L'));
 
             return (
               <div
@@ -316,7 +375,7 @@ export default function ProductsPage({ setActiveTab }) {
                 {/* Top Image */}
                 <div className="mobile-card-top-image">
                   <img src={p.image || '/product-cow-milk.jpg'} alt={p.name} />
-                  <span className="mobile-grid-card-badge">{badge}</span>
+                  <span className={`mobile-grid-card-badge ${badgeClass}`}>{badgeText}</span>
                   <button
                     type="button"
                     className={`mobile-card-heart-btn${isFav ? ' is-fav' : ''}`}
@@ -331,45 +390,44 @@ export default function ProductsPage({ setActiveTab }) {
 
                 {/* Body Details */}
                 <div className="mobile-card-body">
-                  <div>
-                    <h3 className="mobile-card-title">{p.name}</h3>
-                    <p className="mobile-card-desc">{p.desc}</p>
+                  <h3 className="mobile-card-title">{p.name}</h3>
+                  <p className="mobile-card-desc">{shortDesc}</p>
 
-                    <div className="mobile-card-features-row">
-                      <div className="mobile-card-feat-tag">
-                        <Leaf size={11} />
-                        <span>{feat1}</span>
+                  {/* 2 Features side-by-side matching Image */}
+                  <div className="mobile-card-features-grid">
+                    <div className="mobile-card-feat-col">
+                      <div className="mobile-card-feat-icon">{f1Icon}</div>
+                      <div className="mobile-card-feat-text">
+                        <span>{f1Text1}</span>
+                        <span>{f1Text2}</span>
                       </div>
-                      <div className="mobile-card-feat-tag">
-                        <Droplets size={11} />
-                        <span>{feat2}</span>
+                    </div>
+                    <div className="mobile-card-feat-col">
+                      <div className="mobile-card-feat-icon">{f2Icon}</div>
+                      <div className="mobile-card-feat-text">
+                        <span>{f2Text1}</span>
+                        <span>{f2Text2}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Price & Add Button */}
+                  {/* Price & Subscribe Button Row matching Image */}
                   <div className="mobile-card-bottom-row">
-                    <div className="mobile-card-price-col">
-                      <div className="mobile-card-price-line">
-                        <span className="mobile-card-price-val">{p.price}</span>
-                        <span className="mobile-card-price-unit">/{p.unit?.replace('per ', '') || '1L'}</span>
-                      </div>
-                      <div className="mobile-card-delivery-tag">
-                        <Truck size={10} />
-                        <span>Free 5:00 AM Delivery</span>
-                      </div>
+                    <div className="mobile-card-price-line">
+                      <span className="mobile-card-price-val">{cleanPrice}</span>
+                      <span className="mobile-card-price-unit">/{cleanUnit}</span>
                     </div>
 
                     <button
                       type="button"
-                      className="mobile-card-add-btn"
+                      className="mobile-card-subscribe-btn"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleStartSubscription(p);
                       }}
                     >
-                      <ShoppingCart size={12} />
-                      <span>Add</span>
+                      <Calendar size={12} />
+                      <span>Subscribe</span>
                     </button>
                   </div>
                 </div>

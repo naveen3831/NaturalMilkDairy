@@ -21,6 +21,7 @@ import {
   UserRound,
   ShieldCheck,
   Bell,
+  ArrowLeft,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from './CustomerBottomNav';
@@ -103,12 +104,14 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
-    // On mobile: hide only the top header on products page, story page, and product details page
+    // On mobile: remove the top nav bar on products, subscription, deliveries, profile screens
     const hideTopHeader =
-      isMobile && isProductDetailsActive; //
-      /* (isProductDetailsActive ||
+      isMobile &&
+      (isProductDetailsActive ||
         activeTab === 'products' ||
-        activeTab === 'story'); */
+        activeTab === 'subscription' ||
+        activeTab === 'deliveries' ||
+        activeTab === 'profile');
 
     return (
       <>
@@ -139,9 +142,34 @@ export default function Navbar({ activeTab, setActiveTab }) {
           }}
         >
           {/* Brand Logo & Title */}
-          <div
-            className="public-site-brand"
-            onClick={() => navigatePage('home')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isMobile && activeTab !== 'home' && activeTab !== 'landing' && (
+              <button
+                type="button"
+                className="public-mobile-back-btn"
+                onClick={() => navigatePage('home')}
+                aria-label="Back to Home"
+                title="Go back"
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '50%',
+                  background: '#f3f7f4',
+                  border: '1px solid #e2ebe5',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <div
+              className="public-site-brand"
+              onClick={() => navigatePage('home')}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -201,6 +229,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               </div>
             </div>
           </div>
+          </div>
 
           {/* Navigation Links to Separate Pages */}
           <nav
@@ -238,7 +267,22 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 background: 'none',
               }}
             >
-              Our products
+              Products
+            </button>
+
+            <button
+              onClick={() => navigatePage('subscription')}
+              style={{
+                color: activeTab === 'subscription' ? '#0d5c3a' : '#4b5563',
+                fontWeight: activeTab === 'subscription' ? 800 : 600,
+                fontSize: '0.96rem',
+                borderBottom: activeTab === 'subscription' ? '2px solid #0d5c3a' : '2px solid transparent',
+                padding: '4px 0',
+                cursor: 'pointer',
+                background: 'none',
+              }}
+            >
+              Subscription
             </button>
 
             <button
@@ -253,7 +297,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 background: 'none',
               }}
             >
-              Our story
+              Our Story
             </button>
 
             <button

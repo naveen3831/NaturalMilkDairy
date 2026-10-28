@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
+import 'widgets/notification_modal.dart';
 
 class SubscriptionDetailsScreen extends StatefulWidget {
   final dynamic subscription;
@@ -29,7 +30,9 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         ? widget.subscription['planName'].toString()
         : 'Daily Farm Pure Milk Plan';
 
-    final String customerId = (user?.id.isNotEmpty == true) ? 'CUST-${user!.id.substring(0, user.id.length > 4 ? 4 : user.id.length).toUpperCase()}' : 'CUST-101';
+    final String customerId = (user?.id.isNotEmpty == true)
+        ? 'CUST-${user!.id.substring(0, user.id.length > 4 ? 4 : user.id.length).toUpperCase()}'
+        : 'CUST-101';
     final String partnerName = customerProvider.deliveryBoyName.isNotEmpty ? customerProvider.deliveryBoyName : 'Naveen';
     final String areaName = (user?.area != null && user!.area!.isNotEmpty) ? user.area! : 'Madhupur';
     final String milkQty = customerProvider.milkQuantity > 0
@@ -43,24 +46,34 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
+        leadingWidth: 84,
         leading: Padding(
-          padding: const EdgeInsets.only(left: 14.0),
+          padding: const EdgeInsets.only(left: 12.0),
           child: Center(
             child: InkWell(
               onTap: () => Navigator.pop(context),
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(20),
               child: Container(
-                width: 38,
-                height: 38,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3F7F4),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2EBE5), width: 1.1),
                 ),
-                child: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: Color(0xFF0D5C3A),
-                  size: 20,
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.arrow_back_rounded, color: Color(0xFF0C2340), size: 15),
+                    SizedBox(width: 4),
+                    Text(
+                      'Back',
+                      style: TextStyle(
+                        color: Color(0xFF0C2340),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -78,36 +91,59 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 14.0),
-            child: Center(
-              child: Stack(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF3F7F4),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
-                    ),
-                    child: const Icon(
-                      Icons.notifications_none_rounded,
-                      color: Color(0xFF0D5C3A),
-                      size: 20,
-                    ),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => const NotificationModal(),
                   ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFE53935),
+                );
+              },
+              child: Center(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF3F7F4),
                         shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
+                      ),
+                      child: const Icon(
+                        Icons.notifications_none_rounded,
+                        color: Color(0xFF0D5C3A),
+                        size: 20,
                       ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        width: 17,
+                        height: 17,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE53935),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            '1',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -118,7 +154,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. ACTIVE PLAN SUMMARY CARD (Matching Image 2 Right Screen)
+            // 1. ACTIVE PLAN SUMMARY CARD (Matching Image 2)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -146,11 +182,17 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                           height: 72,
                           color: const Color(0xFFF4F9F6),
                           child: Image.asset(
-                            'assets/images/product-cow-milk.jpg',
+                            'assets/images/sub_active_thumb.png',
                             fit: BoxFit.cover,
-                            errorBuilder: (c, e, s) => Image.network(
-                              'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
+                            filterQuality: FilterQuality.high,
+                            errorBuilder: (c, e, s) => Image.asset(
+                              'assets/images/best_cow_milk.png',
                               fit: BoxFit.cover,
+                              filterQuality: FilterQuality.high,
+                              errorBuilder: (c2, e2, s2) => Image.network(
+                                'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
+                                fit: BoxFit.cover,
+                              ),
                             ),
                           ),
                         ),
@@ -215,36 +257,44 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // 2 Metric Boxes Side by Side
+                  // 2 Metric Boxes Side by Side (Matching Image 2)
                   Row(
                     children: [
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF7FAF8),
+                            color: const Color(0xFFF2F8F4),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE5EDE8)),
+                            border: Border.all(color: const Color(0xFFDEEDE2)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.water_drop_outlined, color: Color(0xFF0D5C3A), size: 18),
-                              const SizedBox(width: 8),
+                              const Icon(Icons.local_drink_outlined, color: Color(0xFF0D5C3A), size: 18),
+                              const SizedBox(width: 6),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      milkQty,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0C2340),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        milkQty,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0C2340),
+                                        ),
                                       ),
                                     ),
-                                    const Text(
-                                      'Pure A2 Milk',
-                                      style: TextStyle(fontSize: 10.5, color: Color(0xFF6B7280)),
+                                    const FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Pure A2 Milk',
+                                        style: TextStyle(fontSize: 10.5, color: Color(0xFF6B7280)),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -256,31 +306,39 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF7FAF8),
+                            color: const Color(0xFFF2F8F4),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE5EDE8)),
+                            border: Border.all(color: const Color(0xFFDEEDE2)),
                           ),
                           child: const Row(
                             children: [
                               Icon(Icons.access_time_rounded, color: Color(0xFF0D5C3A), size: 18),
-                              SizedBox(width: 8),
+                              SizedBox(width: 6),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      'Before 6:30 AM',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0C2340),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Before 6:30 AM',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0C2340),
+                                        ),
                                       ),
                                     ),
-                                    Text(
-                                      'Morning Delivery',
-                                      style: TextStyle(fontSize: 10.5, color: Color(0xFF6B7280)),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Morning Delivery',
+                                        style: TextStyle(fontSize: 10.5, color: Color(0xFF6B7280)),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -293,28 +351,65 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Partner & Delivery Area Info
+                  // Partner & Delivery Area Info (Matching Image 2)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFAFBFB),
+                      color: const Color(0xFFF7FAF8),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE5EDE8)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.people_outline_rounded, color: Color(0xFF6B7280), size: 16),
-                        const SizedBox(width: 6),
                         Expanded(
-                          child: Text(
-                            'Partner $partnerName',
-                            style: const TextStyle(fontSize: 11.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w600),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE2F1EA),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.person_outline_rounded, color: Color(0xFF0D5C3A), size: 15),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Partner', style: TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)),
+                                    Text(partnerName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const Icon(Icons.location_on_outlined, color: Color(0xFF6B7280), size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Delivery Area $areaName',
-                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF4B5563), fontWeight: FontWeight.w600),
+                        Container(width: 1, height: 26, color: const Color(0xFFE2EBE5)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE2F1EA),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.location_on_outlined, color: Color(0xFF0D5C3A), size: 15),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Delivery Area', style: TextStyle(fontSize: 10, color: Color(0xFF6B7280), fontWeight: FontWeight.w500)),
+                                    Text(areaName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -324,7 +419,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 2. ORDER SCHEDULE (Weekdays)
+            // 2. ORDER SCHEDULE (Weekdays - Matching Image 2)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -410,7 +505,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 14),
 
-            // 3. DELIVERY ADDRESS CARD
+            // 3. DELIVERY ADDRESS CARD (Matching Image 2)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -472,13 +567,13 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 14),
 
-            // 4. NEXT DELIVERY CARD
+            // 4. NEXT DELIVERY CARD (Mint card matching Image 2)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFE8F5EE),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2EBE5)),
+                border: Border.all(color: const Color(0xFFC8E6D5), width: 1.1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,12 +596,12 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F7F4),
-                          borderRadius: BorderRadius.circular(12),
+                        padding: const EdgeInsets.all(9),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFD4EDE0),
+                          shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0D5C3A), size: 20),
+                        child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0D5C3A), size: 18),
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
@@ -519,12 +614,12 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                             ),
                             Text(
                               'Before 6:30 AM',
-                              style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
+                              style: TextStyle(fontSize: 11.5, color: Color(0xFF4B5563)),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
+                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF0D5C3A), size: 20),
                     ],
                   ),
                 ],
@@ -532,7 +627,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 18),
 
-            // 5. MANAGE SUBSCRIPTION (4 rows matching Image 2 Right Screen)
+            // 5. MANAGE SUBSCRIPTION (4 rows matching Image 2)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -559,12 +654,14 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Option 1: Pause Delivery for a Trip
+                  // Option 1: Pause Delivery for a Trip (Amber tint)
                   _buildManageOptionRow(
                     context: context,
                     icon: Icons.pause_circle_outline_rounded,
                     iconBg: const Color(0xFFFEF3C7),
                     iconColor: const Color(0xFFD97706),
+                    cardBg: const Color(0xFFFEF9EE),
+                    cardBorder: const Color(0xFFFDE68A),
                     title: 'Pause Delivery for a Trip',
                     subtitle: 'Temporary pause your deliveries',
                     onTap: () {
@@ -573,12 +670,14 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Option 2: Change Tomorrow's Quantity
+                  // Option 2: Change Tomorrow's Quantity (Light Green tint)
                   _buildManageOptionRow(
                     context: context,
                     icon: Icons.edit_note_rounded,
                     iconBg: const Color(0xFFE2F1EA),
                     iconColor: const Color(0xFF0D5C3A),
+                    cardBg: const Color(0xFFF0FDF4),
+                    cardBorder: const Color(0xFFBBF7D0),
                     title: 'Change Tomorrow\'s Quantity',
                     subtitle: 'Update milk quantity for next delivery',
                     onTap: () {
@@ -587,12 +686,14 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Option 3: Change Delivery Address
+                  // Option 3: Change Delivery Address (Soft Blue tint)
                   _buildManageOptionRow(
                     context: context,
                     icon: Icons.local_shipping_outlined,
                     iconBg: const Color(0xFFE0F2FE),
                     iconColor: const Color(0xFF0284C7),
+                    cardBg: const Color(0xFFF0F9FF),
+                    cardBorder: const Color(0xFFBAE6FD),
                     title: 'Change Delivery Address',
                     subtitle: 'Update or add new address',
                     onTap: () {
@@ -601,12 +702,14 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Option 4: Stop Subscription
+                  // Option 4: Stop Subscription (Soft Red tint)
                   _buildManageOptionRow(
                     context: context,
                     icon: Icons.cancel_outlined,
                     iconBg: const Color(0xFFFEE2E2),
                     iconColor: const Color(0xFFDC2626),
+                    cardBg: const Color(0xFFFEF2F2),
+                    cardBorder: const Color(0xFFFECACA),
                     title: 'Stop Subscription',
                     subtitle: 'Cancel your plan anytime',
                     isDestructive: true,
@@ -619,7 +722,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 6. BOTTOM BUTTON: Explore More Plans
+            // 6. BOTTOM BUTTON: Explore More Plans (Matching Image 2)
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -659,6 +762,8 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    Color cardBg = const Color(0xFFFAFBFB),
+    Color cardBorder = const Color(0xFFF0F3F1),
     bool isDestructive = false,
   }) {
     return InkWell(
@@ -667,9 +772,9 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: const Color(0xFFFAFBFB),
+          color: cardBg,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFF0F3F1)),
+          border: Border.all(color: cardBorder, width: 1.1),
         ),
         child: Row(
           children: [
@@ -703,7 +808,11 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 18),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: isDestructive ? const Color(0xFFDC2626) : const Color(0xFF9CA3AF),
+              size: 18,
+            ),
           ],
         ),
       ),
