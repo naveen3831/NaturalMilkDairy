@@ -2,9 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/customer_provider.dart';
-import '../../providers/product_provider.dart';
+import 'package:natural_milk_dairy/providers/auth_provider.dart';
+import 'package:natural_milk_dairy/providers/customer_provider.dart';
+import 'package:natural_milk_dairy/providers/product_provider.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../onboarding/onboarding_screen.dart';
@@ -14,6 +14,7 @@ import 'widgets/notification_modal.dart';
 import 'contact_support_screen.dart';
 import 'product_details_screen.dart';
 import 'subscription_details_screen.dart';
+import 'subscription_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -240,13 +241,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+
+  Future<void> _openSubscriptionDetails() async {
+    final targetIndex = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SubscriptionDetailsScreen(),
+      ),
+    );
+    if (targetIndex != null && mounted) {
+      setState(() => _currentIndex = targetIndex);
+    }
+  }
+
   void _showUpcomingDeliveryDetails(Map<String, dynamic> delivery) {
     final authProvider = context.read<AuthProvider>();
     final customerProvider = context.read<CustomerProvider>();
     final user = authProvider.user;
     final String address = user?.address?.isNotEmpty == true
         ? user!.address!
-        : (customerProvider.customer['address']?.toString() ?? 'Madhapur, Hyderabad, Telangana - 500081');
+        : (customerProvider.customerData?['address']?.toString() ?? 'Madhapur, Hyderabad, Telangana - 500081');
     final String driverName = delivery['driver']?.toString() ?? 'Naveen Kumar';
     final String milkQty = delivery['milkQty']?.toString() ?? '1 L';
     final String curdQty = delivery['curdQty']?.toString() ?? '0 g';
@@ -344,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF0D5C3A).withOpacity(0.2),
+                          color: const Color(0xFF0D5C3A).withValues(alpha: 0.2),
                           blurRadius: 16,
                           offset: const Offset(0, 6),
                         ),
@@ -359,7 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.18),
+                                color: Colors.white.withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: const Row(
@@ -382,7 +396,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.15),
+                                color: Colors.white.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Row(
@@ -2038,7 +2052,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 90,
                   height: 75,
                   fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                 ),
               ],
             ),
@@ -2174,6 +2188,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final productProvider = context.watch<ProductProvider>();
     final isGuest = user == null || user.isGuest == true;
 
+    final latestSub = customerProvider.subscriptionsHistory.isNotEmpty
+        ? customerProvider.subscriptionsHistory.first
+        : null;
+    final String subStatus = latestSub?['status']?.toString().toLowerCase() ??
+        (customerProvider.customerData?['subscription'] is Map
+            ? customerProvider.customerData!['subscription']['status']?.toString().toLowerCase() ?? ''
+            : '');
+    final bool isSubFailed = subStatus == 'failed';
+    final bool isSubPaused = customerProvider.isPaused || subStatus == 'paused';
+
     return RefreshIndicator(
       onRefresh: () async {
         await Future.wait([
@@ -2287,12 +2311,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 InkWell(
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SubscriptionDetailsScreen(),
-                      ),
-                    );
+                    _openSubscriptionDetails();
                   },
                   child: const Row(
                     children: [
@@ -2316,12 +2335,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // ACTIVE SUBSCRIPTION CARD (Matching Image 2)
             InkWell(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SubscriptionDetailsScreen(),
-                  ),
-                );
+                _openSubscriptionDetails();
               },
               borderRadius: BorderRadius.circular(20),
               child: Container(
@@ -2389,18 +2403,42 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFE2F1EA),
+                                      color: isSubFailed
+                                          ? const Color(0xFFFEE2E2)
+                                          : isSubPaused
+                                              ? const Color(0xFFFEF3C7)
+                                              : const Color(0xFFE2F1EA),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.circle, color: Color(0xFF0D5C3A), size: 6),
-                                        SizedBox(width: 4),
+                                        Icon(
+                                          isSubFailed
+                                              ? Icons.cancel_rounded
+                                              : isSubPaused
+                                                  ? Icons.pause_circle_filled_rounded
+                                                  : Icons.circle,
+                                          color: isSubFailed
+                                              ? const Color(0xFFDC2626)
+                                              : isSubPaused
+                                                  ? const Color(0xFFD97706)
+                                                  : const Color(0xFF0D5C3A),
+                                          size: isSubFailed || isSubPaused ? 11 : 6,
+                                        ),
+                                        const SizedBox(width: 4),
                                         Text(
-                                          'Active',
+                                          isSubFailed
+                                              ? 'Failed'
+                                              : isSubPaused
+                                                  ? 'Paused'
+                                                  : 'Active',
                                           style: TextStyle(
-                                            color: Color(0xFF0D5C3A),
+                                            color: isSubFailed
+                                                ? const Color(0xFFDC2626)
+                                                : isSubPaused
+                                                    ? const Color(0xFFD97706)
+                                                    : const Color(0xFF0D5C3A),
                                             fontSize: 10,
                                             fontWeight: FontWeight.w800,
                                           ),
@@ -2412,11 +2450,63 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'ID: ${user?.customerId ?? "CUST-101"} \u2022 Daily Morning',
+                                'ID: ${user?.customerId ?? "CUST-101"} \u2022 ${customerProvider.frequency == "alternate" ? "Alternate Days" : "Daily Morning"}',
                                 style: const TextStyle(
                                   fontSize: 11.5,
                                   color: Color(0xFF6B7280),
                                   fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                decoration: BoxDecoration(
+                                  color: customerProvider.isSubscriptionExpired
+                                      ? const Color(0xFFFEE2E2)
+                                      : customerProvider.subscriptionDaysRemaining <= 3
+                                          ? const Color(0xFFFEF3C7)
+                                          : const Color(0xFFE2F1EA),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: customerProvider.isSubscriptionExpired
+                                        ? const Color(0xFFFCA5A5)
+                                        : customerProvider.subscriptionDaysRemaining <= 3
+                                            ? const Color(0xFFFDE68A)
+                                            : const Color(0xFFBBF7D0),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.event_available_rounded,
+                                      size: 13,
+                                      color: customerProvider.isSubscriptionExpired
+                                          ? const Color(0xFFDC2626)
+                                          : customerProvider.subscriptionDaysRemaining <= 3
+                                              ? const Color(0xFFD97706)
+                                              : const Color(0xFF0D5C3A),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        customerProvider.isSubscriptionExpired
+                                            ? 'Valid Until: ${customerProvider.formattedExpiryDate} (Expired)'
+                                            : 'Valid Until: ${customerProvider.formattedExpiryDate} (${customerProvider.subscriptionDaysRemaining} Days Left)',
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: customerProvider.isSubscriptionExpired
+                                              ? const Color(0xFFDC2626)
+                                              : customerProvider.subscriptionDaysRemaining <= 3
+                                                  ? const Color(0xFFB45309)
+                                                  : const Color(0xFF0D5C3A),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -2437,10 +2527,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(color: const Color(0xFFDEEDE2)),
                             ),
-                            child: const Row(
+                            child: Row(
                               children: [
-                                Icon(Icons.local_drink_outlined, size: 13, color: Color(0xFF0D5C3A)),
-                                SizedBox(width: 3),
+                                const Icon(Icons.local_drink_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                                const SizedBox(width: 3),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2449,8 +2539,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                         fit: BoxFit.scaleDown,
                                         alignment: Alignment.centerLeft,
                                         child: Text(
-                                          '1 L / day',
-                                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                          '${customerProvider.milkQuantity > 0 ? customerProvider.milkQuantity : 1} L / day',
+                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
                                         ),
                                       ),
                                       FittedBox(
@@ -2562,12 +2652,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 38,
                             child: OutlinedButton(
                               onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SubscriptionDetailsScreen(),
-                                  ),
-                                );
+                                _openSubscriptionDetails();
                               },
                               style: OutlinedButton.styleFrom(
                                 side: const BorderSide(color: Color(0xFF0D5C3A), width: 1.2),
@@ -2591,12 +2676,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 38,
                             child: ElevatedButton(
                               onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const SubscriptionDetailsScreen(),
-                                  ),
-                                );
+                                _openSubscriptionDetails();
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF0D5C3A),
@@ -3795,14 +3875,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
                 _buildProfileItemRow(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'Subscription Payment',
-                  subtitle: 'Manage payments and view invoices',
-                  badgeText: 'Prepaid',
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Subscription History & Orders',
+                  subtitle: 'View active, past, failed plans & retry Razorpay',
+                  badgeText: 'History',
                   badgeBg: const Color(0xFFE2F1EA),
                   badgeColor: const Color(0xFF0D5C3A),
                   onTap: () {
-                    _showActionSnackbar('Subscription payment ledger opened');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscriptionHistoryScreen(),
+                      ),
+                    );
                   },
                 ),
                 _buildProfileItemRow(

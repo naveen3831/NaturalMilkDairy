@@ -100,7 +100,12 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
 
         const milkPrice = 60;
         const curdPrice = 30;
-        const totalAmount = milkQty * milkPrice + (curdQty / 500) * curdPrice;
+        const extraItems = Array.isArray(plan.extraProducts) ? plan.extraProducts : [];
+        let extraTotal = 0;
+        for (const itm of extraItems) {
+          extraTotal += (Number(itm.price) || 0) * (Number(itm.quantity) || 1);
+        }
+        const totalAmount = milkQty * milkPrice + (curdQty / 500) * curdPrice + extraTotal;
         const paymentType = customer.paymentInfo?.paymentType || 'credit';
 
         await Delivery.create({
@@ -115,6 +120,7 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
           plannedCurd: curdQty,
           actualMilk: milkQty,
           actualCurd: curdQty,
+          extraItems,
           milkPrice,
           curdPrice,
           totalAmount,

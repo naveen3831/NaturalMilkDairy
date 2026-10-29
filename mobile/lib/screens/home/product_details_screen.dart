@@ -4,6 +4,7 @@ import '../../data/models/product_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
 import 'contact_support_screen.dart';
+import 'subscribe_checkout_screen.dart';
 import '../auth/login_screen.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
@@ -52,7 +53,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return '$qty ${qty == 1 ? "Unit" : "Units"}';
   }
 
-  void _handleStartSubscription() {
+  Future<void> _handleStartSubscription() async {
     final auth = context.read<AuthProvider>();
     final isGuest = auth.user == null || auth.user?.isGuest == true;
 
@@ -64,31 +65,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       return;
     }
 
-    final isSub = _orderFrequency == 'subscription';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 22),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                isSub
-                    ? '🎉 Daily morning drop of ${_quantity}x ${widget.product.name} confirmed!'
-                    : '🎉 One-time drop for tomorrow morning scheduled!',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-            ),
-          ],
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubscribeCheckoutScreen(
+          product: widget.product,
+          initialQty: _quantity.toDouble(),
+          initialFrequency: _orderFrequency == 'subscription' ? 'daily' : 'daily',
         ),
-        backgroundColor: const Color(0xFF0D5C3A),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
       ),
     );
 
-    context.read<CustomerProvider>().loadAllCustomerData(silent: true);
+    if (result == true && mounted) {
+      context.read<CustomerProvider>().loadAllCustomerData(silent: true);
+      Navigator.pop(context);
+    }
   }
 
   @override

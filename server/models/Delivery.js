@@ -12,6 +12,13 @@ const deliverySchema = new mongoose.Schema({
   plannedCurd: { type: Number, default: 0 },
   actualMilk: { type: Number, default: 0 },
   actualCurd: { type: Number, default: 0 },
+  extraItems: [{
+    productId: { type: String, default: '' },
+    name: { type: String, required: true },
+    quantity: { type: Number, default: 1 },
+    unit: { type: String, default: 'pack' },
+    price: { type: Number, default: 0 },
+  }],
   milkPrice: { type: Number, default: 60 },
   curdPrice: { type: Number, default: 60 }, // per unit or per kg
   totalAmount: { type: Number, default: 0 },

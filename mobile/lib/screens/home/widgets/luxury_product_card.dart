@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/product_model.dart';
 import '../product_details_screen.dart';
+import '../subscribe_checkout_screen.dart';
 
 class LuxuryProductCard extends StatelessWidget {
   final ProductModel product;
@@ -248,7 +249,15 @@ class LuxuryProductCard extends StatelessWidget {
                     ),
 
                     ElevatedButton.icon(
-                      onPressed: openDetails,
+                      onPressed: onSubscribe ??
+                          () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SubscribeCheckoutScreen(product: product),
+                              ),
+                            );
+                          },
                       icon: const Icon(Icons.calendar_month_rounded, size: 16),
                       label: const Text('Subscribe'),
                       style: ElevatedButton.styleFrom(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/product_model.dart';
 import '../product_details_screen.dart';
+import '../subscribe_checkout_screen.dart';
 
 class DairyCollectionCard extends StatelessWidget {
   final ProductModel product;
@@ -406,7 +407,15 @@ class DairyCollectionCard extends StatelessWidget {
                             width: double.infinity,
                             height: 34,
                             child: ElevatedButton(
-                              onPressed: openDetails,
+                              onPressed: onSubscribe ??
+                                  () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => SubscribeCheckoutScreen(product: product),
+                                      ),
+                                    );
+                                  },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF059669),
                                 foregroundColor: Colors.white,

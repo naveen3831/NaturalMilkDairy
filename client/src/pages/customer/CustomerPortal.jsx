@@ -48,6 +48,8 @@ import {
   Sliders,
   User,
   Settings,
+  ShieldAlert,
+  RotateCcw,
   Camera,
   Heart,
   Eye,
@@ -72,6 +74,16 @@ import CustomerBottomNav, {
   CUSTOMER_PORTAL_ITEMS,
 } from '../../components/CustomerBottomNav';
 import ProductDetailsView from '../ProductDetailsView';
+import SubscriptionHistoryModal, { SubscriptionStatusBadge } from '../../components/SubscriptionHistoryModal';
+import { startSubscriptionPayment } from '../../services/subscriptionPayment';
+import {
+  PauseDeliveryFullPage,
+  ChangeTomorrowQtyFullPage,
+  ChangeAddressFullPage,
+  StopSubscriptionFullPage,
+  UpgradePlanFullPage,
+  ExtendSubscriptionFullPage,
+} from '../../components/SubscriptionActionModals';
 
 const CUSTOMER_PROFILE_NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: Home },
@@ -225,6 +237,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
   const [deliveryFilterTab, setDeliveryFilterTab] = useState('all');
   const [selectedUpcomingDelivery, setSelectedUpcomingDelivery] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showPauseFullPage, setShowPauseFullPage] = useState(false);
+  const [showQtyFullPage, setShowQtyFullPage] = useState(false);
+  const [showAddressFullPage, setShowAddressFullPage] = useState(false);
+  const [showStopFullPage, setShowStopFullPage] = useState(false);
 
   const serviceableLocations = useMemo(() => {
     if (Array.isArray(locations) && locations.length > 0) {
@@ -774,12 +792,20 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [customerSubscriptions, setCustomerSubscriptions] = useState([]);
   const [selectedSubForDetails, setSelectedSubForDetails] = useState(null);
   const [subToggling, setSubToggling] = useState(false);
+  const [showSubHistoryModal, setShowSubHistoryModal] = useState(false);
+  const [isRetryingSubPayment, setIsRetryingSubPayment] = useState(false);
+  const [subPaymentError, setSubPaymentError] = useState('');
 
   const fetchCustomerSubscriptions = useCallback(async () => {
     try {
-      const res = await fetch('/api/subscriptions/my', {
+      let res = await fetch('/api/customers/me/subscriptions', {
         headers: getAuthHeaders ? getAuthHeaders() : {},
       });
+      if (!res.ok) {
+        res = await fetch('/api/subscriptions/my', {
+          headers: getAuthHeaders ? getAuthHeaders() : {},
+        });
+      }
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.subscriptions)) {
@@ -795,6 +821,68 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     fetchCustomerSubscriptions();
   }, [fetchCustomerSubscriptions]);
 
+  // Real-time synchronization for customer subscriptions & updates
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const unsubSub = wsSubscribe('SUBSCRIPTION_UPDATED', () => {
+      fetchCustomerSubscriptions();
+      reloadLedger?.();
+      refreshAll?.();
+    });
+    const unsubCust = wsSubscribe('CUSTOMER_UPDATED', () => {
+      fetchCustomerSubscriptions();
+      reloadLedger?.();
+      refreshAll?.();
+    });
+    return () => {
+      unsubSub?.();
+      unsubCust?.();
+    };
+  }, [wsSubscribe, fetchCustomerSubscriptions, reloadLedger, refreshAll]);
+
+  const handleStartSubscriptionWithRazorpay = async (planParams) => {
+    setIsRetryingSubPayment(true);
+    setSubPaymentError('');
+    try {
+      const payload = {
+        address: currentCustomer.address || user?.address || 'Doorstep drop',
+        area: currentCustomer.area || user?.area || 'Madhupur',
+        landmark: currentCustomer.landmark || user?.landmark || '',
+        whatsapp: currentCustomer.whatsapp || currentCustomer.mobile || user?.mobile || '',
+        mobile: currentCustomer.mobile || user?.mobile || '',
+        name: currentCustomer.name || user?.name || 'Customer',
+        milkQty: planParams?.milkQty || 1,
+        curdQty: planParams?.curdQty || 0,
+        frequency: planParams?.frequency || 'daily',
+        deliveryDays: planParams?.deliveryDays || [],
+      };
+
+      await startSubscriptionPayment({
+        planPayload: payload,
+        user,
+        onSuccess: async () => {
+          setIsRetryingSubPayment(false);
+          await fetchCustomerSubscriptions();
+          reloadLedger?.();
+          refreshAll?.();
+          notifyRealtimeSync?.();
+          alert('Subscription activated successfully via Razorpay! Morning deliveries will start tomorrow.');
+        },
+        onFailure: async (failInfo) => {
+          setIsRetryingSubPayment(false);
+          setSubPaymentError(failInfo.reason || 'Payment was not completed.');
+          await fetchCustomerSubscriptions();
+          reloadLedger?.();
+          refreshAll?.();
+        },
+      });
+    } catch (err) {
+      setIsRetryingSubPayment(false);
+      setSubPaymentError(err.message || 'Could not start subscription checkout.');
+      await fetchCustomerSubscriptions();
+    }
+  };
+
   const allCustomerSubscriptions = useMemo(() => {
     const list = Array.isArray(customerSubscriptions) ? [...customerSubscriptions] : [];
     const plan = currentCustomer.deliveryPlan || {};
@@ -803,7 +891,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     if (list.length > 0) {
       return list.map((item) => ({
         ...item,
-        status: isPaused ? 'paused' : (item.status || 'active'),
+        status: item.status === 'failed' ? 'failed' : (isPaused ? 'paused' : (item.status || 'active')),
         deliveryBoyName: item.deliveryBoyName || plan.deliveryBoyName || '',
         area: item.area || currentCustomer.area || '',
         deliveryAddress: item.deliveryAddress || currentCustomer.address || '',
@@ -1640,6 +1728,35 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const toTitle = (str = '') => String(str || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+
+  // Upgrade Plan Full-Page Component (with Razorpay integration)
+  const renderUpgradePlanModal = () => (
+    <UpgradePlanFullPage
+      user={currentCustomer || user}
+      onClose={() => setShowUpgradeModal(false)}
+      onSuccess={(msg) => {
+        setShowUpgradeModal(false);
+        alert(msg);
+        if (typeof reloadLedger === 'function') reloadLedger();
+        if (typeof refreshAll === 'function') refreshAll();
+      }}
+    />
+  );
+
+  // Extend Subscription Full-Page Component (with Razorpay integration)
+  const renderExtendSubscriptionModal = () => (
+    <ExtendSubscriptionFullPage
+      user={currentCustomer || user}
+      onClose={() => setShowExtendModal(false)}
+      onSuccess={(msg) => {
+        setShowExtendModal(false);
+        alert(msg);
+        if (typeof reloadLedger === 'function') reloadLedger();
+        if (typeof refreshAll === 'function') refreshAll();
+      }}
+    />
+  );
+
   const renderSubscriptionDetailsModal = () => {
     if (!selectedSubForDetails) return null;
     const sub = selectedSubForDetails;
@@ -1700,37 +1817,60 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             Subscription Details
           </h3>
 
-          <button
-            type="button"
-            onClick={() => setIsNotificationOpen(true)}
-            aria-label="Notifications"
-            style={{
-              position: 'relative',
-              width: '38px',
-              height: '38px',
-              borderRadius: '50%',
-              background: '#f3f7f4',
-              border: '1px solid #e2ebe5',
-              color: '#0d5c3a',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <Bell size={19} />
-            <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowSubHistoryModal(true)}
               style={{
-                position: 'absolute',
-                top: '8px',
-                right: '8px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#e53935',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 10px',
+                borderRadius: '20px',
+                background: '#e2f1ea',
+                border: '1px solid #b7dfca',
+                color: '#0d5c3a',
+                fontWeight: 800,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
               }}
-            />
-          </button>
+            >
+              <Clock3 size={13} />
+              <span>History</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(true)}
+              aria-label="Notifications"
+              style={{
+                position: 'relative',
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                background: '#f3f7f4',
+                border: '1px solid #e2ebe5',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <Bell size={19} />
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#e53935',
+                }}
+              />
+            </button>
+          </div>
         </div>
 
         {/* 1. Summary Card */}
@@ -1783,7 +1923,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </span>
               </div>
               <span style={{ fontSize: '0.76rem', color: '#6b7280', fontWeight: 600 }}>
-                ID: {customerId} • Daily Morning
+                ID: {customerId} • {(plan?.frequency === 'alternate' || currentCustomer?.deliveryPlan?.frequency === 'alternate') ? 'Alternate Days' : 'Daily Morning'}
               </span>
             </div>
           </div>
@@ -1855,6 +1995,83 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
         </div>
+
+        {/* Subscription Expiry Badge */}
+        {(() => {
+          const subEnd = sub?.endDate || currentCustomer.subscription?.endDate || subscriptionThrough;
+          const target = subEnd ? new Date(subEnd) : new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
+          const now = new Date();
+          const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+          const targetMidnight = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+          const diffDays = Math.ceil((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
+          const formattedDate = target.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+          const isExpired = diffDays < 0;
+          const daysText = isExpired ? 'Expired' : diffDays === 0 ? 'Expires Today' : `${diffDays} Days Left`;
+          const badgeBg = isExpired ? '#fef2f2' : diffDays <= 3 ? '#fffbeb' : '#e2f1ea';
+          const badgeBorder = isExpired ? '#fecaca' : diffDays <= 3 ? '#fde68a' : '#b7dfca';
+          const badgeColor = isExpired ? '#dc2626' : diffDays <= 3 ? '#b45309' : '#0d5c3a';
+
+          return (
+            <div
+              style={{
+                background: badgeBg,
+                border: `1.5px solid ${badgeBorder}`,
+                borderRadius: '16px',
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: badgeColor,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '10px',
+                    background: '#ffffff',
+                    border: `1px solid ${badgeBorder}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: badgeColor,
+                    flexShrink: 0,
+                  }}
+                >
+                  <CalendarDays size={18} />
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                    Subscription Validity
+                  </span>
+                  <strong style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0c2340', display: 'block' }}>
+                    Valid Until: {formattedDate} • {daysText}
+                  </strong>
+                </div>
+              </div>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                  background: '#ffffff',
+                  border: `1px solid ${badgeBorder}`,
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  color: badgeColor,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: badgeColor }} />
+                {isExpired ? 'Expired' : `${diffDays}d Left`}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* 2. Order Schedule */}
         <div
@@ -2020,11 +2237,63 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* Upgrade Plan Option */}
+            <div
+              onClick={() => setShowUpgradeModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: '#f0fdf4',
+                border: '1.2px solid #bbf7d0',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Upgrade Plan</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>Increase quantity, switch to A2 or combo</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#15803d" />
+            </div>
+
+            {/* Extend Subscription Option */}
+            <div
+              onClick={() => setShowExtendModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: '#fffbeb',
+                border: '1.2px solid #fde68a',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <CalendarDays size={20} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Extend Subscription</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>Add 7, 15, 30 or 60 days to current plan</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#d97706" />
+            </div>
+
             {/* Row 1: Pause Delivery for a Trip */}
             <div
               onClick={() => {
                 setSelectedSubForDetails(null);
-                onOpenPauseModal?.(currentCustomer);
+                setShowPauseFullPage(true);
               }}
               style={{
                 display: 'flex',
@@ -2053,7 +2322,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div
               onClick={() => {
                 setSelectedSubForDetails(null);
-                openProfileDetail('quantity');
+                setShowQtyFullPage(true);
               }}
               style={{
                 display: 'flex',
@@ -2082,7 +2351,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div
               onClick={() => {
                 setSelectedSubForDetails(null);
-                openProfileDetail('delivery-address');
+                setShowAddressFullPage(true);
               }}
               style={{
                 display: 'flex',
@@ -2110,9 +2379,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             {/* Row 4: Stop Subscription */}
             <div
               onClick={() => {
-                if (window.confirm('Are you sure you want to stop your daily subscription? You can restart anytime.')) {
-                  handleToggleCustomerSub(sub, 'stop');
-                }
+                setSelectedSubForDetails(null);
+                setShowStopFullPage(true);
               }}
               style={{
                 display: 'flex',
@@ -2162,6 +2430,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             justifyContent: 'center',
             gap: '8px',
             boxShadow: '0 4px 14px rgba(13, 92, 58, 0.25)',
+            marginBottom: '20px',
           }}
         >
           <Sparkles size={18} />
@@ -2181,10 +2450,20 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             zIndex: 99999,
             background: '#f9faf9',
             overflowY: 'auto',
-            padding: '16px 16px 36px 16px',
+            padding: '16px 16px 110px 16px',
+            boxSizing: 'border-box',
           }}
         >
           {content}
+          <CustomerBottomNav
+            activePage="subscription"
+            onNavigate={(tab) => {
+              setSelectedSubForDetails(null);
+              if (typeof setActiveTab === 'function') setActiveTab(tab);
+            }}
+            items={CUSTOMER_HOME_NAV_ITEMS}
+            className="customer-mobile-bottom-nav"
+          />
         </div>
       );
     }
@@ -2543,7 +2822,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const renderSubscriptionPage = () => {
-    const primarySub = allCustomerSubscriptions[0] || {
+    const latestFailedSub = customerSubscriptions.find((s) => s.status === 'failed');
+    const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0] || {
       id: currentCustomer.customerId || 'CUST-101',
       customerId: currentCustomer.customerId || 'CUST-101',
       status: isPaused ? 'paused' : 'active',
@@ -2745,27 +3025,118 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
+        {/* Failed Subscription Banner if present */}
+        {latestFailedSub && (
+          <div
+            style={{
+              background: '#fff1f2',
+              border: '1.5px solid #fecaca',
+              borderRadius: '16px',
+              padding: '14px 18px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              boxShadow: '0 4px 14px rgba(220, 38, 38, 0.10)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <ShieldAlert size={22} color="#dc2626" style={{ flexShrink: 0 }} />
+              <div>
+                <strong style={{ color: '#9f1239', fontSize: '0.88rem', display: 'block' }}>
+                  Subscription Payment Failed
+                </strong>
+                <span style={{ color: '#be123c', fontSize: '0.74rem', display: 'block' }}>
+                  {latestFailedSub.failedReason || 'Previous payment attempt was cancelled or rejected by gateway.'}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <button
+                type="button"
+                disabled={isRetryingSubPayment}
+                onClick={() => handleStartSubscriptionWithRazorpay(latestFailedSub.plan)}
+                style={{
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '7px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 800,
+                  fontSize: '0.76rem',
+                  cursor: isRetryingSubPayment ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)',
+                }}
+              >
+                <RotateCcw size={13} className={isRetryingSubPayment ? 'spin' : ''} />
+                <span>Retry Payment</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSubHistoryModal(true)}
+                style={{
+                  background: '#ffffff',
+                  color: '#9f1239',
+                  border: '1px solid #fca5a5',
+                  padding: '7px 12px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                }}
+              >
+                History
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Active Subscriptions Section */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '8px' }}>
             <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: '#0c2340' }}>
               Active Subscriptions
             </h3>
-            <button
-              type="button"
-              onClick={() => setSelectedSubForDetails(primarySub)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#0d5c3a',
-                fontSize: '0.80rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              View All →
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowSubHistoryModal(true)}
+                style={{
+                  background: '#e2f1ea',
+                  border: '1px solid #b7dfca',
+                  color: '#0d5c3a',
+                  borderRadius: '12px',
+                  padding: '5px 11px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                <Clock3 size={13} />
+                <span>Subscription History</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedSubForDetails(primarySub)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#0d5c3a',
+                  fontSize: '0.80rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                View Details →
+              </button>
+            </div>
           </div>
 
           {/* Active Subscription Card */}
@@ -2821,7 +3192,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   </span>
                 </div>
                 <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>
-                  ID: {primarySub.customerId || 'CUST-101'} • Daily Morning
+                  ID: {primarySub.customerId || 'CUST-101'} • {(primarySub.plan?.frequency === 'alternate' || currentCustomer?.deliveryPlan?.frequency === 'alternate') ? 'Alternate Days' : 'Daily Morning'}
                 </span>
               </div>
             </div>
@@ -2888,6 +3259,57 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </div>
               </div>
             </div>
+
+            {/* Expiry Date Badge */}
+            {(() => {
+              const subEnd = primarySub?.endDate || currentCustomer.subscription?.endDate || subscriptionThrough;
+              const target = subEnd ? new Date(subEnd) : new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
+              const now = new Date();
+              const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+              const targetMidnight = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+              const diffDays = Math.ceil((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
+              const formattedDate = target.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+              const isExpired = diffDays < 0;
+              const daysText = isExpired ? 'Expired' : diffDays === 0 ? 'Expires Today' : `${diffDays} Days Left`;
+              const badgeBg = isExpired ? '#fef2f2' : diffDays <= 3 ? '#fffbeb' : '#e2f1ea';
+              const badgeBorder = isExpired ? '#fecaca' : diffDays <= 3 ? '#fde68a' : '#b7dfca';
+              const badgeColor = isExpired ? '#dc2626' : diffDays <= 3 ? '#b45309' : '#0d5c3a';
+
+              return (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: badgeBg,
+                    border: `1.2px solid ${badgeBorder}`,
+                    borderRadius: '12px',
+                    padding: '8px 12px',
+                    color: badgeColor,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <CalendarDays size={16} />
+                    <strong style={{ fontSize: '0.80rem', fontWeight: 800 }}>
+                      Valid Until: {formattedDate} • {daysText}
+                    </strong>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.70rem',
+                      fontWeight: 800,
+                      background: '#ffffff',
+                      color: badgeColor,
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      border: `1px solid ${badgeBorder}`,
+                    }}
+                  >
+                    {isExpired ? 'Renewal Due' : 'Active Plan'}
+                  </span>
+                </div>
+              );
+            })()}
 
             {/* Two Action Buttons: View Details (outline) & Manage Plan (solid green) */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '4px' }}>
@@ -3009,7 +3431,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <button
                   type="button"
                   onClick={() => {
-                    handleBookProduct({ name: 'Pure Desi Cow Milk (1L Glass Bottle)', price: 60, unit: 'L' });
+                    handleStartSubscriptionWithRazorpay({ milkQty: 1, curdQty: 0, frequency: 'daily' });
                   }}
                   style={{
                     padding: '8px 14px',
@@ -3067,7 +3489,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <button
                   type="button"
                   onClick={() => {
-                    handleBookProduct({ name: 'Fresh Clay Pot Curd (500g)', price: 45, unit: 'g' });
+                    handleStartSubscriptionWithRazorpay({ milkQty: 1, curdQty: 500, frequency: 'daily' });
                   }}
                   style={{
                     padding: '8px 14px',
@@ -3125,7 +3547,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <button
                   type="button"
                   onClick={() => {
-                    handleBookProduct({ name: 'Pure Vedic Bilona Ghee (500ml)', price: 650, unit: 'ml' });
+                    handleStartSubscriptionWithRazorpay({ milkQty: 1, curdQty: 0, frequency: 'daily' });
                   }}
                   style={{
                     padding: '8px 14px',
@@ -8636,8 +9058,66 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       {/* Subscription Details Modal */}
       {selectedSubForDetails && renderSubscriptionDetailsModal()}
 
+      {/* Subscription History Modal */}
+      <SubscriptionHistoryModal
+        isOpen={showSubHistoryModal}
+        onClose={() => setShowSubHistoryModal(false)}
+        user={user}
+        onPaymentSuccess={() => {
+          fetchCustomerSubscriptions();
+          reloadLedger?.();
+          refreshAll?.();
+        }}
+      />
+
       {/* Upcoming Delivery Details Modal */}
       {selectedUpcomingDelivery && renderUpcomingDeliveryDetailsModal()}
+      {showUpgradeModal && renderUpgradePlanModal()}
+      {showExtendModal && renderExtendSubscriptionModal()}
+      {showPauseFullPage && (
+        <PauseDeliveryFullPage
+          user={currentCustomer || user}
+          onClose={() => setShowPauseFullPage(false)}
+          onSuccess={(msg) => {
+            setShowPauseFullPage(false);
+            alert(msg);
+            if (typeof reloadLedger === 'function') reloadLedger();
+          }}
+        />
+      )}
+      {showQtyFullPage && (
+        <ChangeTomorrowQtyFullPage
+          user={currentCustomer || user}
+          onClose={() => setShowQtyFullPage(false)}
+          onSuccess={(msg) => {
+            setShowQtyFullPage(false);
+            alert(msg);
+            if (typeof reloadLedger === 'function') reloadLedger();
+          }}
+        />
+      )}
+      {showAddressFullPage && (
+        <ChangeAddressFullPage
+          user={currentCustomer || user}
+          onClose={() => setShowAddressFullPage(false)}
+          onSuccess={(msg) => {
+            setShowAddressFullPage(false);
+            alert(msg);
+            if (typeof reloadLedger === 'function') reloadLedger();
+          }}
+        />
+      )}
+      {showStopFullPage && (
+        <StopSubscriptionFullPage
+          user={currentCustomer || user}
+          onClose={() => setShowStopFullPage(false)}
+          onSuccess={(msg) => {
+            setShowStopFullPage(false);
+            alert(msg);
+            if (typeof reloadLedger === 'function') reloadLedger();
+          }}
+        />
+      )}
 
       {/* Product Booking Modal */}
       {bookingModalOpen && renderBookingModal()}

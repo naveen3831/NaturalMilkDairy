@@ -495,6 +495,14 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                     );
                   })}
                 </div>
+                {formData.frequency === 'alternate' && (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={16} color="#15803d" />
+                    <span style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 700 }}>
+                      Alternate Days Schedule: Delivered every other morning with 15 doorstep drops over 30 days.
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

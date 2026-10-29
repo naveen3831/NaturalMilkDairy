@@ -14716,3 +14716,121 @@ body::-webkit-scrollbar,
 .mobile-card-subscribe-btn:active {
   transform: scale(0.96);
 }
+
+/* Customer Mobile Bottom Navigation Bar */
+@media (min-width: 769px) {
+  .customer-portal-bottom-nav,
+  .public-mobile-bottom-nav,
+  .customer-mobile-bottom-nav {
+    display: none !important;
+  }
+}
+
+.customer-nav-link:hover {
+  color: #0d5c3a !important;
+}
+
+.customer-nav-link:hover svg {
+  stroke: #0d5c3a !important;
+}
+
+/* ========================================================
+   Customer & Public Mobile Bottom Navigation (Universal)
+   ======================================================== */
+@media (max-width: 768px) {
+  .public-mobile-bottom-nav,
+  .customer-portal-bottom-nav,
+  .customer-mobile-bottom-nav,
+  .customer-bottom-nav {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    height: 64px !important;
+    background-color: #ffffff !important;
+    border-top: 1px solid #e2ebe4 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-around !important;
+    z-index: 99999 !important;
+    box-shadow: 0 -4px 20px rgba(12, 35, 64, 0.08) !important;
+    padding: 0 4px env(safe-area-inset-bottom, 0px) !important;
+    box-sizing: border-box !important;
+  }
+
+  .public-mobile-bottom-nav button,
+  .customer-portal-bottom-nav button,
+  .customer-mobile-bottom-nav button,
+  .customer-bottom-nav button,
+  .customer-portal-bottom-nav .customer-nav-link,
+  .customer-mobile-bottom-nav .customer-nav-link,
+  .customer-bottom-nav .customer-nav-link {
+    flex: 1 1 0% !important;
+    max-width: 80px !important;
+    height: 100% !important;
+    min-height: 48px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 3px !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    padding: 5px 0 !important;
+    cursor: pointer !important;
+    color: #64748b !important;
+    font-weight: 600 !important;
+    font-size: 0.70rem !important;
+    line-height: 1.1 !important;
+    transition: all 0.18s ease !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  .public-mobile-bottom-nav button svg,
+  .customer-portal-bottom-nav button svg,
+  .customer-mobile-bottom-nav button svg,
+  .customer-bottom-nav button svg,
+  .customer-portal-bottom-nav .customer-nav-link svg,
+  .customer-mobile-bottom-nav .customer-nav-link svg,
+  .customer-bottom-nav .customer-nav-link svg {
+    width: 20px !important;
+    height: 20px !important;
+    color: #64748b !important;
+    transition: transform 0.18s ease, color 0.18s ease !important;
+  }
+
+  .public-mobile-bottom-nav button.is-active,
+  .customer-portal-bottom-nav button.is-active,
+  .customer-mobile-bottom-nav button.is-active,
+  .customer-bottom-nav button.is-active,
+  .customer-portal-bottom-nav .customer-nav-link.is-active,
+  .customer-mobile-bottom-nav .customer-nav-link.is-active,
+  .customer-bottom-nav .customer-nav-link.is-active {
+    color: #0d5c3a !important;
+    font-weight: 800 !important;
+    background: transparent !important;
+  }
+
+  .public-mobile-bottom-nav button.is-active svg,
+  .customer-portal-bottom-nav button.is-active svg,
+  .customer-mobile-bottom-nav button.is-active svg,
+  .customer-bottom-nav button.is-active svg,
+  .customer-portal-bottom-nav .customer-nav-link.is-active svg,
+  .customer-mobile-bottom-nav .customer-nav-link.is-active svg,
+  .customer-bottom-nav .customer-nav-link.is-active svg {
+    color: #0d5c3a !important;
+    stroke: #0d5c3a !important;
+    transform: translateY(-1px) scale(1.08) !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .customer-portal-bottom-nav,
+  .public-mobile-bottom-nav,
+  .customer-mobile-bottom-nav,
+  .customer-bottom-nav {
+    display: none !important;
+  }
+}

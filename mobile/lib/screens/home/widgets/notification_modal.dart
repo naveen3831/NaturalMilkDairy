@@ -206,20 +206,6 @@ class _NotificationModalState extends State<NotificationModal> {
     }).toList();
   }
 
-  void _markAllAsRead() {
-    setState(() {
-      for (final n in _notifications) {
-        n['isRead'] = true;
-        final nId = n['id']?.toString() ?? '';
-        if (nId.isNotEmpty) _readIds.add(nId);
-      }
-    });
-    widget.onNotificationChanged?.call();
-    try {
-      _api.put('/api/notifications/read-all', {});
-    } catch (_) {}
-  }
-
   void _clearAll() {
     setState(() {
       _notifications.clear();

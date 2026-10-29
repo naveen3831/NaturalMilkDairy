@@ -1570,8 +1570,18 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6)),
-                          child: Text('${milk}L Daily', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF065F46))),
+                          decoration: BoxDecoration(
+                            color: plan['frequency'] == 'alternate' ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${milk}L ${plan['frequency'] == 'alternate' ? 'Alternate' : 'Daily'}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              color: plan['frequency'] == 'alternate' ? const Color(0xFFB45309) : const Color(0xFF065F46),
+                            ),
+                          ),
                         ),
                         const SizedBox(width: 6),
                         IconButton(

@@ -1,32 +1,14 @@
 const mongoose = require('mongoose');
 
 const customerSchema = new mongoose.Schema({
-  customerId: { type: String, required: true, unique: true },
+  customerId: { type: String, required: true, unique: true }, // e.g., 'CUST-001'
   name: { type: String, required: true },
-  email: { type: String, default: '' },
   mobile: { type: String, required: true },
-  password: { type: String, default: '' },
+  email: { type: String, default: '' },
   whatsapp: { type: String, default: '' },
   address: { type: String, required: true },
-  area: { type: String, default: '' },
+  area: { type: String, required: true },
   landmark: { type: String, default: '' },
-  addresses: [
-    {
-      id: { type: String, required: true },
-      type: { type: String, enum: ['home', 'work', 'other'], default: 'home' },
-      label: { type: String, default: 'Home' },
-      flatNo: { type: String, default: '' },
-      apartmentStreet: { type: String, default: '' },
-      area: { type: String, default: '' },
-      landmark: { type: String, default: '' },
-      city: { type: String, default: 'Hyderabad' },
-      pincode: { type: String, default: '' },
-      deliveryInstructions: { type: String, default: '' },
-      isDefault: { type: Boolean, default: false },
-      createdAt: { type: Date, default: Date.now },
-      updatedAt: { type: Date, default: Date.now },
-    },
-  ],
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
   status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'active' },
@@ -47,8 +29,17 @@ const customerSchema = new mongoose.Schema({
   deliveryPlan: {
     milkQty: { type: Number, default: 1 },
     milkUnit: { type: String, default: 'L' },
+    milkType: { type: String, default: 'Pure A2 Cow Milk' },
+    planName: { type: String, default: 'Daily Farm Pure Milk Plan' },
     curdQty: { type: Number, default: 0 },
     curdUnit: { type: String, default: 'g' },
+    extraProducts: [{
+      productId: { type: String, default: '' },
+      name: { type: String, required: true },
+      quantity: { type: Number, default: 1 },
+      unit: { type: String, default: 'pack' },
+      price: { type: Number, default: 0 },
+    }],
     frequency: { type: String, enum: ['daily', 'alternate', 'selected', 'custom'], default: 'daily' },
     deliveryDays: [{ type: String }], // ['Mon', 'Wed', 'Fri']
     deliveryBoyId: { type: String, default: '' },

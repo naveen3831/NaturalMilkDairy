@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../../data/models/product_model.dart';
-import '../../../providers/product_provider.dart';
 import '../product_details_screen.dart';
+import '../subscribe_checkout_screen.dart';
 
 class ProductCard extends StatefulWidget {
   final ProductModel product;
@@ -347,7 +346,7 @@ class _ProductCardState extends State<ProductCard> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => ProductDetailsScreen(product: p),
+                                    builder: (_) => SubscribeCheckoutScreen(product: p),
                                   ),
                                 );
                               },

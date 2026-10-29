@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CalendarDays,
+  Stars,
   CheckCircle2,
   Clock,
   Clock3,
   ShieldCheck,
+  ShieldAlert,
+  AlertCircle,
   Sparkles,
   ArrowRight,
   ArrowLeft,
@@ -29,8 +32,20 @@ import {
   X,
   LayoutGrid,
   UserRound,
+  Layers,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from '../components/CustomerBottomNav';
+import SubscriptionHistoryModal, { SubscriptionStatusBadge } from '../components/SubscriptionHistoryModal';
+import { startSubscriptionPayment, getSubscriptionHistory } from '../services/subscriptionPayment';
+import {
+  UpgradePlanFullPage,
+  ExtendSubscriptionFullPage,
+  PauseDeliveryFullPage,
+  ChangeTomorrowQtyFullPage,
+  ChangeAddressFullPage,
+  StopSubscriptionFullPage,
+} from '../components/SubscriptionActionModals';
 
 export default function SubscriptionPage({ setActiveTab }) {
   const { user } = useAuth();
@@ -39,6 +54,188 @@ export default function SubscriptionPage({ setActiveTab }) {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
   const [showMobileDetails, setShowMobileDetails] = useState(false);
   const [selectedWeekdayIndex, setSelectedWeekdayIndex] = useState(0);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [showQtyModal, setShowQtyModal] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showStopModal, setShowStopModal] = useState(false);
+  const [upgradingPlan, setUpgradingPlan] = useState(false);
+  const [extendingSub, setExtendingSub] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [paymentState, setPaymentState] = useState({
+    loading: false,
+    failed: false,
+    failedReason: '',
+    orderId: null,
+    planId: null,
+    success: false,
+  });
+
+  const [activeSubscription, setActiveSubscription] = useState(null);
+
+  useEffect(() => {
+    if (isLoggedInCustomer) {
+      getSubscriptionHistory()
+        .then((subs) => {
+          if (Array.isArray(subs) && subs.length > 0) {
+            const found = subs.find((s) => s.status === 'active' || s.status === 'paused') || subs[0];
+            if (found) setActiveSubscription(found);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isLoggedInCustomer]);
+
+  const expiryInfo = React.useMemo(() => {
+    let targetDate = null;
+    const raw = activeSubscription?.endDate || user?.subscription?.endDate || user?.subscriptionEndDate;
+    if (raw) {
+      targetDate = new Date(raw);
+    } else {
+      const now = new Date();
+      targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 28);
+    }
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const targetMidnight = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+    const diffDays = Math.ceil((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
+    const formattedDate = targetDate.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    const isExpired = diffDays < 0;
+    const isExpiringSoon = diffDays >= 0 && diffDays <= 3;
+
+    let countdownText = '';
+    if (isExpired) {
+      countdownText = `Expired on ${formattedDate}`;
+    } else if (diffDays === 0) {
+      countdownText = 'Expires Today';
+    } else if (diffDays === 1) {
+      countdownText = '1 Day Remaining';
+    } else {
+      countdownText = `${diffDays} Days Remaining`;
+    }
+
+    return {
+      formattedDate,
+      diffDays,
+      isExpired,
+      isExpiringSoon,
+      countdownText,
+    };
+  }, [activeSubscription, user]);
+
+  const renderExpiryCard = (compact = false) => {
+    const { formattedDate, countdownText, isExpired, isExpiringSoon } = expiryInfo;
+    const badgeBg = isExpired ? '#fef2f2' : isExpiringSoon ? '#fffbeb' : '#e2f1ea';
+    const badgeBorder = isExpired ? '#fecaca' : isExpiringSoon ? '#fde68a' : '#bbf7d0';
+    const badgeColor = isExpired ? '#dc2626' : isExpiringSoon ? '#b45309' : '#0d5c3a';
+
+    return (
+      <div
+        style={{
+          background: isExpired ? '#fff5f5' : isExpiringSoon ? '#fffdf5' : '#f0fdf4',
+          border: `1.5px solid ${badgeBorder}`,
+          borderRadius: '16px',
+          padding: compact ? '12px 14px' : '14px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '10px',
+                background: badgeBg,
+                color: badgeColor,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <CalendarDays size={18} />
+            </div>
+            <div>
+              <span style={{ fontSize: '0.68rem', fontWeight: 800, color: badgeColor, textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block' }}>
+                Subscription Expiry
+              </span>
+              <strong style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0c2340', display: 'block' }}>
+                Valid Until: {formattedDate}
+              </strong>
+            </div>
+          </div>
+
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: '20px',
+              background: badgeBg,
+              border: `1px solid ${badgeBorder}`,
+              color: badgeColor,
+              fontWeight: 800,
+              fontSize: '0.72rem',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: badgeColor }} />
+            {countdownText}
+          </span>
+        </div>
+
+        {(isExpiringSoon || isExpired) && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: isExpired ? '#fee2e2' : '#fef3c7',
+              padding: '8px 12px',
+              borderRadius: '10px',
+              gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <AlertCircle size={15} color={badgeColor} />
+              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: badgeColor }}>
+                {isExpired ? 'Plan expired. Renew to continue daily deliveries!' : 'Expiring soon! Extend to keep morning deliveries.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowExtendModal(true);
+              }}
+              style={{
+                background: badgeColor,
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '6px 12px',
+                fontWeight: 800,
+                fontSize: '0.72rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Extend / Renew Plan
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -104,14 +301,8 @@ export default function SubscriptionPage({ setActiveTab }) {
     },
   ];
 
-  const handleStartPlan = (planId) => {
-    if (isLoggedInCustomer) {
-      localStorage.setItem('nmd_customer_page', 'subscription');
-      if (typeof setActiveTab === 'function') {
-        setActiveTab('customer-portal');
-      }
-      window.history.pushState({ nmdCustomerPage: true }, '', '/customer/subscription');
-    } else {
+  const handleStartPlan = async (planId) => {
+    if (!isLoggedInCustomer) {
       localStorage.setItem('nmd_pending_subscription', JSON.stringify({
         planId,
         frequency: selectedFrequency,
@@ -120,14 +311,223 @@ export default function SubscriptionPage({ setActiveTab }) {
       if (typeof setActiveTab === 'function') {
         setActiveTab('login');
       }
+      return;
     }
+
+    setPaymentState({
+      loading: true,
+      failed: false,
+      failedReason: '',
+      orderId: null,
+      planId,
+      success: false,
+    });
+
+    const isCombo = planId === 'combo-essential';
+    const planMilkQty = isCombo ? 1 : (milkQuantity || 1);
+    const planCurdQty = isCombo ? 500 : 0;
+
+    const payload = {
+      address: user?.address || 'Doorstep drop',
+      area: user?.area || user?.assignedArea || 'Madhupur',
+      landmark: user?.landmark || '',
+      whatsapp: user?.mobile || '',
+      mobile: user?.mobile || '',
+      name: user?.name || 'Customer',
+      milkQty: planMilkQty,
+      curdQty: planCurdQty,
+      frequency: selectedFrequency || 'daily',
+      deliveryDays: [],
+    };
+
+    try {
+      await startSubscriptionPayment({
+        planPayload: payload,
+        user,
+        onSuccess: (result) => {
+          setPaymentState({
+            loading: false,
+            failed: false,
+            failedReason: '',
+            orderId: result.order?.id,
+            planId,
+            success: true,
+          });
+          if (isMobile) {
+            setShowMobileDetails(true);
+          }
+        },
+        onFailure: (failInfo) => {
+          setPaymentState({
+            loading: false,
+            failed: true,
+            failedReason: failInfo.reason || 'Payment could not be completed.',
+            orderId: failInfo.orderId,
+            planId,
+            success: false,
+          });
+        },
+      });
+    } catch (err) {
+      setPaymentState({
+        loading: false,
+        failed: true,
+        failedReason: err.message || 'Unable to connect to Razorpay payment gateway.',
+        orderId: null,
+        planId,
+        success: false,
+      });
+    }
+  };
+
+  const renderPaymentNotice = () => {
+    if (paymentState.loading) {
+      return (
+        <div
+          style={{
+            background: '#e0f2fe',
+            border: '1px solid #bae6fd',
+            borderRadius: '16px',
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            color: '#0369a1',
+            fontWeight: 700,
+            fontSize: '0.84rem',
+            boxShadow: '0 2px 8px rgba(3, 105, 161, 0.08)',
+          }}
+        >
+          <RotateCcw size={16} className="spin" />
+          <span>Opening Razorpay Secure Checkout...</span>
+        </div>
+      );
+    }
+
+    if (paymentState.failed) {
+      return (
+        <div
+          style={{
+            background: '#fff1f2',
+            border: '1.5px solid #fecaca',
+            borderRadius: '16px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 4px 14px rgba(220, 38, 38, 0.10)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <ShieldAlert size={22} color="#dc2626" style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <strong style={{ color: '#9f1239', fontSize: '0.88rem', display: 'block' }}>
+                Subscription Payment Failed
+              </strong>
+              <span style={{ color: '#be123c', fontSize: '0.74rem', lineHeight: 1.3, display: 'block' }}>
+                {paymentState.failedReason || 'Payment was cancelled or rejected by gateway.'}
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => handleStartPlan(paymentState.planId || selectedPlan)}
+              style={{
+                background: '#dc2626',
+                color: '#ffffff',
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: '10px',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                boxShadow: '0 2px 8px rgba(220, 38, 38, 0.25)',
+              }}
+            >
+              <RotateCcw size={13} />
+              <span>Retry Payment</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHistoryModal(true)}
+              style={{
+                background: '#ffffff',
+                color: '#9f1239',
+                border: '1px solid #fca5a5',
+                padding: '7px 12px',
+                borderRadius: '10px',
+                fontWeight: 700,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
+              }}
+            >
+              History
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (paymentState.success) {
+      return (
+        <div
+          style={{
+            background: '#ecfdf5',
+            border: '1.5px solid #a7f3d0',
+            borderRadius: '16px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 4px 14px rgba(5, 150, 105, 0.10)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CheckCircle2 size={22} color="#059669" />
+            <div>
+              <strong style={{ color: '#065f46', fontSize: '0.88rem', display: 'block' }}>
+                Subscription Activated!
+              </strong>
+              <span style={{ color: '#047857', fontSize: '0.74rem' }}>
+                Your 30-day fresh morning deliveries start tomorrow before 6:30 AM.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            style={{
+              background: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              padding: '7px 14px',
+              borderRadius: '10px',
+              fontWeight: 800,
+              fontSize: '0.76rem',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            View Subscriptions
+          </button>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   // Mobile Subscription Details Screen (Image 2)
   const renderMobileDetails = () => {
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return (
-      <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 90px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 105px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {/* Top Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '4px' }}>
           <button
@@ -157,34 +557,60 @@ export default function SubscriptionPage({ setActiveTab }) {
             Subscription Details
           </h3>
 
-          <div
-            style={{
-              position: 'relative',
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: '#ffffff',
-              border: '1.2px solid #e2ebe5',
-              color: '#0d5c3a',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Bell size={18} />
-            <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowHistoryModal(true)}
+              title="Subscription History"
               style={{
-                position: 'absolute',
-                top: '6px',
-                right: '6px',
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: '#e53935',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 10px',
+                borderRadius: '20px',
+                background: '#e2f1ea',
+                border: '1px solid #b7dfca',
+                color: '#0d5c3a',
+                fontWeight: 800,
+                fontSize: '0.74rem',
+                cursor: 'pointer',
               }}
-            />
+            >
+              <Clock size={13} />
+              <span>History</span>
+            </button>
+
+            <div
+              style={{
+                position: 'relative',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                background: '#ffffff',
+                border: '1.2px solid #e2ebe5',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Bell size={18} />
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: '#e53935',
+                }}
+              />
+            </div>
           </div>
         </div>
+
+        {renderPaymentNotice()}
 
         {/* 1. Summary Card */}
         <div
@@ -237,7 +663,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                 </span>
               </div>
               <span style={{ fontSize: '0.74rem', color: '#6b7280', fontWeight: 600 }}>
-                ID: {user?.customerId || 'CUST-101'} • Daily Morning
+                ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
               </span>
             </div>
           </div>
@@ -309,6 +735,9 @@ export default function SubscriptionPage({ setActiveTab }) {
             </div>
           </div>
         </div>
+
+        {/* Dedicated Subscription Expiry Card */}
+        {renderExpiryCard(false)}
 
         {/* 2. Order Schedule */}
         <div
@@ -451,8 +880,61 @@ export default function SubscriptionPage({ setActiveTab }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {/* Option 1: Upgrade Plan */}
+            <div
+              onClick={() => setShowUpgradeModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: '#f0fdf4',
+                border: '1.2px solid #bbf7d0',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Sparkles size={20} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Upgrade Plan</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 600 }}>Increase quantity, switch to A2 or combo</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#15803d" />
+            </div>
+
+            {/* Option 2: Extend Subscription */}
+            <div
+              onClick={() => setShowExtendModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: '#fffbeb',
+                border: '1.2px solid #fde68a',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <CalendarDays size={20} />
+                </div>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Extend Subscription</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 600 }}>Add 7, 15, 30 or 60 days to current plan</span>
+                </div>
+              </div>
+              <ChevronRight size={18} color="#d97706" />
+            </div>
+
             {/* Card 1: Pause */}
             <div
+              onClick={() => setShowPauseModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -478,6 +960,7 @@ export default function SubscriptionPage({ setActiveTab }) {
 
             {/* Card 2: Quantity */}
             <div
+              onClick={() => setShowQtyModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -503,6 +986,7 @@ export default function SubscriptionPage({ setActiveTab }) {
 
             {/* Card 3: Address */}
             <div
+              onClick={() => setShowAddressModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -528,6 +1012,7 @@ export default function SubscriptionPage({ setActiveTab }) {
 
             {/* Card 4: Stop */}
             <div
+              onClick={() => setShowStopModal(true)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -575,6 +1060,7 @@ export default function SubscriptionPage({ setActiveTab }) {
             justifyContent: 'center',
             gap: '8px',
             boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+            marginBottom: '20px',
           }}
         >
           <LayoutGrid size={18} />
@@ -587,16 +1073,41 @@ export default function SubscriptionPage({ setActiveTab }) {
   // Mobile Subscription Overview Screen (Image 1)
   const renderMobileOverview = () => {
     return (
-      <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 90px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 105px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {/* Title & Subtitle matching Image 1 */}
-        <div>
-          <h2 style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
-            Subscription
-          </h2>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
-            Manage your daily dairy plans and upcoming deliveries.
-          </p>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+              Subscription
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
+              Manage your daily dairy plans and upcoming deliveries.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '7px 12px',
+              borderRadius: '20px',
+              background: '#e2f1ea',
+              border: '1px solid #b7dfca',
+              color: '#0d5c3a',
+              fontWeight: 800,
+              fontSize: '0.74rem',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <Clock size={13} />
+            <span>History</span>
+          </button>
         </div>
+
+        {renderPaymentNotice()}
 
         {/* Hero Banner Card */}
         <div
@@ -724,7 +1235,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                   </span>
                 </div>
                 <span style={{ fontSize: '0.74rem', color: '#6b7280', fontWeight: 600 }}>
-                  ID: {user?.customerId || 'CUST-101'} • Daily Morning
+                  ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
                 </span>
               </div>
             </div>
@@ -791,6 +1302,9 @@ export default function SubscriptionPage({ setActiveTab }) {
                 </div>
               </div>
             </div>
+
+            {/* Dedicated Subscription Expiry Card */}
+            {renderExpiryCard(true)}
 
             {/* Two Action Buttons matching Image 1 */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', paddingTop: '2px' }}>
@@ -948,7 +1462,95 @@ export default function SubscriptionPage({ setActiveTab }) {
   };
 
   if (isMobile) {
-    return showMobileDetails ? renderMobileDetails() : renderMobileOverview();
+    return (
+      <div style={{ position: 'relative', minHeight: '100vh', background: '#f9faf9', paddingBottom: '70px' }}>
+        {showMobileDetails ? renderMobileDetails() : renderMobileOverview()}
+        <CustomerBottomNav
+          activePage="subscription"
+          onNavigate={(pageId) => {
+            setShowMobileDetails(false);
+            if (pageId === 'subscription') {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              return;
+            }
+            if (typeof setActiveTab === 'function') {
+              setActiveTab(pageId === 'home' ? 'customer-portal' : pageId);
+            }
+          }}
+          items={CUSTOMER_HOME_NAV_ITEMS}
+          className="customer-mobile-bottom-nav"
+        />
+        <SubscriptionHistoryModal
+          isOpen={showHistoryModal}
+          onClose={() => setShowHistoryModal(false)}
+          user={user}
+          onPaymentSuccess={() => {
+            setShowHistoryModal(false);
+            setShowMobileDetails(true);
+          }}
+        />
+        {showUpgradeModal && (
+          <UpgradePlanFullPage
+            user={user}
+            onClose={() => setShowUpgradeModal(false)}
+            onSuccess={(msg) => {
+              setShowUpgradeModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+        {showExtendModal && (
+          <ExtendSubscriptionFullPage
+            user={user}
+            onClose={() => setShowExtendModal(false)}
+            onSuccess={(msg) => {
+              setShowExtendModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+        {showPauseModal && (
+          <PauseDeliveryFullPage
+            user={user}
+            onClose={() => setShowPauseModal(false)}
+            onSuccess={(msg) => {
+              setShowPauseModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+        {showQtyModal && (
+          <ChangeTomorrowQtyFullPage
+            user={user}
+            onClose={() => setShowQtyModal(false)}
+            onSuccess={(msg) => {
+              setShowQtyModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+        {showAddressModal && (
+          <ChangeAddressFullPage
+            user={user}
+            onClose={() => setShowAddressModal(false)}
+            onSuccess={(msg) => {
+              setShowAddressModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+        {showStopModal && (
+          <StopSubscriptionFullPage
+            user={user}
+            onClose={() => setShowStopModal(false)}
+            onSuccess={(msg) => {
+              setShowStopModal(false);
+              alert(msg);
+            }}
+          />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1061,31 +1663,79 @@ export default function SubscriptionPage({ setActiveTab }) {
 
           {/* User Status Bar if Logged In */}
           {isLoggedInCustomer && (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '12px',
-              background: '#ffffff',
-              color: '#064e3b',
-              padding: '10px 18px',
-              borderRadius: '16px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-              marginTop: '8px',
-              fontWeight: 700,
-              fontSize: '0.88rem',
-              cursor: 'pointer',
-            }}
-            onClick={() => handleStartPlan('active')}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
               <div style={{
-                width: '10px',
-                height: '10px',
-                borderRadius: '50%',
-                background: '#10b981',
-                boxShadow: '0 0 8px #10b981',
-              }} />
-              <span>Customer Account Active: Manage Doorstep Subscription</span>
-              <ArrowRight size={16} color="#059669" />
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '12px',
+                background: '#ffffff',
+                color: '#064e3b',
+                padding: '10px 18px',
+                borderRadius: '16px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+              }}
+              onClick={() => handleStartPlan('cow-daily')}
+              >
+                <div style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  background: '#10b981',
+                  boxShadow: '0 0 8px #10b981',
+                }} />
+                <span>Customer Active: Plan Valid Until {expiryInfo.formattedDate}</span>
+                <span style={{ fontSize: '0.74rem', background: '#e2f1ea', color: '#0d5c3a', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>
+                  {expiryInfo.countdownText}
+                </span>
+                <ArrowRight size={16} color="#059669" />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowExtendModal(true)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1.2px solid rgba(255, 255, 255, 0.4)',
+                  color: '#ffffff',
+                  padding: '10px 18px',
+                  borderRadius: '16px',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <CalendarDays size={16} />
+                <span>Extend Plan</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(true)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  border: '1.2px solid rgba(255, 255, 255, 0.4)',
+                  color: '#ffffff',
+                  padding: '10px 18px',
+                  borderRadius: '16px',
+                  fontWeight: 800,
+                  fontSize: '0.86rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backdropFilter: 'blur(8px)',
+                }}
+              >
+                <Clock size={16} />
+                <span>Subscription History</span>
+              </button>
             </div>
           )}
         </div>
@@ -1093,6 +1743,96 @@ export default function SubscriptionPage({ setActiveTab }) {
 
       {/* Main Content Container */}
       <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '32px 18px' }}>
+        <div style={{ marginBottom: '20px' }}>
+          {renderPaymentNotice()}
+        </div>
+
+        {/* Desktop Active Subscription Summary & Expiry Card */}
+        {isLoggedInCustomer && (
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1.5px solid #d1fae5',
+              borderRadius: '22px',
+              padding: '22px 24px',
+              marginBottom: '36px',
+              boxShadow: '0 4px 18px rgba(13, 92, 58, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <img
+                  src="/sub_active_thumb.png"
+                  onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                  alt="Active Subscription"
+                  style={{ width: '60px', height: '60px', borderRadius: '16px', objectFit: 'cover', border: '1px solid #e2ebe5' }}
+                />
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 900, color: '#0c2340' }}>
+                      Active Doorstep Subscription
+                    </h3>
+                    <span style={{ background: '#e2f1ea', color: '#0d5c3a', borderRadius: '20px', padding: '3px 10px', fontSize: '0.72rem', fontWeight: 800 }}>
+                      Active • ID {user?.customerId || 'CUST-101'}
+                    </span>
+                  </div>
+                  <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                    {user?.deliveryPlan?.milkType || 'Desi Cow Milk (A2)'} • {user?.deliveryPlan?.milkQty || 1}L Daily Morning Drop before 6:30 AM
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(true)}
+                  style={{
+                    background: '#f0fdf4',
+                    border: '1.2px solid #bbf7d0',
+                    color: '#15803d',
+                    padding: '10px 18px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Sparkles size={16} />
+                  <span>Upgrade Plan & Add Products</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowExtendModal(true)}
+                  style={{
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '10px 18px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
+                  }}
+                >
+                  <CalendarDays size={16} />
+                  <span>Extend Subscription</span>
+                </button>
+              </div>
+            </div>
+
+            {renderExpiryCard(false)}
+          </div>
+        )}
         {/* Section Title */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <span style={{
@@ -1410,6 +2150,69 @@ export default function SubscriptionPage({ setActiveTab }) {
           </div>
         </div>
       </div>
+      {/* ── Full-Screen Upgrade Plan Page ── */}
+      {showUpgradeModal && (
+        <UpgradePlanFullPage
+          user={user}
+          onClose={() => setShowUpgradeModal(false)}
+          onSuccess={(msg) => { setShowUpgradeModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Full-Screen Extend Subscription Page ── */}
+      {showExtendModal && (
+        <ExtendSubscriptionFullPage
+          user={user}
+          onClose={() => setShowExtendModal(false)}
+          onSuccess={(msg) => { setShowExtendModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Full-Screen Pause Delivery Page ── */}
+      {showPauseModal && (
+        <PauseDeliveryFullPage
+          user={user}
+          onClose={() => setShowPauseModal(false)}
+          onSuccess={(msg) => { setShowPauseModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Full-Screen Change Tomorrow Qty Page ── */}
+      {showQtyModal && (
+        <ChangeTomorrowQtyFullPage
+          user={user}
+          onClose={() => setShowQtyModal(false)}
+          onSuccess={(msg) => { setShowQtyModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Full-Screen Change Address Page ── */}
+      {showAddressModal && (
+        <ChangeAddressFullPage
+          user={user}
+          onClose={() => setShowAddressModal(false)}
+          onSuccess={(msg) => { setShowAddressModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Full-Screen Stop Subscription Page ── */}
+      {showStopModal && (
+        <StopSubscriptionFullPage
+          user={user}
+          onClose={() => setShowStopModal(false)}
+          onSuccess={(msg) => { setShowStopModal(false); alert(msg); }}
+        />
+      )}
+
+      {/* ── Subscription History Modal ── */}
+      <SubscriptionHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        user={user}
+        onPaymentSuccess={() => {
+          setShowHistoryModal(false);
+        }}
+      />
     </div>
   );
 }
