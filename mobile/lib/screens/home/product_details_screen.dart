@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../data/models/product_model.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/customer_provider.dart';
+import 'package:natural_milk_dairy/data/models/product_model.dart';
+import 'package:natural_milk_dairy/providers/auth_provider.dart';
+import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'contact_support_screen.dart';
 import 'subscribe_checkout_screen.dart';
 import '../auth/login_screen.dart';

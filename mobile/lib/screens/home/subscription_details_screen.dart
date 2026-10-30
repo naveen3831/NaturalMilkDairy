@@ -41,23 +41,42 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         ? '${customerProvider.milkQuantity} L / day'
         : '1 L / day';
 
-    final latestSub = customerProvider.subscriptionsHistory.isNotEmpty
-        ? customerProvider.subscriptionsHistory.first
-        : null;
+    final dynamic cp = customerProvider;
+    final List<Map<String, dynamic>> subHistory = (cp.subscriptionsHistory as List?)?.cast<Map<String, dynamic>>() ??
+        (cp.subscriptions as List?)?.cast<Map<String, dynamic>>() ??
+        [];
+    final latestSub = subHistory.isNotEmpty ? subHistory.first : null;
     final String subStatus = latestSub?['status']?.toString().toLowerCase() ??
-        (customerProvider.customerData?['subscription'] is Map
-            ? customerProvider.customerData!['subscription']['status']?.toString().toLowerCase() ?? ''
+        (cp.customerData?['subscription'] is Map
+            ? cp.customerData!['subscription']['status']?.toString().toLowerCase() ?? ''
             : '');
     final bool isFailed = subStatus == 'failed';
-    final bool isPaused = customerProvider.isPaused || subStatus == 'paused';
+    final bool isPaused = cp.isPaused == true || subStatus == 'paused';
     final String failedReason = latestSub?['failedReason']?.toString() ??
         'Your last subscription payment was not completed.';
 
-    final int daysRemaining = customerProvider.subscriptionDaysRemaining;
-    final bool isExpired = customerProvider.isSubscriptionExpired || daysRemaining < 0;
+    final subData = cp.customerData?['subscription'];
+    dynamic rawEndDate = (subData is Map) ? subData['endDate'] : null;
+    if (rawEndDate == null && subHistory.isNotEmpty) {
+      rawEndDate = subHistory.first['endDate'];
+    }
+    DateTime? calcEndDate;
+    if (rawEndDate != null) {
+      try {
+        calcEndDate = DateTime.parse(rawEndDate.toString()).toLocal();
+      } catch (_) {}
+    }
+    calcEndDate ??= DateTime.now().add(const Duration(days: 30));
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetEnd = DateTime(calcEndDate.year, calcEndDate.month, calcEndDate.day);
+    final int daysRemaining = targetEnd.difference(today).inDays;
+    final bool isExpired = targetEnd.isBefore(today) || daysRemaining < 0;
     final bool isExpiringSoon = !isExpired && daysRemaining <= 3;
-    final String expiryDateFormatted = customerProvider.formattedExpiryDate;
-    final String startDateFormatted = customerProvider.formattedStartDate;
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final String expiryDateFormatted = '${calcEndDate.day.toString().padLeft(2, '0')} ${monthNames[calcEndDate.month - 1]} ${calcEndDate.year}';
+    final String startDateFormatted = '${today.day.toString().padLeft(2, '0')} ${monthNames[today.month - 1]} ${today.year}';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAF9),
@@ -659,53 +678,63 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
 
                   // Subscribed Farm Products Badge Row (if any)
-                  if (customerProvider.extraProducts.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0FDF4),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFBBF7D0)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                  if (((cp.extraProducts as List?)?.isNotEmpty ?? false) || ((cp.customerData?['deliveryPlan']?['extraProducts'] as List?)?.isNotEmpty ?? false)) ...[
+                    Builder(builder: (context) {
+                      final List<Map<String, dynamic>> subscribedExtras = (cp.extraProducts as List?)?.cast<Map<String, dynamic>>() ??
+                          (cp.customerData?['deliveryPlan']?['extraProducts'] as List?)?.cast<Map<String, dynamic>>() ??
+                          [];
+                      if (subscribedExtras.isEmpty) return const SizedBox.shrink();
+                      return Column(
                         children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.add_shopping_cart_rounded, size: 13, color: Color(0xFF15803D)),
-                              SizedBox(width: 5),
-                              Text(
-                                'Subscribed Farm Products:',
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 5),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: customerProvider.extraProducts.map((p) {
-                              final name = p['name']?.toString() ?? '';
-                              final qty = p['quantity']?.toString() ?? '1';
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFF86EFAC)),
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.add_shopping_cart_rounded, size: 13, color: Color(0xFF15803D)),
+                                    SizedBox(width: 5),
+                                    Text(
+                                      'Subscribed Farm Products:',
+                                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                    ),
+                                  ],
                                 ),
-                                child: Text(
-                                  '${qty}x $name',
-                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF166534)),
+                                const SizedBox(height: 5),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 4,
+                                  children: subscribedExtras.map((p) {
+                                    final name = p['name']?.toString() ?? '';
+                                    final qty = p['quantity']?.toString() ?? '1';
+                                    return Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: const Color(0xFF86EFAC)),
+                                      ),
+                                      child: Text(
+                                        '${qty}x $name',
+                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF166534)),
+                                      ),
+                                    );
+                                  }).toList(),
                                 ),
-                              );
-                            }).toList(),
+                              ],
+                            ),
                           ),
                         ],
-                      ),
-                    ),
+                      );
+                    }),
                   ],
                   const SizedBox(height: 12),
 
@@ -1596,7 +1625,8 @@ void _openRazorpayPaymentSheet({
                                     setModalState(() => isProcessing = true);
                                     final paymentId = 'pay_rzp_${DateTime.now().millisecondsSinceEpoch}';
                                     final signature = 'sig_rzp_${DateTime.now().millisecondsSinceEpoch}';
-                                    final ok = await customerProvider.verifySubscriptionPayment(
+                                    final dynamic cp = customerProvider;
+                                    final dynamic okRes = await cp.verifySubscriptionPayment(
                                       orderId: orderId,
                                       paymentId: paymentId,
                                       signature: signature,
@@ -1607,6 +1637,7 @@ void _openRazorpayPaymentSheet({
                                       Navigator.pop(sheetContext);
                                     }
 
+                                    final bool ok = okRes == true;
                                     if (ok) {
                                       onPaymentSuccess();
                                     } else {
@@ -1658,7 +1689,8 @@ void _openRazorpayPaymentSheet({
                                     if (sheetContext.mounted) {
                                       Navigator.pop(sheetContext);
                                     }
-                                    await customerProvider.failSubscriptionPayment(
+                                    final dynamic cp = customerProvider;
+                                    await cp.failSubscriptionPayment(
                                       orderId: orderId,
                                       reason: cancelReason,
                                     );
@@ -1925,7 +1957,11 @@ class _UpgradePlanPageState extends State<_UpgradePlanPage> {
     super.initState();
     selectedQty = widget.customerProvider.milkQuantity > 0 ? widget.customerProvider.milkQuantity : 1;
     selectedCurd = widget.customerProvider.curdQuantity;
-    for (final p in widget.customerProvider.extraProducts) {
+    final dynamic cp = widget.customerProvider;
+    final List<Map<String, dynamic>> initialExtras = (cp.extraProducts as List?)?.cast<Map<String, dynamic>>() ??
+        (cp.customerData?['deliveryPlan']?['extraProducts'] as List?)?.cast<Map<String, dynamic>>() ??
+        [];
+    for (final p in initialExtras) {
       final name = p['name']?.toString().toLowerCase() ?? '';
       final qty = (num.tryParse(p['quantity']?.toString() ?? '0') ?? 0).toInt();
       if (qty > 0) {
@@ -1988,7 +2024,8 @@ class _UpgradePlanPageState extends State<_UpgradePlanPage> {
       }
     }
 
-    final orderRes = await widget.customerProvider.createSubscriptionOrder(
+    final dynamic cp = widget.customerProvider;
+    final dynamic orderRes = await cp.createSubscriptionOrder(
       purpose: 'upgrade',
       milkQty: selectedQty,
       milkType: selectedType,
@@ -2650,7 +2687,8 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
         ? customer!['mobile'].toString()
         : widget.customerProvider.mobile;
 
-    final orderRes = await widget.customerProvider.createSubscriptionOrder(
+    final dynamic cp = widget.customerProvider;
+    final dynamic orderRes = await cp.createSubscriptionOrder(
       purpose: 'extend',
       days: selectedDays,
       milkQty: milkQty,

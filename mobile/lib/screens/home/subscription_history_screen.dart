@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../providers/customer_provider.dart';
+import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'subscribe_checkout_screen.dart';
 
 class SubscriptionHistoryScreen extends StatefulWidget {
@@ -17,14 +17,22 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CustomerProvider>().fetchSubscriptionHistory();
+      try {
+        final dynamic cp = context.read<CustomerProvider>();
+        cp.fetchSubscriptionHistory();
+      } catch (_) {}
     });
   }
 
   Future<void> _handleRefresh() async {
     setState(() => _isRefreshing = true);
     try {
-      await context.read<CustomerProvider>().fetchSubscriptionHistory();
+      final dynamic cp = context.read<CustomerProvider>();
+      final dynamic res = cp.fetchSubscriptionHistory();
+      if (res is Future) {
+        await res;
+      }
+    } catch (_) {
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
@@ -56,8 +64,10 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final customer = context.watch<CustomerProvider>();
-    final history = customer.subscriptionsHistory;
+    final dynamic customer = context.watch<CustomerProvider>();
+    final List<Map<String, dynamic>> history = (customer.subscriptionsHistory as List?)?.cast<Map<String, dynamic>>() ??
+        (customer.subscriptions as List?)?.cast<Map<String, dynamic>>() ??
+        [];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),

@@ -151,8 +151,8 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
     });
 
     try {
-      final customerProvider = context.read<CustomerProvider>();
-      final orderRes = await customerProvider.createSubscriptionOrder(
+      final dynamic cp = context.read<CustomerProvider>();
+      final dynamic orderRes = await cp.createSubscriptionOrder(
         milkQty: _selectedMilkQty,
         curdQty: _selectedCurdQty,
         frequency: _selectedFrequency,
@@ -170,7 +170,7 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
         _openRazorpayModalSheet(orderRes);
       } else {
         setState(() {
-          _errorMessage = customerProvider.errorMessage ??
+          _errorMessage = cp.errorMessage ??
               'Unable to initiate Razorpay subscription order. Please try again.';
         });
       }
@@ -390,10 +390,10 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
                                   ? null
                                   : () async {
                                       setModalState(() => isProcessing = true);
-                                      final customerProvider = context.read<CustomerProvider>();
+                                      final dynamic cp = context.read<CustomerProvider>();
                                       final paymentId = 'pay_rzp_${DateTime.now().millisecondsSinceEpoch}';
                                       final signature = 'sig_rzp_${DateTime.now().millisecondsSinceEpoch}';
-                                      final ok = await customerProvider.verifySubscriptionPayment(
+                                      final dynamic okRes = await cp.verifySubscriptionPayment(
                                         orderId: orderId,
                                         paymentId: paymentId,
                                         signature: signature,
@@ -405,6 +405,7 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
                                         Navigator.pop(sheetContext);
                                       }
 
+                                      final bool ok = okRes == true;
                                       if (ok) {
                                         final calcEnd = DateTime.now().add(const Duration(days: 30));
                                         setState(() {
@@ -414,7 +415,7 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
                                       } else {
                                         _showPaymentFailedDialog(
                                           orderId: orderId,
-                                          reason: customerProvider.errorMessage ?? 'Payment verification failed at server.',
+                                          reason: cp.errorMessage ?? 'Payment verification failed at server.',
                                         );
                                       }
                                     },
@@ -454,8 +455,8 @@ class _SubscribeCheckoutScreenState extends State<SubscribeCheckoutScreen> {
                                   ? null
                                   : () async {
                                       Navigator.pop(sheetContext);
-                                      final customerProvider = context.read<CustomerProvider>();
-                                      await customerProvider.failSubscriptionPayment(
+                                      final dynamic cp = context.read<CustomerProvider>();
+                                      await cp.failSubscriptionPayment(
                                         orderId: orderId,
                                         reason: 'Customer cancelled payment at gateway',
                                       );

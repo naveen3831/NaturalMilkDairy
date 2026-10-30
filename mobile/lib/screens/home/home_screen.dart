@@ -1949,9 +1949,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return RefreshIndicator(
       onRefresh: () async {
-        await Future.wait([
+        await Future.wait<dynamic>([
           productProvider.loadProducts(),
-          if (!isGuest) customerProvider.loadAllCustomerData(silent: true),
+          if (!isGuest) customerProvider.loadAllCustomerData(silent: true) as Future<dynamic>,
         ]);
       },
       color: const Color(0xFF0D5C3A),
@@ -2184,25 +2184,58 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // TAB 2: SUBSCRIPTION TAB (Matching Image 2 - Subscription Overview Screen)
   Widget _buildSubscriptionTab(dynamic user) {
-    final customerProvider = context.watch<CustomerProvider>();
+    final dynamic customerProvider = context.watch<CustomerProvider>();
     final productProvider = context.watch<ProductProvider>();
     final isGuest = user == null || user.isGuest == true;
 
-    final latestSub = customerProvider.subscriptionsHistory.isNotEmpty
-        ? customerProvider.subscriptionsHistory.first
-        : null;
+    List<Map<String, dynamic>> subHistory = [];
+    try {
+      final dynamic h = customerProvider.subscriptionsHistory;
+      if (h is List) {
+        subHistory = h.cast<Map<String, dynamic>>();
+      }
+    } catch (_) {
+      try {
+        final dynamic s = customerProvider.subscriptions;
+        if (s is List) {
+          subHistory = s.cast<Map<String, dynamic>>();
+        }
+      } catch (_) {}
+    }
+    final latestSub = subHistory.isNotEmpty ? subHistory.first : null;
     final String subStatus = latestSub?['status']?.toString().toLowerCase() ??
         (customerProvider.customerData?['subscription'] is Map
             ? customerProvider.customerData!['subscription']['status']?.toString().toLowerCase() ?? ''
             : '');
     final bool isSubFailed = subStatus == 'failed';
-    final bool isSubPaused = customerProvider.isPaused || subStatus == 'paused';
+    final bool isSubPaused = customerProvider.isPaused == true || subStatus == 'paused';
+
+    final subData = customerProvider.customerData?['subscription'];
+    dynamic rawEndDate = (subData is Map) ? subData['endDate'] : null;
+    if (rawEndDate == null && subHistory.isNotEmpty) {
+      rawEndDate = subHistory.first['endDate'];
+    }
+    DateTime? calcEndDate;
+    if (rawEndDate != null) {
+      try {
+        calcEndDate = DateTime.parse(rawEndDate.toString()).toLocal();
+      } catch (_) {}
+    }
+    calcEndDate ??= DateTime.now().add(const Duration(days: 30));
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final targetEnd = DateTime(calcEndDate.year, calcEndDate.month, calcEndDate.day);
+    final int subDaysRemaining = targetEnd.difference(today).inDays;
+    final bool subExpired = targetEnd.isBefore(today) || subDaysRemaining < 0;
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final String subFormattedExpiry = '${calcEndDate.day.toString().padLeft(2, '0')} ${monthNames[calcEndDate.month - 1]} ${calcEndDate.year}';
 
     return RefreshIndicator(
       onRefresh: () async {
-        await Future.wait([
+        await Future.wait<dynamic>([
           productProvider.loadProducts(),
-          if (!isGuest) customerProvider.loadAllCustomerData(silent: true),
+          if (!isGuest) customerProvider.loadAllCustomerData(silent: true) as Future<dynamic>,
         ]);
       },
       color: const Color(0xFF0D5C3A),
@@ -2461,16 +2494,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                                 decoration: BoxDecoration(
-                                  color: customerProvider.isSubscriptionExpired
+                                  color: subExpired
                                       ? const Color(0xFFFEE2E2)
-                                      : customerProvider.subscriptionDaysRemaining <= 3
+                                      : subDaysRemaining <= 3
                                           ? const Color(0xFFFEF3C7)
                                           : const Color(0xFFE2F1EA),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: customerProvider.isSubscriptionExpired
+                                    color: subExpired
                                         ? const Color(0xFFFCA5A5)
-                                        : customerProvider.subscriptionDaysRemaining <= 3
+                                        : subDaysRemaining <= 3
                                             ? const Color(0xFFFDE68A)
                                             : const Color(0xFFBBF7D0),
                                   ),
@@ -2481,24 +2514,24 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Icon(
                                       Icons.event_available_rounded,
                                       size: 13,
-                                      color: customerProvider.isSubscriptionExpired
+                                      color: subExpired
                                           ? const Color(0xFFDC2626)
-                                          : customerProvider.subscriptionDaysRemaining <= 3
+                                          : subDaysRemaining <= 3
                                               ? const Color(0xFFD97706)
                                               : const Color(0xFF0D5C3A),
                                     ),
                                     const SizedBox(width: 4),
                                     Flexible(
                                       child: Text(
-                                        customerProvider.isSubscriptionExpired
-                                            ? 'Valid Until: ${customerProvider.formattedExpiryDate} (Expired)'
-                                            : 'Valid Until: ${customerProvider.formattedExpiryDate} (${customerProvider.subscriptionDaysRemaining} Days Left)',
+                                        subExpired
+                                            ? 'Valid Until: $subFormattedExpiry (Expired)'
+                                            : 'Valid Until: $subFormattedExpiry ($subDaysRemaining Days Left)',
                                         style: TextStyle(
                                           fontSize: 10.5,
                                           fontWeight: FontWeight.w800,
-                                          color: customerProvider.isSubscriptionExpired
+                                          color: subExpired
                                               ? const Color(0xFFDC2626)
-                                              : customerProvider.subscriptionDaysRemaining <= 3
+                                              : subDaysRemaining <= 3
                                                   ? const Color(0xFFB45309)
                                                   : const Color(0xFF0D5C3A),
                                         ),
