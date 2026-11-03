@@ -14,6 +14,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   Clock3,
   CreditCard,
   Edit3,
@@ -73,6 +74,7 @@ import CustomerBottomNav, {
   CUSTOMER_MOBILE_PORTAL_ITEMS,
   CUSTOMER_PORTAL_ITEMS,
 } from '../../components/CustomerBottomNav';
+import LeafletMapPicker from '../../components/LeafletMapPicker';
 import ProductDetailsView from '../ProductDetailsView';
 import SubscriptionHistoryModal, { SubscriptionStatusBadge } from '../../components/SubscriptionHistoryModal';
 import { startSubscriptionPayment } from '../../services/subscriptionPayment';
@@ -130,7 +132,7 @@ const getCustomerRoute = () => {
   const profileViews = [
     'personal-info', 'wallet', 'pause', 'quantity',
     'delivery-window', 'drop-instructions', 'support', 'about', 'delete-account',
-    'delivery-address', 'account-details',
+    'delivery-address', 'account-details', 'faq',
   ];
   return {
     page,
@@ -243,6 +245,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [showQtyFullPage, setShowQtyFullPage] = useState(false);
   const [showAddressFullPage, setShowAddressFullPage] = useState(false);
   const [showStopFullPage, setShowStopFullPage] = useState(false);
+  const [profileOriginPage, setProfileOriginPage] = useState('profile');
 
   const serviceableLocations = useMemo(() => {
     if (Array.isArray(locations) && locations.length > 0) {
@@ -307,6 +310,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   });
   const [selectedProductDetails, setSelectedProductDetails] = useState(null);
   const [selectedWeekdayIndex, setSelectedWeekdayIndex] = useState(0);
+  const [faqSearchQuery, setFaqSearchQuery] = useState('');
+  const [selectedFaqCategory, setSelectedFaqCategory] = useState('All');
+  const [expandedFaqId, setExpandedFaqId] = useState(null);
 
   const getProductImage = (p) => {
     if (!p) return '/product-cow-milk.jpg';
@@ -624,7 +630,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     window.history[updateHistory]({ nmdCustomerPage: true }, '', path);
   };
 
-  const openProfileDetail = (view) => {
+  const openProfileDetail = (view, originPage = null) => {
+    if (originPage) {
+      setProfileOriginPage(originPage);
+    }
     const normalizedView = (view === 'delivery_address' || view === 'delivery-address') ? 'delivery-address' : view;
     if (normalizedView === 'deliveries') {
       navigateToPage('deliveries');
@@ -1080,7 +1089,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const backToProfile = () => {
     setProfileDetailView(null);
     setIsEditingProfile(false);
-    setCustomerPath('/customer/profile', true);
+    if (profileOriginPage === 'subscription') {
+      setActivePage('subscription');
+      localStorage.setItem('nmd_customer_page', 'subscription');
+      setCustomerPath('/customer/subscription', true);
+      setProfileOriginPage('profile');
+    } else {
+      setActivePage('profile');
+      localStorage.setItem('nmd_customer_page', 'profile');
+      setCustomerPath('/customer/profile', true);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1152,6 +1170,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [addressesLoading, setAddressesLoading] = useState(false);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState(null);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [addressForm, setAddressForm] = useState({
     type: 'home',
     label: 'Home',
@@ -2138,7 +2157,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <div
           onClick={() => {
             setSelectedSubForDetails(null);
-            openProfileDetail('delivery-address');
+            openProfileDetail('delivery-address', 'subscription');
           }}
           style={{
             background: '#ffffff',
@@ -2351,7 +2370,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div
               onClick={() => {
                 setSelectedSubForDetails(null);
-                setShowAddressFullPage(true);
+                openProfileDetail('delivery-address', 'subscription');
               }}
               style={{
                 display: 'flex',
@@ -3240,6 +3259,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
 
               <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openProfileDetail('delivery-address', 'subscription');
+                }}
                 style={{
                   background: '#f2f8f4',
                   borderRadius: '10px',
@@ -3248,6 +3271,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
+                  cursor: 'pointer',
                 }}
               >
                 <MapPin size={15} color="#0d5c3a" />
@@ -5166,6 +5190,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     else if (profileDetailView === 'delivery-window') viewTitle = 'Morning Delivery Window';
     else if (profileDetailView === 'drop-instructions') viewTitle = 'Drop Instructions';
     else if (profileDetailView === 'support') viewTitle = '24/7 Helpline & Support';
+    else if (profileDetailView === 'faq') viewTitle = 'Frequently Asked Questions (FAQ)';
     else if (profileDetailView === 'about') viewTitle = 'About Natural Milk Dairy';
     else if (profileDetailView === 'delete-account') viewTitle = 'Delete Account';
 
@@ -5183,7 +5208,30 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <span>Profile</span>
           </button>
           <h2 className="mobile-detail-header-title">{viewTitle}</h2>
-          <div className="mobile-detail-header-spacer" />
+          {profileDetailView === 'account-details' ? (
+            <button
+              type="button"
+              onClick={() => openProfileDetail('personal-info')}
+              style={{
+                background: '#e2f1ea',
+                color: '#0d5c3a',
+                border: 'none',
+                padding: '6px 14px',
+                borderRadius: '10px',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <Edit3 size={14} />
+              <span>Edit</span>
+            </button>
+          ) : (
+            <div className="mobile-detail-header-spacer" />
+          )}
         </header>
 
         {/* 0. COMPREHENSIVE ACCOUNT DETAILS VIEW */}
@@ -5193,7 +5241,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div className="mobile-detail-card mobile-detail-user-card">
               <div className="mobile-detail-user-head">
                 <div className="mobile-profile-avatar">{customerInitial}</div>
-                <div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="mobile-detail-title-row">
                     <h3>{customerName}</h3>
                     <span className="mobile-detail-verified-badge">
@@ -5202,6 +5250,28 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   </div>
                   <p className="mobile-detail-subtitle">Account ID: {customerId} · {subscriptionStatusLabel}</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => openProfileDetail('personal-info')}
+                  style={{
+                    background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 12px rgba(13, 92, 58, 0.2)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Edit3 size={14} />
+                  <span>Edit Profile</span>
+                </button>
               </div>
             </div>
 
@@ -5594,6 +5664,33 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                         </div>
                       </div>
 
+                      {/* GPS Coordinates Pin Badge */}
+                      {addr.latitude && addr.longitude && (
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${addr.latitude},${addr.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            fontSize: '0.74rem',
+                            color: '#065f46',
+                            background: '#ecfdf5',
+                            border: '1px solid #a7f3d0',
+                            padding: '4px 10px',
+                            borderRadius: '8px',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                            marginBottom: '8px',
+                            width: 'fit-content',
+                          }}
+                        >
+                          <MapPin size={12} color="#059669" />
+                          <span>GPS Pin: {Number(addr.latitude).toFixed(4)}, {Number(addr.longitude).toFixed(4)} (Open Navigation)</span>
+                        </a>
+                      )}
+
                       {/* Landmark & Instructions */}
                       {addr.landmark && (
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 650, background: '#f0fdf4', padding: '6px 10px', borderRadius: '8px', marginBottom: '6px', border: '1px solid #d1fae5' }}>
@@ -5696,6 +5793,26 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </div>
               </div>
             </div>
+
+            {/* LEAFLET INTERACTIVE MAP PICKER (MATCHING USER SCREENSHOT) */}
+            {showMapPicker && (
+              <LeafletMapPicker
+                initialLat={addressForm.latitude || currentCustomer.latitude}
+                initialLng={addressForm.longitude || currentCustomer.longitude}
+                initialArea={addressForm.area || currentCustomer.area || 'Madhapur'}
+                onSelectLocation={(loc) => {
+                  setAddressForm((f) => ({
+                    ...f,
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                    apartmentStreet: f.apartmentStreet || loc.address || '',
+                    area: loc.placeTitle || f.area,
+                  }));
+                  setShowMapPicker(false);
+                }}
+                onClose={() => setShowMapPicker(false)}
+              />
+            )}
 
             {/* 3. FULL SCREEN ADD / EDIT ADDRESS VIEW */}
             {addressModalOpen && (
@@ -5857,6 +5974,43 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                             />
                           </div>
                         )}
+                      </div>
+
+                      {/* Leaflet Pin Location on Map Button */}
+                      <div style={{ background: '#f0fdf4', borderRadius: '16px', padding: '14px 16px', border: '1.5px solid #a7f3d0', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                          <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#059669', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <MapPin size={22} />
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#065f46' }}>
+                              {addressForm.latitude && addressForm.longitude ? '📍 Location Pinned on Map' : 'Select Location on Map'}
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: '#047857', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {addressForm.latitude && addressForm.longitude
+                                ? `Lat: ${Number(addressForm.latitude).toFixed(4)}, Lng: ${Number(addressForm.longitude).toFixed(4)}`
+                                : 'Tap to pin exact delivery doorstep on Leaflet Map'}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowMapPicker(true)}
+                          style={{
+                            background: '#059669',
+                            color: '#ffffff',
+                            border: 'none',
+                            padding: '8px 14px',
+                            borderRadius: '10px',
+                            fontSize: '0.80rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                          }}
+                        >
+                          {addressForm.latitude && addressForm.longitude ? 'Change Pin' : 'Select on Map'}
+                        </button>
                       </div>
 
                       {/* 2. Primary Available Locations Dropdown */}
@@ -7455,6 +7609,314 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         )}
 
+        {/* 8.5. FREQUENTLY ASKED QUESTIONS (FAQ) */}
+        {profileDetailView === 'faq' && (
+          <div className="mobile-detail-body">
+            {/* Search Bar */}
+            <div style={{ position: 'relative', marginBottom: '14px' }}>
+              <Search
+                size={18}
+                color="#0d5c3a"
+                style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' }}
+              />
+              <input
+                type="text"
+                placeholder="Search questions, timings, bottles, billing..."
+                value={faqSearchQuery}
+                onChange={(e) => setFaqSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px 12px 42px',
+                  borderRadius: '14px',
+                  border: '1px solid #e2ebe5',
+                  background: '#ffffff',
+                  fontSize: '0.88rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                }}
+              />
+            </div>
+
+            {/* Category Filter Pills */}
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                overflowX: 'auto',
+                paddingBottom: '12px',
+                scrollbarWidth: 'none',
+              }}
+            >
+              {[
+                { id: 'All', label: 'All FAQs' },
+                { id: 'Delivery & Timing', label: 'Delivery & Timing' },
+                { id: 'Glass Bottles', label: 'Glass Bottles' },
+                { id: 'Pause & Vacation', label: 'Pause / Vacation' },
+                { id: 'Milk Quality', label: 'Pure Milk Quality' },
+                { id: 'Payments', label: 'Payments & Renewal' },
+              ].map((cat) => {
+                const isSel = selectedFaqCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedFaqCategory(cat.id)}
+                    style={{
+                      whiteSpace: 'nowrap',
+                      padding: '7px 14px',
+                      borderRadius: '20px',
+                      border: isSel ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                      background: isSel ? '#0d5c3a' : '#ffffff',
+                      color: isSel ? '#ffffff' : '#475569',
+                      fontSize: '0.78rem',
+                      fontWeight: isSel ? 800 : 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Questions List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+              {[
+                {
+                  id: 'faq-1',
+                  category: 'Delivery & Timing',
+                  question: 'What time is fresh milk delivered to my doorstep?',
+                  answer: 'Our delivery partners drop chilled milk bottles between 5:30 AM and 7:30 AM every morning. This ensures fresh farm milk is ready at your door before you wake up for your morning tea and breakfast.',
+                },
+                {
+                  id: 'faq-2',
+                  category: 'Delivery & Timing',
+                  question: 'Where does the delivery partner place the milk bottles?',
+                  answer: 'Bottles are placed securely inside your designated doorstep dairy bag or near your front door latch. You can also specify custom drop instructions (e.g. "Ring doorbell once" or "Leave at security desk") in your Addresses screen.',
+                },
+                {
+                  id: 'faq-3',
+                  category: 'Glass Bottles',
+                  question: 'How does the glass bottle return and sterilization process work?',
+                  answer: 'We use eco-friendly food-grade glass bottles to maintain natural milk taste and avoid plastic micro-particles. Simply rinse yesterday\'s empty bottle with clean water and leave it outside your door in the dairy bag. Our delivery partner collects it when dropping today\'s fresh milk.',
+                },
+                {
+                  id: 'faq-4',
+                  category: 'Pause & Vacation',
+                  question: 'Can I pause my milk delivery when going on vacation?',
+                  answer: 'Yes, absolutely! You can pause deliveries anytime in the customer portal under the Subscription tab or Profile. Just select your vacation start date and return date. Please submit the pause request before 8:00 PM on the previous evening.',
+                },
+                {
+                  id: 'faq-5',
+                  category: 'Pause & Vacation',
+                  question: 'What happens to my subscription balance when I pause delivery?',
+                  answer: 'Paused days are automatically credited and extended at the end of your subscription period. You never lose money for days when milk was not delivered.',
+                },
+                {
+                  id: 'faq-6',
+                  category: 'Milk Quality',
+                  question: 'Is the milk raw, pasteurized, or homogenized?',
+                  answer: 'Our milk is 100% pure, natural farm-fresh milk chilled to 4°C within 60 minutes of milking to stop bacterial growth naturally. It is completely unhomogenized and non-standardized with natural rich cream (malai). We recommend boiling the milk once before consuming.',
+                },
+                {
+                  id: 'faq-7',
+                  category: 'Milk Quality',
+                  question: 'How do you ensure zero adulteration and no preservatives?',
+                  answer: 'Every batch undergoes 24-parameter laboratory testing for fat, SNF, purity, and zero adulterants. We maintain a strict direct-from-farm cold chain with zero chemical preservatives or synthetic additives.',
+                },
+                {
+                  id: 'faq-8',
+                  category: 'Payments',
+                  question: 'How do I pay or renew my monthly dairy subscription?',
+                  answer: 'You can pay securely via Razorpay using UPI (Google Pay, PhonePe, Paytm), Credit/Debit cards, or NetBanking. Once paid, your subscription plan and daily delivery quota activate immediately.',
+                },
+                {
+                  id: 'faq-9',
+                  category: 'Payments',
+                  question: 'What if my payment failed or was debited without confirmation?',
+                  answer: 'You can view all past and pending orders in the "Subscription Payment" screen. If money was debited, Razorpay reconciles it within 2 hours or auto-refunds to your source bank within 3 to 5 business days.',
+                },
+                {
+                  id: 'faq-10',
+                  category: 'Delivery & Timing',
+                  question: 'How can I verify if my delivery was dropped today?',
+                  answer: 'Our delivery partners snap a live timestamped photo proof upon dropping your bottles. You can see this in real-time under the "Deliveries" tab in your portal.',
+                },
+              ]
+                .filter((item) => {
+                  const matchCat = selectedFaqCategory === 'All' || item.category === selectedFaqCategory;
+                  const q = (faqSearchQuery || '').toLowerCase().trim();
+                  const matchSearch = !q || item.question.toLowerCase().includes(q) || item.answer.toLowerCase().includes(q);
+                  return matchCat && matchSearch;
+                })
+                .map((item) => {
+                  const isOpen = expandedFaqId === item.id;
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2ebe5',
+                        borderRadius: '16px',
+                        overflow: 'hidden',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s ease',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setExpandedFaqId(isOpen ? null : item.id)}
+                        style={{
+                          width: '100%',
+                          padding: '14px 16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          background: 'transparent',
+                          border: 'none',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              fontSize: '0.68rem',
+                              fontWeight: 800,
+                              color: '#0d5c3a',
+                              background: '#e2f1ea',
+                              padding: '2px 8px',
+                              borderRadius: '8px',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {item.category}
+                          </span>
+                          <h4 style={{ margin: 0, fontSize: '0.90rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.35 }}>
+                            {item.question}
+                          </h4>
+                        </div>
+                        <div
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '8px',
+                            background: isOpen ? '#e2f1ea' : '#f8fafc',
+                            color: isOpen ? '#0d5c3a' : '#94a3b8',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          <ChevronDown
+                            size={17}
+                            style={{
+                              transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                              transition: 'transform 0.2s ease',
+                            }}
+                          />
+                        </div>
+                      </button>
+
+                      {isOpen && (
+                        <div
+                          style={{
+                            padding: '0 16px 14px 16px',
+                            fontSize: '0.82rem',
+                            color: '#475569',
+                            lineHeight: 1.55,
+                            borderTop: '1px solid #f1f5f9',
+                            background: '#f8fafc',
+                            marginTop: '2px',
+                          }}
+                        >
+                          <p style={{ margin: '10px 0 0 0' }}>{item.answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Bottom 24/7 Helpline Card */}
+            <div
+              style={{
+                marginTop: '20px',
+                background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
+                color: '#ffffff',
+                borderRadius: '18px',
+                padding: '18px',
+                boxShadow: '0 6px 16px rgba(13, 92, 58, 0.2)',
+              }}
+            >
+              <h4 style={{ margin: '0 0 6px 0', fontSize: '1rem', fontWeight: 850, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Headphones size={20} />
+                <span>Still have questions or need assistance?</span>
+              </h4>
+              <p style={{ margin: '0 0 14px 0', fontSize: '0.80rem', color: '#d1fae5', lineHeight: 1.45 }}>
+                Our dairy support team is active 24/7. Chat with our dispatch coordinator on WhatsApp or call our support desk.
+              </p>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <a
+                  href={`https://wa.me/917702233931?text=${encodeURIComponent('Hi Natural Milk Dairy team, I have a question regarding my subscription.')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    background: '#ffffff',
+                    color: '#0d5c3a',
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <MessageCircle size={15} />
+                  <span>WhatsApp Chat</span>
+                </a>
+                <a
+                  href="tel:+917702233931"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.2)',
+                    color: '#ffffff',
+                    border: '1px solid rgba(255, 255, 255, 0.4)',
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Phone size={15} />
+                  <span>Call Helpline</span>
+                </a>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="mobile-detail-submit-btn is-secondary"
+              onClick={backToProfile}
+              style={{ marginTop: '16px' }}
+            >
+              Back to Profile
+            </button>
+          </div>
+        )}
+
         {/* 9. ABOUT NATURAL MILK DAIRY */}
         {profileDetailView === 'about' && (
           <div className="mobile-detail-body">
@@ -7863,7 +8325,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
             {/* FAQs */}
             <div
-              onClick={() => openProfileDetail('support')}
+              onClick={() => openProfileDetail('faq')}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -8287,6 +8749,27 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => openProfileDetail('faq')}
+              style={{
+                background: '#f0fdf4',
+                color: '#166534',
+                border: '1px solid #bbf7d0',
+                borderRadius: '12px',
+                padding: '10px 18px',
+                fontSize: '0.88rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '7px',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <HelpCircle size={16} />
+              <span>FAQs & Guides</span>
+            </button>
             <button
               type="button"
               onClick={() => openProfileDetail('support')}

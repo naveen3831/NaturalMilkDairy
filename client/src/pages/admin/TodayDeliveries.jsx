@@ -65,8 +65,12 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchDeliveries(selectedDate, statusFilter, boyFilter, timeRange);
     });
+    const unsubLoc = wsSubscribe('LOCATION_UPDATED', () => {
+      fetchDeliveries(selectedDate, statusFilter, boyFilter, timeRange);
+    });
     return () => {
       if (typeof unsub === 'function') unsub();
+      if (typeof unsubLoc === 'function') unsubLoc();
     };
   }, [wsSubscribe, selectedDate, statusFilter, boyFilter, timeRange, fetchDeliveries]);
 

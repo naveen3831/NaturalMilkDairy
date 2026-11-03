@@ -15,6 +15,9 @@ import 'contact_support_screen.dart';
 import 'product_details_screen.dart';
 import 'subscription_details_screen.dart';
 import 'subscription_history_screen.dart';
+import 'account_details_screen.dart';
+import 'delivery_addresses_screen.dart';
+import 'faq_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -25,7 +28,27 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  final Set<String> _favoriteProductIds = {};
+  final List<int> _tabHistory = [];
+
+  void _switchTab(int newIndex) {
+    if (_currentIndex == newIndex) return;
+    setState(() {
+      _tabHistory.add(_currentIndex);
+      _currentIndex = newIndex;
+    });
+  }
+
+  void _popTab() {
+    if (_tabHistory.isNotEmpty) {
+      setState(() {
+        _currentIndex = _tabHistory.removeLast();
+      });
+    } else if (_currentIndex != 0) {
+      setState(() {
+        _currentIndex = 0;
+      });
+    }
+  }
   String _productSearchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   int _unreadNotifCount = 0;
@@ -1021,10 +1044,10 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return PopScope(
-      canPop: _currentIndex == 0,
+      canPop: _currentIndex == 0 && _tabHistory.isEmpty,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _currentIndex != 0) {
-          setState(() => _currentIndex = 0);
+        if (!didPop) {
+          _popTab();
         }
       },
       child: Scaffold(
@@ -1558,7 +1581,6 @@ class _HomeScreenState extends State<HomeScreen> {
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, i) {
               final prod = bestSellers[i];
-              final isFav = _favoriteProductIds.contains(prod.id);
               return InkWell(
                 onTap: () {
                   Navigator.push(
@@ -1617,40 +1639,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fontSize: 8.5,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.3,
-                                ),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            top: 6,
-                            right: 6,
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  if (isFav) {
-                                    _favoriteProductIds.remove(prod.id);
-                                  } else {
-                                    _favoriteProductIds.add(prod.id);
-                                  }
-                                });
-                              },
-                              child: Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.95),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.1),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                                  size: 16,
-                                  color: isFav ? const Color(0xFFE11D48) : const Color(0xFF475569),
                                 ),
                               ),
                             ),
@@ -2633,41 +2621,54 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(width: 5),
                         Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF2F8F4),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFDEEDE2)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF0D5C3A)),
-                                const SizedBox(width: 3),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          user?.area ?? 'Madhupur',
-                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
-                                        ),
-                                      ),
-                                      const FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        alignment: Alignment.centerLeft,
-                                        child: Text(
-                                          'Delivery Area',
-                                          style: TextStyle(fontSize: 8.5, color: Color(0xFF6B7280)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const DeliveryAddressesScreen(),
                                 ),
-                              ],
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF2F8F4),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFDEEDE2)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                                  const SizedBox(width: 3),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            customerProvider.area.isNotEmpty
+                                                ? customerProvider.area
+                                                : (user != null && user.assignedArea.isNotEmpty ? user.assignedArea : 'Madhapur'),
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                          ),
+                                        ),
+                                        const FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerLeft,
+                                          child: Text(
+                                            'Delivery Area',
+                                            style: TextStyle(fontSize: 8.5, color: Color(0xFF6B7280)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -3122,23 +3123,54 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title & Subtitle matching Image 3
-            const Text(
-              'Deliveries',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0C2340),
-                letterSpacing: -0.3,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Track your doorstep deliveries and payments.',
-              style: TextStyle(
-                fontSize: 12.5,
-                color: Color(0xFF6B7280),
-              ),
+            // Title & Subtitle with back navigation support when opened from other screens (e.g. Profile)
+            Row(
+              children: [
+                if (_tabHistory.isNotEmpty) ...[
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: _popTab,
+                    child: Container(
+                      padding: const EdgeInsets.all(7),
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2EBE5)),
+                      ),
+                      child: const Icon(
+                        Icons.arrow_back_rounded,
+                        size: 20,
+                        color: Color(0xFF0C2340),
+                      ),
+                    ),
+                  ),
+                ],
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Deliveries',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0C2340),
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'Track your doorstep deliveries and payments.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -3807,78 +3839,89 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 16),
 
             // User Identity Card matching Image 4
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2EBE5)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AccountDetailsScreen(),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE2F1EA),
-                      shape: BoxShape.circle,
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2EBE5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
                     ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color: Color(0xFF0D5C3A),
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0C2340),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'ID: $customerId',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          mobile,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2F1EA),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text(
-                      'Active',
-                      style: TextStyle(
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE2F1EA),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person_outline_rounded,
                         color: Color(0xFF0D5C3A),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                        size: 28,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'ID: $customerId',
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            mobile,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2F1EA),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Text(
+                        'Active',
+                        style: TextStyle(
+                          color: Color(0xFF0D5C3A),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 18),
@@ -3893,7 +3936,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Account Details',
                   subtitle: 'View and update your personal information',
                   onTap: () {
-                    _showActionSnackbar('Account Details opened');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AccountDetailsScreen(),
+                      ),
+                    );
                   },
                 ),
                 _buildProfileItemRow(
@@ -3904,7 +3952,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   badgeBg: const Color(0xFFE2F1EA),
                   badgeColor: const Color(0xFF0D5C3A),
                   onTap: () {
-                    setState(() => _currentIndex = 3);
+                    _switchTab(3);
                   },
                 ),
                 _buildProfileItemRow(
@@ -3926,9 +3974,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildProfileItemRow(
                   icon: Icons.location_on_outlined,
                   title: 'Addresses',
-                  subtitle: 'Manage your delivery addresses',
+                  subtitle: 'Manage your doorstep delivery addresses & route',
+                  badgeText: 'Home',
+                  badgeBg: const Color(0xFFE2F1EA),
+                  badgeColor: const Color(0xFF0D5C3A),
                   onTap: () {
-                    _showActionSnackbar('Delivery addresses opened');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const DeliveryAddressesScreen(),
+                      ),
+                    );
                   },
                 ),
               ],
@@ -3949,9 +4005,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildProfileItemRow(
                   icon: Icons.help_outline_rounded,
                   title: 'FAQs',
-                  subtitle: 'Find answers to common questions',
+                  subtitle: 'Find answers to common questions & timings',
                   onTap: () {
-                    _showActionSnackbar('FAQs & help center opened');
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const FaqScreen(),
+                      ),
+                    );
                   },
                 ),
               ],
@@ -3966,18 +4027,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 _buildProfileItemRow(
                   icon: Icons.notifications_none_rounded,
                   title: 'Notifications',
-                  subtitle: 'Manage alerts and reminders',
-                  onTap: () {
-                    _showActionSnackbar('Notification settings opened');
-                  },
-                ),
-                _buildProfileItemRow(
-                  icon: Icons.language_rounded,
-                  title: 'Language',
-                  subtitle: 'English (India)',
-                  onTap: () {
-                    _showActionSnackbar('Language set to English (India)');
-                  },
+                  subtitle: 'View announcements, delivery drops & alerts',
+                  badgeText: _unreadNotifCount > 0 ? '$_unreadNotifCount New' : null,
+                  badgeBg: const Color(0xFFFEF2F2),
+                  badgeColor: const Color(0xFFDC2626),
+                  onTap: _showNotificationsSheet,
                 ),
               ],
             ),
@@ -3993,41 +4047,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Log out',
                   subtitle: 'Sign out from your account',
                   isDestructive: true,
-                  onTap: () async {
-                    final navigator = Navigator.of(context);
-                    await auth.logout();
-                    if (!mounted) return;
-                    navigator.pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-                      (route) => false,
-                    );
-                  },
+                  onTap: () => _showLogoutConfirmationDialog(context, auth),
                 ),
                 _buildProfileItemRow(
                   icon: Icons.delete_outline_rounded,
                   title: 'Delete Account',
                   subtitle: 'Permanently delete account & records',
                   isDestructive: true,
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Delete Account?'),
-                        content: const Text('Are you sure you want to permanently delete your account and records?'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              _showActionSnackbar('Account deletion request submitted');
-                            },
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+                  onTap: () => _showDeleteAccountConfirmationDialog(context, auth),
                 ),
               ],
             ),
@@ -4156,14 +4183,188 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showActionSnackbar(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: const Color(0xFF0D5C3A),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
+  void _showLogoutConfirmationDialog(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.logout_rounded, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Log Out?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0C2340),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to sign out? Your morning milk deliveries and subscriptions will continue as scheduled.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    elevation: 0,
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    final navigator = Navigator.of(context);
+                    await auth.logout();
+                    if (!mounted) return;
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                      (route) => false,
+                    );
+                  },
+                  child: const Text(
+                    'Log Out',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteAccountConfirmationDialog(BuildContext context, AuthProvider auth) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Delete Account?',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0C2340),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'This action is permanent and cannot be reversed. Your profile, delivery address, active subscriptions, and customer credit ledger will be permanently deleted.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Keep Account',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    elevation: 0,
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    final navigator = Navigator.of(context);
+                    final messenger = ScaffoldMessenger.of(context);
+                    final success = await auth.deleteAccount();
+                    if (!mounted) return;
+                    if (success) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Your account has been permanently deleted.'),
+                          backgroundColor: Color(0xFF0D5C3A),
+                        ),
+                      );
+                      navigator.pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                        (route) => false,
+                      );
+                    } else {
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(auth.errorMessage ?? 'Failed to delete account. Please contact support.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text(
+                    'Delete Forever',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -4242,7 +4443,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final icon = (isSelected ? item['activeIcon'] : item['icon']) as IconData;
 
             return InkWell(
-              onTap: () => setState(() => _currentIndex = idx),
+              onTap: () => _switchTab(idx),
               borderRadius: BorderRadius.circular(16),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),

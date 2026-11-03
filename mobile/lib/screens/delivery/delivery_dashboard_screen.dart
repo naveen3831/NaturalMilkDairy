@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
 
 class DeliveryPartnerDashboardScreen extends StatefulWidget {
@@ -85,6 +87,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       } else if (type == 'DELIVERY_UPDATED' ||
           type == 'DELIVERY_BOY_UPDATED' ||
           type == 'CUSTOMER_UPDATED' ||
+          type == 'LOCATION_UPDATED' ||
           type == 'ORDER_UPDATED' ||
           type == 'NOTIFICATION_UPDATED' ||
           type == 'NOTIFICATION_CREATED') {
@@ -263,31 +266,37 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     return list;
   }
 
-  void _callCustomer(String phone) {
+  void _callCustomer(String phone) async {
     final clean = phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (clean.isEmpty) return;
-    Clipboard.setData(ClipboardData(text: clean));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Copied phone number ($clean) to clipboard'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+    final launched = await LauncherService.openDialer(clean);
+    if (!launched) {
+      Clipboard.setData(ClipboardData(text: clean));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Copied phone number ($clean) to clipboard'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
-  void _openMap(String address) {
-    Clipboard.setData(ClipboardData(text: address));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Address copied: $address'),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  void _openMap(String address, [num? lat, num? lng]) async {
+    final launched = await LauncherService.openMap(lat: lat, lng: lng, address: address);
+    if (!launched && address.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: address));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Address copied: $address'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -1316,7 +1325,11 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               Expanded(
                 flex: 2,
                 child: OutlinedButton.icon(
-                  onPressed: () => _openMap(address),
+                  onPressed: () => _openMap(
+                    address,
+                    d['latitude'] as num? ?? d['customerLatitude'] as num?,
+                    d['longitude'] as num? ?? d['customerLongitude'] as num?,
+                  ),
                   icon: const Icon(Icons.navigation_rounded, size: 15, color: Color(0xFF1D4ED8)),
                   label: const Text('Map', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
                   style: OutlinedButton.styleFrom(
@@ -1473,7 +1486,11 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                         const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.navigation_rounded, size: 18, color: Color(0xFF1D4ED8)),
-                          onPressed: () => _openMap(d['customerAddress'] ?? ''),
+                          onPressed: () => _openMap(
+                            d['customerAddress'] ?? '',
+                            d['latitude'] as num? ?? d['customerLatitude'] as num?,
+                            d['longitude'] as num? ?? d['customerLongitude'] as num?,
+                          ),
                         ),
                       ],
                     ),
@@ -1626,7 +1643,11 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             _showMarkNotDeliveredDialog(stop);
           },
           onCall: (phone) => _callCustomer(phone),
-          onMap: (addr) => _openMap(addr),
+          onMap: (addr) => _openMap(
+            addr,
+            stop['latitude'] as num? ?? stop['customerLatitude'] as num?,
+            stop['longitude'] as num? ?? stop['customerLongitude'] as num?,
+          ),
         ),
       ),
     );
@@ -1638,7 +1659,11 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         builder: (ctx) => _FullScreenCustomerDetailsPage(
           customer: customer,
           onCall: (phone) => _callCustomer(phone),
-          onMap: (addr) => _openMap(addr),
+          onMap: (addr) => _openMap(
+            addr,
+            customer['latitude'] as num?,
+            customer['longitude'] as num?,
+          ),
         ),
       ),
     );
@@ -1727,205 +1752,332 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   // =========================================================
-  // TAB 4: DRIVER PROFILE (EXACT SCREENSHOT LAYOUT & REALTIME MODALS)
+  // =========================================================
+  // TAB 4: PARTNER PROFILE (MATCHING EXACT REFERENCE IMAGE)
   // =========================================================
   Widget _buildProfileTab(String boyName, String boyArea) {
-    final displayName = _profileName.isNotEmpty ? _profileName : boyName;
+    final displayName = _profileName.isNotEmpty ? _profileName : (boyName.isNotEmpty ? boyName : 'Naveen');
+    final partnerDisplayId = _partnerId.isNotEmpty ? _partnerId : 'PART-43A4';
+    final pendingDrops = _deliveries.where((d) => d['status'] == 'pending').length;
+    final dropsBadge = pendingDrops > 0 ? '$pendingDrops Drops' : '${_deliveries.length} Drops';
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 22.0, vertical: 14.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. TOP PROFILE IDENTITY ROW (Avatar with Camera Badge, Name, Partner ID & Red Edit Profile Button)
+          // 1. Header: Title & Subtitle + Top-Right Milk Illustration
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar with Camera Badge
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: 76,
-                    height: 76,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF00A86B),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'N',
-                        style: const TextStyle(
-                          fontSize: 34,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: InkWell(
-                      onTap: _showUpdatePhotoDialog,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt_outlined,
-                          size: 13,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 20),
-
-              // Name, Partner ID, and Edit Profile Button
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+                  children: const [
                     Text(
-                      displayName.toLowerCase(),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.2,
+                      'My Profile',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0C2340),
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 3),
+                    SizedBox(height: 4),
                     Text(
-                      '$_partnerId · On duty',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton(
-                      onPressed: () => setState(() => _activeProfileSubScreen = 'edit'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE53935),
-                        foregroundColor: Colors.white,
-                        elevation: 3,
-                        shadowColor: const Color(0xFFE53935).withValues(alpha: 0.35),
-                        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 7),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text(
-                        'Edit Profile',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
+                      'Manage your account, deliveries and preferences.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF6B7280),
                       ),
                     ),
                   ],
                 ),
               ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: Image.asset(
+                    'assets/images/cat_img_milk.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (c, e, s) => Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0FDF4),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2EBE5)),
+                      ),
+                      child: const Icon(Icons.local_shipping_outlined, color: Color(0xFF0D5C3A), size: 26),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 26),
+          const SizedBox(height: 16),
 
-          // 2. MENU ITEMS LIST (MATCHING SCREENSHOT WITH REALTIME FUNCTIONALITIES)
-          _buildProfileMenuItem(
-            icon: Icons.person_outline_rounded,
-            title: 'Personal Information',
-            subtitle: 'Partner ID: $_partnerId · On duty',
+          // 2. Partner Identity Card matching reference image
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
             onTap: () => setState(() => _activeProfileSubScreen = 'personal'),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE2EBE5)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE2F1EA),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      color: Color(0xFF0D5C3A),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0C2340),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID: $partnerDisplayId',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          _profilePhone,
+                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2F1EA),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Text(
+                      'Active',
+                      style: TextStyle(
+                        color: Color(0xFF0D5C3A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
+                ],
+              ),
+            ),
           ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.phone_outlined,
-            title: 'Contact Information',
-            subtitle: '$_profilePhone · $_profileEmail',
-            onTap: () => setState(() => _activeProfileSubScreen = 'contact'),
+          const SizedBox(height: 18),
+
+          // 3. SECTION 1: Account & Billing (Operations & Records)
+          _buildPartnerProfileSection(
+            headerIcon: Icons.credit_card_outlined,
+            headerTitle: 'Account & Billing',
+            items: [
+              _buildPartnerProfileItemRow(
+                icon: Icons.person_outline_rounded,
+                title: 'Account Details',
+                subtitle: 'View and update your personal information',
+                onTap: () => setState(() => _activeProfileSubScreen = 'personal'),
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.local_shipping_outlined,
+                title: 'Deliveries',
+                subtitle: 'Track your latest doorstep deliveries',
+                badgeText: dropsBadge,
+                badgeBg: const Color(0xFFE2F1EA),
+                badgeColor: const Color(0xFF0D5C3A),
+                onTap: () => setState(() => _selectedTabIndex = 0),
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.receipt_long_rounded,
+                title: 'Subscription History & Orders',
+                subtitle: 'View route orders, dispatch crates & customer drops',
+                badgeText: 'History',
+                badgeBg: const Color(0xFFE2F1EA),
+                badgeColor: const Color(0xFF0D5C3A),
+                onTap: () => setState(() => _selectedTabIndex = 1),
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.location_on_outlined,
+                title: 'Addresses',
+                subtitle: 'Manage your doorstep delivery route & hub',
+                badgeText: _profileArea.isNotEmpty ? _profileArea : 'Route',
+                badgeBg: const Color(0xFFE2F1EA),
+                badgeColor: const Color(0xFF0D5C3A),
+                onTap: () => setState(() => _activeProfileSubScreen = 'territory'),
+              ),
+            ],
           ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.location_on_outlined,
-            title: 'Territory & Dispatch',
-            subtitle: '$_profileArea · Morning Dispatch',
-            onTap: () => setState(() => _activeProfileSubScreen = 'territory'),
+          const SizedBox(height: 14),
+
+          // 4. SECTION 2: Support & Help
+          _buildPartnerProfileSection(
+            headerIcon: Icons.headset_mic_outlined,
+            headerTitle: 'Support & Help',
+            items: [
+              _buildPartnerProfileItemRow(
+                icon: Icons.chat_bubble_outline_rounded,
+                title: 'Customer Care & Helplines',
+                subtitle: 'WhatsApp chat & 24/7 depot support',
+                onTap: () => setState(() => _activeProfileSubScreen = 'support'),
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.two_wheeler_outlined,
+                title: 'Vehicle & Equipment',
+                subtitle: _vehiclePlate == 'Vehicle not assigned' || _vehiclePlate.isEmpty
+                    ? 'Commercial Cargo EV · Tap to update'
+                    : '$_vehiclePlate · Commercial Cargo EV',
+                onTap: () => setState(() => _activeProfileSubScreen = 'vehicle'),
+              ),
+            ],
           ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.two_wheeler_outlined,
-            title: 'Vehicle & Equipment',
-            subtitle: _vehiclePlate == 'Vehicle not assigned' || _vehiclePlate.isEmpty
-                ? 'Vehicle not assigned · Commercial Cargo EV'
-                : '$_vehiclePlate · Commercial Cargo EV',
-            onTap: () => setState(() => _activeProfileSubScreen = 'vehicle'),
+          const SizedBox(height: 14),
+
+          // 5. SECTION 3: Account Actions
+          _buildPartnerProfileSection(
+            headerIcon: Icons.security_outlined,
+            headerTitle: 'Account Actions',
+            items: [
+              _buildPartnerProfileItemRow(
+                icon: Icons.logout_rounded,
+                title: 'Log out',
+                subtitle: 'Sign out from partner account',
+                isDestructive: true,
+                onTap: _showLogoutDialog,
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.delete_outline_rounded,
+                title: 'Delete Account',
+                subtitle: 'Permanently remove your account & records',
+                isDestructive: true,
+                onTap: _showDeleteAccountDialog,
+              ),
+            ],
           ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.headset_mic_outlined,
-            title: 'Help & Support',
-            subtitle: 'Text admin, route queries & dispatch helpline',
-            onTap: () => setState(() => _activeProfileSubScreen = 'support'),
-          ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.logout_rounded,
-            title: 'Log out',
-            titleColor: const Color(0xFFE53935),
-            iconColor: const Color(0xFFE53935),
-            onTap: _showLogoutDialog,
-          ),
-          const Divider(height: 1, indent: 44, color: Color(0xFFF1F5F9)),
-          _buildProfileMenuItem(
-            icon: Icons.delete_outline_rounded,
-            title: 'Delete Partner Account',
-            subtitle: 'Permanently remove your account and profile data',
-            titleColor: const Color(0xFFDC2626),
-            iconColor: const Color(0xFFDC2626),
-            onTap: _showDeleteAccountDialog,
-          ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 30),
         ],
       ),
     );
   }
 
-  // MENU ITEM ROW HELPER (MATCHING SCREENSHOT WITH DIRECT CLEAN ICONS)
-  Widget _buildProfileMenuItem({
+  Widget _buildPartnerProfileSection({
+    required IconData headerIcon,
+    required String headerTitle,
+    required List<Widget> items,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2EBE5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(headerIcon, color: const Color(0xFF0D5C3A), size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    headerTitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0C2340),
+                    ),
+                  ),
+                ],
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 18),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Column(children: items),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPartnerProfileItemRow({
     required IconData icon,
     required String title,
-    String? subtitle,
-    Color titleColor = const Color(0xFF0F172A),
-    Color iconColor = const Color(0xFF00A86B),
+    required String subtitle,
     required VoidCallback onTap,
+    String? badgeText,
+    Color? badgeBg,
+    Color? badgeColor,
+    bool isDestructive = false,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 9.0, horizontal: 4.0),
         child: Row(
           children: [
-            Icon(icon, size: 24, color: iconColor),
-            const SizedBox(width: 18),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: isDestructive ? const Color(0xFFFEE2E2) : const Color(0xFFF3F7F4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: isDestructive ? const Color(0xFFDC2626) : const Color(0xFF0D5C3A),
+                size: 19,
+              ),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1933,36 +2085,47 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   Text(
                     title,
                     style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w700,
-                      color: titleColor,
-                      letterSpacing: -0.2,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: isDestructive ? const Color(0xFFDC2626) : const Color(0xFF0C2340),
                     ),
                   ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFF94A3B8)),
+            if (badgeText != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: badgeBg ?? const Color(0xFFE2F1EA),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                    color: badgeColor ?? const Color(0xFF0D5C3A),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 18),
           ],
         ),
       ),
     );
   }
 
+  
   // =========================================================
   // FULL SCREEN 1: EDIT DRIVER PROFILE (WITH REALTIME SAVE)
   // =========================================================
@@ -2204,48 +2367,66 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             child: Column(
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Mobile Phone', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-                    Row(
-                      children: [
-                        Text(_profilePhone, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                        const SizedBox(width: 6),
-                        IconButton(
-                          icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFF059669)),
-                          tooltip: 'Call Phone',
-                          onPressed: () => _callCustomer(_profilePhone),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
-                          tooltip: 'Copy Phone',
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: _profilePhone));
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number copied!')));
-                          },
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _profilePhone,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFF059669)),
+                            tooltip: 'Call Phone',
+                            onPressed: () => _callCustomer(_profilePhone),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
+                            tooltip: 'Copy Phone',
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: _profilePhone));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number copied!')));
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
                 const Divider(height: 20, color: Color(0xFFF1F5F9)),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Email Address', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-                    Row(
-                      children: [
-                        Text(_profileEmail, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
-                          tooltip: 'Copy Email',
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: _profileEmail));
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email copied!')));
-                          },
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _profileEmail,
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF64748B)),
+                            tooltip: 'Copy Email',
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: _profileEmail));
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email copied!')));
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2253,35 +2434,53 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 _buildFullScreenRow('Dispatch Hub', _depotAddress),
                 const Divider(height: 20, color: Color(0xFFF1F5F9)),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Supervisor Hotline', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-                    Row(
-                      children: [
-                        Text(_supervisorHotline, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.phone_forwarded_rounded, size: 18, color: Color(0xFF059669)),
-                          onPressed: () => _callCustomer(_supervisorHotline),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _supervisorHotline,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.phone_forwarded_rounded, size: 18, color: Color(0xFF059669)),
+                            onPressed: () => _callCustomer(_supervisorHotline),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
                 const Divider(height: 20, color: Color(0xFFF1F5F9)),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Emergency Contact', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
-                    Row(
-                      children: [
-                        Text(_emergencyContact, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFDC2626))),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFFDC2626)),
-                          onPressed: () => _callCustomer(_emergencyContact),
-                        ),
-                      ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _emergencyContact,
+                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFDC2626)),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          IconButton(
+                            icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFFDC2626)),
+                            onPressed: () => _callCustomer(_emergencyContact),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -2508,13 +2707,14 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     initialValue: category,
+                    isExpanded: true,
                     decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                     items: const [
-                      DropdownMenuItem(value: 'Route Delay', child: Text('Route Delay / Traffic Hold')),
-                      DropdownMenuItem(value: 'Vehicle Breakdown', child: Text('Vehicle Breakdown / Puncture')),
-                      DropdownMenuItem(value: 'Customer Issue', child: Text('Customer Door Locked / Unreachable')),
-                      DropdownMenuItem(value: 'Milk Shortage', child: Text('Extra Milk / Curd Crates Needed')),
-                      DropdownMenuItem(value: 'Payment Dispute', child: Text('Cash / QR Payment Dispute')),
+                      DropdownMenuItem(value: 'Route Delay', child: Text('Route Delay / Traffic Hold', overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(value: 'Vehicle Breakdown', child: Text('Vehicle Breakdown / Puncture', overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(value: 'Customer Issue', child: Text('Customer Door Locked / Unreachable', overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(value: 'Milk Shortage', child: Text('Extra Milk / Curd Crates Needed', overflow: TextOverflow.ellipsis)),
+                      DropdownMenuItem(value: 'Payment Dispute', child: Text('Cash / QR Payment Dispute', overflow: TextOverflow.ellipsis)),
                     ],
                     onChanged: (v) => setDesk(() => category = v ?? category),
                   ),
@@ -3011,19 +3211,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     );
   }
 
-  // UPDATE AVATAR PHOTO FULL SCREEN
-  void _showUpdatePhotoDialog() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (ctx) => _FullScreenPhotoVerifyPage(
-          profileName: _profileName,
-          partnerId: _partnerId,
-          onVerified: () {},
-        ),
-      ),
-    );
   }
-}
 
 // ============================================================================
 // FULL SCREEN PAGE: MARK DOORSTEP DELIVERY
@@ -3047,9 +3235,14 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
   late final TextEditingController _milkController;
   late final TextEditingController _curdController;
   late final TextEditingController _collectedController;
-  late final TextEditingController _proofUrlController;
   late String _paymentMethod;
   bool _isSubmitting = false;
+
+  // Real-time Camera Doorstep Photo Proof
+  String? _capturedPhotoBase64;
+  Uint8List? _capturedPhotoBytes;
+  bool _isCapturing = false;
+  DateTime? _capturedAt;
 
   @override
   void initState() {
@@ -3057,9 +3250,6 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     _milkController = TextEditingController(text: (widget.delivery['plannedMilk'] ?? 1).toString());
     _curdController = TextEditingController(text: (widget.delivery['plannedCurd'] ?? 0).toString());
     _collectedController = TextEditingController(text: (widget.delivery['totalAmount'] ?? 60).toString());
-    _proofUrlController = TextEditingController(
-      text: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1792133689/doorstep-delivery-proofs/zc721dwoso4s4dj9n6po.png',
-    );
     _paymentMethod = widget.delivery['paymentMethod'] ?? 'advance';
   }
 
@@ -3068,11 +3258,57 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     _milkController.dispose();
     _curdController.dispose();
     _collectedController.dispose();
-    _proofUrlController.dispose();
     super.dispose();
   }
 
+  /// Open device camera to click real-time doorstep delivery photo proof
+  Future<void> _openCameraAndCapture() async {
+    setState(() => _isCapturing = true);
+    try {
+      final photoBase64 = await LauncherService.takePhoto();
+      if (!mounted) return;
+      if (photoBase64 != null && photoBase64.isNotEmpty) {
+        final cleanBase64 = photoBase64.contains(',') ? photoBase64.split(',')[1] : photoBase64;
+        final bytes = base64Decode(cleanBase64);
+        setState(() {
+          _capturedPhotoBase64 = photoBase64;
+          _capturedPhotoBytes = bytes;
+          _capturedAt = DateTime.now();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Doorstep delivery photo captured successfully!'),
+            backgroundColor: Color(0xFF059669),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Camera capture cancelled or no photo taken')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Camera error: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isCapturing = false);
+    }
+  }
+
   Future<void> _submit() async {
+    if (_capturedPhotoBase64 == null || _capturedPhotoBase64!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Photo proof is required! Please click Open Camera to capture delivery photo.'),
+          backgroundColor: Color(0xFFDC2626),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     final deliveryId = widget.delivery['_id'] ?? widget.delivery['id'];
     final milk = num.tryParse(_milkController.text) ?? 1;
@@ -3084,7 +3320,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       'actualCurd': curd,
       'paymentMethod': _paymentMethod,
       'collectedAmount': collected,
-      'proofUrl': _proofUrlController.text.trim(),
+      'proofImage': _capturedPhotoBase64,
       'actor': 'Mobile Driver',
     });
 
@@ -3095,7 +3331,10 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       widget.onSuccess();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✓ Delivery marked completed with photo proof!')),
+        const SnackBar(
+          content: Text('✓ Delivery marked completed with photo proof!'),
+          backgroundColor: Color(0xFF059669),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3236,19 +3475,152 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
                 decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true, prefixText: '₹ '),
               ),
             ],
-            const SizedBox(height: 20),
-            const Text('Doorstep Delivery Photo Proof', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-            const SizedBox(height: 8),
-            TextFormField(
-              controller: _proofUrlController,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                prefixIcon: Icon(Icons.camera_alt_outlined, size: 20, color: Color(0xFF059669)),
-                hintText: 'https://res.cloudinary.com/...',
-              ),
+            const SizedBox(height: 24),
+            const Row(
+              children: [
+                Text('Doorstep Delivery Photo Proof', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
+                SizedBox(width: 6),
+                Text('* (Required)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFFDC2626))),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+
+            // Doorstep Photo Preview Card
+            if (_capturedPhotoBytes != null) ...[
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF10B981), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: const Color(0xFF059669).withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Stack(
+                      children: [
+                        Image.memory(
+                          _capturedPhotoBytes!,
+                          height: 220,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          top: 10,
+                          right: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF059669),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Doorstep Photo Captured',
+                                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '✓ Photo Proof Attached',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF065F46)),
+                                ),
+                                if (_capturedAt != null)
+                                  Text(
+                                    'Captured at ${_capturedAt!.hour.toString().padLeft(2, '0')}:${_capturedAt!.minute.toString().padLeft(2, '0')}:${_capturedAt!.second.toString().padLeft(2, '0')}',
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF059669)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _isCapturing ? null : _openCameraAndCapture,
+                            icon: const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF059669)),
+                            label: const Text('Retake Photo', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w700, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF059669)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              // Action Card: Click Doorstep Photo (ONLY Open Camera button, no overflow)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+                      ),
+                      child: _isCapturing
+                          ? const Center(child: SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF059669))))
+                          : const Icon(Icons.photo_camera_rounded, size: 32, color: Color(0xFF059669)),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Click Doorstep Photo',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Tap to open camera & capture live delivery proof',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _isCapturing ? null : _openCameraAndCapture,
+                      icon: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                      label: const Text('Open Camera', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 12),
+                        elevation: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -3262,7 +3634,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Doorstep delivery photo is required to ensure verified doorstep drop.',
+                      'Live doorstep delivery photo ensures verified customer drop.',
                       style: TextStyle(fontSize: 12, color: Color(0xFF065F46), fontWeight: FontWeight.w600),
                     ),
                   ),
@@ -3275,15 +3647,15 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
               child: ElevatedButton(
                 onPressed: _isSubmitting ? null : _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
+                  backgroundColor: _capturedPhotoBase64 != null ? const Color(0xFF059669) : const Color(0xFF94A3B8),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _isSubmitting
                     ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                    : const Text(
-                        '✓ Confirm Delivery (Proof Verified)',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white),
+                    : Text(
+                        _capturedPhotoBase64 != null ? '✓ Confirm Delivery (Photo Attached)' : '📷 Click Photo to Confirm Delivery',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white),
                       ),
               ),
             ),
@@ -3869,120 +4241,3 @@ class _FullScreenCustomerDetailsPage extends StatelessWidget {
     );
   }
 }
-
-// ============================================================================
-// FULL SCREEN PAGE: DRIVER PHOTO VERIFICATION
-// ============================================================================
-class _FullScreenPhotoVerifyPage extends StatelessWidget {
-  final String profileName;
-  final String partnerId;
-  final VoidCallback onVerified;
-
-  const _FullScreenPhotoVerifyPage({
-    required this.profileName,
-    required this.partnerId,
-    required this.onVerified,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A), size: 24),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          'Driver Profile Photo',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 24),
-            Center(
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF059669),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    profileName.isNotEmpty ? profileName[0].toUpperCase() : 'N',
-                    style: const TextStyle(fontSize: 54, fontWeight: FontWeight.w800, color: Colors.white),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              profileName,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF0F172A)),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$partnerId · Natural Milk Dairy Fleet',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 30),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.verified_user_rounded, color: Color(0xFF059669), size: 28),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Verified Fleet Driver ID', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-                        SizedBox(height: 2),
-                        Text('Photo badge is verified against commercial carrier records.', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                label: const Text('Confirm & Save Photo', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
-                onPressed: () {
-                  onVerified();
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✓ Profile badge photo verified!')),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-

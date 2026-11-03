@@ -1118,6 +1118,8 @@ const updateOwnCustomerProfile = async (req, res) => {
       }
     }
 
+    if (req.body.latitude !== undefined && req.body.latitude !== null && !isNaN(Number(req.body.latitude))) { customer.latitude = Number(req.body.latitude); }
+    if (req.body.longitude !== undefined && req.body.longitude !== null && !isNaN(Number(req.body.longitude))) { customer.longitude = Number(req.body.longitude); }
     Object.assign(customer, profile);
     await customer.save();
 
@@ -1140,6 +1142,10 @@ const updateOwnCustomerProfile = async (req, res) => {
       customerName: customer.name,
       customerPhone: customer.mobile,
       customerAddress: fullAddress,
+      latitude: customer.latitude || null,
+      longitude: customer.longitude || null,
+      customerLatitude: customer.latitude || null,
+      customerLongitude: customer.longitude || null,
     };
     if (customer.deliveryPlan?.deliveryBoyId) {
       deliveryUpdate.deliveryBoyId = customer.deliveryPlan.deliveryBoyId;
@@ -1172,10 +1178,8 @@ const updateOwnCustomerProfile = async (req, res) => {
       { $set: deliveryUpdate }
     );
 
-    // Broadcast real-time events over WebSocket so admin & delivery partner dashboards update immediately!
-    broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId, id: customer._id.toString() });
-    broadcast('DELIVERY_UPDATED', {});
-    broadcast('NOTIFICATION_UPDATED', {});
+    // Notify Admin & Delivery Partner in real time with location updates
+    await notifyAddressUpdate(customer, fullAddress, 'updated delivery profile & address');
 
     return res.json({
       success: true,
@@ -1476,13 +1480,15 @@ const findCustomerFromReqUser = async (user) => {
 const notifyAddressUpdate = async (customer, formattedAddress, actionDescription = 'updated delivery address') => {
   try {
     const fullAddress = formattedAddress || [customer.address, customer.landmark, customer.area].filter(Boolean).join(', ');
+    const lat = customer.latitude != null ? Number(customer.latitude) : null;
+    const lng = customer.longitude != null ? Number(customer.longitude) : null;
 
     // 1. Notification to Admin
     await Notification.create({
       recipientRole: 'admin',
       recipientId: '',
       title: '📍 Customer Delivery Address Updated',
-      message: `${customer.name} (${customer.customerId}) ${actionDescription}: ${fullAddress}`,
+      message: customer.name + ' (' + customer.customerId + ') ' + actionDescription + ': ' + fullAddress,
       type: 'route_update',
       data: {
         customerId: customer.customerId,
@@ -1490,6 +1496,8 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
         customerPhone: customer.mobile,
         address: fullAddress,
         area: customer.area,
+        latitude: lat,
+        longitude: lng,
         deliveryBoyId: customer.deliveryPlan?.deliveryBoyId || '',
         deliveryBoyName: customer.deliveryPlan?.deliveryBoyName || '',
       },
@@ -1502,7 +1510,7 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
         recipientRole: 'delivery_boy',
         recipientId: String(driverId),
         title: '📍 Customer Address Updated',
-        message: `${customer.name} on your route ${actionDescription}: ${fullAddress}`,
+        message: customer.name + ' on your route ' + actionDescription + ': ' + fullAddress,
         type: 'route_update',
         data: {
           customerId: customer.customerId,
@@ -1510,11 +1518,25 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
           customerPhone: customer.mobile,
           address: fullAddress,
           area: customer.area,
+          latitude: lat,
+          longitude: lng,
         },
       });
     }
 
     // 3. Sync all pending deliveries for this customer
+    const deliveryUpdateFields = {
+      customerAddress: fullAddress,
+    };
+    if (lat != null) {
+      deliveryUpdateFields.latitude = lat;
+      deliveryUpdateFields.customerLatitude = lat;
+    }
+    if (lng != null) {
+      deliveryUpdateFields.longitude = lng;
+      deliveryUpdateFields.customerLongitude = lng;
+    }
+
     await Delivery.updateMany(
       {
         $or: [
@@ -1525,15 +1547,34 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
         status: 'pending',
       },
       {
-        $set: {
-          customerAddress: fullAddress,
-        },
+        $set: deliveryUpdateFields,
       }
     );
 
-    // 4. WebSocket Broadcasts
-    broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId, id: customer._id.toString() });
-    broadcast('DELIVERY_UPDATED', {});
+    // 4. Real-time WebSocket Broadcasts
+    broadcast('CUSTOMER_UPDATED', {
+      customerId: customer.customerId,
+      id: customer._id.toString(),
+      latitude: lat,
+      longitude: lng,
+      address: fullAddress,
+      area: customer.area,
+    });
+    broadcast('DELIVERY_UPDATED', {
+      customerId: customer.customerId,
+      latitude: lat,
+      longitude: lng,
+    });
+    broadcast('LOCATION_UPDATED', {
+      customerId: customer.customerId,
+      customerName: customer.name,
+      customerPhone: customer.mobile,
+      address: fullAddress,
+      area: customer.area,
+      latitude: lat,
+      longitude: lng,
+      deliveryBoyId: customer.deliveryPlan?.deliveryBoyId || '',
+    });
     broadcast('NOTIFICATION_UPDATED', {});
   } catch (err) {
     console.error('notifyAddressUpdate error:', err.message);
@@ -1551,7 +1592,7 @@ const getCustomerAddresses = async (req, res) => {
     // Seed default address if customer.addresses is empty
     if (!Array.isArray(customer.addresses) || customer.addresses.length === 0) {
       const defaultAddr = {
-        id: `addr_${Date.now()}_default`,
+        id: 'addr_' + Date.now() + '_default',
         type: 'home',
         label: 'Home',
         flatNo: '',
@@ -1560,6 +1601,8 @@ const getCustomerAddresses = async (req, res) => {
         landmark: customer.landmark || '',
         city: 'Hyderabad',
         pincode: '500081',
+        latitude: customer.latitude || null,
+        longitude: customer.longitude || null,
         deliveryInstructions: '',
         isDefault: true,
         createdAt: customer.createdAt || new Date(),
@@ -1574,6 +1617,8 @@ const getCustomerAddresses = async (req, res) => {
       addresses: customer.addresses,
       activeAddress: customer.address,
       activeArea: customer.area,
+      latitude: customer.latitude || null,
+      longitude: customer.longitude || null,
     });
   } catch (err) {
     console.error('getCustomerAddresses error:', err.message);
@@ -1600,6 +1645,8 @@ const addCustomerAddress = async (req, res) => {
       pincode = '',
       deliveryInstructions = '',
       isDefault = false,
+      latitude = null,
+      longitude = null,
     } = req.body;
 
     if (!apartmentStreet && !flatNo) {
@@ -1618,8 +1665,11 @@ const addCustomerAddress = async (req, res) => {
       });
     }
 
+    const parsedLat = (latitude !== null && latitude !== undefined && !isNaN(Number(latitude))) ? Number(latitude) : null;
+    const parsedLng = (longitude !== null && longitude !== undefined && !isNaN(Number(longitude))) ? Number(longitude) : null;
+
     const newAddr = {
-      id: `addr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: 'addr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       type: ['home', 'work', 'other'].includes(type) ? type : 'home',
       label: (label || (type === 'home' ? 'Home' : type === 'work' ? 'Work' : 'Other')).trim(),
       flatNo: (flatNo || '').trim(),
@@ -1628,6 +1678,8 @@ const addCustomerAddress = async (req, res) => {
       landmark: (landmark || '').trim(),
       city: (city || 'Hyderabad').trim(),
       pincode: (pincode || '').trim(),
+      latitude: parsedLat,
+      longitude: parsedLng,
       deliveryInstructions: (deliveryInstructions || '').trim(),
       isDefault: shouldBeDefault,
       createdAt: new Date(),
@@ -1639,7 +1691,7 @@ const addCustomerAddress = async (req, res) => {
     const formattedAddress = [
       newAddr.flatNo,
       newAddr.apartmentStreet,
-      newAddr.landmark ? `(Near ${newAddr.landmark})` : '',
+      newAddr.landmark ? '(Near ' + newAddr.landmark + ')' : '',
       newAddr.area,
       newAddr.city,
       newAddr.pincode,
@@ -1649,11 +1701,14 @@ const addCustomerAddress = async (req, res) => {
       customer.address = [newAddr.flatNo, newAddr.apartmentStreet].filter(Boolean).join(', ') || newAddr.area;
       customer.area = newAddr.area;
       customer.landmark = newAddr.landmark;
+      if (parsedLat != null) customer.latitude = parsedLat;
+      if (parsedLng != null) customer.longitude = parsedLng;
 
       // Also sync delivery partner based on area if available
       try {
+        const areaClean = (newAddr.area || '').trim();
         const matchedLoc = await DeliveryLocation.findOne({
-          name: { $regex: new RegExp(`^${newAddr.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          name: new RegExp('^' + areaClean + '$', 'i'),
           isActive: true,
         }).lean();
         if (matchedLoc && matchedLoc.assignedPartnerId) {
@@ -1685,6 +1740,8 @@ const addCustomerAddress = async (req, res) => {
       addresses: customer.addresses,
       activeAddress: customer.address,
       activeArea: customer.area,
+      latitude: customer.latitude || null,
+      longitude: customer.longitude || null,
     });
   } catch (err) {
     console.error('addCustomerAddress error:', err.message);
@@ -1722,6 +1779,8 @@ const updateCustomerAddress = async (req, res) => {
       pincode,
       deliveryInstructions,
       isDefault,
+      latitude,
+      longitude,
     } = req.body;
 
     if (type !== undefined) target.type = ['home', 'work', 'other'].includes(type) ? type : target.type;
@@ -1733,6 +1792,12 @@ const updateCustomerAddress = async (req, res) => {
     if (city !== undefined) target.city = city.trim();
     if (pincode !== undefined) target.pincode = pincode.trim();
     if (deliveryInstructions !== undefined) target.deliveryInstructions = deliveryInstructions.trim();
+    if (latitude !== undefined) {
+      target.latitude = (latitude !== null && !isNaN(Number(latitude))) ? Number(latitude) : null;
+    }
+    if (longitude !== undefined) {
+      target.longitude = (longitude !== null && !isNaN(Number(longitude))) ? Number(longitude) : null;
+    }
     target.updatedAt = new Date();
 
     const makeDefault = Boolean(isDefault);
@@ -1747,11 +1812,14 @@ const updateCustomerAddress = async (req, res) => {
       customer.address = [target.flatNo, target.apartmentStreet].filter(Boolean).join(', ') || target.area;
       customer.area = target.area;
       customer.landmark = target.landmark;
+      if (target.latitude != null) customer.latitude = target.latitude;
+      if (target.longitude != null) customer.longitude = target.longitude;
 
       if (target.area) {
         try {
+          const areaClean = (target.area || '').trim();
           const matchedLoc = await DeliveryLocation.findOne({
-            name: { $regex: new RegExp(`^${target.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+            name: new RegExp('^' + areaClean + '$', 'i'),
             isActive: true,
           }).lean();
           if (matchedLoc && matchedLoc.assignedPartnerId) {
@@ -1777,7 +1845,7 @@ const updateCustomerAddress = async (req, res) => {
     const formattedAddress = [
       target.flatNo,
       target.apartmentStreet,
-      target.landmark ? `(Near ${target.landmark})` : '',
+      target.landmark ? '(Near ' + target.landmark + ')' : '',
       target.area,
       target.city,
       target.pincode,
@@ -1793,6 +1861,8 @@ const updateCustomerAddress = async (req, res) => {
       addresses: customer.addresses,
       activeAddress: customer.address,
       activeArea: customer.area,
+      latitude: customer.latitude || null,
+      longitude: customer.longitude || null,
     });
   } catch (err) {
     console.error('updateCustomerAddress error:', err.message);
@@ -1890,11 +1960,14 @@ const setDefaultCustomerAddress = async (req, res) => {
     customer.address = [target.flatNo, target.apartmentStreet].filter(Boolean).join(', ') || target.area;
     customer.area = target.area;
     customer.landmark = target.landmark;
+    if (target.latitude != null) customer.latitude = target.latitude;
+    if (target.longitude != null) customer.longitude = target.longitude;
 
     if (target.area) {
       try {
+        const areaClean = (target.area || '').trim();
         const matchedLoc = await DeliveryLocation.findOne({
-          name: { $regex: new RegExp(`^${target.area.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+          name: new RegExp('^' + areaClean + '$', 'i'),
           isActive: true,
         }).lean();
         if (matchedLoc && matchedLoc.assignedPartnerId) {
@@ -1919,7 +1992,7 @@ const setDefaultCustomerAddress = async (req, res) => {
     const formattedAddress = [
       target.flatNo,
       target.apartmentStreet,
-      target.landmark ? `(Near ${target.landmark})` : '',
+      target.landmark ? '(Near ' + target.landmark + ')' : '',
       target.area,
       target.city,
       target.pincode,
@@ -1934,13 +2007,14 @@ const setDefaultCustomerAddress = async (req, res) => {
       addresses: customer.addresses,
       activeAddress: customer.address,
       activeArea: customer.area,
+      latitude: customer.latitude || null,
+      longitude: customer.longitude || null,
     });
   } catch (err) {
     console.error('setDefaultCustomerAddress error:', err.message);
     return res.status(500).json({ success: false, message: 'Failed to set default address.' });
   }
 };
-
 
 // Upgrade Plan
 const upgradePlan = async (req, res) => {

@@ -61,6 +61,11 @@ import {
   PauseCircle,
   PlayCircle,
   Send,
+  CreditCard,
+  UserRound,
+  ReceiptText,
+  MessageSquare,
+  ShieldAlert,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
@@ -859,9 +864,17 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
     });
+    const unsubLoc = wsSubscribe('LOCATION_UPDATED', (payload) => {
+      loadAssignedCustomers();
+      fetchDeliveries(selectedDate, 'all', boyId);
+      if (payload && payload.customerName) {
+        showToast(`📍 Location updated for ${payload.customerName}!`);
+      }
+    });
     return () => {
       if (typeof unsub === 'function') unsub();
       if (typeof unsubCust === 'function') unsubCust();
+      if (typeof unsubLoc === 'function') unsubLoc();
     };
   }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, loadAssignedCustomers]);
 
@@ -2931,9 +2944,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                           {/* Map Navigation Button */}
                           <a
-                            href={`https://maps.google.com/?q=${encodeURIComponent(
-                              item.customerAddress || item.customerName
-                            )}`}
+                            href={(item.latitude && item.longitude) || (item.customerLatitude && item.customerLongitude)
+                              ? `https://www.google.com/maps/dir/?api=1&destination=${item.latitude || item.customerLatitude},${item.longitude || item.customerLongitude}`
+                              : `https://maps.google.com/?q=${encodeURIComponent(item.customerAddress || item.customerName)}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
@@ -3148,8 +3161,11 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             });
 
             // Map navigation link for next pending stop or route territory
-            const firstPendingDestination = nextPending?.customerAddress || boyArea || 'Madhapur';
-            const googleNavUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(firstPendingDestination)}`;
+            const nextLat = nextPending?.latitude || nextPending?.customerLatitude;
+            const nextLng = nextPending?.longitude || nextPending?.customerLongitude;
+            const googleNavUrl = (nextLat && nextLng)
+              ? `https://www.google.com/maps/dir/?api=1&destination=${nextLat},${nextLng}`
+              : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(nextPending?.customerAddress || boyArea || 'Madhapur')}`;
 
             return (
               <div className="driver-route-page" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '16px' }}>
@@ -3603,8 +3619,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       const doorstepAddress = item.customerAddress || customerInfo?.address || 'Doorstep Delivery';
                       const landmark = item.landmark || customerInfo?.landmark || '';
                       const specialNotes = item.deliveryNotes || customerInfo?.deliveryNotes || customerInfo?.notes || '';
+                      const stopLat = item.latitude || item.customerLatitude || customerInfo?.latitude;
+                      const stopLng = item.longitude || item.customerLongitude || customerInfo?.longitude;
                       const mapAddress = `${doorstepAddress}, ${item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}`;
-                      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
+                      const mapUrl = (stopLat && stopLng)
+                        ? `https://www.google.com/maps/dir/?api=1&destination=${stopLat},${stopLng}`
+                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
 
                       return (
                         <div
@@ -5691,8 +5711,18 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </form>
               </div>
             ) : isMobile ? (
-              /* ── SCREEN: MOBILE DRIVER PROFILE (PURE PROFILE DETAILS ONLY) ── */
-              <div className="modern-profile-container driver-profile-mobile">
+              /* ── SCREEN: MOBILE DRIVER PROFILE (REDESIGNED MATCHING REFERENCE SCREENSHOT) ── */
+              <div
+                className="modern-profile-container driver-profile-mobile"
+                style={{
+                  padding: '8px 16px 28px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  background: '#f8fafc',
+                  minHeight: '100%',
+                }}
+              >
                 {profileFeedbackMsg && (
                   <div
                     className="driver-profile-feedback"
@@ -5700,14 +5730,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       padding: '12px 16px',
                       background: '#ecfdf5',
                       border: '1px solid #a7f3d0',
-                      borderRadius: '12px',
+                      borderRadius: '14px',
                       color: '#065f46',
                       fontSize: '0.84rem',
                       fontWeight: 700,
                       display: 'flex',
                       alignItems: 'center',
                       gap: '8px',
-                      marginBottom: '16px',
                     }}
                   >
                     <CheckCircle2 size={16} color="#059669" />
@@ -5715,394 +5744,400 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 )}
 
-                {/* Mobile Header: Back Arrow, "Driver Profile", Edit Icon */}
-                <div className="modern-profile-header">
-                  <button
-                    type="button"
-                    className="modern-profile-header-btn"
-                    onClick={() => handleNavChange('deliveries')}
-                    aria-label="Back to deliveries"
-                  >
-                    <ArrowLeft size={22} />
-                  </button>
-                  <h2 className="modern-profile-header-title">Driver Profile</h2>
-                  <div style={{ width: 40 }} />
-                </div>
-
-                {/* Identity Card */}
-                <div
-                  className="modern-profile-identity profile-driver-mobile-identity"
-                >
-                  <div className="modern-profile-avatar-wrap" style={{ position: 'relative' }}>
-                    <div
-                      className="modern-profile-avatar-placeholder"
-                      style={{
-                        width: '74px',
-                        height: '74px',
-                        fontSize: '1.9rem',
-                        fontWeight: 800,
-                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                        color: '#ffffff',
-                        boxShadow: '0 4px 12px rgba(5,150,105,0.25)',
-                      }}
-                    >
-                      {(profileName || boyName || 'D').charAt(0).toUpperCase()}
-                    </div>
-                    <button
-                      type="button"
-                      className="modern-profile-camera-badge"
-                      onClick={openEditProfile}
-                      title="Edit photo"
-                      aria-label="Edit photo"
-                      style={{ bottom: 0, right: 0 }}
-                    >
-                      <Camera size={13} />
-                    </button>
+                {/* 1. Header: "My Profile" + Subtitle + Top-Right Milk Bottle Illustration */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginTop: '4px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
+                      My Profile
+                    </h2>
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#6b7280', fontWeight: 500, lineHeight: 1.4 }}>
+                      Manage your account, deliveries and preferences.
+                    </p>
                   </div>
-
-                  <div className="modern-profile-identity-info">
-                    <h3 className="modern-profile-name">
-                      {profileName || boyName || 'Delivery Partner'}
-                    </h3>
-                    <span className="modern-profile-handle">
-                      NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'} · {isOnline ? 'On duty' : 'Offline'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={openEditProfile}
-                      className="modern-profile-edit-btn"
-                    >
-                      Edit Profile
-                    </button>
-                  </div>
-                </div>
-
-                <div className="modern-profile-menu-list">
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('personal-details')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><User size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Personal Information</span>
-                        <span className="modern-profile-menu-sub">
-                          Partner ID: NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'} · {isOnline ? 'On duty' : 'Offline'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('contact-details')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><PhoneCall size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Contact Information</span>
-                        <span className="modern-profile-menu-sub">
-                          {profilePhone || user?.mobile || user?.phone || 'Phone not provided'} · {profileEmail || user?.email || 'Email not provided'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('territory-details')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><MapPin size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Territory & Dispatch</span>
-                        <span className="modern-profile-menu-sub">
-                          {profileArea || boyArea || 'Area not assigned'} · {profileShift || 'Morning Dispatch'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('vehicle')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Bike size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Vehicle & Equipment</span>
-                        <span className="modern-profile-menu-sub">
-                          {bikePlate || 'Vehicle not assigned'} · {bikeModel || bikeType || 'Details not provided'}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row"
-                    onClick={() => openProfileDetail('support')}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Headphones size={20} color="#059669" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Help & Support</span>
-                        <span className="modern-profile-menu-sub">
-                          Text admin, route queries & dispatch helpline
-                        </span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row is-logout"
-                    onClick={() => setShowLogoutConfirm(true)}
-                  >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><LogOut size={20} /></span>
-                      <span className="modern-profile-menu-label">Log out</span>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="modern-profile-menu-row is-delete"
-                    onClick={() => {
-                      setDeletePartnerError('');
-                      setShowDeletePartnerModal(true);
+                  <div
+                    style={{
+                      width: '54px',
+                      height: '54px',
+                      borderRadius: '14px',
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      background: '#fffdf5',
+                      border: '1px solid #fef3c7',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
                   >
-                    <div className="modern-profile-menu-left">
-                      <span className="modern-profile-menu-icon"><Trash2 size={20} color="#ef4444" /></span>
-                      <div>
-                        <span className="modern-profile-menu-label">Delete Partner Account</span>
-                        <span className="modern-profile-menu-sub">Permanently remove your account and profile</span>
-                      </div>
-                    </div>
-                    <div className="modern-profile-menu-right"><ChevronRight size={18} /></div>
-                  </button>
-                </div>
-
-                {/* Section 1: Personal & Identity Details */}
-                <div className="profile-section-card" style={{ marginBottom: '14px' }}>
-                  <div className="profile-section-header">
-                    <div>
-                      <h4 className="profile-section-title">
-                        <User size={18} color="#059669" /> Personal Information
-                      </h4>
-                      <p className="profile-section-subtitle">Identity & verified credentials</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Full Name</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileName || boyName || 'Delivery Partner'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Partner ID</span>
-                      <span style={{ fontWeight: 700, color: '#059669' }}>
-                        NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Designation</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>Delivery Partner</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Blood Group</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileBloodGroup || 'Not Specified'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Driving License</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileLicense || 'Not provided'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Member Since</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileJoiningDate || 'Active Partner'}</span>
-                    </div>
+                    <img
+                      src="/cat_img_milk.png"
+                      alt="Natural Milk"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
                   </div>
                 </div>
 
-                {/* Section 2: Contact & Communication */}
-                <div className="profile-section-card" style={{ marginBottom: '14px' }}>
-                  <div className="profile-section-header">
-                    <div>
-                      <h4 className="profile-section-title">
-                        <PhoneCall size={18} color="#059669" /> Contact Information
-                      </h4>
-                      <p className="profile-section-subtitle">Phone, email & residential address</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Mobile Number</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profilePhone || user?.mobile || user?.phone || 'Not provided'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Email Address</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a', wordBreak: 'break-all' }}>
-                        {profileEmail || user?.email || 'Not provided'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Home Address</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>
-                        {profileAddress || 'Not provided'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Emergency Contact</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right' }}>
-                        {profileEmergencyContact || 'Not provided'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 3: Assigned Territory & Hub */}
-                <div className="profile-section-card profile-driver-operations-card" style={{ marginBottom: '14px' }}>
-                  <div className="profile-section-header">
-                    <div>
-                      <h4 className="profile-section-title">
-                        <MapPin size={18} color="#059669" /> Territory & Hub Profile
-                      </h4>
-                      <p className="profile-section-subtitle">Stationed sector & supervisor hotline</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Assigned Territory</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileArea || boyArea || 'Madhapur'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Shift Window</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileShift || 'Morning Dispatch (5:00 AM – 7:30 AM)'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Dispatch Hub</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>
-                        {profileAddress || 'Madhapur Farm Dispatch Depot, Pillar 42'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Supervisor Hotline</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileEmergencyContact || '+91 98765 43210'}</span>
-                        <a
-                          href={`tel:${profileEmergencyContact || '9876543210'}`}
-                          className="profile-contact-chip"
-                          aria-label="Call Supervisor"
-                        >
-                          <Phone size={12} /> Call
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 4: Vehicle & Transport Details */}
-                <div className="profile-section-card profile-driver-operations-card" style={{ marginBottom: '14px' }}>
-                  <div className="profile-section-header">
-                    <div>
-                      <h4 className="profile-section-title">
-                        <Bike size={18} color="#059669" /> Vehicle & Equipment Profile
-                      </h4>
-                      <p className="profile-section-subtitle">Fleet vehicle and insulated crates allocation</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Registration Number</span>
-                      <span style={{ fontWeight: 700, color: '#059669' }}>{bikePlate || 'AP40DT9792'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Vehicle Model</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeModel || 'Commercial Cargo EV'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Vehicle Type</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeType || 'Insulated Milk Carrier EV'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Crates Capacity</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{bikeCratesCapacity || '4 Insulated Crates (120L)'}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem' }}>
-                      <span style={{ color: '#64748b' }}>Driving License</span>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{profileLicense || 'Verified Partner License'}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 5: Account & Session Actions */}
+                {/* 2. Partner User Identity Card (Matching Screenshot User Card) */}
                 <div
-                  className="profile-driver-account-actions"
+                  onClick={() => openProfileDetail('personal-details')}
                   style={{
+                    background: '#ffffff',
+                    borderRadius: '20px',
+                    border: '1px solid #e2ebe5',
+                    padding: '16px',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px',
-                    marginTop: '6px',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
+                    cursor: 'pointer',
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => setShowLogoutConfirm(true)}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      background: '#fef2f2',
-                      color: '#dc2626',
-                      border: '1px solid #fecaca',
-                      borderRadius: '12px',
-                      fontSize: '0.88rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '8px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <LogOut size={16} />
-                    <span>Log Out</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: '54px',
+                        height: '54px',
+                        borderRadius: '50%',
+                        background: '#e2f1ea',
+                        color: '#0d5c3a',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <User size={26} color="#0d5c3a" />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <h3 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: 900, color: '#0c2340', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {profileName || boyName || 'Naveen'}
+                      </h3>
+                      <div style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>
+                        ID: NMD-DRV-{(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '43A4'}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>
+                        {profilePhone || user?.mobile || '7702233931'}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <span
+                      style={{
+                        background: '#e2f1ea',
+                        color: '#0d5c3a',
+                        padding: '4px 10px',
+                        borderRadius: '16px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                      }}
+                    >
+                      Active
+                    </span>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </div>
+                </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeletePartnerError('');
-                      setShowDeletePartnerModal(true);
-                    }}
+                {/* 3. SECTION 1: Account & Billing (Matching Group 1 in Screenshot) */}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '20px',
+                    border: '1px solid #e2ebe5',
+                    padding: '16px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div
+                    onClick={() => openProfileDetail('personal-details')}
                     style={{
-                      width: '100%',
-                      padding: '11px 16px',
-                      background: 'transparent',
-                      color: '#94a3b8',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '12px',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
                       cursor: 'pointer',
                     }}
                   >
-                    <Trash2 size={15} color="#ef4444" />
-                    <span style={{ color: '#ef4444' }}>Delete Partner Account</span>
-                  </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <CreditCard size={18} color="#0d5c3a" />
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0c2340' }}>
+                        Account & Billing
+                      </span>
+                    </div>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {/* Item 1: Account Details */}
+                    <div
+                      onClick={() => openProfileDetail('personal-details')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <UserRound size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Account Details</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>View and update your personal information</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} color="#9ca3af" />
+                    </div>
+
+                    {/* Item 2: Deliveries */}
+                    <div
+                      onClick={() => handleNavChange('deliveries')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Truck size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Deliveries</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Track your latest doorstep deliveries</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '3px 9px', borderRadius: '12px' }}>
+                          {myDeliveries.filter((d) => d.status === 'pending').length > 0
+                            ? `${myDeliveries.filter((d) => d.status === 'pending').length} Drops`
+                            : `${myDeliveries.length || 9} Drops`}
+                        </span>
+                        <ChevronRight size={18} color="#9ca3af" />
+                      </div>
+                    </div>
+
+                    {/* Item 3: Subscription History & Orders */}
+                    <div
+                      onClick={() => handleNavChange('route')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <ReceiptText size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscription History & Orders</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>View active route, dispatched crates & drop orders</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '3px 9px', borderRadius: '12px' }}>
+                          History
+                        </span>
+                        <ChevronRight size={18} color="#9ca3af" />
+                      </div>
+                    </div>
+
+                    {/* Item 4: Addresses / Route Area */}
+                    <div
+                      onClick={() => openProfileDetail('territory-details')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <MapPin size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Addresses</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Manage your doorstep delivery route & hub</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '3px 9px', borderRadius: '12px' }}>
+                          {profileArea || boyArea || 'Home'}
+                        </span>
+                        <ChevronRight size={18} color="#9ca3af" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. SECTION 2: Support & Help (Matching Group 2 in Screenshot) */}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '20px',
+                    border: '1px solid #e2ebe5',
+                    padding: '16px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div
+                    onClick={() => openProfileDetail('support')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Headphones size={18} color="#0d5c3a" />
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0c2340' }}>
+                        Support & Help
+                      </span>
+                    </div>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {/* Item 1: Customer Care & Helplines */}
+                    <div
+                      onClick={() => openProfileDetail('support')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <MessageSquare size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Customer Care & Helplines</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>WhatsApp chat & 24/7 priority support</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} color="#9ca3af" />
+                    </div>
+
+                    {/* Item 2: Vehicle & Transport */}
+                    <div
+                      onClick={() => openProfileDetail('vehicle')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Bike size={18} color="#0d5c3a" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Vehicle & Transport</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>
+                            {bikePlate || 'Commercial Cargo EV'} · Fleet specs
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} color="#9ca3af" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. SECTION 3: Account Actions (Matching Group 3) */}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    borderRadius: '20px',
+                    border: '1px solid #e2ebe5',
+                    padding: '16px',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <ShieldAlert size={18} color="#0d5c3a" />
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0c2340' }}>
+                        Account Actions
+                      </span>
+                    </div>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {/* Log out */}
+                    <div
+                      onClick={() => setShowLogoutConfirm(true)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <LogOut size={18} color="#dc2626" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#dc2626' }}>Log out</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Sign out from your account</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} color="#9ca3af" />
+                    </div>
+
+                    {/* Delete Account */}
+                    <div
+                      onClick={() => {
+                        setDeletePartnerError('');
+                        setShowDeletePartnerModal(true);
+                      }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Trash2 size={18} color="#dc2626" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#dc2626' }}>Delete Account</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Permanently delete partner account & records</div>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} color="#9ca3af" />
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -7854,8 +7889,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         const doorstepAddress = item.customerAddress || customerInfo?.address || 'Doorstep Delivery';
         const landmark = item.landmark || customerInfo?.landmark || '';
         const specialNotes = item.deliveryNotes || customerInfo?.deliveryNotes || customerInfo?.notes || '';
+        const modalLat = item.latitude || item.customerLatitude || customerInfo?.latitude;
+        const modalLng = item.longitude || item.customerLongitude || customerInfo?.longitude;
         const mapAddress = `${doorstepAddress}, ${item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}`;
-        const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
+        const mapUrl = (modalLat && modalLng)
+          ? `https://www.google.com/maps/dir/?api=1&destination=${modalLat},${modalLng}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
 
         return (
           <div

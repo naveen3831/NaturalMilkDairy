@@ -118,6 +118,28 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  void updateUserProfile({
+    required String name,
+    required String mobile,
+    String? email,
+    String? address,
+    String? area,
+  }) {
+    if (_user != null) {
+      _user = UserModel(
+        id: _user!.id,
+        name: name,
+        mobile: mobile,
+        email: email ?? _user!.email,
+        role: _user!.role,
+        address: address ?? _user!.address,
+        area: area ?? _user!.area,
+        isActive: _user!.isActive,
+      );
+      notifyListeners();
+    }
+  }
+
   /// Sign out
   Future<void> logout() async {
     _user = null;
@@ -126,6 +148,27 @@ class AuthProvider extends ChangeNotifier {
     await _apiService.setToken(null);
     _realtimeService.updateToken('guest');
     notifyListeners();
+  }
+
+  /// Delete customer account permanently
+  Future<bool> deleteAccount() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final res = await _apiService.delete('/api/customers/me/account');
+      if (res['success'] == true) {
+        await logout();
+        return true;
+      }
+      _errorMessage = res['message']?.toString() ?? 'Failed to delete account';
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void clearError() {

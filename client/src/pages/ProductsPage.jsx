@@ -376,16 +376,7 @@ export default function ProductsPage({ setActiveTab }) {
                 <div className="mobile-card-top-image">
                   <img src={p.image || '/product-cow-milk.jpg'} alt={p.name} />
                   <span className={`mobile-grid-card-badge ${badgeClass}`}>{badgeText}</span>
-                  <button
-                    type="button"
-                    className={`mobile-card-heart-btn${isFav ? ' is-fav' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFav(p.id);
-                    }}
-                  >
-                    <Heart size={15} fill={isFav ? '#e11d48' : 'none'} color={isFav ? '#e11d48' : '#475569'} />
-                  </button>
+                  
                 </div>
 
                 {/* Body Details */}

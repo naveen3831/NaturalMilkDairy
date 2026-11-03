@@ -29,11 +29,16 @@ class CustomerProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   DateTime? get lastSyncTime => _lastSyncTime;
 
+  List<Map<String, dynamic>> _savedAddresses = [];
+  List<Map<String, dynamic>> get savedAddresses => _savedAddresses;
+
   String get name => _customerData?['name']?.toString() ?? '';
   String get mobile => _customerData?['mobile']?.toString() ?? '';
   String get address => _customerData?['address']?.toString() ?? '';
   String get area => _customerData?['area']?.toString() ?? '';
   String get landmark => _customerData?['landmark']?.toString() ?? '';
+  num? get latitude => _customerData?['latitude'] is num ? _customerData!['latitude'] as num : null;
+  num? get longitude => _customerData?['longitude'] is num ? _customerData!['longitude'] as num : null;
 
   bool get isPaused {
     final status = _customerData?['status']?.toString().toLowerCase();
@@ -475,27 +480,218 @@ class CustomerProvider extends ChangeNotifier {
     return false;
   }
 
-  Future<bool> updateDeliveryAddress({
-    required String address,
+  Future<bool> updateCustomerProfile({
+    required String name,
+    required String mobile,
+    String email = '',
+    String address = '',
     String area = '',
     String landmark = '',
+    num? latitude,
+    num? longitude,
   }) async {
     _isLoading = true;
     notifyListeners();
     try {
-      final res = await _api.put('/api/customers/me/profile', {
+      final Map<String, dynamic> body = {
+        'name': name,
+        'mobile': mobile,
+        'email': email,
+        'address': address,
+        'area': area,
+        'landmark': landmark,
+      };
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
+
+      final res = await _api.put('/api/customers/me/profile', body);
+      if (res['success'] == true) {
+        await loadAllCustomerData(silent: true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to update profile: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<bool> updateDeliveryAddress({
+    required String address,
+    String area = '',
+    String landmark = '',
+    num? latitude,
+    num? longitude,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final Map<String, dynamic> body = {
         'name': name.isNotEmpty ? name : 'Customer',
         'mobile': mobile.isNotEmpty ? mobile : '9999999999',
         'address': address,
         'area': area,
         'landmark': landmark,
-      });
+      };
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
+
+      final res = await _api.put('/api/customers/me/profile', body);
       if (res['success'] == true) {
         await loadAllCustomerData(silent: true);
         return true;
       }
     } catch (e) {
       debugPrint('Failed to update address: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<void> fetchSavedAddresses() async {
+    try {
+      final res = await _api.get('/api/customers/me/addresses');
+      if (res['success'] == true && res['addresses'] is List) {
+        _savedAddresses = (res['addresses'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error fetching saved addresses: $e');
+    }
+  }
+
+  Future<bool> addSavedAddress({
+    required String address,
+    required String area,
+    String landmark = '',
+    String label = 'Home',
+    String type = 'home',
+    String flatNo = '',
+    String city = 'Hyderabad',
+    String pincode = '500081',
+    String deliveryInstructions = '',
+    bool isDefault = false,
+    num? latitude,
+    num? longitude,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final Map<String, dynamic> body = {
+        'apartmentStreet': address,
+        'flatNo': flatNo,
+        'area': area,
+        'city': city,
+        'pincode': pincode,
+        'landmark': landmark,
+        'label': label,
+        'type': type,
+        'deliveryInstructions': deliveryInstructions,
+        'isDefault': isDefault,
+      };
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
+
+      final res = await _api.post('/api/customers/me/addresses', body);
+      if (res['success'] == true) {
+        await fetchSavedAddresses();
+        await loadAllCustomerData(silent: true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to add address: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<bool> updateSavedAddress({
+    required String addressId,
+    required String address,
+    required String area,
+    String landmark = '',
+    String label = 'Home',
+    String type = 'home',
+    String flatNo = '',
+    String city = 'Hyderabad',
+    String pincode = '500081',
+    String deliveryInstructions = '',
+    bool isDefault = false,
+    num? latitude,
+    num? longitude,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final Map<String, dynamic> body = {
+        'apartmentStreet': address,
+        'flatNo': flatNo,
+        'area': area,
+        'city': city,
+        'pincode': pincode,
+        'landmark': landmark,
+        'label': label,
+        'type': type,
+        'deliveryInstructions': deliveryInstructions,
+        'isDefault': isDefault,
+      };
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
+
+      final res = await _api.put('/api/customers/me/addresses/$addressId', body);
+      if (res['success'] == true) {
+        await fetchSavedAddresses();
+        await loadAllCustomerData(silent: true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to update address: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<bool> setDefaultAddress(String addressId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final res = await _api.put('/api/customers/me/addresses/$addressId/default', {});
+      if (res['success'] == true) {
+        await fetchSavedAddresses();
+        await loadAllCustomerData(silent: true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to set default address: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+    return false;
+  }
+
+  Future<bool> deleteSavedAddress(String addressId) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final res = await _api.delete('/api/customers/me/addresses/$addressId');
+      if (res['success'] == true) {
+        await fetchSavedAddresses();
+        await loadAllCustomerData(silent: true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Failed to delete address: $e');
     } finally {
       _isLoading = false;
       notifyListeners();

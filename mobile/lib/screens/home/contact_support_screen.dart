@@ -483,9 +483,12 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
             children: [
               Icon(Icons.bolt_rounded, size: 14, color: Color(0xFF0D5C3A)),
               SizedBox(width: 6),
-              Text(
-                'Live 2-Way Sync Active • Messages deliver instantly to Admin',
-                style: TextStyle(color: Color(0xFF0D5C3A), fontSize: 11, fontWeight: FontWeight.w700),
+              Flexible(
+                child: Text(
+                  'Live 2-Way Sync Active • Messages deliver instantly to Admin',
+                  style: TextStyle(color: Color(0xFF0D5C3A), fontSize: 11, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

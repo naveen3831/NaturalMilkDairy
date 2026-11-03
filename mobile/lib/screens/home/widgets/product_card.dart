@@ -13,8 +13,6 @@ class ProductCard extends StatefulWidget {
 }
 
 class _ProductCardState extends State<ProductCard> {
-  bool _isFavorite = false;
-
   @override
   Widget build(BuildContext context) {
     final p = widget.product;
@@ -157,41 +155,6 @@ class _ProductCardState extends State<ProductCard> {
                         fontSize: 9,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.3,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Heart Button top-right
-                Positioned(
-                  top: 7,
-                  right: 7,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _isFavorite = !_isFavorite;
-                      });
-                    },
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.95),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 5,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Icon(
-                          _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          size: 15,
-                          color: _isFavorite ? const Color(0xFFE11D48) : const Color(0xFF475569),
-                        ),
                       ),
                     ),
                   ),

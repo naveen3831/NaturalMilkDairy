@@ -163,11 +163,13 @@ export default function CustomerList({
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', handleLiveSync);
     const unsubPayment = wsSubscribe('PAYMENT_RECORDED', handleLiveSync);
     const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', handleLiveSync);
+    const unsubLocation = wsSubscribe('LOCATION_UPDATED', handleLiveSync);
 
     return () => {
       if (typeof unsubDelivery === 'function') unsubDelivery();
       if (typeof unsubPayment === 'function') unsubPayment();
       if (typeof unsubCustomer === 'function') unsubCustomer();
+      if (typeof unsubLocation === 'function') unsubLocation();
     };
   }, [selectedCustomerId, getCustomerLedger, wsSubscribe]);
 

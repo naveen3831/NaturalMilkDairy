@@ -23,7 +23,7 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
-
+                                                                                
   // Initialize API service, detect connectivity, and start WebSocket
   await ApiService().init();
   RealtimeService().connect();

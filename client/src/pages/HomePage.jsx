@@ -514,16 +514,7 @@ export default function HomePage({ setActiveTab }) {
                 <div className="mobile-bestseller-img-box">
                   <img src={prod.image || '/product-cow-milk.jpg'} alt={prod.name} />
                   <span className="mobile-bestseller-badge">{badgeLabel}</span>
-                  <button
-                    type="button"
-                    className={`mobile-card-heart-btn${isFav ? ' is-fav' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFav(prod.id);
-                    }}
-                  >
-                    <Heart size={15} fill={isFav ? '#e11d48' : 'none'} color={isFav ? '#e11d48' : '#475569'} />
-                  </button>
+                  
                 </div>
                 <h4 className="mobile-bestseller-title">{prod.name}</h4>
               </div>

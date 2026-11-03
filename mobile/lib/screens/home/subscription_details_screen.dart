@@ -1,3 +1,4 @@
+import 'delivery_addresses_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:natural_milk_dairy/providers/auth_provider.dart';
@@ -893,63 +894,74 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             const SizedBox(height: 14),
 
             // 3. DELIVERY ADDRESS CARD (Matching Image 2)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2EBE5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.location_on_rounded, color: Color(0xFF0D5C3A), size: 18),
-                      SizedBox(width: 8),
-                      Text(
-                        'Delivery Address',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0C2340),
+            InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DeliveryAddressesScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2EBE5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.location_on_rounded, color: Color(0xFF0D5C3A), size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Delivery Address',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0C2340),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F7F4),
-                          borderRadius: BorderRadius.circular(12),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3F7F4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.home_outlined, color: Color(0xFF0D5C3A), size: 20),
                         ),
-                        child: const Icon(Icons.home_outlined, color: Color(0xFF0D5C3A), size: 20),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Home',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
-                            ),
-                            Text(
-                              user?.address ?? 'Madhupur, Hyderabad, Telangana - 500081',
-                              style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Home',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                              ),
+                              Text(
+                                customerProvider.address.isNotEmpty
+                                    ? customerProvider.address
+                                    : (user?.address ?? 'Madhupur, Hyderabad, Telangana - 500081'),
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
-                    ],
-                  ),
-                ],
+                        const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -1136,11 +1148,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          fullscreenDialog: true,
-                          builder: (_) => _ChangeAddressFullScreenPage(
-                            customerProvider: customerProvider,
-                            onSuccess: (msg) => _showActionSnackbar(context, msg),
-                          ),
+                          builder: (_) => const DeliveryAddressesScreen(),
                         ),
                       );
                     },

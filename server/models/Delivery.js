@@ -5,6 +5,10 @@ const deliverySchema = new mongoose.Schema({
   customerName: { type: String, required: true },
   customerPhone: { type: String, default: '' },
   customerAddress: { type: String, default: '' },
+  latitude: { type: Number, default: null },
+  longitude: { type: Number, default: null },
+  customerLatitude: { type: Number, default: null },
+  customerLongitude: { type: Number, default: null },
   deliveryBoyId: { type: String, default: '' },
   deliveryBoyName: { type: String, default: '' },
   deliveryDate: { type: String, required: true }, // 'YYYY-MM-DD'

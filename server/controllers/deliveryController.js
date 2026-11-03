@@ -306,7 +306,28 @@ const markDelivered = async (req, res) => {
       $or: [{ customerId: delivery.customerId }, { _id: delivery.customerId.length === 24 ? delivery.customerId : null }],
     });
 
-    const proofUrl = typeof proofImage === 'string' ? proofImage.trim() : '';
+    let proofUrl = (typeof proofImage === 'string' && proofImage.trim())
+      ? proofImage.trim()
+      : (typeof req.body.proofUrl === 'string' ? req.body.proofUrl.trim() : '');
+
+    // If photo is captured via device camera as base64, persist directly to uploads folder
+    if (proofUrl.startsWith('data:image/')) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const uploadDir = path.join(__dirname, '../uploads');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const base64Data = proofUrl.replace(/^data:image\/\w+;base64,/, '');
+        const filename = `proof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
+        fs.writeFileSync(path.join(uploadDir, filename), base64Data, 'base64');
+        proofUrl = `/uploads/${filename}`;
+      } catch (err) {
+        console.error('Failed to save base64 proof image:', err);
+      }
+    }
+
     const isAdmin = req.user?.role === 'admin';
     if (!isAdmin && process.env.REQUIRE_DELIVERY_PROOF === 'true' && !isPersistedProof(proofUrl)) {
       return res.status(400).json({
