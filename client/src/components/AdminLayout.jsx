@@ -135,13 +135,6 @@ export default function AdminLayout({
       desc: 'Driver cash handovers & shift settlement',
     },
     {
-      id: 'ledger',
-      label: 'Customer Ledger',
-      icon: FileText,
-      badge: null,
-      desc: 'Monthly statement & passbooks',
-    },
-    {
       id: 'outstanding',
       label: 'Credit & Outstanding',
       icon: CreditCard,
@@ -393,6 +386,7 @@ export default function AdminLayout({
             const Icon = item.icon;
             const isActive =
               activeTab === item.id ||
+              (item.id === 'customers' && activeTab === 'ledger') ||
               (item.id === 'delivery-boys' && (activeTab === 'add-delivery-boy' || activeTab === 'edit-delivery-boy')) ||
               (item.id === 'pricing' && (activeTab === 'add-product' || activeTab === 'edit-product'));
 

@@ -12,11 +12,14 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  Send,
+  Wallet,
+  ShieldCheck,
+  User,
+  Check,
 } from 'lucide-react';
 
 export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, onDeleted }) {
-  const { deliveryBoys, updateDeliveryBoy, deleteDeliveryBoy, sendDeliveryBoyCredentials, locations } = useDairy();
+  const { deliveryBoys, updateDeliveryBoy, deleteDeliveryBoy, locations } = useDairy();
 
   // Find partner
   const boy = deliveryBoys.find(
@@ -34,8 +37,6 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isSendingMail, setIsSendingMail] = useState(false);
-  const [mailFeedback, setMailFeedback] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [backendConflictField, setBackendConflictField] = useState(null);
@@ -61,7 +62,8 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
     cleanMobile.length >= 10
       ? (deliveryBoys || []).find(
           (b) =>
-            (b.id !== boy?.id && b._id !== boy?._id) &&
+            b.id !== boy?.id &&
+            b._id !== boy?._id &&
             b.mobile &&
             b.mobile.trim() === cleanMobile
         )
@@ -71,7 +73,8 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
     cleanEmail.length >= 4 && cleanEmail.includes('@')
       ? (deliveryBoys || []).find(
           (b) =>
-            (b.id !== boy?.id && b._id !== boy?._id) &&
+            b.id !== boy?.id &&
+            b._id !== boy?._id &&
             b.email &&
             b.email.trim().toLowerCase() === cleanEmail
         )
@@ -82,26 +85,31 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
 
   if (!boy) {
     return (
-      <div style={{ maxWidth: '800px', margin: '40px auto', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '1.2rem', color: '#0f172a', fontWeight: 800 }}>Delivery Partner Not Found</h2>
+      <div style={{ width: '100%', margin: '40px auto', textAlign: 'center' }}>
+        <h2 style={{ fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>Delivery Partner Not Found</h2>
         <p style={{ color: '#64748b', fontSize: '0.86rem', marginTop: '6px' }}>
-          The requested delivery partner record could not be located in MongoDB Atlas.
+          The requested delivery partner record could not be located in the database.
         </p>
         <button
           type="button"
           onClick={onBack}
           style={{
             marginTop: '16px',
-            padding: '8px 18px',
-            borderRadius: '8px',
+            padding: '9px 20px',
+            borderRadius: '10px',
             background: '#059669',
             color: '#ffffff',
             border: 'none',
             cursor: 'pointer',
-            fontWeight: 600,
+            fontWeight: 700,
+            fontSize: '0.84rem',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
         >
-          ← Back to Delivery Partners
+          <ArrowLeft size={16} />
+          <span>Back to Delivery Partners</span>
         </button>
       </div>
     );
@@ -173,7 +181,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
         onSaved(
           res?.emailSent
             ? `Partner ${name} updated & new credentials emailed successfully!`
-            : `Partner ${name} updated in MongoDB Atlas.`
+            : `Partner ${name} profile and route updated successfully.`
         );
       } else if (onBack) {
         onBack();
@@ -207,44 +215,26 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
     }
   };
 
-  const handleQuickSendEmail = async () => {
-    const targetEmail = email.trim() || boy.email;
-    if (!targetEmail) {
-      setErrorMessage('Please enter an email address before sending credentials.');
-      return;
-    }
-    setIsSendingMail(true);
-    setMailFeedback('');
-    try {
-      const res = await sendDeliveryBoyCredentials(boy.id, 'Admin');
-      setIsSendingMail(false);
-      if (res?.success) {
-        setMailFeedback(`✅ Credentials successfully sent to ${targetEmail}!`);
-        setTimeout(() => setMailFeedback(''), 5000);
-      } else {
-        setErrorMessage(res?.message || 'Failed to dispatch email.');
-      }
-    } catch (err) {
-      setIsSendingMail(false);
-      setErrorMessage(err.message || 'Failed to dispatch email.');
-    }
-  };
+  const stats = boy.todayStats || {};
+  const cashCollected = Number(boy.todayCashCollected) || 0;
+  const upiCollected = Number(boy.todayUpiCollected) || 0;
+  const totalCollected = cashCollected + upiCollected;
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '22px' }}>
-      {/* 1. Header with Back Button */}
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* 1. Header Toolbar (Full Width) */}
       <div
         style={{
           background: '#ffffff',
           border: '1px solid #e2e8f0',
           borderRadius: '16px',
-          padding: '20px 24px',
+          padding: '18px 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: '14px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -255,30 +245,31 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '38px',
-              height: '38px',
+              width: '40px',
+              height: '40px',
               borderRadius: '10px',
               background: '#f8fafc',
-              border: '1px solid #e2e8f0',
+              border: '1px solid #cbd5e1',
               color: '#334155',
               cursor: 'pointer',
               transition: 'all 0.15s ease',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = '#edf2f7';
-              e.currentTarget.style.borderColor = '#cbd5e1';
+              e.currentTarget.style.borderColor = '#94a3b8';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = '#f8fafc';
-              e.currentTarget.style.borderColor = '#e2e8f0';
+              e.currentTarget.style.borderColor = '#cbd5e1';
             }}
             title="Back to Delivery Partners list"
           >
             <ArrowLeft size={18} />
           </button>
+
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Delivery Fleet
               </span>
               <span
@@ -289,41 +280,27 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                   borderRadius: '999px',
                   background: boy.status === 'inactive' ? '#fef2f2' : '#ecfdf5',
                   color: boy.status === 'inactive' ? '#dc2626' : '#047857',
+                  border: '1px solid',
+                  borderColor: boy.status === 'inactive' ? '#fee2e2' : '#bbf7d0',
                 }}
               >
                 {boy.status === 'inactive' ? 'Inactive' : 'Active'}
               </span>
+              {boy.assignedArea && (
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
+                  • Route: <strong>{boy.assignedArea}</strong>
+                </span>
+              )}
             </div>
+
             <h1 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', margin: '2px 0 0 0' }}>
               Edit Partner: {boy.name}
             </h1>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            type="button"
-            disabled={isSendingMail}
-            onClick={handleQuickSendEmail}
-            style={{
-              background: '#eff6ff',
-              border: '1px solid #bfdbfe',
-              color: '#1d4ed8',
-              fontWeight: 700,
-              fontSize: '0.82rem',
-              padding: '7px 14px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              opacity: isSendingMail ? 0.7 : 1,
-            }}
-          >
-            {isSendingMail ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-            <span>{isSendingMail ? 'Sending Email...' : 'Send Credentials Email'}</span>
-          </button>
-
+        {/* Top Action Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={() => setShowDeleteConfirm(true)}
@@ -333,13 +310,16 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               color: '#dc2626',
               fontWeight: 600,
               fontSize: '0.82rem',
-              padding: '7px 14px',
+              padding: '8px 16px',
               borderRadius: '8px',
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
+              transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#fef2f2')}
           >
             <Trash2 size={14} />
             <span>Delete Partner</span>
@@ -350,80 +330,224 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
             onClick={onBack}
             style={{
               background: '#ffffff',
-              border: '1px solid #e2e8f0',
-              color: '#64748b',
+              border: '1px solid #cbd5e1',
+              color: '#475569',
               fontWeight: 600,
               fontSize: '0.82rem',
-              padding: '7px 14px',
+              padding: '8px 16px',
               borderRadius: '8px',
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
           >
             Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            style={{
+              background: isSubmitting ? '#94a3b8' : '#059669',
+              border: 'none',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              padding: '8px 18px',
+              borderRadius: '8px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 1px 2px rgba(5, 150, 105, 0.2)',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitting) e.currentTarget.style.background = '#047857';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSubmitting) e.currentTarget.style.background = '#059669';
+            }}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <Check size={15} />
+                <span>Save Changes & Sync</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Error Message */}
+      {/* Error Message Banner */}
       {errorMessage && (
         <div
           style={{
             background: '#fef2f2',
             border: '1px solid #fecaca',
             color: '#dc2626',
-            padding: '12px 18px',
+            padding: '14px 20px',
             borderRadius: '12px',
-            fontSize: '0.84rem',
+            fontSize: '0.86rem',
             fontWeight: 600,
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '10px',
+            boxShadow: '0 1px 3px rgba(220, 38, 38, 0.08)',
           }}
         >
-          <AlertCircle size={17} />
+          <AlertCircle size={18} style={{ flexShrink: 0 }} />
           <span>{errorMessage}</span>
         </div>
       )}
 
-      {/* Mail Feedback Banner */}
-      {mailFeedback && (
+      {/* 2. Partner Snapshot & Live Performance Banner (Full Width) */}
+      <div
+        style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '16px',
+          padding: '20px 24px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '20px',
+          alignItems: 'center',
+        }}
+      >
+        {/* Partner Info Summary */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            style={{
+              width: '52px',
+              height: '52px',
+              borderRadius: '14px',
+              background: '#ecfdf5',
+              color: '#059669',
+              fontWeight: 800,
+              fontSize: '1.3rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              border: '1px solid #a7f3d0',
+            }}
+          >
+            {boy.name?.charAt(0)?.toUpperCase() || 'D'}
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+              {boy.name}
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '0.78rem', color: '#64748b', marginTop: '4px' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <Phone size={12} color="#059669" />
+                <span>{boy.mobile}</span>
+              </span>
+              {boy.vehicleNumber && (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <Truck size={12} color="#059669" />
+                  <span>{boy.vehicleNumber}</span>
+                </span>
+              )}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <MapPin size={12} color="#059669" />
+                <span>{boy.assignedArea}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Route Drops & Cash In Hand KPI Strips */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+          {/* Today's Route Drops */}
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+              padding: '12px 14px',
+            }}
+          >
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>
+              Today's Route Deliveries
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', textAlign: 'center' }}>
+              <div style={{ background: '#ffffff', padding: '6px 4px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 600 }}>DONE</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>{stats.completed ?? 0}</div>
+              </div>
+              <div style={{ background: '#ffffff', padding: '6px 4px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 600 }}>PENDING</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#d97706' }}>{stats.pending ?? 0}</div>
+              </div>
+              <div style={{ background: '#ffffff', padding: '6px 4px', borderRadius: '6px', border: '1px solid #f1f5f9' }}>
+                <div style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 600 }}>MISSED</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#dc2626' }}>{stats.notDelivered ?? 0}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Cash in Hand Today */}
+          <div
+            style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase' }}>
+                Cash in Hand Today
+              </span>
+              <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#047857' }}>
+                ₹{totalCollected.toLocaleString()}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: '#15803d', marginTop: '6px' }}>
+              <span>Cash: ₹{cashCollected}</span>
+              <span>UPI: ₹{upiCollected}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Full-Page Edit Form (2 Full-Width Responsive Cards) */}
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div
           style={{
-            background: '#ecfdf5',
-            border: '1px solid #a7f3d0',
-            color: '#065f46',
-            padding: '12px 18px',
-            borderRadius: '12px',
-            fontSize: '0.84rem',
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+            gap: '20px',
           }}
         >
-          <CheckCircle size={17} />
-          <span>{mailFeedback}</span>
-        </div>
-      )}
-
-      {/* 2. Full-Page Edit Form */}
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: '20px' }}>
-          {/* Card 1: Partner Details */}
+          {/* Card 1: Profile & Contact Details */}
           <div
             style={{
               background: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '16px',
               padding: '24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
+              gap: '18px',
             }}
           >
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '14px' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Edit2 size={16} color="#059669" />
                 <span>Profile & Contact Details</span>
               </h2>
@@ -432,8 +556,9 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               </p>
             </div>
 
+            {/* Full Name */}
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                 Partner Full Name <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <input
@@ -441,31 +566,34 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                placeholder="Enter partner name"
                 style={{
                   width: '100%',
-                  padding: '10px 14px',
+                  padding: '11px 14px',
                   borderRadius: '10px',
                   border: '1px solid #cbd5e1',
                   fontSize: '0.86rem',
                   outline: 'none',
+                  boxSizing: 'border-box',
                 }}
               />
             </div>
 
+            {/* Mobile Number */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: isMobileDuplicate ? '#dc2626' : '#334155', display: 'block' }}>
+                <label style={{ fontSize: '0.80rem', fontWeight: 700, color: isMobileDuplicate ? '#dc2626' : '#334155', display: 'block' }}>
                   Mobile Number (Login ID) <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 {isMobileDuplicate && (
-                  <span style={{ fontSize: '0.73rem', color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                     <AlertCircle size={13} />
                     ALREADY REGISTERED
                   </span>
                 )}
               </div>
               <div style={{ position: 'relative' }}>
-                <Phone size={15} color={isMobileDuplicate ? '#ef4444' : '#94a3b8'} style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <Phone size={15} color={isMobileDuplicate ? '#ef4444' : '#94a3b8'} style={{ position: 'absolute', left: '12px', top: '13px' }} />
                 <input
                   type="tel"
                   value={mobile}
@@ -477,41 +605,44 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                     }
                   }}
                   required
+                  placeholder="10-digit mobile number"
                   style={{
                     width: '100%',
-                    padding: '10px 14px 10px 36px',
+                    padding: '11px 14px 11px 36px',
                     borderRadius: '10px',
                     border: isMobileDuplicate ? '1.5px solid #ef4444' : '1px solid #cbd5e1',
                     background: isMobileDuplicate ? '#fef2f2' : '#ffffff',
                     color: isMobileDuplicate ? '#991b1b' : '#0f172a',
                     fontSize: '0.86rem',
                     outline: 'none',
+                    boxSizing: 'border-box',
                     transition: 'all 0.15s ease',
                   }}
                 />
               </div>
               {isMobileDuplicate && (
-                <div style={{ marginTop: '6px', padding: '7px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '0.76rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                <div style={{ marginTop: '6px', padding: '7px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '0.74rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                   <AlertCircle size={14} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <span>Phone number is already registered with partner <strong>"{otherDriverByMobile?.name || 'another account'}"</strong>. Please change the phone number.</span>
                 </div>
               )}
             </div>
 
+            {/* Email Address */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: isEmailDuplicate ? '#dc2626' : '#059669', display: 'block' }}>
+                <label style={{ fontSize: '0.80rem', fontWeight: 700, color: isEmailDuplicate ? '#dc2626' : '#059669', display: 'block' }}>
                   Partner Email Address
                 </label>
                 {isEmailDuplicate && (
-                  <span style={{ fontSize: '0.73rem', color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                     <AlertCircle size={13} />
                     ALREADY REGISTERED
                   </span>
                 )}
               </div>
               <div style={{ position: 'relative' }}>
-                <Mail size={15} color={isEmailDuplicate ? '#ef4444' : '#059669'} style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <Mail size={15} color={isEmailDuplicate ? '#ef4444' : '#059669'} style={{ position: 'absolute', left: '12px', top: '13px' }} />
                 <input
                   type="email"
                   value={email}
@@ -522,35 +653,38 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                       setErrorMessage('');
                     }
                   }}
+                  placeholder="driver@naturalmilkdairy.com"
                   style={{
                     width: '100%',
-                    padding: '10px 14px 10px 36px',
+                    padding: '11px 14px 11px 36px',
                     borderRadius: '10px',
                     border: isEmailDuplicate ? '1.5px solid #ef4444' : '1px solid #a7f3d0',
                     background: isEmailDuplicate ? '#fef2f2' : '#f0fdf4',
                     color: isEmailDuplicate ? '#991b1b' : '#065f46',
                     fontSize: '0.86rem',
                     outline: 'none',
+                    boxSizing: 'border-box',
                     transition: 'all 0.15s ease',
                   }}
                 />
               </div>
               {isEmailDuplicate && (
-                <div style={{ marginTop: '6px', padding: '7px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '0.76rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                <div style={{ marginTop: '6px', padding: '7px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#b91c1c', fontSize: '0.74rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                   <AlertCircle size={14} color="#dc2626" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <span>Email address is already registered with partner <strong>"{otherDriverByEmail?.name || 'another account'}"</strong>. Please change the email address.</span>
                 </div>
               )}
             </div>
 
+            {/* Re-send Credentials Checkbox */}
             {email && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
+                  gap: '10px',
                   background: '#f8fafc',
-                  padding: '10px 14px',
+                  padding: '12px 14px',
                   borderRadius: '10px',
                   border: '1px solid #e2e8f0',
                 }}
@@ -569,21 +703,21 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
             )}
           </div>
 
-          {/* Card 2: Route, Status & Password */}
+          {/* Card 2: Route Assignment & Security */}
           <div
             style={{
               background: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '16px',
               padding: '24px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
+              gap: '18px',
             }}
           >
-            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-              <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '14px' }}>
+              <h2 style={{ fontSize: '1rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Truck size={16} color="#059669" />
                 <span>Route Assignment & Security</span>
               </h2>
@@ -592,12 +726,13 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               </p>
             </div>
 
+            {/* Assigned Route Area */}
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                 Assigned Route Area <span style={{ color: '#dc2626' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
-                <MapPin size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                <MapPin size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '13px' }} />
                 <input
                   type="text"
                   list="edit-partner-routes"
@@ -607,11 +742,12 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                   required
                   style={{
                     width: '100%',
-                    padding: '10px 14px 10px 36px',
+                    padding: '11px 14px 11px 36px',
                     borderRadius: '10px',
                     border: '1px solid #cbd5e1',
                     fontSize: '0.86rem',
                     outline: 'none',
+                    boxSizing: 'border-box',
                   }}
                 />
                 <datalist id="edit-partner-routes">
@@ -627,39 +763,47 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                       <option value="Hitec City" />
                       <option value="Gachibowli" />
                       <option value="Kondapur" />
+                      <option value="Jubilee Hills" />
+                      <option value="Banjara Hills" />
                     </>
                   )}
                 </datalist>
               </div>
             </div>
 
+            {/* Vehicle Number */}
             <div>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                 Vehicle Number / Model
               </label>
-              <input
-                type="text"
-                value={vehicleNumber}
-                onChange={(e) => setVehicleNumber(e.target.value)}
-                placeholder="e.g. MH-02-ND-5678"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '10px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '0.86rem',
-                  outline: 'none',
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <Truck size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '13px' }} />
+                <input
+                  type="text"
+                  value={vehicleNumber}
+                  onChange={(e) => setVehicleNumber(e.target.value)}
+                  placeholder="e.g. AP40DT9792"
+                  style={{
+                    width: '100%',
+                    padding: '11px 14px 11px 36px',
+                    borderRadius: '10px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.86rem',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {/* Password & Status (2 Columns) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                   Reset Password
                 </label>
                 <div style={{ position: 'relative' }}>
-                  <Lock size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '12px' }} />
+                  <Lock size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '13px' }} />
                   <input
                     type="text"
                     value={password}
@@ -667,18 +811,19 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                     placeholder="Enter new password"
                     style={{
                       width: '100%',
-                      padding: '10px 14px 10px 36px',
+                      padding: '11px 14px 11px 36px',
                       borderRadius: '10px',
                       border: '1px solid #cbd5e1',
                       fontSize: '0.86rem',
                       outline: 'none',
+                      boxSizing: 'border-box',
                     }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.80rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '6px' }}>
                   Account Status
                 </label>
                 <select
@@ -686,12 +831,14 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                   onChange={(e) => setStatus(e.target.value)}
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
+                    padding: '11px 14px',
                     borderRadius: '10px',
                     border: '1px solid #cbd5e1',
                     fontSize: '0.86rem',
                     outline: 'none',
                     background: '#ffffff',
+                    boxSizing: 'border-box',
+                    cursor: 'pointer',
                   }}
                 >
                   <option value="active">Active</option>
@@ -702,7 +849,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
           </div>
         </div>
 
-        {/* Footer Actions */}
+        {/* 4. Footer Actions Bar (Full Width) */}
         <div
           style={{
             background: '#ffffff',
@@ -713,14 +860,14 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
             alignItems: 'center',
             justifyContent: 'flex-end',
             gap: '12px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
           }}
         >
           <button
             type="button"
             onClick={onBack}
             style={{
-              padding: '10px 20px',
+              padding: '10px 22px',
               borderRadius: '10px',
               border: '1px solid #cbd5e1',
               background: '#ffffff',
@@ -728,7 +875,10 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               fontWeight: 600,
               fontSize: '0.86rem',
               cursor: 'pointer',
+              transition: 'all 0.15s ease',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#ffffff')}
           >
             Cancel
           </button>
@@ -737,7 +887,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
             type="submit"
             disabled={isSubmitting}
             style={{
-              padding: '10px 24px',
+              padding: '10px 26px',
               borderRadius: '10px',
               border: 'none',
               background: isSubmitting ? '#94a3b8' : '#059669',
@@ -750,6 +900,12 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               gap: '8px',
               boxShadow: '0 2px 4px rgba(5, 150, 105, 0.2)',
               transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (!isSubmitting) e.currentTarget.style.background = '#047857';
+            }}
+            onMouseLeave={(e) => {
+              if (!isSubmitting) e.currentTarget.style.background = '#059669';
             }}
           >
             {isSubmitting ? (
@@ -767,7 +923,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
         </div>
       </form>
 
-      {/* Delete Confirmation Modal */}
+      {/* 5. Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
@@ -795,16 +951,12 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
             </div>
 
             <p style={{ fontSize: '0.84rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              Are you sure you want to permanently delete <strong>{boy.name}</strong> ({boy.mobile}) from the system and MongoDB Atlas?
+              Are you sure you want to permanently delete <strong>{boy.name}</strong> ({boy.mobile}) from the system and database?
             </p>
 
-            {/* If partner has amount in hand, show it to admin */}
+            {/* If partner has amount in hand, show breakdown */}
             {(() => {
-              const cashCollected = Number(boy.todayCashCollected) || 0;
-              const upiCollected = Number(boy.todayUpiCollected) || 0;
-              const totalInHand = cashCollected + upiCollected;
-              const hasAmountInHand = totalInHand > 0;
-
+              const hasAmountInHand = totalCollected > 0;
               if (hasAmountInHand) {
                 return (
                   <div
@@ -818,7 +970,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#b45309', fontWeight: 800, fontSize: '0.85rem', marginBottom: '6px' }}>
                       <AlertTriangle size={16} />
-                      <span>Cash in Partner Hand Detected: ₹{totalInHand}</span>
+                      <span>Cash in Partner Hand Detected: ₹{totalCollected}</span>
                     </div>
                     <p style={{ fontSize: '0.76rem', color: '#78350f', margin: '0 0 8px 0', lineHeight: 1.4 }}>
                       Partner currently holds un-reconciled money in hand.
@@ -836,7 +988,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                       <div style={{ width: '1px', background: '#fde68a' }} />
                       <div style={{ textAlign: 'center' }}>
                         <span style={{ color: '#92400e', display: 'block', fontSize: '0.7rem', fontWeight: 600 }}>TOTAL</span>
-                        <strong style={{ color: '#dc2626' }}>₹{totalInHand}</strong>
+                        <strong style={{ color: '#dc2626' }}>₹{totalCollected}</strong>
                       </div>
                     </div>
                   </div>
@@ -851,7 +1003,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                 onClick={() => setShowDeleteConfirm(false)}
                 style={{
                   flex: 1,
-                  padding: '9px',
+                  padding: '10px',
                   borderRadius: '8px',
                   border: '1px solid #cbd5e1',
                   background: '#ffffff',
@@ -866,13 +1018,13 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
               <button
                 type="button"
                 onClick={() => {
-                  const hasCash = ((Number(boy.todayCashCollected) || 0) + (Number(boy.todayUpiCollected) || 0)) > 0;
+                  const hasCash = totalCollected > 0;
                   handleDelete(hasCash);
                 }}
                 disabled={isDeleting}
                 style={{
                   flex: 1,
-                  padding: '9px',
+                  padding: '10px',
                   borderRadius: '8px',
                   border: 'none',
                   background: '#dc2626',
@@ -890,7 +1042,7 @@ export default function EditDeliveryBoyPage({ deliveryBoyId, onBack, onSaved, on
                 <span>
                   {isDeleting
                     ? 'Deleting...'
-                    : ((Number(boy.todayCashCollected) || 0) + (Number(boy.todayUpiCollected) || 0)) > 0
+                    : totalCollected > 0
                     ? 'Force Delete'
                     : 'Yes, Delete'}
                 </span>

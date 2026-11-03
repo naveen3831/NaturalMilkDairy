@@ -10,7 +10,10 @@ build/
 
 # Environment files
 .env
+client/.env
+client/.env*.local
 server/.env
+server/.env*.local
 *.local
 
 # Logs and runtime data

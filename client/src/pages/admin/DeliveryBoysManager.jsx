@@ -461,50 +461,6 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
 
                   <button
                     type="button"
-                    disabled={sendingEmailBoyId === boy.id}
-                    onClick={async () => {
-                      if (!boy.email) {
-                        showToast(`⚠️ No email address set for ${boy.name}. Please edit driver and add an email.`);
-                        return;
-                      }
-                      setSendingEmailBoyId(boy.id);
-                      const res = await sendDeliveryBoyCredentials(boy.id, 'Admin');
-                      setSendingEmailBoyId(null);
-                      if (res?.success) {
-                        showToast(`✅ Credentials emailed to ${boy.email}!`);
-                      } else {
-                        showToast(`❌ ${res?.message || 'Failed to dispatch email'}`);
-                      }
-                    }}
-                    title="Send Login Credentials Email"
-                    style={{
-                      padding: '8px 12px',
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      color: '#1d4ed8',
-                      borderRadius: '8px',
-                      fontWeight: 600,
-                      fontSize: '0.8rem',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      transition: 'all 0.15s ease',
-                      opacity: sendingEmailBoyId === boy.id ? 0.7 : 1,
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#dbeafe')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#eff6ff')}
-                  >
-                    {sendingEmailBoyId === boy.id ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <Mail size={13} />
-                    )}
-                    <span>{sendingEmailBoyId === boy.id ? 'Sending...' : 'Email Login'}</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => {
                       if (onNavigateToEdit) onNavigateToEdit(boy.id);
                       else openEditModal(boy);

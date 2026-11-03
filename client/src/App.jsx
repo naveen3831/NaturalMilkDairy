@@ -321,7 +321,7 @@ export default function App() {
   // Helper callbacks
   const handleOpenLedger = (customerId) => {
     setSelectedLedgerCustomerId(customerId);
-    setActiveTab('ledger');
+    setActiveTab('customers');
   };
 
   const handleOpenEditCustomer = (customer) => {
@@ -390,8 +390,10 @@ export default function App() {
             <TodayDeliveries onSelectCustomerLedger={handleOpenLedger} />
           )}
 
-          {activeTab === 'customers' && (
+          {(activeTab === 'customers' || activeTab === 'ledger') && (
             <CustomerList
+              initialCustomerId={selectedLedgerCustomerId}
+              onClearSelectedCustomer={() => setSelectedLedgerCustomerId(null)}
               onSelectCustomerLedger={handleOpenLedger}
               onOpenAddCustomer={() => {
                 setEditingCustomer(null);
@@ -412,14 +414,7 @@ export default function App() {
             <PaymentsManager onOpenPaymentModal={handleOpenPayment} />
           )}
 
-          {activeTab === 'ledger' && (
-            <LedgerView
-              customerId={selectedLedgerCustomerId}
-              onSelectCustomer={(id) => setSelectedLedgerCustomerId(id)}
-              onBack={() => setActiveTab('customers')}
-              onOpenPaymentModal={handleOpenPayment}
-            />
-          )}
+          
 
           {activeTab === 'outstanding' && (
             <OutstandingReport
