@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
+import { resolveProofUrl } from '../../services/api';
 
 // Helper for dates
 const formatDateLabel = (dateStr) => {
@@ -783,7 +784,7 @@ export function CustomerDeliveriesPage({ setActiveTab }) {
             </div>
             <div style={{ padding: '16px', background: '#f8fafc', textAlign: 'center' }}>
               <img
-                src={selectedProof}
+                src={resolveProofUrl(selectedProof)}
                 alt="Delivery Proof"
                 style={{
                   maxWidth: '100%',

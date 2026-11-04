@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
+import { resolveProofUrl } from '../services/api';
 
 // ══════════════════════════════════════════════════════════════════
 // 1. PUBLIC MODAL: DOORSTEP DELIVERIES & PROOF PHOTOS
@@ -400,7 +401,7 @@ export function CustomerDeliveriesPublicModal({ isOpen, onClose, customer, deliv
             </div>
             <div style={{ padding: '12px', background: '#f8fafc', textAlign: 'center' }}>
               <img
-                src={selectedProof}
+                src={resolveProofUrl(selectedProof)}
                 alt="Delivery Proof"
                 style={{
                   maxWidth: '100%',

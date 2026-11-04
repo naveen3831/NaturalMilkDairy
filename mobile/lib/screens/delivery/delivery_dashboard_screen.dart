@@ -3,11 +3,168 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../core/config/app_config.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
+
+// ============================================================================
+// HELPER: DELIVERY PROOF PHOTO RENDERER & LIGHTBOX
+// ============================================================================
+class DeliveryProofHelper {
+  static Widget buildImageFromSource(String proofStr, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
+    final clean = proofStr.trim();
+    if (clean.isEmpty) {
+      return buildPlaceholder();
+    }
+    if (clean.startsWith('data:image/')) {
+      try {
+        final commaIdx = clean.indexOf(',');
+        final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
+        final bytes = base64Decode(cleanBase64);
+        return Image.memory(
+          bytes,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
+        );
+      } catch (e) {
+        return buildPlaceholder();
+      }
+    } else if (clean.startsWith('http://') || clean.startsWith('https://')) {
+      return Image.network(
+        clean,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
+        },
+      );
+    } else {
+      // Relative path e.g. /uploads/proof_...
+      final fullUrl = clean.startsWith('/')
+          ? '${AppConfig.activeBaseUrl}$clean'
+          : '${AppConfig.activeBaseUrl}/$clean';
+      return Image.network(
+        fullUrl,
+        width: width,
+        height: height,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
+        loadingBuilder: (ctx, child, progress) {
+          if (progress == null) return child;
+          return const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
+        },
+      );
+    }
+  }
+
+  static Widget buildPlaceholder() {
+    return Container(
+      color: const Color(0xFFF1F5F9),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.photo_camera_rounded, size: 28, color: Color(0xFF94A3B8)),
+            SizedBox(height: 4),
+            Text(
+              'Proof Photo Verified',
+              style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static void showLightbox({
+    required BuildContext context,
+    required String proofStr,
+    required String customerName,
+    required String address,
+  }) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0F172A),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.camera_alt_rounded, color: Color(0xFF34D399), size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            customerName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            address,
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+              ),
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.7,
+                  ),
+                  color: Colors.black,
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 4.0,
+                    child: buildImageFromSource(proofStr, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
 
 class DeliveryPartnerDashboardScreen extends StatefulWidget {
   const DeliveryPartnerDashboardScreen({super.key});
@@ -1344,12 +1501,12 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
               // Delivered
               Expanded(
-                flex: 3,
+                flex: isDelivered ? 4 : 3,
                 child: ElevatedButton.icon(
                   onPressed: isDelivered ? null : () => _showMarkDeliveredDialog(d),
-                  icon: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                  icon: Icon(isDelivered ? Icons.verified_rounded : Icons.check_rounded, size: 16, color: Colors.white),
                   label: Text(
-                    isDelivered ? 'Done' : 'Delivered',
+                    isDelivered ? '✓ Done' : 'Delivered',
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -1360,25 +1517,152 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
 
-              // Skip
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: () => _showMarkNotDeliveredDialog(d),
-                  icon: const Icon(Icons.close_rounded, size: 15, color: Color(0xFFDC2626)),
-                  label: const Text('Skip', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFFFEE2E2)),
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+              // Skip (Removed completely for delivered users)
+              if (!isDelivered) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showMarkNotDeliveredDialog(d),
+                    icon: const Icon(Icons.close_rounded, size: 15, color: Color(0xFFDC2626)),
+                    label: const Text('Skip', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFFEE2E2)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+
+          // Captured Doorstep Photo Proof (Prominently displayed for delivered users)
+          if (isDelivered) _buildProofPhotoPreviewCard(d),
+        ],
+      ),
+    );
+  }
+
+  // HELPER: BUILD CAPTURED PHOTO PROOF CARD FOR DELIVERED ITEMS
+  Widget _buildProofPhotoPreviewCard(Map<String, dynamic> d) {
+    final proofStr = (d['proofImage'] ?? d['proofUrl'] ?? '').toString();
+    final deliveredTime = d['deliveredAt'] != null
+        ? DateTime.tryParse(d['deliveredAt'].toString())
+        : null;
+    final timeStr = deliveredTime != null
+        ? '${deliveredTime.hour.toString().padLeft(2, '0')}:${deliveredTime.minute.toString().padLeft(2, '0')}'
+        : 'Morning';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.verified_rounded, size: 16, color: Color(0xFF059669)),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'Doorstep Proof Photo Verified',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF065F46),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Text(
+                  'Delivered $timeStr',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF059669),
                   ),
                 ),
               ),
             ],
           ),
+          if (proofStr.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              onTap: () => DeliveryProofHelper.showLightbox(
+                context: context,
+                proofStr: proofStr,
+                customerName: d['customerName']?.toString() ?? 'Customer',
+                address: d['customerAddress']?.toString() ?? '',
+              ),
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: double.infinity,
+                      height: 140,
+                      color: const Color(0xFFE2E8F0),
+                      child: DeliveryProofHelper.buildImageFromSource(proofStr),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.zoom_in_rounded, size: 14, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tap to Zoom',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Center(
+              child: Text(
+                'Live camera photo captured by delivery partner',
+                style: TextStyle(fontSize: 11, color: Color(0xFF047857), fontWeight: FontWeight.w600),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Doorstep drop completed & verified with live delivery proof.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF047857), fontWeight: FontWeight.w600),
+            ),
+          ],
         ],
       ),
     );
@@ -3328,6 +3612,11 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     setState(() => _isSubmitting = false);
 
     if (res['success'] == true) {
+      widget.delivery['proofImage'] = _capturedPhotoBase64;
+      widget.delivery['status'] = 'delivered';
+      widget.delivery['actualMilk'] = milk;
+      widget.delivery['actualCurd'] = curd;
+      widget.delivery['deliveredAt'] = DateTime.now().toIso8601String();
       widget.onSuccess();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4034,6 +4323,128 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
                 ],
               ),
             ),
+
+            // When delivered, display verified photo proof
+            if (isDone) ...[
+              const SizedBox(height: 24),
+              const Text(
+                'Doorstep Delivery Photo Proof',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.verified_rounded, size: 16, color: Color(0xFF059669)),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text(
+                            'Doorstep Proof Verified',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF065F46),
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF86EFAC)),
+                          ),
+                          child: const Text(
+                            'Completed',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF059669),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if ((stop['proofImage'] ?? stop['proofUrl'] ?? '').toString().isNotEmpty) ...[
+                      GestureDetector(
+                        onTap: () => DeliveryProofHelper.showLightbox(
+                          context: context,
+                          proofStr: (stop['proofImage'] ?? stop['proofUrl'] ?? '').toString(),
+                          customerName: name,
+                          address: address,
+                        ),
+                        child: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                width: double.infinity,
+                                height: 180,
+                                color: const Color(0xFFE2E8F0),
+                                child: DeliveryProofHelper.buildImageFromSource(
+                                  (stop['proofImage'] ?? stop['proofUrl'] ?? '').toString(),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.zoom_in_rounded, size: 14, color: Colors.white),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Tap to Zoom',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Center(
+                        child: Text(
+                          'Tap image to view high-resolution photo proof',
+                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ] else ...[
+                      const Text(
+                        'Doorstep drop confirmed & verified with live delivery proof.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF047857), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
             const SizedBox(height: 32),
             if (!isDone) ...[
               SizedBox(

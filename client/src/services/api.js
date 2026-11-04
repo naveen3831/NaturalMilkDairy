@@ -43,6 +43,18 @@ export function getApiUrl(endpoint = '') {
 }
 
 /**
+ * Resolves delivery proof image URLs (relative /uploads, full URLs, or base64)
+ */
+export function resolveProofUrl(url = '') {
+  if (!url) return '';
+  const clean = String(url).trim();
+  if (!clean) return '';
+  if (clean.startsWith('data:image/') || /^https?:\/\//i.test(clean)) return clean;
+  const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
+  return API_BASE_URL ? `${API_BASE_URL}${cleanPath}` : cleanPath;
+}
+
+/**
  * Resolves WebSocket URL pointing to the appropriate server.
  */
 export function getWebSocketUrl() {

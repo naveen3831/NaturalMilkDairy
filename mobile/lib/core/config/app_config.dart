@@ -36,6 +36,10 @@ class AppConfig {
   static bool get useProductionUrl => isLiveServerActive;
   static bool get isLive => isLiveServerActive;
 
+  /// Effective active HTTP Base URL
+  static String get activeBaseUrl =>
+      isLiveServerActive ? liveBaseUrl : 'http://192.168.1.68:$localPort';
+
   /// Live Cloud Production URL (SSL/HTTPS)
   static const String liveBaseUrl = 'https://naturalmilkdairy.speshway.site';
 

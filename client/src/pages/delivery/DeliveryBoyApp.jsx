@@ -68,6 +68,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
+import { resolveProofUrl } from '../../services/api';
 
 const getDeliveryRoute = () => {
   const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
@@ -3067,7 +3068,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         </div>
 
                         {/* Doorstep Home Proof Photo Tag (Visible when Delivered) */}
-                        {isDone && item.proofImage && (
+                        {isDone && (item.proofImage || item.proofUrl || item.rawItem?.proofImage) && (
                           <div
                             style={{
                               marginTop: '10px',
@@ -3084,25 +3085,26 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           >
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <img
-                                src={item.proofImage}
+                                src={resolveProofUrl(item.proofImage || item.proofUrl || item.rawItem?.proofImage)}
                                 alt="Home Proof"
                                 style={{
-                                  width: '36px',
-                                  height: '36px',
-                                  borderRadius: '6px',
+                                  width: '42px',
+                                  height: '42px',
+                                  borderRadius: '8px',
                                   objectFit: 'cover',
-                                  border: '1px solid #86efac',
+                                  border: '1.5px solid #86efac',
                                   cursor: 'pointer',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
                                 }}
                                 onClick={() => setPreviewProofModal(item)}
                               />
                               <div>
-                                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <Camera size={13} color="#059669" />
+                                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#065f46', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                  <Camera size={14} color="#059669" />
                                   <span>Doorstep Proof Verified</span>
                                 </div>
                                 <div style={{ fontSize: '0.68rem', color: '#64748b' }}>
-                                  Home photo captured
+                                  {item.deliveredAt ? `Delivered at ${new Date(item.deliveredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Live photo proof captured'}
                                 </div>
                               </div>
                             </div>
@@ -3111,17 +3113,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                               type="button"
                               onClick={() => setPreviewProofModal(item)}
                               style={{
-                                padding: '5px 10px',
+                                padding: '6px 12px',
                                 background: '#ffffff',
-                                border: '1px solid #bbf7d0',
+                                border: '1px solid #86efac',
                                 color: '#059669',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 800,
+                                borderRadius: '7px',
                                 cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                               }}
                             >
-                              View Photo
+                              <Eye size={12} />
+                              <span>View Photo</span>
                             </button>
                           </div>
                         )}
@@ -7236,7 +7243,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
             <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
               <img
-                src={previewProofModal.proofImage}
+                src={resolveProofUrl(previewProofModal.proofImage || previewProofModal.proofUrl || previewProofModal.rawItem?.proofImage)}
                 alt="Home doorstep proof photo"
                 style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
               />
@@ -8213,6 +8220,36 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
               {/* Detail Blocks */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Verified Doorstep Proof Card for Delivered Stops */}
+                {isDone && (item.proofImage || item.proofUrl || item.rawItem?.proofImage) && (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <img
+                        src={resolveProofUrl(item.proofImage || item.proofUrl || item.rawItem?.proofImage)}
+                        alt="Doorstep proof"
+                        style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1.5px solid #86efac', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}
+                        onClick={() => setPreviewProofModal(item)}
+                      />
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Camera size={14} color="#059669" />
+                          <span>Verified Doorstep Drop Photo</span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                          Captured live at customer doorstep
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewProofModal(item)}
+                      style={{ padding: '6px 12px', background: '#ffffff', border: '1px solid #86efac', color: '#059669', fontSize: '0.75rem', fontWeight: 800, borderRadius: '7px', cursor: 'pointer' }}
+                    >
+                      View Photo
+                    </button>
+                  </div>
+                )}
+
                 {/* 1. Today's Delivery Plan Box */}
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
