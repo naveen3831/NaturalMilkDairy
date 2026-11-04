@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../models/user_model.dart';
 import '../models/product_model.dart';
@@ -22,40 +23,60 @@ class ApiService {
     await resolveActiveBaseUrl();
   }
 
-  String get baseUrl => _customBaseUrl ?? _activeBaseUrl ?? AppConstants.defaultBaseUrl;
+  String get baseUrl =>
+      _customBaseUrl ??
+      (AppConfig.isLiveServerActive
+          ? AppConfig.liveBaseUrl
+          : (_activeBaseUrl ?? AppConstants.defaultBaseUrl));
 
   /// Quick ping to check if a backend server is live and responding
   Future<bool> testConnection([String? candidateUrl]) async {
     final target = (candidateUrl ?? baseUrl).trim();
     if (target.isEmpty) return false;
     try {
-      final res = await http.get(Uri.parse('$target/api/health')).timeout(const Duration(milliseconds: 1800));
+      final res = await http
+          .get(Uri.parse('$target/api/health'))
+          .timeout(const Duration(milliseconds: 3000));
       return res.statusCode >= 200 && res.statusCode < 400;
     } catch (_) {
       return false;
     }
   }
 
-  /// Probes candidate URLs (127.0.0.1, 192.168.1.68, 10.0.2.2, localhost) and binds the active one
+  /// Probes candidate URLs or binds the production server depending on AppConfig.isLiveServerActive
   Future<String> resolveActiveBaseUrl() async {
+    // 1. If custom developer URL was saved in shared preferences, check that first
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       final ok = await testConnection(_customBaseUrl);
       if (ok) {
         _activeBaseUrl = _customBaseUrl;
+        debugPrint('🌐 ApiService: Using custom base URL: $_customBaseUrl');
         return _customBaseUrl!;
       }
     }
 
+    // 2. LIVE CLOUD PRODUCTION SERVER (AppConfig.isLiveServerActive == true)
+    // Works on ANY network (Mobile 4G/5G, any Wi-Fi, everywhere)
+    if (AppConfig.isLiveServerActive) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
+      return _activeBaseUrl!;
+    }
+
+    // 3. LOCAL DEVELOPMENT SERVER (AppConfig.useLiveServer = false)
+    // Runs only locally on development machine / Wi-Fi
+    debugPrint('🏠 ApiService: [LOCAL MODE] Scanning local Wi-Fi / host candidates...');
     for (final url in AppConstants.candidateBaseUrls) {
       final isAlive = await testConnection(url);
       if (isAlive) {
         _activeBaseUrl = url;
-        debugPrint('🌐 ApiService auto-resolved active server at: $url');
+        debugPrint('🌐 ApiService: [LOCAL MODE] Auto-resolved active server at: $url');
         return url;
       }
     }
 
     _activeBaseUrl = AppConstants.defaultBaseUrl;
+    debugPrint('🌐 ApiService: [LOCAL MODE] Falling back to default: $_activeBaseUrl');
     return _activeBaseUrl!;
   }
 

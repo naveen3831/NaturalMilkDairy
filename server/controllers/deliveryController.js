@@ -60,12 +60,58 @@ const getDeliveries = async (req, res) => {
 
     if (req.user?.role === 'delivery_boy') {
       filter.deletedForDriver = { $ne: true };
-      const assignedIds = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
-      const assignedNames = req.user.name ? [req.user.name] : [];
-      const assignedFilter = [
-        ...(assignedIds.length ? [{ deliveryBoyId: { $in: assignedIds } }] : []),
-        ...(assignedNames.length ? [{ deliveryBoyName: { $in: assignedNames } }] : []),
+
+      const partnerIds = new Set([req.user.id, req.user.boyId, req.user.mobile].filter(Boolean));
+      const partnerNames = new Set(req.user.name ? [req.user.name.trim()] : []);
+      let partnerArea = (req.user.assignedArea || req.user.area || '').trim();
+
+      // Look up DeliveryBoy document to resolve all associated IDs and territory
+      const boyQuery = [
+        ...(req.user.id && /^[a-f\d]{24}$/i.test(req.user.id) ? [{ _id: req.user.id }] : []),
+        ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+        ...(req.user.name ? [{ name: new RegExp(`^${req.user.name.trim()}$`, 'i') }] : []),
       ];
+      if (boyQuery.length) {
+        const boy = await DeliveryBoy.findOne({ $or: boyQuery }).lean();
+        if (boy) {
+          partnerIds.add(boy._id.toString());
+          if (boy.mobile) partnerIds.add(boy.mobile);
+          if (boy.name) partnerNames.add(boy.name.trim());
+          if (boy.area && !partnerArea) partnerArea = boy.area.trim();
+        }
+      }
+
+      // Find all customers assigned to this delivery partner or in their territory
+      const assignedCusts = await Customer.find({
+        status: { $ne: 'inactive' },
+        $or: [
+          { 'deliveryPlan.deliveryBoyId': { $in: [...partnerIds] } },
+          { 'deliveryPlan.deliveryBoyName': { $in: [...partnerNames].map((n) => new RegExp(`^${n}$`, 'i')) } },
+          { createdByDriverId: { $in: [...partnerIds] } },
+          ...(partnerArea ? [{ area: new RegExp(`^${partnerArea}$`, 'i') }] : []),
+        ],
+      }).lean();
+
+      const assignedCustIds = [];
+      for (const c of assignedCusts) {
+        if (c.customerId) assignedCustIds.push(c.customerId);
+        if (c._id) assignedCustIds.push(c._id.toString());
+      }
+
+      const assignedFilter = [
+        { deliveryBoyId: { $in: [...partnerIds] } },
+        ...[...partnerNames].map((n) => ({ deliveryBoyName: new RegExp(`^${n}$`, 'i') })),
+        ...(assignedCustIds.length ? [{ customerId: { $in: assignedCustIds } }] : []),
+        ...(partnerArea ? [
+          {
+            $or: [
+              { customerAddress: new RegExp(partnerArea, 'i') },
+              { customerArea: new RegExp(partnerArea, 'i') },
+            ],
+          },
+        ] : []),
+      ];
+
       if (!assignedFilter.length) return res.json({ success: true, date: targetDate, summary: { total: 0, delivered: 0, pending: 0, notDelivered: 0 }, deliveries: [] });
       andFilters.push({ $or: assignedFilter });
     }
@@ -187,10 +233,13 @@ const getAssignedCustomers = async (req, res) => {
     if (user?._id) partnerIds.add(user._id.toString());
     partnerMobiles.forEach((mobile) => partnerIds.add(mobile));
 
+    const partnerArea = (deliveryBoy?.area || user?.assignedArea || user?.area || req.user?.assignedArea || req.user?.area || '').trim();
+
     const assignmentFilters = [];
     if (partnerIds.size) assignmentFilters.push({ 'deliveryPlan.deliveryBoyId': { $in: [...partnerIds] } });
     if (partnerNames.size) assignmentFilters.push({ 'deliveryPlan.deliveryBoyName': { $in: [...partnerNames] } });
     if (partnerIds.size) assignmentFilters.push({ createdByDriverId: { $in: [...partnerIds] } });
+    if (partnerArea) assignmentFilters.push({ area: new RegExp(`^${partnerArea}$`, 'i') });
     if (!assignmentFilters.length) {
       return res.json({ success: true, customers: [] });
     }

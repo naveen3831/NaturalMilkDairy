@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
 import { useNotifications } from '../context/NotificationContext';
@@ -25,6 +25,14 @@ import {
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from './CustomerBottomNav';
+import CustomerPortalDropdown from './CustomerPortalDropdown';
+import {
+  CustomerDeliveriesPublicModal,
+  CustomerSubscriptionPublicModal,
+  CustomerAddressPublicModal,
+  CustomerPausePublicModal,
+  CustomerSupportPublicModal,
+} from './CustomerPublicModals';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const { user, logout } = useAuth();
@@ -33,7 +41,77 @@ export default function Navbar({ activeTab, setActiveTab }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const isLoggedInCustomer = user?.role === 'customer';
 
-  const publicTabs = ['home', 'landing', 'products', 'subscription', 'story', 'faqs', 'contact', 'login', 'register'];
+  // Desktop customer portal dropdown and public modal states
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
+  const [customerModalType, setCustomerModalType] = useState(null);
+  const [customerLiveDetails, setCustomerLiveDetails] = useState(null);
+  const [customerDeliveriesList, setCustomerDeliveriesList] = useState([]);
+  const customerDropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!isCustomerDropdownOpen) return;
+    const handleClickOutside = (e) => {
+      if (customerDropdownRef.current && !customerDropdownRef.current.contains(e.target)) {
+        setIsCustomerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isCustomerDropdownOpen]);
+
+  // Fetch live customer details & deliveries for dropdown when customer is logged in
+  useEffect(() => {
+    if (!user || user.role !== 'customer') return;
+
+    let isMounted = true;
+    const fetchCustomerData = async () => {
+      try {
+        const token = sessionStorage.getItem('nmd_jwt_token') || localStorage.getItem('nmd_jwt_token');
+        if (!token) return;
+
+        const custId = user.customerId || user.id || 'me';
+        const res = await fetch(`/api/customers/${encodeURIComponent(custId)}/ledger`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (isMounted && data.success) {
+          if (data.customer) setCustomerLiveDetails(data.customer);
+          if (Array.isArray(data.ledgerEntries)) {
+            const dels = data.ledgerEntries
+              .filter((e) => e.type === 'delivery')
+              .reverse();
+            setCustomerDeliveriesList(dels);
+          }
+        }
+      } catch (err) {
+        // quiet fallback
+      }
+    };
+
+    fetchCustomerData();
+    const interval = setInterval(fetchCustomerData, 20000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  const publicTabs = [
+    'home',
+    'landing',
+    'products',
+    'subscription',
+    'story',
+    'faqs',
+    'contact',
+    'login',
+    'register',
+    'my-subscription',
+    'my-deliveries',
+    'my-address',
+    'pause-delivery',
+  ];
   const isPublicView = publicTabs.includes(activeTab);
 
   const navigatePage = (tab) => {
@@ -336,44 +414,110 @@ export default function Navbar({ activeTab, setActiveTab }) {
             {user ? (
               // Logged in User Controls
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    openUserPortal();
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '7px',
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    background: '#eaf5ee',
-                    color: '#0d5c3a',
-                    fontWeight: 700,
-                    fontSize: '0.88rem',
-                    border: '1px solid #bbf7d0',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                  }}
-                  title="Open Portal Console"
-                >
-                  {user.role === 'admin' ? (
-                    <ShieldCheck size={16} />
-                  ) : user.role === 'delivery_boy' ? (
-                    <Truck size={16} />
-                  ) : (
-                    <User size={16} />
-                  )}
-                  <span>
-                    {user.role === 'admin'
-                      ? 'Owner Portal'
-                      : user.role === 'delivery_boy'
-                        ? 'Delivery App'
-                        : user.name
-                          ? `${user.name.split(' ')[0]}'s Portal`
-                          : 'Customer Portal'}
-                  </span>
-                </button>
+                {user.role === 'customer' && !isMobile ? (
+                  /* DESKTOP WEBSITE: Rich Portal Dropdown Menu instead of redirecting to dashboard */
+                  <div
+                    ref={customerDropdownRef}
+                    style={{ position: 'relative', display: 'inline-block' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomerDropdownOpen((prev) => !prev)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        padding: '8px 16px',
+                        borderRadius: '8px',
+                        background: isCustomerDropdownOpen ? '#0d5c3a' : '#eaf5ee',
+                        color: isCustomerDropdownOpen ? '#ffffff' : '#0d5c3a',
+                        fontWeight: 700,
+                        fontSize: '0.88rem',
+                        border: '1px solid #bbf7d0',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        boxShadow: isCustomerDropdownOpen ? '0 2px 10px rgba(13, 92, 58, 0.25)' : 'none',
+                      }}
+                      title="Customer Portal Menu"
+                    >
+                      <User size={16} />
+                      <span>{user.name ? `${user.name.split(' ')[0]}'s Portal` : 'Customer Portal'}</span>
+                      <ChevronDown
+                        size={15}
+                        style={{
+                          transform: isCustomerDropdownOpen ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.2s ease',
+                        }}
+                      />
+                    </button>
+
+                    {isCustomerDropdownOpen && (
+                      <CustomerPortalDropdown
+                        user={user}
+                        customerData={customerLiveDetails || user}
+                        deliveries={customerDeliveriesList}
+                        onClose={() => setIsCustomerDropdownOpen(false)}
+                        onOpenModal={(modalType) => {
+                          setIsCustomerDropdownOpen(false);
+                          if (modalType === 'subscription') navigatePage('my-subscription');
+                          else if (modalType === 'deliveries') navigatePage('my-deliveries');
+                          else if (modalType === 'address') navigatePage('my-address');
+                          else if (modalType === 'pause') navigatePage('pause-delivery');
+                          else if (modalType === 'support') navigatePage('contact');
+                          else setCustomerModalType(modalType);
+                        }}
+                        onNavigate={(tab) => {
+                          setIsCustomerDropdownOpen(false);
+                          navigatePage(tab);
+                        }}
+                        onLogout={() => {
+                          setIsCustomerDropdownOpen(false);
+                          logout();
+                          navigatePage('home');
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openUserPortal();
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#eaf5ee',
+                      color: '#0d5c3a',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      border: '1px solid #bbf7d0',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                    title="Open Portal Console"
+                  >
+                    {user.role === 'admin' ? (
+                      <ShieldCheck size={16} />
+                    ) : user.role === 'delivery_boy' ? (
+                      <Truck size={16} />
+                    ) : (
+                      <User size={16} />
+                    )}
+                    <span>
+                      {user.role === 'admin'
+                        ? 'Owner Portal'
+                        : user.role === 'delivery_boy'
+                          ? 'Delivery App'
+                          : user.name
+                            ? `${user.name.split(' ')[0]}'s Portal`
+                            : 'Customer Portal'}
+                    </span>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -528,6 +672,44 @@ export default function Navbar({ activeTab, setActiveTab }) {
             }
             navigatePage(page);
           }}
+        />
+
+        {/* Customer Portal Public Modals - Displayed directly on public pages */}
+        <CustomerDeliveriesPublicModal
+          isOpen={customerModalType === 'deliveries'}
+          onClose={() => setCustomerModalType(null)}
+          customer={customerLiveDetails || user}
+          deliveries={customerDeliveriesList}
+        />
+        <CustomerSubscriptionPublicModal
+          isOpen={customerModalType === 'subscription'}
+          onClose={() => setCustomerModalType(null)}
+          customer={customerLiveDetails || user}
+          onNavigatePublic={(tab) => {
+            setCustomerModalType(null);
+            navigatePage(tab);
+          }}
+        />
+        <CustomerAddressPublicModal
+          isOpen={customerModalType === 'address'}
+          onClose={() => setCustomerModalType(null)}
+          customer={customerLiveDetails || user}
+          onSaved={(updated) => {
+            setCustomerLiveDetails(updated);
+          }}
+        />
+        <CustomerPausePublicModal
+          isOpen={customerModalType === 'pause'}
+          onClose={() => setCustomerModalType(null)}
+          customer={customerLiveDetails || user}
+          onUpdated={(updated) => {
+            setCustomerLiveDetails(updated);
+          }}
+        />
+        <CustomerSupportPublicModal
+          isOpen={customerModalType === 'support'}
+          onClose={() => setCustomerModalType(null)}
+          customer={customerLiveDetails || user}
         />
       </>
     );

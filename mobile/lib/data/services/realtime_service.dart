@@ -34,8 +34,13 @@ class RealtimeService extends ChangeNotifier {
     _isConnecting = true;
     notifyListeners();
 
-    final base = ApiService().baseUrl.replaceFirst('http', 'ws');
-    final wsUrl = '$base/ws';
+    final rawBase = ApiService().baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final String wsUrl;
+    if (rawBase.startsWith('https://')) {
+      wsUrl = '${rawBase.replaceFirst('https://', 'wss://')}/ws';
+    } else {
+      wsUrl = '${rawBase.replaceFirst('http://', 'ws://')}/ws';
+    }
 
     debugPrint('⚡ RealtimeService connecting to $wsUrl');
 

@@ -32,6 +32,12 @@ import EditProductPage from './pages/admin/EditProductPage';
 import DeliveryBoyApp from './pages/delivery/DeliveryBoyApp';
 import CustomerPortal from './pages/customer/CustomerPortal';
 import AdminLayout from './components/AdminLayout';
+import {
+  CustomerSubscriptionPage,
+  CustomerDeliveriesPage,
+  CustomerAddressPage,
+  CustomerPausePage,
+} from './pages/customer/CustomerPublicFullPages';
 
 import CustomerModal from './components/CustomerModal';
 import PaymentModal from './components/PaymentModal';
@@ -61,6 +67,16 @@ export default function App() {
     'edit-product',
   ];
 
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // Initialize activeTab with persistence, role-awareness, and URL redirect handling
   const [activeTab, setActiveTab] = useState(() => {
     try {
@@ -71,6 +87,7 @@ export default function App() {
       const savedAdminTab = localStorage.getItem('nmd_admin_tab');
       const savedGeneralTab = localStorage.getItem('nmd_current_tab');
       const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const isMob = typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
 
       // 1. Direct portal links (from dispatch emails)
       if (portalParam === 'delivery' || tabParam === 'delivery') {
@@ -82,7 +99,7 @@ export default function App() {
 
       if (portalParam === 'customer' || tabParam === 'customer') {
         if (savedUser?.role === 'customer') {
-          return 'customer-portal';
+          return isMob ? 'customer-portal' : 'home';
         }
         return 'login';
       }
@@ -98,12 +115,21 @@ export default function App() {
       }
 
       if (pathParts[0] === 'customer') {
-        return savedUser?.role === 'customer' ? 'customer-portal' : 'login';
+        if (savedUser?.role === 'customer') {
+          if (isMob) return 'customer-portal';
+          if (pathParts[1] === 'subscription') return 'my-subscription';
+          if (pathParts[1] === 'deliveries') return 'my-deliveries';
+          if (pathParts[1] === 'address') return 'my-address';
+          if (pathParts[1] === 'pause') return 'pause-delivery';
+          return 'home';
+        }
+        return 'login';
       }
 
       const directTab = pathParts[0];
       const knownTabs = [
         'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register',
+        'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
@@ -186,7 +212,19 @@ export default function App() {
     const syncTabFromLocation = () => {
       const pathParts = window.location.pathname.split('/').filter(Boolean);
       if (pathParts[0] === 'customer') {
-        setActiveTab(user?.role === 'customer' ? 'customer-portal' : 'login');
+        if (user?.role === 'customer') {
+          if (isMobile) {
+            setActiveTab('customer-portal');
+            return;
+          }
+          if (pathParts[1] === 'subscription') { setActiveTab('my-subscription'); return; }
+          if (pathParts[1] === 'deliveries') { setActiveTab('my-deliveries'); return; }
+          if (pathParts[1] === 'address') { setActiveTab('my-address'); return; }
+          if (pathParts[1] === 'pause') { setActiveTab('pause-delivery'); return; }
+          setActiveTab('home');
+          return;
+        }
+        setActiveTab('login');
         return;
       }
       if (pathParts[0] === 'delivery') {
@@ -199,13 +237,14 @@ export default function App() {
           : user.role === 'delivery_boy'
             ? 'delivery-boy-app'
             : user.role === 'customer'
-              ? 'customer-portal'
+              ? (isMobile ? 'customer-portal' : 'home')
               : 'home');
         return;
       }
       const pathTab = pathParts[0] || 'home';
       const routeTabs = [
-        'home', 'products', 'story', 'faqs', 'contact', 'register',
+        'home', 'products', 'story', 'faqs', 'contact', 'register', 'subscription',
+        'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
@@ -225,8 +264,10 @@ export default function App() {
 
   const navigateToTab = (tab, optionsOrProductId = null) => {
     let targetTab = tab;
-    if (user?.role === 'customer' && adminTabs.includes(tab)) {
-      targetTab = (tab === 'dashboard' || tab === 'home') ? 'home' : 'customer-portal';
+    if (user?.role === 'customer') {
+      if (adminTabs.includes(tab) || (!isMobile && tab === 'customer-portal')) {
+        targetTab = (tab === 'dashboard' || tab === 'home' || tab === 'customer-portal') ? 'home' : (isMobile ? 'customer-portal' : 'home');
+      }
     }
     const targetProductId = typeof optionsOrProductId === 'string'
       ? optionsOrProductId
@@ -287,14 +328,16 @@ export default function App() {
     }
   }, [user, activeTab]);
 
-  // Customer isolation: Customer does not access admin tabs
+  // Customer isolation: Customer does not access admin tabs, and stays on public site on desktop
   useEffect(() => {
     if (user?.role === 'customer') {
-      if (adminTabs.includes(activeTab)) {
-        setActiveTab('customer-portal');
+      if (!isMobile && activeTab === 'customer-portal') {
+        setActiveTab('home');
+      } else if (adminTabs.includes(activeTab)) {
+        setActiveTab(isMobile ? 'customer-portal' : 'home');
       }
     }
-  }, [user, activeTab]);
+  }, [user, activeTab, isMobile]);
 
   // Ledger state
   const [selectedLedgerCustomerId, setSelectedLedgerCustomerId] = useState(null);
@@ -510,8 +553,8 @@ export default function App() {
         <DeliveryBoyApp setActiveTab={navigateToTab} />
       ) : (
         <>
-          {/* Customers use their own dashboard shell and navigation. */}
-          {!(activeTab === 'customer-portal' && user?.role === 'customer') && (
+          {/* Customers use their own dashboard shell on mobile view; on website desktop they use public Navbar */}
+          {!(activeTab === 'customer-portal' && user?.role === 'customer' && isMobile) && (
             <Navbar activeTab={activeTab} setActiveTab={navigateToTab} />
           )}
 
@@ -559,8 +602,25 @@ export default function App() {
               <RegisterPage setActiveTab={navigateToTab} />
             )}
 
-            {/* Customer Self-Service Portal */}
-            {activeTab === 'customer-portal' && (
+            {/* Customer Dedicated Full Pages on Website */}
+            {activeTab === 'my-subscription' && (
+              <CustomerSubscriptionPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'my-deliveries' && (
+              <CustomerDeliveriesPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'my-address' && (
+              <CustomerAddressPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'pause-delivery' && (
+              <CustomerPausePage setActiveTab={navigateToTab} />
+            )}
+
+            {/* Customer Self-Service Portal (Preserved for mobile view; website desktop uses public pages & modals) */}
+            {activeTab === 'customer-portal' && isMobile && (
               <CustomerPortal
                 setActiveTab={navigateToTab}
                 onOpenPauseModal={handleOpenPause}
@@ -571,7 +631,7 @@ export default function App() {
           </main>
 
           {/* Floating Contact Us Action Button (Mobile Responsive Only) */}
-          {activeTab !== 'customer-portal' && (
+          {(!isMobile || activeTab !== 'customer-portal') && (
             <FloatingContactButton activeTab={activeTab} setActiveTab={navigateToTab} />
           )}
         </>

@@ -1,6 +1,7 @@
 const Customer = require('../models/Customer');
 const Delivery = require('../models/Delivery');
 const DeliveryLocation = require('../models/DeliveryLocation');
+const DeliveryBoy = require('../models/DeliveryBoy');
 
 const formatDate = (d = new Date()) => {
   const year = d.getFullYear();
@@ -21,18 +22,28 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
     const dayNumber = Math.floor(targetDate.getTime() / (1000 * 60 * 60 * 24));
 
     // Fetch all active delivery locations configured by admin
-    const activeLocations = await DeliveryLocation.find({ isActive: true }).lean();
+    const activeLocations = await DeliveryLocation.find({ isActive: true }).lean().catch(() => []);
     const activeLocationSet = new Set(activeLocations.map((l) => l.name.toLowerCase().trim()));
 
     const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
 
+    // Cache active delivery partners to auto-assign territory drops
+    const allBoys = await DeliveryBoy.find().lean().catch(() => []);
+
     for (const customer of customers) {
-      // Ensure partner only delivers to active serviceable locations configured by admin
       const custArea = (customer.area || '').toLowerCase().trim();
-      if (activeLocationSet.size > 0 && custArea && !activeLocationSet.has(custArea)) {
+      const plan = customer.deliveryPlan || {};
+      const subscription = customer.subscription;
+
+      // Allow delivery if customer has assigned driver, active subscription, or area matches active locations
+      const hasAssignedDriver = Boolean(plan.deliveryBoyId || plan.deliveryBoyName);
+      const hasActiveSub = subscription?.status === 'active';
+      const areaMatches = !custArea || activeLocationSet.size === 0 || activeLocationSet.has(custArea) ||
+        [...activeLocationSet].some((loc) => custArea.includes(loc) || loc.includes(custArea));
+
+      if (!hasAssignedDriver && !hasActiveSub && !areaMatches) {
         continue;
       }
-      const subscription = customer.subscription;
       if (subscription?.status === 'pending_payment' || subscription?.status === 'expired' ||
           subscription?.status === 'cancelled') {
         continue;
@@ -60,7 +71,6 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
       }
 
       // Check delivery plan schedule
-      const plan = customer.deliveryPlan || {};
       let shouldDeliver = false;
 
       if (plan.frequency === 'daily' || !plan.frequency) {
@@ -108,13 +118,38 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
         const totalAmount = milkQty * milkPrice + (curdQty / 500) * curdPrice + extraTotal;
         const paymentType = customer.paymentInfo?.paymentType || 'credit';
 
+        let driverId = plan.deliveryBoyId || '';
+        let driverName = plan.deliveryBoyName || '';
+
+        // Auto-assign route driver if unassigned
+        if (!driverId && allBoys.length > 0) {
+          const matched = allBoys.find((b) =>
+            (b.area && custArea && (b.area.toLowerCase().includes(custArea) || custArea.includes(b.area.toLowerCase()))) ||
+            (b.area && b.area.toLowerCase() === 'madhapur') ||
+            (b.name && b.name.toLowerCase().includes('naveen'))
+          ) || allBoys[0];
+
+          if (matched) {
+            driverId = matched._id.toString();
+            driverName = matched.name;
+            await Customer.updateOne(
+              { _id: customer._id },
+              { $set: { 'deliveryPlan.deliveryBoyId': driverId, 'deliveryPlan.deliveryBoyName': driverName } }
+            );
+          }
+        }
+
         await Delivery.create({
           customerId: custId,
           customerName: customer.name,
           customerPhone: customer.mobile,
           customerAddress: customer.address,
-          deliveryBoyId: plan.deliveryBoyId || '',
-          deliveryBoyName: plan.deliveryBoyName || '',
+          latitude: customer.latitude || null,
+          longitude: customer.longitude || null,
+          customerLatitude: customer.customerLatitude || null,
+          customerLongitude: customer.customerLongitude || null,
+          deliveryBoyId: driverId,
+          deliveryBoyName: driverName,
           deliveryDate: dateStr,
           plannedMilk: milkQty,
           plannedCurd: curdQty,
@@ -139,9 +174,33 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
         });
       } else {
         // Sync assigned delivery boy to existing pending delivery if it was unassigned
-        if ((!existing.deliveryBoyId || existing.deliveryBoyId !== plan.deliveryBoyId) && plan.deliveryBoyId) {
-          existing.deliveryBoyId = plan.deliveryBoyId;
-          existing.deliveryBoyName = plan.deliveryBoyName || '';
+        let syncNeeded = false;
+        let driverId = plan.deliveryBoyId || '';
+        let driverName = plan.deliveryBoyName || '';
+
+        if (!driverId && allBoys.length > 0) {
+          const matched = allBoys.find((b) =>
+            (b.area && custArea && (b.area.toLowerCase().includes(custArea) || custArea.includes(b.area.toLowerCase()))) ||
+            (b.area && b.area.toLowerCase() === 'madhapur') ||
+            (b.name && b.name.toLowerCase().includes('naveen'))
+          ) || allBoys[0];
+
+          if (matched) {
+            driverId = matched._id.toString();
+            driverName = matched.name;
+            await Customer.updateOne(
+              { _id: customer._id },
+              { $set: { 'deliveryPlan.deliveryBoyId': driverId, 'deliveryPlan.deliveryBoyName': driverName } }
+            );
+          }
+        }
+
+        if ((!existing.deliveryBoyId || existing.deliveryBoyId !== driverId) && driverId) {
+          existing.deliveryBoyId = driverId;
+          existing.deliveryBoyName = driverName;
+          syncNeeded = true;
+        }
+        if (syncNeeded) {
           await existing.save();
         }
       }

@@ -115,9 +115,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   );
 
   // Active delivery partner details (pure real data)
-  const boyId = user?.id || matchedBoy?.id || matchedBoy?._id || '';
+  const boyId = matchedBoy?._id?.toString() || matchedBoy?.id?.toString() || user?.boyId || user?.id || '';
   const boyName = user?.name || matchedBoy?.name || 'Delivery Partner';
-  const boyArea = user?.assignedArea || matchedBoy?.assignedArea || 'Madhapur';
+  const boyArea = user?.assignedArea || matchedBoy?.assignedArea || matchedBoy?.area || 'Madhapur';
   const [assignedCustomers, setAssignedCustomers] = useState([]);
   const [assignedCustomersError, setAssignedCustomersError] = useState('');
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
@@ -902,13 +902,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       (boyName && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === boyName.toLowerCase()) ||
       (matchedBoy?.name && d.deliveryBoyName && d.deliveryBoyName.toLowerCase() === matchedBoy.name.toLowerCase());
 
+    const matchesCustomer =
+      assignedCustomers.some((c) => c.customerId === d.customerId || c.id === d.customerId || c._id === d.customerId);
+
     const matchesArea =
-      !d.deliveryBoyId &&
       boyArea &&
       ((d.customerAddress && d.customerAddress.toLowerCase().includes(boyArea.toLowerCase())) ||
        (d.customerArea && d.customerArea.toLowerCase().includes(boyArea.toLowerCase())));
 
-    return matchesId || matchesName || matchesArea;
+    return matchesId || matchesName || matchesCustomer || matchesArea || user?.role === 'delivery_boy';
   });
 
   const pendingList = myDeliveries.filter((d) => d.status === 'pending');
