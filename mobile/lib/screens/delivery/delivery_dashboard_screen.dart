@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/config/app_config.dart';
+import '../../data/models/product_model.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
+import '../home/select_location_map_screen.dart';
 
 // ============================================================================
 // HELPER: DELIVERY PROOF PHOTO RENDERER & LIGHTBOX
@@ -241,13 +243,36 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           });
         }
         _loadNotifications(silent: true);
-      } else if (type == 'DELIVERY_UPDATED' ||
+      } else if (type == 'DRIVER_DUTY_UPDATED' ||
           type == 'DELIVERY_BOY_UPDATED' ||
+          type == 'DELIVERY_UPDATED' ||
           type == 'CUSTOMER_UPDATED' ||
           type == 'LOCATION_UPDATED' ||
           type == 'ORDER_UPDATED' ||
           type == 'NOTIFICATION_UPDATED' ||
           type == 'NOTIFICATION_CREATED') {
+        if ((type == 'DRIVER_DUTY_UPDATED' || type == 'DELIVERY_BOY_UPDATED') && event['payload'] is Map) {
+          if (mounted) {
+            final payload = event['payload'] as Map;
+            final authUser = context.read<AuthProvider>().user;
+            final boyId = payload['boyId']?.toString() ?? payload['id']?.toString();
+            final mobile = payload['mobile']?.toString();
+            final name = payload['name']?.toString() ?? payload['boyName']?.toString();
+            if ((boyId != null && authUser != null && boyId == authUser.id) ||
+                (mobile != null && (mobile == _profilePhone || (authUser != null && mobile == authUser.mobile))) ||
+                (name != null && (name.toLowerCase() == _profileName.toLowerCase() || (authUser != null && name.toLowerCase() == authUser.name.toLowerCase())))) {
+              if (payload['isOnline'] is bool) {
+                final boolOnline = payload['isOnline'] as bool;
+                setState(() => _isOnDuty = boolOnline);
+                context.read<AuthProvider>().setOnlineDutyStatus(
+                  boolOnline,
+                  lastOnlineAt: payload['lastOnlineAt']?.toString(),
+                  lastOfflineAt: payload['lastOfflineAt']?.toString(),
+                );
+              }
+            }
+          }
+        }
         _loadData(silent: true);
         _loadNotifications(silent: true);
       }
@@ -347,10 +372,24 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       final delRes = results[0];
       final custRes = results[1];
 
+      try {
+        final meRes = await _api.get('/api/auth/me');
+        if (meRes['success'] == true && meRes['user'] is Map) {
+          final meUser = Map<String, dynamic>.from(meRes['user'] as Map);
+          if (mounted) {
+            await context.read<AuthProvider>().updateUserFromMap(meUser);
+            if (meUser['isOnline'] is bool) {
+              setState(() => _isOnDuty = meUser['isOnline'] as bool);
+            }
+          }
+        }
+      } catch (_) {}
+
       if (mounted) {
         final authUser = context.read<AuthProvider>().user;
         setState(() {
           if (authUser != null) {
+            _isOnDuty = authUser.isOnline;
             if (authUser.name.isNotEmpty) _profileName = authUser.name;
             if (authUser.mobile.isNotEmpty) _profilePhone = authUser.mobile;
             if (authUser.email != null && authUser.email!.isNotEmpty) _profileEmail = authUser.email!;
@@ -458,6 +497,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   void _showMarkDeliveredDialog(Map<String, dynamic> delivery) {
+    if (!_isOnDuty) {
+      _showOfflineBlockedDialog();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (ctx) => _FullScreenMarkDeliveredPage(
@@ -465,6 +508,43 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           api: _api,
           onSuccess: () => _loadData(silent: true),
         ),
+      ),
+    );
+  }
+
+  void _showOfflineBlockedDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFDC2626), size: 24),
+            SizedBox(width: 8),
+            Text('Partner Shift Offline', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          ],
+        ),
+        content: const Text(
+          'You are currently in Offline / Off Duty mode. Please toggle your status to Online in the navigation bar to mark deliveries as delivered.',
+          style: TextStyle(fontSize: 13.5, color: Color(0xFF475569)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _updateOnlineDutyStatus(true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Go Online Now', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+          ),
+        ],
       ),
     );
   }
@@ -688,110 +768,289 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          Row(
-            children: [
-              // Dairy Logo Box
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFBBF7D0)),
-                ),
-                padding: const EdgeInsets.all(4),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(Icons.water_drop_rounded, color: Color(0xFF059669), size: 22),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        boyName.toLowerCase(),
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A)),
-                      ),
-                      const SizedBox(width: 5),
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF10B981),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on_outlined, size: 12, color: Color(0xFF059669)),
-                      const SizedBox(width: 2),
-                      Text(
-                        boyArea.toLowerCase(),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Notification Bell with Interactive InkWell
-          InkWell(
-            onTap: () => setState(() => _isNotificationScreenOpen = true),
-            borderRadius: BorderRadius.circular(10),
-            child: Stack(
-              clipBehavior: Clip.none,
+          // Left: Dairy Logo + Partner Name & Area
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                // Dairy Logo Box
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFFF0FDF4),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
                   ),
-                  child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF059669), size: 22),
+                  padding: const EdgeInsets.all(4),
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Icon(Icons.water_drop_rounded, color: Color(0xFF059669), size: 20),
+                  ),
                 ),
-                if (_unreadNotifCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -4,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE11D48),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 100),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              boyName.toLowerCase(),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A)),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: _isOnDuty ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Center(
-                        child: Text(
-                          _unreadNotifCount > 9 ? '9+' : '$_unreadNotifCount',
-                          style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800),
-                        ),
+                      const SizedBox(height: 1),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on_outlined, size: 11, color: Color(0xFF059669)),
+                          const SizedBox(width: 2),
+                          Flexible(
+                            child: Text(
+                              boyArea.toLowerCase(),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF059669)),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                    ],
                   ),
+                ),
               ],
             ),
           ),
+
+          // EXACT MATHEMATICAL CENTER OF THE NAV BAR (50% SCREEN WIDTH)
+          Align(
+            alignment: Alignment.center,
+            child: _buildOnlineToggle(),
+          ),
+
+          // Right: Notification Bell with Interactive InkWell
+          Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+              onTap: () => setState(() => _isNotificationScreenOpen = true),
+              borderRadius: BorderRadius.circular(10),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: const Icon(Icons.notifications_none_rounded, color: Color(0xFF059669), size: 21),
+                  ),
+                  if (_unreadNotifCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE11D48),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Center(
+                          child: Text(
+                            _unreadNotifCount > 9 ? '9+' : '$_unreadNotifCount',
+                            style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _updateOnlineDutyStatus(bool newStatus) async {
+    HapticFeedback.lightImpact();
+    setState(() => _isOnDuty = newStatus);
+
+    final auth = context.read<AuthProvider>();
+    await auth.setOnlineDutyStatus(newStatus);
+
+    // Call API to persist online/offline timing and notify admin in real-time
+    try {
+      final authUser = auth.user;
+      final boyId = (authUser != null && authUser.id.isNotEmpty) ? authUser.id : null;
+      final mobile = (authUser != null && authUser.mobile.isNotEmpty) ? authUser.mobile : _profilePhone;
+      final name = (authUser != null && authUser.name.isNotEmpty) ? authUser.name : _profileName;
+      final area = (authUser != null && authUser.assignedArea.isNotEmpty) ? authUser.assignedArea : _profileArea;
+
+      final res = await _api.post('/api/delivery-boys/duty-status', {
+        'isOnline': newStatus,
+        'boyId': boyId,
+        'id': boyId,
+        'area': area,
+        'mobile': mobile,
+        'name': name,
+      });
+      debugPrint('⚡ Duty status update result: $res');
+      if (res['success'] == true && res['isOnline'] is bool) {
+        if (mounted) {
+          setState(() => _isOnDuty = res['isOnline'] as bool);
+        }
+        await auth.setOnlineDutyStatus(
+          res['isOnline'] as bool,
+          lastOnlineAt: res['lastOnlineAt']?.toString(),
+          lastOfflineAt: res['lastOfflineAt']?.toString(),
+        );
+      }
+      if (!RealtimeService().isConnected) {
+        RealtimeService().connect();
+      }
+    } catch (e) {
+      debugPrint('Duty status sync note: $e');
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              newStatus ? Icons.check_circle_rounded : Icons.pause_circle_filled_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                newStatus
+                    ? '🟢 Shift Online: Ready for live deliveries'
+                    : '⏸ Shift Offline: Deliveries paused',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: newStatus ? const Color(0xFF059669) : const Color(0xFF475569),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  // ONLINE / OFFLINE TOGGLE WIDGET (Located in the exact middle of the nav bar)
+  Widget _buildOnlineToggle() {
+    return InkWell(
+      onTap: () => _updateOnlineDutyStatus(!_isOnDuty),
+      borderRadius: BorderRadius.circular(20),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: _isOnDuty ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: _isOnDuty ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: _isOnDuty ? const Color(0xFF10B981).withValues(alpha: 0.15) : Colors.black.withValues(alpha: 0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _isOnDuty ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                shape: BoxShape.circle,
+                boxShadow: _isOnDuty
+                    ? [
+                        BoxShadow(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              _isOnDuty ? 'Online' : 'Offline',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: _isOnDuty ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                letterSpacing: 0.2,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Container(
+              width: 24,
+              height: 14,
+              padding: const EdgeInsets.all(1.5),
+              decoration: BoxDecoration(
+                color: _isOnDuty ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 180),
+                alignment: _isOnDuty ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  width: 11,
+                  height: 11,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -961,6 +1220,42 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               fontWeight: FontWeight.w500,
             ),
           ),
+          if (!_isOnDuty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.pause_circle_filled_rounded, color: Color(0xFFDC2626), size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'You are currently Offline. Turn on the toggle in the nav bar to resume deliveries.',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF991B1B)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () {
+                      _updateOnlineDutyStatus(true);
+                    },
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text('Go Online', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
 
           // 2. ROUTE PROGRESS CARD (WHITE CONTAINER WITH 2X2 GRID)
@@ -1833,7 +2128,17 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 final mobile = c['mobile'] ?? '';
                 final address = c['address'] ?? '';
                 final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] : {};
-                final milk = plan['milkQty'] ?? 1;
+                final sub = c['subscription'] is Map ? c['subscription'] : {};
+                final subPlan = sub['plan'] is Map ? sub['plan'] : {};
+                final num rawMilk = num.tryParse(plan['milkQty']?.toString() ?? '') ?? 0;
+                final num rawSubMilk = num.tryParse(subPlan['milkQty']?.toString() ?? sub['milkQty']?.toString() ?? '') ?? 0;
+                final num milk = rawMilk > 0 ? rawMilk : (rawSubMilk > 0 ? rawSubMilk : 1);
+                final endDateStr = (sub['endDate'] ?? c['subscriptionEnd'] ?? '').toString();
+                final endDate = DateTime.tryParse(endDateStr);
+                final now = DateTime.now();
+                final isExpired = endDate != null && endDate.isBefore(now);
+                final daysRemaining = endDate?.difference(now).inDays;
+                final balance = num.tryParse(c['currentBalance']?.toString() ?? '0') ?? 0;
 
                 return InkWell(
                   onTap: () => _openCustomerDetails(c),
@@ -1843,51 +2148,152 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(
+                        color: isExpired ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Center(
-                            child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'C', style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF059669))),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
-                              Text(address, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: plan['frequency'] == 'alternate' ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '${milk}L ${plan['frequency'] == 'alternate' ? 'Alternate' : 'Daily'}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
-                              color: plan['frequency'] == 'alternate' ? const Color(0xFFB45309) : const Color(0xFF065F46),
+                        Row(
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: isExpired ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isExpired ? const Color(0xFFFECACA) : const Color(0xFFBBF7D0),
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          name,
+                                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (c['customerId'] != null && c['customerId'].toString().isNotEmpty) ...[
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '#${c['customerId']}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    address,
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFF059669)),
+                              onPressed: () => _callCustomer(mobile),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 6),
-                        IconButton(
-                          icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFF059669)),
-                          onPressed: () => _callCustomer(mobile),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            // Milk Plan Tag
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: Text(
+                                '🥛 ${milk}L ${plan['frequency'] == 'alternate' ? 'Alternate' : 'Daily'}',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF065F46)),
+                              ),
+                            ),
+
+                            // Expiry Date Tag
+                            if (endDate != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isExpired
+                                      ? const Color(0xFFFEF2F2)
+                                      : (daysRemaining != null && daysRemaining <= 5 ? const Color(0xFFFFFBEB) : const Color(0xFFF5F3FF)),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: isExpired
+                                        ? const Color(0xFFFECACA)
+                                        : (daysRemaining != null && daysRemaining <= 5 ? const Color(0xFFFDE68A) : const Color(0xFFDDD6FE)),
+                                  ),
+                                ),
+                                child: Text(
+                                  isExpired
+                                      ? '⚠️ Expired'
+                                      : (daysRemaining != null && daysRemaining <= 5
+                                          ? '⏳ Expiring (${daysRemaining}d)'
+                                          : '📅 Till ${endDate.day}/${endDate.month}/${endDate.year}'),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                    color: isExpired
+                                        ? const Color(0xFFDC2626)
+                                        : (daysRemaining != null && daysRemaining <= 5 ? const Color(0xFFB45309) : const Color(0xFF7C3AED)),
+                                  ),
+                                ),
+                              ),
+
+                            // Overdue / Settled Tag
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: balance > 0 ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: balance > 0 ? const Color(0xFFFECACA) : const Color(0xFFBBF7D0),
+                                ),
+                              ),
+                              child: Text(
+                                balance > 0 ? '⚠️ ₹${balance.toInt()} Overdue' : '✓ Settled',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                  color: balance > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1942,6 +2348,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       MaterialPageRoute(
         builder: (ctx) => _FullScreenCustomerDetailsPage(
           customer: customer,
+          api: _api,
+          onCustomerUpdated: () => _loadData(silent: true),
           onCall: (phone) => _callCustomer(phone),
           onMap: (addr) => _openMap(
             addr,
@@ -2588,15 +2996,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                         Switch.adaptive(
                           value: _isOnDuty,
                           activeThumbColor: const Color(0xFF059669),
-                          onChanged: (val) {
-                            setState(() => _isOnDuty = val);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Shift Status: ${_isOnDuty ? 'On duty (Ready for morning deliveries)' : 'Off duty (Break mode)'}'),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
+                          onChanged: (val) => _updateOnlineDutyStatus(val),
                         ),
                       ],
                     ),
@@ -3979,24 +4379,121 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
   final _mobileCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   late final TextEditingController _areaCtrl;
-  double _milkQty = 1.0;
+  double? _latitude;
+  double? _longitude;
   String _frequency = 'daily';
   String _paymentType = 'credit';
   bool _isSubmitting = false;
+
+  List<ProductModel> _products = [];
+  bool _isLoadingProducts = true;
+  final Map<String, double> _productQuantities = {};
+  StreamSubscription? _wsProductSub;
 
   @override
   void initState() {
     super.initState();
     _areaCtrl = TextEditingController(text: widget.defaultArea);
+    _loadProducts();
+    _initProductRealtime();
+  }
+
+  void _initProductRealtime() {
+    try {
+      _wsProductSub = RealtimeService().eventStream.listen((event) {
+        final type = event['type']?.toString();
+        if (type == 'PRODUCT_UPDATED' ||
+            type == 'PRICE_UPDATED' ||
+            type == 'STOCK_UPDATED' ||
+            type == 'INVENTORY_UPDATED') {
+          _loadProducts(silent: true);
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadProducts({bool silent = false}) async {
+    if (!silent) setState(() => _isLoadingProducts = true);
+    try {
+      final list = await widget.api.getProducts();
+      if (mounted) {
+        setState(() {
+          _products = list.isNotEmpty ? list : ProductModel.defaultCatalog;
+          _isLoadingProducts = false;
+          // Pre-select 1L for the primary milk product if no product is selected yet
+          if (_productQuantities.isEmpty && _products.isNotEmpty) {
+            final defaultMilk = _products.firstWhere(
+              (p) => p.category.toLowerCase() == 'milk' || p.name.toLowerCase().contains('milk'),
+              orElse: () => _products.first,
+            );
+            _productQuantities[defaultMilk.id] = 1.0;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (_products.isEmpty) _products = ProductModel.defaultCatalog;
+          _isLoadingProducts = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
+    _wsProductSub?.cancel();
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
     _addressCtrl.dispose();
     _areaCtrl.dispose();
     super.dispose();
+  }
+
+  double get _dailyTotalEstimate {
+    double sum = 0.0;
+    for (final prod in _products) {
+      final qty = _productQuantities[prod.id] ?? 0.0;
+      if (qty > 0) {
+        final unitPrice = prod.numericPrice > 0
+            ? prod.numericPrice
+            : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+        sum += (qty * unitPrice);
+      }
+    }
+    return sum;
+  }
+
+  List<ProductModel> get _selectedProductsList {
+    return _products.where((p) => (_productQuantities[p.id] ?? 0.0) > 0).toList();
+  }
+
+  void _showMapLocationSelector() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SelectLocationMapScreen(
+          initialLat: _latitude ?? 17.4483,
+          initialLng: _longitude ?? 78.3915,
+          initialArea: _areaCtrl.text.isNotEmpty ? _areaCtrl.text : widget.defaultArea,
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _latitude = (result['latitude'] as num?)?.toDouble();
+        _longitude = (result['longitude'] as num?)?.toDouble();
+        final area = result['area']?.toString();
+        final addressSnippet = result['address']?.toString();
+        if (area != null && area.isNotEmpty) {
+          _areaCtrl.text = area;
+        }
+        if (addressSnippet != null && addressSnippet.isNotEmpty && _addressCtrl.text.isEmpty) {
+          _addressCtrl.text = addressSnippet;
+        }
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -4007,15 +4504,65 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
       return;
     }
 
+    final extraProducts = <Map<String, dynamic>>[];
+    double totalMilk = 0.0;
+    double totalCurd = 0.0;
+    String milkType = 'Pure A2 Cow Milk';
+
+    for (final prod in _products) {
+      final qty = _productQuantities[prod.id] ?? 0.0;
+      if (qty > 0) {
+        final unitPrice = prod.numericPrice > 0
+            ? prod.numericPrice
+            : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+        extraProducts.add({
+          'productId': prod.id,
+          'name': prod.name,
+          'quantity': qty,
+          'unit': prod.unit,
+          'price': unitPrice,
+        });
+        final cat = prod.category.toLowerCase();
+        final nameLower = prod.name.toLowerCase();
+        if (cat == 'milk' || nameLower.contains('milk')) {
+          totalMilk += qty;
+          milkType = prod.name;
+        } else if (cat == 'curd' || nameLower.contains('curd')) {
+          totalCurd += (qty * 500);
+        }
+      }
+    }
+
+    if (extraProducts.isEmpty && totalMilk == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one product with quantity > 0.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
-    final res = await widget.api.post('/api/customers', {
+    final payload = {
       'name': _nameCtrl.text.trim(),
       'mobile': _mobileCtrl.text.trim(),
       'address': _addressCtrl.text.trim(),
       'area': _areaCtrl.text.trim(),
-      'deliveryPlan': {'milkQty': _milkQty, 'frequency': _frequency},
+      if (_latitude != null) 'latitude': _latitude,
+      if (_longitude != null) 'longitude': _longitude,
+      'milkQty': totalMilk > 0 ? totalMilk : 1.0,
+      'curdQty': totalCurd,
+      'milkType': milkType,
+      'extraProducts': extraProducts,
+      'deliveryPlan': {
+        'milkQty': totalMilk > 0 ? totalMilk : 1.0,
+        'curdQty': totalCurd,
+        'milkType': milkType,
+        'planName': 'Daily Farm Pure Milk Plan',
+        'extraProducts': extraProducts,
+        'frequency': _frequency,
+      },
       'paymentInfo': {'paymentType': _paymentType},
-    });
+    };
+    final res = await widget.api.post('/api/customers', payload);
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
@@ -4063,22 +4610,390 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
             TextField(controller: _addressCtrl, decoration: const InputDecoration(labelText: 'Flat / Doorstep Address *', border: OutlineInputBorder(), isDense: true)),
             const SizedBox(height: 12),
             TextField(controller: _areaCtrl, decoration: const InputDecoration(labelText: 'Assigned Territory / Area', border: OutlineInputBorder(), isDense: true)),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
-            const Text('Daily Delivery Schedule', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-            const SizedBox(height: 12),
+            // Map Location Pin Selector Card (Matches user mobile app experience)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _latitude != null ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _latitude != null ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _latitude != null ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      Icons.pin_drop_rounded,
+                      color: _latitude != null ? const Color(0xFF059669) : const Color(0xFF64748B),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _latitude != null ? 'Location Pinned on Map' : 'Select Customer Location on Map',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: _latitude != null ? const Color(0xFF065F46) : const Color(0xFF0C2340),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _latitude != null
+                              ? 'GPS: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
+                              : 'Tap to pick exact customer doorstep coordinates',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: _latitude != null ? const Color(0xFF166534) : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _showMapLocationSelector,
+                    icon: Icon(
+                      _latitude != null ? Icons.edit_location_alt_rounded : Icons.map_rounded,
+                      size: 14,
+                      color: const Color(0xFF059669),
+                    ),
+                    label: Text(
+                      _latitude != null ? 'Change' : 'Pick on Map',
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFFDCFCE7),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Products & Daily Delivery Schedule Section
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Daily Milk Quantity:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                DropdownButton<double>(
-                  value: _milkQty,
-                  items: const [0.5, 1.0, 1.5, 2.0, 3.0, 5.0].map((q) => DropdownMenuItem(value: q, child: Text('${q}L Daily'))).toList(),
-                  onChanged: (v) => setState(() => _milkQty = v ?? _milkQty),
+                const Text(
+                  'All Products & Daily Quantities',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A)),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bolt, size: 12, color: Color(0xFF059669)),
+                      SizedBox(width: 3),
+                      Text(
+                        'Live Catalog',
+                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
+            const Text(
+              'Select customer\'s daily milk and dairy products (curd, paneer, ghee, butter):',
+              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 12),
+
+            if (_isLoadingProducts)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: CircularProgressIndicator(color: Color(0xFF059669)),
+                ),
+              )
+            else
+              Column(
+                children: _products.map((prod) {
+                  final currentQty = _productQuantities[prod.id] ?? 0.0;
+                  final isMilk = prod.category.toLowerCase() == 'milk' || prod.name.toLowerCase().contains('milk');
+                  final step = isMilk ? 0.5 : 1.0;
+                  final presets = isMilk ? [0.5, 1.0, 1.5, 2.0] : [0.0, 1.0, 2.0, 3.0];
+                  final unitPrice = prod.numericPrice > 0
+                      ? prod.numericPrice
+                      : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+                  final itemTotal = (currentQty * unitPrice).toInt();
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: currentQty > 0 ? const Color(0xFFF0FDF4) : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: currentQty > 0 ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
+                        width: currentQty > 0 ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: currentQty > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                isMilk
+                                    ? Icons.water_drop_rounded
+                                    : (prod.category.toLowerCase() == 'curd'
+                                        ? Icons.breakfast_dining_rounded
+                                        : Icons.inventory_2_rounded),
+                                color: currentQty > 0 ? const Color(0xFF059669) : const Color(0xFF64748B),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    prod.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 13.5,
+                                      color: currentQty > 0 ? const Color(0xFF065F46) : const Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        '₹${prod.price} / ${prod.unit}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12,
+                                          color: Color(0xFF059669),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          prod.category.toUpperCase(),
+                                          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (currentQty > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  '₹$itemTotal',
+                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF047857)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Stepper row and preset chips
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Stepper (- [qty] +)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  InkWell(
+                                    onTap: currentQty > 0
+                                        ? () {
+                                            setState(() {
+                                              final next = (currentQty - step).clamp(0.0, 50.0);
+                                              _productQuantities[prod.id] = next;
+                                            });
+                                          }
+                                        : null,
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      child: Icon(
+                                        Icons.remove,
+                                        size: 16,
+                                        color: currentQty > 0 ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    constraints: const BoxConstraints(minWidth: 42),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      currentQty > 0
+                                          ? (isMilk ? '${currentQty.toStringAsFixed(currentQty.truncateToDouble() == currentQty ? 0 : 1)}L' : '${currentQty.toInt()}')
+                                          : '0',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12.5,
+                                        color: currentQty > 0 ? const Color(0xFF065F46) : const Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        final next = currentQty + step;
+                                        _productQuantities[prod.id] = next;
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF059669),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: const Icon(
+                                        Icons.add,
+                                        size: 16,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Presets
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: presets.map((pVal) {
+                                final isSel = currentQty == pVal;
+                                final label = pVal == 0
+                                    ? '0'
+                                    : (isMilk ? '${pVal.toStringAsFixed(pVal.truncateToDouble() == pVal ? 0 : 1)}L' : '${pVal.toInt()}x');
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _productQuantities[prod.id] = pVal;
+                                      });
+                                    },
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: isSel ? const Color(0xFFECFDF5) : Colors.white,
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: isSel ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        label,
+                                        style: TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: isSel ? const Color(0xFF065F46) : const Color(0xFF475569),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+
+            // Live Daily Basket Summary Card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'DAILY SCHEDULED PRODUCTS (${_selectedProductsList.length} items)',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF047857)),
+                      ),
+                      Text(
+                        '₹${_dailyTotalEstimate.toStringAsFixed(0)} / day',
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF065F46)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _selectedProductsList.isNotEmpty
+                        ? _selectedProductsList.map((p) {
+                            final q = _productQuantities[p.id] ?? 0;
+                            final isMilk = p.category.toLowerCase() == 'milk' || p.name.toLowerCase().contains('milk');
+                            final qStr = isMilk ? '${q.toStringAsFixed(q.truncateToDouble() == q ? 0 : 1)}L' : '${q.toInt()} ${p.unit}';
+                            return '${p.name} ($qStr)';
+                          }).join(' • ')
+                        : 'No products selected yet. Please select at least 1 product.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: _selectedProductsList.isNotEmpty ? const Color(0xFF065F46) : const Color(0xFFB45309),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -4494,33 +5409,456 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
 }
 
 // ============================================================================
-// FULL SCREEN PAGE: CUSTOMER ROUTE PROFILE
+// FULL SCREEN PAGE: CUSTOMER ROUTE PROFILE & SUBSCRIPTION EXTENSION
 // ============================================================================
-class _FullScreenCustomerDetailsPage extends StatelessWidget {
+class _FullScreenCustomerDetailsPage extends StatefulWidget {
   final Map<String, dynamic> customer;
+  final ApiService api;
+  final VoidCallback onCustomerUpdated;
   final void Function(String phone) onCall;
   final void Function(String address) onMap;
 
   const _FullScreenCustomerDetailsPage({
     required this.customer,
+    required this.api,
+    required this.onCustomerUpdated,
     required this.onCall,
     required this.onMap,
   });
 
   @override
+  State<_FullScreenCustomerDetailsPage> createState() => _FullScreenCustomerDetailsPageState();
+}
+
+class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetailsPage> {
+  late Map<String, dynamic> _cust;
+  bool _isSubmittingExtension = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _cust = Map<String, dynamic>.from(widget.customer);
+  }
+
+  String _formatDate(DateTime? dt) {
+    if (dt == null) return 'Active / Ongoing';
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${dt.day.toString().padLeft(2, '0')} ${months[dt.month - 1]} ${dt.year}';
+  }
+
+  void _showExtendSubscriptionSheet() {
+    int selectedDays = 30;
+    String selectedPayMode = 'cash';
+    final plan = _cust['deliveryPlan'] is Map ? _cust['deliveryPlan'] : {};
+    final sub = _cust['subscription'] is Map ? _cust['subscription'] : {};
+    final subPlan = sub['plan'] is Map ? sub['plan'] : {};
+    final num rawMilk = num.tryParse(plan['milkQty']?.toString() ?? '') ?? 0;
+    final num rawSubMilk = num.tryParse(subPlan['milkQty']?.toString() ?? sub['milkQty']?.toString() ?? '') ?? 0;
+    final num milk = rawMilk > 0 ? rawMilk : (rawSubMilk > 0 ? rawSubMilk : 1);
+    final num curd = num.tryParse(plan['curdQty']?.toString() ?? '') ?? 0;
+    const num milkPrice = 65;
+    final num curdPrice = (curd / 500) * 35;
+    final num dailyCost = (milk * milkPrice) + curdPrice;
+
+    final currentEndStr = (sub['endDate'] ?? _cust['subscriptionEnd'] ?? '').toString();
+    final currentEnd = DateTime.tryParse(currentEndStr);
+    final now = DateTime.now();
+
+    DateTime calculateNewExpiry(int days) {
+      final base = (currentEnd != null && currentEnd.isAfter(now)) ? currentEnd : now;
+      return base.add(Duration(days: days));
+    }
+
+    final amountController = TextEditingController(text: '${(dailyCost * 30).round()}');
+    final notesController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            final newExpiry = calculateNewExpiry(selectedDays);
+
+            return Container(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
+                top: 20,
+                left: 20,
+                right: 20,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header Bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Extend Subscription',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            ),
+                            Text(
+                              _cust['name'] ?? 'Customer',
+                              style: const TextStyle(fontSize: 13, color: Color(0xFF059669), fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                          onPressed: () => Navigator.of(modalCtx).pop(),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+                    // Current Expiry Info
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Current Expiry:',
+                            style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            _formatDate(currentEnd),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: (currentEnd != null && currentEnd.isBefore(now)) ? const Color(0xFFDC2626) : const Color(0xFF0F172A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Extension Duration Pills
+                    const Text(
+                      'Select Extension Period',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _buildDurationChip(modalCtx, setModalState, 7, '+7 Days', selectedDays, (d) {
+                          selectedDays = d;
+                          amountController.text = '${(dailyCost * d).round()}';
+                        }),
+                        _buildDurationChip(modalCtx, setModalState, 15, '+15 Days', selectedDays, (d) {
+                          selectedDays = d;
+                          amountController.text = '${(dailyCost * d).round()}';
+                        }),
+                        _buildDurationChip(modalCtx, setModalState, 30, '+30 Days (1 Mo)', selectedDays, (d) {
+                          selectedDays = d;
+                          amountController.text = '${(dailyCost * d).round()}';
+                        }),
+                        _buildDurationChip(modalCtx, setModalState, 60, '+60 Days (2 Mo)', selectedDays, (d) {
+                          selectedDays = d;
+                          amountController.text = '${(dailyCost * d).round()}';
+                        }),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // New Expiry Date Live Preview
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.event_available_rounded, size: 20, color: Color(0xFF059669)),
+                          const SizedBox(width: 10),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'New Extended Expiry Date',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF065F46), fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                _formatDate(newExpiry),
+                                style: const TextStyle(fontSize: 15, color: Color(0xFF059669), fontWeight: FontWeight.w900),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Payment Settlement Mode
+                    const Text(
+                      'Payment Settlement Method',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1)),
+                        color: Colors.white,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedPayMode,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: 'cash', child: Text('💵 Cash Collected at Doorstep')),
+                            DropdownMenuItem(value: 'upi', child: Text('📱 UPI Collected (GPay / PhonePe)')),
+                            DropdownMenuItem(value: 'prepaid', child: Text('💳 Prepaid / Advance (Online Paid)')),
+                            DropdownMenuItem(value: 'credit', child: Text('📝 Monthly Bill / Ledger Credit')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              setModalState(() => selectedPayMode = val);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Amount Collected Field
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Amount Collected (₹)',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: amountController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  prefixText: '₹ ',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Remarks / Notes',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: notesController,
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. Month renewal',
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isSubmittingExtension
+                            ? null
+                            : () async {
+                                final custId = _cust['id'] ?? _cust['_id'] ?? _cust['customerId'];
+                                final collected = num.tryParse(amountController.text) ?? 0;
+                                setModalState(() => _isSubmittingExtension = true);
+                                setState(() => _isSubmittingExtension = true);
+
+                                try {
+                                  final res = await widget.api.post('/api/customers/$custId/extend-subscription', {
+                                    'days': selectedDays,
+                                    'paymentMethod': selectedPayMode,
+                                    'collectedAmount': collected,
+                                    'notes': notesController.text.trim(),
+                                    'actor': 'Delivery Partner',
+                                  });
+
+                                  if (res['success'] == true) {
+                                    final newEndStr = res['newEndDate'] ?? newExpiry.toIso8601String();
+                                    setState(() {
+                                      _cust['subscription'] = {
+                                        ...(sub),
+                                        'status': 'active',
+                                        'endDate': newEndStr,
+                                      };
+                                      if (res['newBalance'] != null) {
+                                        _cust['currentBalance'] = res['newBalance'];
+                                      } else if (collected > 0) {
+                                        final prev = num.tryParse(_cust['currentBalance']?.toString() ?? '0') ?? 0;
+                                        _cust['currentBalance'] = (prev - collected) < 0 ? 0 : (prev - collected);
+                                      }
+                                      _cust['status'] = 'active';
+                                    });
+
+                                    widget.onCustomerUpdated();
+                                    if (modalCtx.mounted) Navigator.of(modalCtx).pop();
+
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(res['message'] ?? '✓ Subscription extended successfully!'),
+                                          backgroundColor: const Color(0xFF059669),
+                                        ),
+                                      );
+                                    }
+                                  } else {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(res['message'] ?? 'Failed to extend subscription')),
+                                      );
+                                    }
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error extending subscription: $e')),
+                                    );
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isSubmittingExtension = false);
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _isSubmittingExtension
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Confirm & Extend Subscription',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDurationChip(
+    BuildContext ctx,
+    StateSetter setModalState,
+    int days,
+    String label,
+    int selectedDays,
+    ValueChanged<int> onSelect,
+  ) {
+    final isSelected = selectedDays == days;
+    return GestureDetector(
+      onTap: () {
+        setModalState(() => onSelect(days));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF059669) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? const Color(0xFF059669) : const Color(0xFFCBD5E1)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: isSelected ? Colors.white : const Color(0xFF334155),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final name = customer['name'] ?? 'Household Customer';
-    final mobile = customer['mobile'] ?? '';
-    final address = customer['address'] ?? 'Not specified';
-    final area = customer['area'] ?? 'Madhapur';
-    final plan = customer['deliveryPlan'] is Map ? customer['deliveryPlan'] : {};
-    final milk = plan['milkQty'] ?? 1;
-    final curd = plan['curdQty'] ?? 0;
-    final frequency = plan['frequency'] ?? 'daily';
-    final customerId = customer['customerId'] ?? customer['_id'] ?? customer['id'] ?? '';
+    final name = _cust['name'] ?? 'Household Customer';
+    final mobile = _cust['mobile'] ?? '';
+    final address = _cust['address'] ?? 'Not specified';
+    final area = _cust['area'] ?? 'Madhapur';
+    final landmark = _cust['landmark'] ?? '';
+    final notes = _cust['notes'] ?? '';
+    final customerId = _cust['customerId'] ?? _cust['_id'] ?? _cust['id'] ?? '';
+
+    final plan = _cust['deliveryPlan'] is Map ? _cust['deliveryPlan'] : {};
+    final sub = _cust['subscription'] is Map ? _cust['subscription'] : {};
+    final subPlan = sub['plan'] is Map ? sub['plan'] : {};
+    final num rawMilk = num.tryParse(plan['milkQty']?.toString() ?? '') ?? 0;
+    final num rawSubMilk = num.tryParse(subPlan['milkQty']?.toString() ?? sub['milkQty']?.toString() ?? '') ?? 0;
+    final num milk = rawMilk > 0 ? rawMilk : (rawSubMilk > 0 ? rawSubMilk : 1);
+    final num curd = num.tryParse(plan['curdQty']?.toString() ?? '') ?? 0;
+    final frequency = plan['frequency'] ?? subPlan['frequency'] ?? 'daily';
+
+    final endDateStr = (sub['endDate'] ?? _cust['subscriptionEnd'] ?? plan['endDate'] ?? '').toString();
+    final endDate = DateTime.tryParse(endDateStr);
+    final startDateStr = (sub['startDate'] ?? _cust['subscriptionStart'] ?? plan['startDate'] ?? '').toString();
+    final startDate = DateTime.tryParse(startDateStr);
+    final now = DateTime.now();
+
+    final isExpired = endDate != null && endDate.isBefore(now);
+    final daysRemaining = endDate?.difference(now).inDays;
+    final balance = num.tryParse(_cust['currentBalance']?.toString() ?? '0') ?? 0;
+    final isPaused = _cust['status'] == 'paused';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
@@ -4534,30 +5872,34 @@ class _FullScreenCustomerDetailsPage extends StatelessWidget {
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 1. Customer Identity Card
             Container(
-              padding: const EdgeInsets.all(18),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 6, offset: const Offset(0, 2)),
+                ],
               ),
               child: Row(
                 children: [
                   Container(
                     width: 52,
                     height: 52,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF059669),
+                    decoration: BoxDecoration(
+                      color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF059669),
                       shape: BoxShape.circle,
                     ),
                     child: Center(
                       child: Text(
                         name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 24, color: Colors.white),
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, color: Colors.white),
                       ),
                     ),
                   ),
@@ -4568,70 +5910,406 @@ class _FullScreenCustomerDetailsPage extends StatelessWidget {
                       children: [
                         Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: Color(0xFF0F172A))),
                         const SizedBox(height: 2),
-                        Text('ID: $customerId', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        Text('ID: #$customerId', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
                         const SizedBox(height: 2),
-                        Text(area, style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w700)),
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on, size: 13, color: Color(0xFF059669)),
+                            const SizedBox(width: 3),
+                            Expanded(
+                              child: Text(area, style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
                       ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isPaused
+                          ? const Color(0xFFFEF3C7)
+                          : (isExpired ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5)),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isPaused
+                            ? const Color(0xFFFDE68A)
+                            : (isExpired ? const Color(0xFFFECACA) : const Color(0xFFBBF7D0)),
+                      ),
+                    ),
+                    child: Text(
+                      isPaused ? '⏸ Paused' : (isExpired ? '⚠️ Expired' : '✓ Active'),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: isPaused
+                            ? const Color(0xFFB45309)
+                            : (isExpired ? const Color(0xFFDC2626) : const Color(0xFF059669)),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+
+            // 2. Quick Action Buttons Row
             Row(
               children: [
                 if (mobile.isNotEmpty)
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.phone, size: 16, color: Color(0xFF059669)),
-                      label: const Text('Call Customer', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800)),
-                      onPressed: () => onCall(mobile),
+                      label: const Text('Call', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800, fontSize: 12)),
+                      onPressed: () => widget.onCall(mobile),
                       style: OutlinedButton.styleFrom(
                         backgroundColor: const Color(0xFFECFDF5),
                         side: const BorderSide(color: Color(0xFFBBF7D0)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                     ),
                   ),
-                if (mobile.isNotEmpty) const SizedBox(width: 10),
+                if (mobile.isNotEmpty) const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.navigation, size: 16, color: Color(0xFF2563EB)),
-                    label: const Text('Open Map', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800)),
-                    onPressed: () => onMap(address),
+                    label: const Text('Map', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800, fontSize: 12)),
+                    onPressed: () => widget.onMap(address),
                     style: OutlinedButton.styleFrom(
                       backgroundColor: const Color(0xFFEFF6FF),
                       side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.update_rounded, size: 16, color: Colors.white),
+                    label: const Text('Extend', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                    onPressed: _showExtendSubscriptionSheet,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            const Text('Daily Delivery Schedule', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-            const SizedBox(height: 10),
+            const SizedBox(height: 18),
+
+            // 3. Subscription & Expiry Date Card
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isExpired ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+                ),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildCustomerRow('Daily Milk Qty', '${milk}L Fresh Milk'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_month_rounded, size: 18, color: Color(0xFF059669)),
+                            SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Plan & Expiry',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF0F172A)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: _showExtendSubscriptionSheet,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add, size: 13, color: Color(0xFF059669)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Extend',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                  _buildCustomerRow('Daily Curd Qty', curd > 0 ? '${curd}g Curd' : 'None'),
-                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                  _buildCustomerRow('Frequency', frequency.toString().toUpperCase()),
-                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                  _buildCustomerRow('Drop Address', address),
+
+                  // Expiry Date Highlight Row
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isExpired
+                          ? const Color(0xFFFEF2F2)
+                          : (daysRemaining != null && daysRemaining <= 5 ? const Color(0xFFFFFBEB) : const Color(0xFFF5F3FF)),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isExpired
+                            ? const Color(0xFFFECACA)
+                            : (daysRemaining != null && daysRemaining <= 5 ? const Color(0xFFFDE68A) : const Color(0xFFDDD6FE)),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isExpired ? 'Subscription Expired' : 'Subscription Valid Through',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF6B21A8),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _formatDate(endDate),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                  color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF581C87),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (daysRemaining != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF7C3AED),
+                              ),
+                            ),
+                            child: Text(
+                              isExpired ? '⚠️ Overdue' : '⏳ ${daysRemaining}d left',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isExpired ? const Color(0xFFDC2626) : const Color(0xFF7C3AED),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  _buildCustomerRow('Daily Milk Volume', '${milk}L Farm Fresh Milk'),
+                  const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                  _buildCustomerRow('Daily Curd Volume', curd > 0 ? '${curd}g Fresh Curd' : 'None'),
+                  if (plan['extraProducts'] is List && (plan['extraProducts'] as List).isNotEmpty) ...[
+                    for (final ep in (plan['extraProducts'] as List)) ...[
+                      const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                      _buildCustomerRow(
+                        (ep is Map ? ep['name'] : null)?.toString() ?? 'Product',
+                        '${ep is Map ? ep['quantity'] : ''} ${(ep is Map ? ep['unit'] : '') ?? ''} ${(ep is Map && ep['price'] != null) ? '(₹${ep['price']})' : ''}',
+                      ),
+                    ],
+                  ],
+                  const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                  _buildCustomerRow('Delivery Frequency', frequency.toString().toUpperCase()),
+                  if (startDate != null) ...[
+                    const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                    _buildCustomerRow('Plan Started On', _formatDate(startDate)),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+
+            // 4. Billing & Overdue Ledger Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: balance > 0 ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_rounded, size: 18, color: Color(0xFF059669)),
+                      SizedBox(width: 8),
+                      Text('Billing & Overdue Ledger', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF0F172A))),
+                    ],
+                  ),
+                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
+
+                  // Overdue Banner
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: balance > 0 ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: balance > 0 ? const Color(0xFFFECACA) : const Color(0xFFBBF7D0)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Icon(
+                                balance > 0 ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+                                size: 20,
+                                color: balance > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                              ),
+                              const SizedBox(width: 8),
+                              Flexible(
+                                child: Text(
+                                  balance > 0 ? 'Overdue Due Amount' : 'Account Status',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: balance > 0 ? const Color(0xFFDC2626) : const Color(0xFF065F46),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          balance > 0 ? '₹${balance.toInt()} Overdue' : '✓ ₹0 Settled',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: balance > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildCustomerRow('Billing Type', (_cust['paymentInfo'] is Map && _cust['paymentInfo']['paymentType'] == 'prepaid') ? 'PREPAID SUBSCRIPTION' : 'MONTHLY ADVANCE / CREDIT'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 5. Delivery Location & Instructions Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.home_work_rounded, size: 18, color: Color(0xFF059669)),
+                      SizedBox(width: 8),
+                      Text('Doorstep Drop & Instructions', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, color: Color(0xFF0F172A))),
+                    ],
+                  ),
+                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                  _buildCustomerRow('Doorstep Address', address),
+                  if (_cust['latitude'] != null && _cust['longitude'] != null) ...[
+                    const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                    InkWell(
+                      onTap: () {
+                        final lat = num.tryParse(_cust['latitude'].toString());
+                        final lng = num.tryParse(_cust['longitude'].toString());
+                        LauncherService.openMap(lat: lat, lng: lng, address: address);
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFBFDBFE)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.navigation_rounded, size: 16, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'GPS Pin: ${num.tryParse(_cust['latitude'].toString())?.toStringAsFixed(4)}, ${num.tryParse(_cust['longitude'].toString())?.toStringAsFixed(4)} (Tap to Navigate)',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                              ),
+                            ),
+                            const Icon(Icons.open_in_new_rounded, size: 14, color: Color(0xFF2563EB)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (landmark.isNotEmpty) ...[
+                    const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                    _buildCustomerRow('Nearby Landmark', landmark),
+                  ],
+                  if (notes.isNotEmpty) ...[
+                    const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                    _buildCustomerRow('Drop Instructions', notes),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // 6. Big Action Button to Extend
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.add_task_rounded, color: Colors.white, size: 20),
+                label: const Text(
+                  'Extend Customer Subscription',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+                onPressed: _showExtendSubscriptionSheet,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

@@ -25,9 +25,10 @@ class ApiService {
 
   String get baseUrl =>
       _customBaseUrl ??
+      _activeBaseUrl ??
       (AppConfig.isLiveServerActive
           ? AppConfig.liveBaseUrl
-          : (_activeBaseUrl ?? AppConstants.defaultBaseUrl));
+          : AppConstants.defaultBaseUrl);
 
   /// Quick ping to check if a backend server is live and responding
   Future<bool> testConnection([String? candidateUrl]) async {
@@ -43,7 +44,7 @@ class ApiService {
     }
   }
 
-  /// Probes candidate URLs or binds the production server depending on AppConfig.isLiveServerActive
+  /// Probes candidate URLs or binds the production server depending on connectivity
   Future<String> resolveActiveBaseUrl() async {
     // 1. If custom developer URL was saved in shared preferences, check that first
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
@@ -55,28 +56,26 @@ class ApiService {
       }
     }
 
-    // 2. LIVE CLOUD PRODUCTION SERVER (AppConfig.isLiveServerActive == true)
-    // Works on ANY network (Mobile 4G/5G, any Wi-Fi, everywhere)
-    if (AppConfig.isLiveServerActive) {
+    // 2. Scan all candidate local development backend addresses
+    for (final url in AppConstants.candidateBaseUrls) {
+      final isAlive = await testConnection(url);
+      if (isAlive) {
+        _activeBaseUrl = url;
+        debugPrint('🌐 ApiService: Auto-detected active local backend at: $url');
+        return url;
+      }
+    }
+
+    // 3. Scan live cloud production server
+    final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
+    if (isLiveAlive) {
       _activeBaseUrl = AppConfig.liveBaseUrl;
       debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
       return _activeBaseUrl!;
     }
 
-    // 3. LOCAL DEVELOPMENT SERVER (AppConfig.useLiveServer = false)
-    // Runs only locally on development machine / Wi-Fi
-    debugPrint('🏠 ApiService: [LOCAL MODE] Scanning local Wi-Fi / host candidates...');
-    for (final url in AppConstants.candidateBaseUrls) {
-      final isAlive = await testConnection(url);
-      if (isAlive) {
-        _activeBaseUrl = url;
-        debugPrint('🌐 ApiService: [LOCAL MODE] Auto-resolved active server at: $url');
-        return url;
-      }
-    }
-
-    _activeBaseUrl = AppConstants.defaultBaseUrl;
-    debugPrint('🌐 ApiService: [LOCAL MODE] Falling back to default: $_activeBaseUrl');
+    _activeBaseUrl = AppConfig.isLiveServerActive ? AppConfig.liveBaseUrl : AppConstants.defaultBaseUrl;
+    debugPrint('🌐 ApiService: Falling back to: $_activeBaseUrl');
     return _activeBaseUrl!;
   }
 
@@ -115,8 +114,8 @@ class ApiService {
     return headers;
   }
 
-  /// Generic GET request with auto authentication
-  Future<Map<String, dynamic>> get(String endpoint) async {
+  /// Generic GET request with auto authentication and fallback retry
+  Future<Map<String, dynamic>> get(String endpoint, [bool retry = true]) async {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
@@ -126,12 +125,16 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService GET error on $url: $e');
+      if (retry) {
+        await resolveActiveBaseUrl();
+        return get(endpoint, false);
+      }
       return {'success': false, 'message': e.toString()};
     }
   }
 
-  /// Generic POST request with auto authentication
-  Future<Map<String, dynamic>> post(String endpoint, [Map<String, dynamic>? body]) async {
+  /// Generic POST request with auto authentication and fallback retry
+  Future<Map<String, dynamic>> post(String endpoint, [Map<String, dynamic>? body, bool retry = true]) async {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
@@ -145,12 +148,16 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService POST error on $url: $e');
+      if (retry) {
+        await resolveActiveBaseUrl();
+        return post(endpoint, body, false);
+      }
       return {'success': false, 'message': e.toString()};
     }
   }
 
-  /// Generic PUT request with auto authentication
-  Future<Map<String, dynamic>> put(String endpoint, [Map<String, dynamic>? body]) async {
+  /// Generic PUT request with auto authentication and fallback retry
+  Future<Map<String, dynamic>> put(String endpoint, [Map<String, dynamic>? body, bool retry = true]) async {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
@@ -164,12 +171,16 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService PUT error on $url: $e');
+      if (retry) {
+        await resolveActiveBaseUrl();
+        return put(endpoint, body, false);
+      }
       return {'success': false, 'message': e.toString()};
     }
   }
 
-  /// Generic DELETE request with auto authentication
-  Future<Map<String, dynamic>> delete(String endpoint) async {
+  /// Generic DELETE request with auto authentication and fallback retry
+  Future<Map<String, dynamic>> delete(String endpoint, [bool retry = true]) async {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
@@ -179,6 +190,10 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService DELETE error on $url: $e');
+      if (retry) {
+        await resolveActiveBaseUrl();
+        return delete(endpoint, false);
+      }
       return {'success': false, 'message': e.toString()};
     }
   }

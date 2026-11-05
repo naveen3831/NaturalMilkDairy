@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   CheckCircle,
   Loader2,
+  Clock,
 } from 'lucide-react';
 
 export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit }) {
@@ -23,6 +24,7 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
     addDeliveryBoy,
     updateDeliveryBoy,
     deleteDeliveryBoy,
+    toggleDeliveryBoyDuty,
     reconcileCash,
     sendDeliveryBoyCredentials,
     locations,
@@ -59,6 +61,12 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
   // Reconcile State
   const [reconcilingBoy, setReconcilingBoy] = useState(null);
   const [reconcileNotes, setReconcileNotes] = useState('');
+
+  // Shift Duty Timings & Logs Modal State
+  const [selectedDutyLogsBoy, setSelectedDutyLogsBoy] = useState(null);
+  const currentModalBoy = selectedDutyLogsBoy
+    ? (deliveryBoys?.find((b) => (b.id || b._id) === (selectedDutyLogsBoy.id || selectedDutyLogsBoy._id)) || selectedDutyLogsBoy)
+    : null;
 
   // Toast / feedback message
   const [toastMessage, setToastMessage] = useState('');
@@ -343,18 +351,54 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                       </div>
                     </div>
 
-                    <div>
-                      <span
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const nextState = !(boy.isOnline === true);
+                          await toggleDeliveryBoyDuty(boy, nextState);
+                          showToast(nextState ? `🟢 ${boy.name} switched to ONLINE (On Duty)` : `⏸ ${boy.name} switched to OFFLINE (Break)`);
+                        }}
+                        title={`Click to switch ${boy.name} to ${boy.isOnline === true ? 'Offline' : 'Online'}`}
                         style={{
                           fontSize: '0.68rem',
-                          fontWeight: 700,
-                          padding: '2px 8px',
+                          fontWeight: 800,
+                          padding: '3px 9px',
                           borderRadius: '999px',
-                          background: boy.status === 'inactive' ? '#fef2f2' : '#ecfdf5',
-                          color: boy.status === 'inactive' ? '#dc2626' : '#047857',
+                          background: boy.isOnline === true ? '#ecfdf5' : '#f1f5f9',
+                          color: boy.isOnline === true ? '#047857' : '#64748b',
+                          border: `1.2px solid ${boy.isOnline === true ? '#86efac' : '#cbd5e1'}`,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'scale(1.04)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'scale(1)';
                         }}
                       >
-                        {boy.status === 'inactive' ? 'Inactive' : 'Active'}
+                        <span
+                          style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            background: boy.isOnline === true ? '#10b981' : '#94a3b8',
+                            boxShadow: boy.isOnline === true ? '0 0 0 2px rgba(16, 185, 129, 0.25)' : 'none',
+                          }}
+                        />
+                        {boy.isOnline === true ? 'ONLINE (ON DUTY)' : 'OFFLINE (BREAK)'}
+                      </button>
+                      <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 600 }}>
+                        {boy.isOnline === true && boy.lastOnlineAt
+                          ? `Online since: ${new Date(boy.lastOnlineAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : boy.lastOfflineAt
+                          ? `Offline since: ${new Date(boy.lastOfflineAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : (boy.status === 'inactive' ? 'Inactive Account' : 'Active Account')}
                       </span>
                     </div>
                   </div>
@@ -435,10 +479,36 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
                     type="button"
+                    onClick={() => setSelectedDutyLogsBoy(boy)}
+                    style={{
+                      padding: '8px 10px',
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      color: '#065f46',
+                      borderRadius: '8px',
+                      fontWeight: 700,
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                    }}
+                    title="View Partner Shift Timings & Duty History"
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#dcfce7')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#f0fdf4')}
+                  >
+                    <Clock size={14} color="#059669" />
+                    <span>Logs</span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={() => setReconcilingBoy(boy)}
                     style={{
                       flex: 1,
-                      padding: '8px 12px',
+                      padding: '8px 10px',
                       background: '#fffbeb',
                       border: '1px solid #fde68a',
                       color: '#b45309',
@@ -449,14 +519,14 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '6px',
+                      gap: '5px',
                       transition: 'all 0.15s ease',
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = '#fef3c7')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = '#fffbeb')}
                   >
                     <Wallet size={14} />
-                    <span>Reconcile Cash</span>
+                    <span>Reconcile</span>
                   </button>
 
                   <button
@@ -1091,6 +1161,156 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
                 }}
               >
                 Confirm Reconciliation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Partner Shift Timings & Duty Logs Modal */}
+      {currentModalBoy && (
+        <div className="modal-overlay" onClick={() => setSelectedDutyLogsBoy(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '520px', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={18} color="#059669" />
+                  <span>Partner Shift Timings & History</span>
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {currentModalBoy.name} • Route: {currentModalBoy.assignedArea} • {currentModalBoy.mobile}
+                </p>
+              </div>
+              <button onClick={() => setSelectedDutyLogsBoy(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', color: '#94a3b8' }}>✕</button>
+            </div>
+
+            {/* Current Realtime Status Header Box */}
+            <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569' }}>CURRENT REALTIME STATUS:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '3px 10px',
+                      borderRadius: '999px',
+                      background: currentModalBoy.isOnline === true ? '#ecfdf5' : '#f1f5f9',
+                      color: currentModalBoy.isOnline === true ? '#047857' : '#64748b',
+                      border: `1.2px solid ${currentModalBoy.isOnline === true ? '#86efac' : '#cbd5e1'}`,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: currentModalBoy.isOnline === true ? '#10b981' : '#94a3b8' }} />
+                    {currentModalBoy.isOnline === true ? 'ONLINE (ON DUTY)' : 'OFFLINE (BREAK)'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const nextState = !(currentModalBoy.isOnline === true);
+                      await toggleDeliveryBoyDuty(currentModalBoy, nextState);
+                      showToast(nextState ? `🟢 ${currentModalBoy.name} is now ONLINE (On Duty)` : `⏸ ${currentModalBoy.name} is now OFFLINE (Break)`);
+                    }}
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      padding: '3px 10px',
+                      borderRadius: '6px',
+                      border: `1px solid ${currentModalBoy.isOnline === true ? '#fca5a5' : '#86efac'}`,
+                      background: currentModalBoy.isOnline === true ? '#fef2f2' : '#f0fdf4',
+                      color: currentModalBoy.isOnline === true ? '#b91c1c' : '#047857',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {currentModalBoy.isOnline === true ? 'Switch to Offline' : 'Switch to Online'}
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.78rem' }}>
+                <div style={{ background: '#ffffff', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.68rem', fontWeight: 600 }}>LAST ONLINE TIME</span>
+                  <strong style={{ color: '#047857', fontSize: '0.88rem' }}>
+                    {currentModalBoy.lastOnlineAt ? new Date(currentModalBoy.lastOnlineAt).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, day: '2-digit', month: 'short' }) : 'Never recorded'}
+                  </strong>
+                </div>
+                <div style={{ background: '#ffffff', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '0.68rem', fontWeight: 600 }}>LAST OFFLINE TIME</span>
+                  <strong style={{ color: '#475569', fontSize: '0.88rem' }}>
+                    {currentModalBoy.lastOfflineAt ? new Date(currentModalBoy.lastOfflineAt).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, day: '2-digit', month: 'short' }) : 'Never recorded'}
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Shift Logs History List */}
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', marginBottom: '8px' }}>
+                Detailed Shift Duty Timeline
+              </div>
+              {Array.isArray(currentModalBoy.dutyLogs) && currentModalBoy.dutyLogs.length > 0 ? (
+                <div style={{ maxHeight: '220px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f1f5f9', color: '#475569', textAlign: 'left' }}>
+                        <th style={{ padding: '8px 10px', fontWeight: 700 }}>STATUS</th>
+                        <th style={{ padding: '8px 10px', fontWeight: 700 }}>DATE & TIME</th>
+                        <th style={{ padding: '8px 10px', fontWeight: 700 }}>TERRITORY</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...currentModalBoy.dutyLogs].reverse().map((log, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '8px 10px' }}>
+                            <span
+                              style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                background: log.status === 'online' ? '#ecfdf5' : '#f1f5f9',
+                                color: log.status === 'online' ? '#047857' : '#64748b',
+                              }}
+                            >
+                              {log.status === 'online' ? '🟢 ONLINE' : '⏸ OFFLINE'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#0f172a', fontWeight: 600 }}>
+                            {log.timestamp ? new Date(log.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }) : '—'}
+                          </td>
+                          <td style={{ padding: '8px 10px', color: '#64748b' }}>
+                            {log.area || currentModalBoy.assignedArea || 'Madhapur'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', color: '#64748b', fontSize: '0.82rem' }}>
+                  No historical shift transitions logged yet for this delivery partner.
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setSelectedDutyLogsBoy(null)}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#059669',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Close Logs
               </button>
             </div>
           </div>

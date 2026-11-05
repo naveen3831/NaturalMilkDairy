@@ -7,6 +7,9 @@ class UserModel {
   final String? address;
   final String? area;
   final bool isActive;
+  final bool isOnline;
+  final String? lastOnlineAt;
+  final String? lastOfflineAt;
 
   UserModel({
     required this.id,
@@ -17,6 +20,9 @@ class UserModel {
     this.address,
     this.area,
     this.isActive = true,
+    this.isOnline = true,
+    this.lastOnlineAt,
+    this.lastOfflineAt,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -29,6 +35,9 @@ class UserModel {
       address: json['address']?.toString(),
       area: json['assignedArea']?.toString() ?? json['area']?.toString() ?? json['deliveryArea']?.toString(),
       isActive: json['isActive'] == null ? true : json['isActive'] == true,
+      isOnline: json['isOnline'] == null ? true : json['isOnline'] == true,
+      lastOnlineAt: json['lastOnlineAt']?.toString(),
+      lastOfflineAt: json['lastOfflineAt']?.toString(),
     );
   }
 
@@ -71,6 +80,34 @@ class UserModel {
         (!isAdmin && !isDeliveryBoy && !isGuest);
   }
 
+  UserModel copyWith({
+    String? id,
+    String? name,
+    String? mobile,
+    String? email,
+    String? role,
+    String? address,
+    String? area,
+    bool? isActive,
+    bool? isOnline,
+    String? lastOnlineAt,
+    String? lastOfflineAt,
+  }) {
+    return UserModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      mobile: mobile ?? this.mobile,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      address: address ?? this.address,
+      area: area ?? this.area,
+      isActive: isActive ?? this.isActive,
+      isOnline: isOnline ?? this.isOnline,
+      lastOnlineAt: lastOnlineAt ?? this.lastOnlineAt,
+      lastOfflineAt: lastOfflineAt ?? this.lastOfflineAt,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -81,6 +118,9 @@ class UserModel {
       'address': address,
       'area': area,
       'isActive': isActive,
+      'isOnline': isOnline,
+      'lastOnlineAt': lastOnlineAt,
+      'lastOfflineAt': lastOfflineAt,
     };
   }
 }

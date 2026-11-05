@@ -10,6 +10,15 @@ const userSchema = new mongoose.Schema({
   assignedArea: { type: String, default: '' },
   address: { type: String, default: '' },
   avatar: { type: String, default: '' },
+  isOnline: { type: Boolean, default: true },
+  lastOnlineAt: { type: Date, default: Date.now },
+  lastOfflineAt: { type: Date, default: null },
+  dutyLogs: [{
+    status: { type: String, enum: ['online', 'offline'], required: true },
+    timestamp: { type: Date, default: Date.now },
+    area: { type: String, default: '' },
+    note: { type: String, default: '' },
+  }],
   createdAt: { type: Date, default: Date.now },
 });
 

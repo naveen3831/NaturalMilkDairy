@@ -145,8 +145,13 @@ const createCustomer = async (req, res) => {
       landmark,
       milkQty,
       milkUnit,
+      milkType,
+      planName,
       curdQty,
       curdUnit,
+      extraProducts,
+      products,
+      deliveryPlan,
       frequency,
       deliveryDays,
       deliveryBoyId,
@@ -155,6 +160,8 @@ const createCustomer = async (req, res) => {
       initialBalance,
       notes,
       actor,
+      latitude,
+      longitude,
     } = req.body;
 
     if (
@@ -264,6 +271,35 @@ const createCustomer = async (req, res) => {
     const customerCount = await Customer.countDocuments();
     const customerId = `CUST-${customerCount + 101}`;
 
+    const parsedLat = Number(latitude);
+    const parsedLng = Number(longitude);
+    const finalLat = (!isNaN(parsedLat) && parsedLat !== 0) ? parsedLat : (validLocation.latitude || 17.4483);
+    const finalLng = (!isNaN(parsedLng) && parsedLng !== 0) ? parsedLng : (validLocation.longitude || 78.3915);
+    const customerArea = area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur');
+
+    const deliveryPlanInput = deliveryPlan && typeof deliveryPlan === 'object' ? deliveryPlan : {};
+    const rawExtra = extraProducts || deliveryPlanInput.extraProducts || products || [];
+    const sanitizedExtraProducts = Array.isArray(rawExtra)
+      ? rawExtra
+          .filter((p) => p && typeof p === 'object' && Number(p.quantity) > 0)
+          .map((p) => ({
+            productId: p.productId ? String(p.productId) : (p.id ? String(p.id) : (p._id ? String(p._id) : '')),
+            name: String(p.name || 'Dairy Product').trim(),
+            quantity: Number(p.quantity) || 1,
+            unit: String(p.unit || 'pack').trim(),
+            price: Number(p.price) || 0,
+          }))
+      : [];
+
+    const finalMilkQty = Number(milkQty !== undefined ? milkQty : (deliveryPlanInput.milkQty !== undefined ? deliveryPlanInput.milkQty : 1)) || 0;
+    const finalCurdQty = Number(curdQty !== undefined ? curdQty : (deliveryPlanInput.curdQty !== undefined ? deliveryPlanInput.curdQty : 0)) || 0;
+    const finalMilkUnit = milkUnit || deliveryPlanInput.milkUnit || 'L';
+    const finalCurdUnit = curdUnit || deliveryPlanInput.curdUnit || 'g';
+    const finalMilkType = milkType || deliveryPlanInput.milkType || 'Pure A2 Cow Milk';
+    const finalPlanName = planName || deliveryPlanInput.planName || 'Daily Farm Pure Milk Plan';
+    const finalFrequency = frequency || deliveryPlanInput.frequency || 'daily';
+    const finalDeliveryDays = deliveryDays || deliveryPlanInput.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
     const newCustomer = await Customer.create({
       customerId,
       name: cleanName,
@@ -272,21 +308,35 @@ const createCustomer = async (req, res) => {
       password: passwordHash,
       whatsapp: (whatsapp || cleanMobile).trim(),
       address: address.trim(),
-      area: area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur'),
+      area: customerArea,
       landmark: landmark || '',
-      latitude: 19.12 + Math.random() * 0.04,
-      longitude: 72.82 + Math.random() * 0.04,
+      latitude: finalLat,
+      longitude: finalLng,
+      addresses: [{
+        label: 'Home',
+        street: address.trim(),
+        city: 'Hyderabad',
+        state: 'Telangana',
+        area: customerArea,
+        landmark: landmark || '',
+        latitude: finalLat,
+        longitude: finalLng,
+        isDefault: true,
+      }],
       status: 'active',
       pauseFrom: null,
       pauseUntil: null,
       temporaryQty: null,
       deliveryPlan: {
-        milkQty: Number(milkQty) || 1,
-        milkUnit: milkUnit || 'L',
-        curdQty: Number(curdQty) || 0,
-        curdUnit: curdUnit || 'g',
-        frequency: frequency || 'daily',
-        deliveryDays: deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        milkQty: finalMilkQty,
+        milkUnit: finalMilkUnit,
+        milkType: finalMilkType,
+        planName: finalPlanName,
+        curdQty: finalCurdQty,
+        curdUnit: finalCurdUnit,
+        extraProducts: sanitizedExtraProducts,
+        frequency: finalFrequency,
+        deliveryDays: finalDeliveryDays,
         deliveryBoyId: finalDeliveryBoyId,
         deliveryBoyName: boyName,
         startDate: new Date(),
@@ -466,26 +516,34 @@ const updateCustomer = async (req, res) => {
 
     const adminFields = [
       'name', 'email', 'mobile', 'whatsapp', 'address', 'area', 'landmark',
-      'status', 'currentBalance', 'notes', 'password',
+      'status', 'currentBalance', 'notes', 'password', 'latitude', 'longitude',
       'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
       'deliveryBoyId', 'deliveryBoyName', 'paymentType', 'paymentCycle',
       'deliveryPlan.milkQty', 'deliveryPlan.milkUnit', 'deliveryPlan.curdQty',
       'deliveryPlan.curdUnit', 'deliveryPlan.frequency', 'deliveryPlan.deliveryDays',
       'deliveryPlan.deliveryBoyId', 'deliveryPlan.deliveryBoyName',
+      'deliveryPlan.extraProducts', 'deliveryPlan.milkType', 'deliveryPlan.planName', 'extraProducts',
       'paymentInfo.paymentType', 'paymentInfo.paymentCycle',
     ];
     const driverFields = [
-      'whatsapp', 'address', 'landmark', 'notes',
+      'whatsapp', 'address', 'landmark', 'notes', 'latitude', 'longitude',
       'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
       'deliveryPlan.milkQty', 'deliveryPlan.milkUnit',
       'deliveryPlan.curdQty', 'deliveryPlan.curdUnit', 'deliveryPlan.frequency',
       'deliveryPlan.deliveryDays',
+      'deliveryPlan.extraProducts', 'deliveryPlan.milkType', 'deliveryPlan.planName', 'extraProducts',
     ];
     const updateData = {};
     for (const field of (isDriver ? driverFields : adminFields)) {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         updateData[field] = req.body[field];
       }
+    }
+    if (updateData.extraProducts !== undefined) {
+      updateData['deliveryPlan.extraProducts'] = Array.isArray(updateData.extraProducts)
+        ? updateData.extraProducts.filter((p) => p && typeof p === 'object' && Number(p.quantity) > 0)
+        : [];
+      delete updateData.extraProducts;
     }
     if (updateData.name !== undefined &&
       (typeof updateData.name !== 'string' || updateData.name.trim().length < 2 || updateData.name.trim().length > 80)) {
@@ -2190,7 +2248,7 @@ const upgradePlan = async (req, res) => {
 const extendSubscription = async (req, res) => {
   try {
     const { id } = req.params;
-    const { days = 30, actor } = req.body;
+    const { days = 30, actor, paymentMethod = 'prepaid', collectedAmount = 0, notes } = req.body;
 
     let query;
     if (id === 'me') {
@@ -2225,6 +2283,47 @@ const extendSubscription = async (req, res) => {
       endDate: newEndDate,
     };
     customer.status = 'active';
+
+    const actorName = actor || req.user?.name || 'Delivery Partner';
+    const numCollected = Number(collectedAmount) || 0;
+    const method = String(paymentMethod).toLowerCase();
+
+    // If payment was collected at doorstep or upi
+    if (numCollected > 0 && (method === 'cash' || method === 'upi')) {
+      const prevBal = customer.currentBalance || 0;
+      customer.currentBalance = Math.max(0, prevBal - numCollected);
+
+      // Record payment transaction
+      await Payment.create({
+        customerId: customer.customerId || customer._id.toString(),
+        customerName: customer.name,
+        amount: numCollected,
+        paymentMethod: method,
+        paymentDate: new Date(),
+        collectedBy: actorName,
+        deliveryBoyId: req.user?.id,
+        referenceNumber: `EXT-${method.toUpperCase()}-${Date.now().toString().slice(-6)}`,
+        previousBalance: prevBal,
+        newBalance: customer.currentBalance,
+        notes: notes || `Subscription extended by ${numDays} days until ${formatDate(newEndDate)}`,
+        createdAt: new Date(),
+      });
+
+      // Update Delivery Partner collection totals
+      if (req.user?.role === 'delivery_boy') {
+        const boyQuery = [
+          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+          { mobile: req.user.mobile },
+        ];
+        const boy = await DeliveryBoy.findOne({ $or: boyQuery });
+        if (boy) {
+          if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + numCollected;
+          if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + numCollected;
+          await boy.save();
+        }
+      }
+    }
+
     await customer.save();
 
     await Subscription.updateMany(
@@ -2235,18 +2334,40 @@ const extendSubscription = async (req, res) => {
     const today = formatDate();
     await ensureDeliveriesForDate(today);
 
+    // Audit log
+    await recordAudit(
+      'Subscription Extended',
+      actorName,
+      `Extended subscription for ${customer.name} (${customer.customerId}) by ${numDays} days until ${formatDate(newEndDate)}. Collected: ₹${numCollected} via ${method.toUpperCase()}`,
+      'subscription'
+    );
+
+    // Send real-time notification to customer
+    try {
+      await Notification.create({
+        recipientId: customer._id.toString(),
+        recipientRole: 'customer',
+        title: '🎉 Subscription Extended',
+        message: `Your milk subscription has been extended by ${numDays} days until ${formatDate(newEndDate)}. Thank you for choosing Natural Milk Dairy!`,
+        type: 'subscription_extended',
+        data: { customerId: customer.customerId, newEndDate: newEndDate.toISOString(), days: numDays },
+      });
+    } catch (_) {}
+
     broadcast('CUSTOMER_UPDATED', { id: customer._id.toString(), customerId: customer.customerId });
     broadcast('SUBSCRIPTION_UPDATED', { customerId: customer.customerId });
     broadcast('DELIVERY_UPDATED', {});
+    broadcast('PAYMENT_UPDATED', {});
 
     return res.json({
       success: true,
-      message: `Subscription extended by ${numDays} days!`,
+      message: `Subscription extended by ${numDays} days successfully until ${formatDate(newEndDate)}!`,
       customer: {
         ...customer.toObject(),
         id: customer._id.toString(),
       },
       newEndDate: newEndDate.toISOString(),
+      newBalance: customer.currentBalance,
     });
   } catch (err) {
     console.error('extendSubscription error:', err);

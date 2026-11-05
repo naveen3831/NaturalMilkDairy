@@ -148,6 +148,9 @@ const login = async (req, res) => {
         status: driverStatus,
         assignedArea: driver.assignedArea || 'Andheri West',
         vehicleNumber: driver.vehicleNumber || '',
+        isOnline: (deliveryBoyDoc?.isOnline ?? userDriverDoc?.isOnline ?? true) === true,
+        lastOnlineAt: deliveryBoyDoc?.lastOnlineAt || userDriverDoc?.lastOnlineAt || null,
+        lastOfflineAt: deliveryBoyDoc?.lastOfflineAt || userDriverDoc?.lastOfflineAt || null,
       };
       const token = generateToken(partnerPayload);
 
@@ -468,6 +471,24 @@ const getMe = async (req, res) => {
     const { password, ...safeUser } = userDoc;
     safeUser.id = userDoc._id ? userDoc._id.toString() : userId;
     safeUser.role = userDoc.role || req.user.role;
+
+    if (safeUser.role === 'delivery_boy' || req.user.role === 'delivery_boy') {
+      if (typeof safeUser.isOnline !== 'boolean') {
+        const boyMatch = await DeliveryBoy.findOne({
+          $or: [
+            ...(String(safeUser.id).length === 24 ? [{ _id: safeUser.id }] : []),
+            ...(safeUser.mobile ? [{ mobile: safeUser.mobile }] : []),
+          ],
+        }).lean();
+        if (boyMatch) {
+          safeUser.isOnline = boyMatch.isOnline === true;
+          safeUser.lastOnlineAt = boyMatch.lastOnlineAt || null;
+          safeUser.lastOfflineAt = boyMatch.lastOfflineAt || null;
+        } else {
+          safeUser.isOnline = true;
+        }
+      }
+    }
 
     return res.json({ success: true, user: safeUser });
   } catch (err) {

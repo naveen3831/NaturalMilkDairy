@@ -19,7 +19,6 @@ export const WebSocketProvider = ({ children }) => {
   };
 
   const connect = useCallback(() => {
-    if (!token) return;
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -31,11 +30,15 @@ export const WebSocketProvider = ({ children }) => {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (generationRef.current !== generation || !token) {
+        if (generationRef.current !== generation) {
           ws.close();
           return;
         }
-        ws.send(JSON.stringify({ type: 'AUTH', token }));
+        if (token) {
+          ws.send(JSON.stringify({ type: 'AUTH', token }));
+        } else {
+          ws.send(JSON.stringify({ type: 'GUEST' }));
+        }
       };
 
       ws.onmessage = (event) => {
@@ -96,7 +99,7 @@ export const WebSocketProvider = ({ children }) => {
           wsRef.current = null;
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         }
-        if (generationRef.current === generation && token) {
+        if (generationRef.current === generation) {
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = setTimeout(connect, 3000);
         }
@@ -107,7 +110,7 @@ export const WebSocketProvider = ({ children }) => {
       };
     } catch (err) {
       console.warn('WebSocket connection init failed:', err);
-      if (generationRef.current === generation && token) {
+      if (generationRef.current === generation) {
         if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectTimeoutRef.current = setTimeout(connect, 4000);
       }

@@ -4,6 +4,7 @@ const DeliveryBoy = require('../models/DeliveryBoy');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const Notification = require('../models/Notification');
+const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, ensureDeliveriesForRange, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
@@ -249,13 +250,47 @@ const getAssignedCustomers = async (req, res) => {
       $or: assignmentFilters,
     }).sort({ createdAt: -1, name: 1 }).lean();
 
+    const customerIds = customers.map((c) => c.customerId).filter(Boolean);
+    const customerObjectIds = customers.map((c) => c._id).filter(Boolean);
+    const activeSubscriptions = await Subscription.find({
+      $or: [
+        { customerId: { $in: customerIds } },
+        { customer: { $in: customerObjectIds } },
+      ],
+      status: 'active',
+    }).sort({ createdAt: -1 }).lean();
+
+    const subByCustomerId = {};
+    activeSubscriptions.forEach((s) => {
+      if (s.customerId && !subByCustomerId[s.customerId]) {
+        subByCustomerId[s.customerId] = s;
+      }
+      if (s.customer && !subByCustomerId[s.customer.toString()]) {
+        subByCustomerId[s.customer.toString()] = s;
+      }
+    });
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const assignedCustomers = customers.map((customer) => {
-      const plan = customer.deliveryPlan || {};
-      const subscription = customer.subscription || {};
-      const startDate = subscription.startDate || plan.startDate || customer.createdAt;
-      const endDate = subscription.status === 'active' ? subscription.endDate : null;
+      const activeSub = subByCustomerId[customer.customerId] || subByCustomerId[customer._id?.toString()] || null;
+      const plan = { ...(customer.deliveryPlan || {}) };
+      if (!plan.milkQty || Number(plan.milkQty) <= 0) {
+        plan.milkQty = Number(activeSub?.plan?.milkQty) || 1;
+      }
+      if (!plan.frequency) {
+        plan.frequency = activeSub?.plan?.frequency || 'daily';
+      }
+      const subscription = { ...(customer.subscription || {}) };
+      if (!subscription.startDate && activeSub?.startDate) {
+        subscription.startDate = activeSub.startDate;
+      }
+      if (!subscription.endDate && activeSub?.endDate) {
+        subscription.endDate = activeSub.endDate;
+      }
+
+      const startDate = subscription.startDate || plan.startDate || activeSub?.startDate || customer.createdAt;
+      const endDate = subscription.status === 'active' ? (subscription.endDate || activeSub?.endDate) : null;
       let nextDeliveryDate = null;
 
       for (let offset = 0; offset < 90; offset += 1) {
@@ -302,11 +337,11 @@ const getAssignedCustomers = async (req, res) => {
         createdAt: customer.createdAt,
         deliveryPlan: plan,
         subscription: {
-          status: subscription.status || '',
-          startDate: subscription.startDate || null,
-          endDate: subscription.endDate || null,
-          amount: subscription.amount || 0,
-          paymentId: subscription.paymentId || '',
+          status: subscription.status || (subscription.endDate && new Date(subscription.endDate) < new Date() ? 'expired' : (customer.status || 'active')),
+          startDate: subscription.startDate || customer.subscriptionStart || plan.startDate || activeSub?.startDate || null,
+          endDate: subscription.endDate || customer.subscriptionEnd || plan.endDate || activeSub?.endDate || null,
+          amount: subscription.amount || activeSub?.amount || 0,
+          paymentId: subscription.paymentId || activeSub?.paymentRecordId || '',
         },
         nextDeliveryDate,
       };
@@ -342,6 +377,23 @@ const markDelivered = async (req, res) => {
 
     if (!canManageDelivery(req.user, delivery)) {
       return res.status(403).json({ success: false, message: 'Only the assigned delivery partner or an administrator can complete this delivery.' });
+    }
+
+    if (req.user?.role === 'delivery_boy') {
+      const DeliveryBoy = require('../models/DeliveryBoy');
+      const driverRecord = await DeliveryBoy.findOne({
+        $or: [
+          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
+          ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+          ...(req.user.name ? [{ name: new RegExp(`^${req.user.name}$`, 'i') }] : []),
+        ],
+      }).lean();
+      if (driverRecord && driverRecord.isOnline === false) {
+        return res.status(403).json({
+          success: false,
+          message: 'You are currently offline. Please switch to Online duty to mark deliveries.',
+        });
+      }
     }
     if (delivery.status === 'delivered') {
       return res.json({

@@ -127,11 +127,11 @@ export const DairyProvider = ({ children }) => {
   // Fetch Delivery Boys
   const fetchDeliveryBoys = useCallback(async () => {
     try {
-      const res = await fetch('/api/delivery-boys', {
+      const res = await fetch(`/api/delivery-boys?_t=${Date.now()}`, {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.deliveryBoys)) {
         setDeliveryBoys(data.deliveryBoys);
       }
     } catch (err) {
@@ -214,6 +214,14 @@ export const DairyProvider = ({ children }) => {
     refreshAll();
   }, [refreshAll]);
 
+  // Background interval polling for guaranteed multi-device real-time sync
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchDeliveryBoys();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchDeliveryBoys]);
+
   // Listen for real-time updates from other tabs or windows (Customer, Driver, Admin)
   useEffect(() => {
     let bc = null;
@@ -264,7 +272,45 @@ export const DairyProvider = ({ children }) => {
       fetchProducts();
     });
 
-    const unsubDriver = wsSubscribe('DELIVERY_BOY_UPDATED', () => {
+    const applyDutyPayload = (payload) => {
+      if (!payload || typeof payload.isOnline !== 'boolean') return;
+      const pId = String(payload.id || payload.boyId || '');
+      const pMob = payload.mobile ? String(payload.mobile).replace(/[^0-9]/g, '').slice(-10) : '';
+      const pName = (payload.name || payload.boyName || '').trim().toLowerCase();
+
+      setDeliveryBoys((prev) =>
+        prev.map((b) => {
+          const bId = String(b.id || b._id || '');
+          const bMob = b.mobile ? String(b.mobile).replace(/[^0-9]/g, '').slice(-10) : '';
+          const bName = (b.name || '').trim().toLowerCase();
+
+          const matches =
+            (pId && bId && pId === bId) ||
+            (pMob && bMob && pMob === bMob) ||
+            (pName && bName && pName === bName);
+
+          return matches
+            ? {
+                ...b,
+                isOnline: payload.isOnline,
+                lastOnlineAt: payload.lastOnlineAt || b.lastOnlineAt,
+                lastOfflineAt: payload.lastOfflineAt || b.lastOfflineAt,
+                dutyLogs: payload.dutyLogs || b.dutyLogs,
+              }
+            : b;
+        })
+      );
+    };
+
+    const unsubDriver = wsSubscribe('DELIVERY_BOY_UPDATED', (data) => {
+      const payload = data?.payload || data;
+      applyDutyPayload(payload);
+      fetchDeliveryBoys();
+    });
+
+    const unsubDuty = wsSubscribe('DRIVER_DUTY_UPDATED', (data) => {
+      const payload = data?.payload || data;
+      applyDutyPayload(payload);
       fetchDeliveryBoys();
     });
 
@@ -278,6 +324,7 @@ export const DairyProvider = ({ children }) => {
       unsubPayment();
       unsubProduct();
       unsubDriver();
+      unsubDuty();
       unsubLocation();
     };
   }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations]);
@@ -703,6 +750,57 @@ export const DairyProvider = ({ children }) => {
     }
   };
 
+  // Toggle Partner Shift Duty Status (Online / Offline)
+  const toggleDeliveryBoyDuty = async (boyOrId, explicitOnlineState = null) => {
+    try {
+      const boyObj = typeof boyOrId === 'object' && boyOrId !== null
+        ? boyOrId
+        : (deliveryBoys.find((b) => (b.id || b._id) === boyOrId) || {});
+      const targetId = typeof boyOrId === 'object' && boyOrId !== null
+        ? (boyOrId.id || boyOrId._id)
+        : boyOrId;
+      const currentState = boyObj.isOnline === true;
+      const nextState = typeof explicitOnlineState === 'boolean' ? explicitOnlineState : !currentState;
+      const now = new Date().toISOString();
+
+      // Optimistic state update
+      setDeliveryBoys((prev) =>
+        prev.map((b) =>
+          (b.id === targetId || b._id === targetId || (boyObj?.mobile && b.mobile === boyObj.mobile))
+            ? {
+                ...b,
+                isOnline: nextState,
+                ...(nextState ? { lastOnlineAt: now } : { lastOfflineAt: now }),
+              }
+            : b
+        )
+      );
+
+      const res = await fetch(`/api/delivery-boys/${targetId}/duty-status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          isOnline: nextState,
+          boyId: targetId,
+          mobile: boyObj?.mobile,
+          name: boyObj?.name,
+          area: boyObj?.assignedArea,
+        }),
+      });
+      const data = await res.json();
+      notifyRealtimeSync();
+      fetchDeliveryBoys();
+      return data;
+    } catch (err) {
+      console.error('Toggle duty error:', err);
+      fetchDeliveryBoys();
+      return { success: false, message: err.message };
+    }
+  };
+
   // Delete Customer Permanently
   const deleteCustomer = async (customerId, actor = 'Customer') => {
     try {
@@ -915,6 +1013,7 @@ export const DairyProvider = ({ children }) => {
         addDeliveryBoy,
         updateDeliveryBoy,
         deleteDeliveryBoy,
+        toggleDeliveryBoyDuty,
         reconcileCash,
         sendDeliveryBoyCredentials,
         sendCustomerCredentials,

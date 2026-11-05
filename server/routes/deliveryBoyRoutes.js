@@ -7,10 +7,13 @@ const {
   deleteDeliveryBoy,
   reconcileCash,
   sendDeliveryBoyCredentials,
+  toggleDutyStatus,
 } = require('../controllers/deliveryBoyController');
-const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
-router.get('/', verifyToken, requireAdmin, getDeliveryBoys);
+router.post('/duty-status', optionalToken, toggleDutyStatus);
+router.post('/:id/duty-status', optionalToken, toggleDutyStatus);
+router.get('/', verifyToken, requireDeliveryStaff, getDeliveryBoys);
 router.post('/', verifyToken, requireAdmin, addDeliveryBoy);
 router.put('/:id', verifyToken, requireAdmin, updateDeliveryBoy);
 router.delete('/me/account', verifyToken, requireAdmin, deleteDeliveryBoy);

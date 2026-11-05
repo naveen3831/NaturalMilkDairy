@@ -7,6 +7,7 @@ import {
   Plus,
   Phone,
   MapPin,
+  Navigation,
   Calendar,
   CreditCard,
   PauseCircle,
@@ -606,12 +607,40 @@ export default function CustomerList({
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                    <MapPin size={13} color="#059669" style={{ marginTop: '3px', flexShrink: 0 }} />
-                    <span>
-                      {customerObj.address} {customerObj.area ? `• ${customerObj.area}` : ''}
-                      {customerObj.landmark ? ` (Near: ${customerObj.landmark})` : ''}
-                    </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <MapPin size={13} color="#059669" style={{ marginTop: '3px', flexShrink: 0 }} />
+                      <span>
+                        {customerObj.address} {customerObj.area ? `• ${customerObj.area}` : ''}
+                        {customerObj.landmark ? ` (Near: ${customerObj.landmark})` : ''}
+                      </span>
+                    </div>
+                    {customerObj.latitude && customerObj.longitude && (
+                      <div style={{ paddingLeft: '21px' }}>
+                        <a
+                          href={`https://www.google.com/maps?q=${customerObj.latitude},${customerObj.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            color: '#1d4ed8',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <Navigation size={11} />
+                          <span>GPS Pin: {Number(customerObj.latitude).toFixed(4)}, {Number(customerObj.longitude).toFixed(4)} (Open in Maps)</span>
+                          <ExternalLink size={10} />
+                        </a>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1667,9 +1696,32 @@ export default function CustomerList({
                           {customer.mobile}
                         </a>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                         <MapPin size={13} color="#059669" />
                         <span>{customer.address} ({customer.area})</span>
+                        {customer.latitude && customer.longitude && (
+                          <a
+                            href={`https://www.google.com/maps?q=${customer.latitude},${customer.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              color: '#1d4ed8',
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <Navigation size={10} />
+                            <span>GPS ({Number(customer.latitude).toFixed(3)}, {Number(customer.longitude).toFixed(3)})</span>
+                          </a>
+                        )}
                       </div>
                     </div>
 

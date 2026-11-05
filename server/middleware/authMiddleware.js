@@ -171,11 +171,16 @@ const authorizeCustomerAccess = async (req, res, next) => {
       const identity = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
       const assignedIds = [
         customer.deliveryPlan?.deliveryBoyId,
+        customer.deliveryBoyId,
       ].filter(Boolean);
-      const assignedById = assignedIds.some((id) => identity.includes(id));
+      const assignedById = identity.some((id) => assignedIds.includes(id));
       const assignedByName = req.user.name && customer.deliveryPlan?.deliveryBoyName &&
         req.user.name.trim().toLowerCase() === customer.deliveryPlan.deliveryBoyName.trim().toLowerCase();
-      if (assignedById || assignedByName) return next();
+      const boyArea = (req.user.assignedArea || req.user.area || '').trim().toLowerCase();
+      const custArea = (customer.area || customer.deliveryPlan?.route || '').trim().toLowerCase();
+      const assignedByArea = Boolean(boyArea && custArea && (boyArea === custArea || custArea.includes(boyArea) || boyArea.includes(custArea)));
+
+      if (assignedById || assignedByName || assignedByArea) return next();
       return res.status(403).json({ success: false, message: 'You can only access customers assigned to your route.' });
     } catch (error) {
       return next(error);

@@ -33,6 +33,7 @@ const notificationSchema = new mongoose.Schema(
         'partner_message',
         'customer_message',
         'ticket',
+        'driver_duty',
       ],
       default: 'system',
     },

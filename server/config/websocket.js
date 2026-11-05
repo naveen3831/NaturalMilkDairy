@@ -144,6 +144,7 @@ function broadcast(event, payload = {}) {
     const isSafeForDelivery = [
       'DELIVERY_UPDATED',
       'DELIVERY_BOY_UPDATED',
+      'DRIVER_DUTY_UPDATED',
       'LOCATION_UPDATED',
       'NOTIFICATION_UPDATED',
       'NOTIFICATION_CREATED',
@@ -162,6 +163,8 @@ function broadcast(event, payload = {}) {
       'NOTIFICATION_DELETED',
       'NOTIFICATIONS_CLEARED',
       'DELIVERY_UPDATED',
+      'DELIVERY_BOY_UPDATED',
+      'DRIVER_DUTY_UPDATED',
       'CUSTOMER_UPDATED',
       'SUBSCRIPTION_UPDATED',
       'PAYMENT_RECORDED',

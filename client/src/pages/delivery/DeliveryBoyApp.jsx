@@ -93,18 +93,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const { user, token, logout, getAuthHeaders } = useAuth();
   const {
     deliveries,
+    products,
+    fetchProducts,
     selectedDate,
     setSelectedDate,
     fetchDeliveries,
     markDelivered,
     markNotDelivered,
     deliveryBoys,
+    fetchDeliveryBoys,
+    notifyRealtimeSync,
     locations,
     isOnline,
     offlineQueue,
     syncOfflineQueue,
   } = useDairy();
   const { unreadCount, setIsNotificationOpen, sendNotification } = useNotifications();
+  const { subscribe: wsSubscribe } = useWebSocket();
 
   // Match real delivery boy record from MongoDB
   const matchedBoy = (deliveryBoys || []).find(
@@ -152,6 +157,82 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [customerActionLoading, setCustomerActionLoading] = useState(false);
   const [customerFormError, setCustomerFormError] = useState('');
   const [customerSuccessBanner, setCustomerSuccessBanner] = useState('');
+
+  // Driver Duty Status (Online / Offline Toggle)
+  const [isDriverDutyOnline, setIsDriverDutyOnline] = useState(() => {
+    return localStorage.getItem('nmd_driver_duty_online') !== 'false';
+  });
+
+  useEffect(() => {
+    if (matchedBoy && typeof matchedBoy.isOnline === 'boolean') {
+      setIsDriverDutyOnline(matchedBoy.isOnline);
+      localStorage.setItem('nmd_driver_duty_online', String(matchedBoy.isOnline));
+    }
+  }, [matchedBoy]);
+
+  // Listen for real-time duty status changes from server / admin
+  useEffect(() => {
+    if (!wsSubscribe) return;
+    const handleDutyUpdate = (data) => {
+      const payload = data?.payload || data;
+      const isTarget =
+        (payload?.boyId && (payload.boyId === boyId || payload.boyId === matchedBoy?._id || payload.boyId === matchedBoy?.id || payload.boyId === user?.id)) ||
+        (payload?.mobile && (payload.mobile === matchedBoy?.mobile || payload.mobile === user?.mobile)) ||
+        (payload?.boyName && user?.name && payload.boyName.toLowerCase() === user.name.toLowerCase());
+      if (isTarget && typeof payload?.isOnline === 'boolean') {
+        setIsDriverDutyOnline(payload.isOnline);
+        localStorage.setItem('nmd_driver_duty_online', String(payload.isOnline));
+      }
+    };
+    const unsub1 = wsSubscribe('DRIVER_DUTY_UPDATED', handleDutyUpdate);
+    const unsub2 = wsSubscribe('DELIVERY_BOY_UPDATED', handleDutyUpdate);
+    return () => {
+      if (typeof unsub1 === 'function') unsub1();
+      if (typeof unsub2 === 'function') unsub2();
+    };
+  }, [wsSubscribe, boyId, matchedBoy, user]);
+
+  const toggleDutyStatus = async () => {
+    const next = !isDriverDutyOnline;
+    setIsDriverDutyOnline(next);
+    localStorage.setItem('nmd_driver_duty_online', String(next));
+    try {
+      await fetch('/api/delivery-boys/duty-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          isOnline: next,
+          area: boyArea,
+          boyId: boyId,
+          mobile: matchedBoy?.mobile || user?.mobile || '9701878789',
+          name: boyName,
+        }),
+      });
+      if (typeof notifyRealtimeSync === 'function') {
+        notifyRealtimeSync();
+      }
+      if (typeof fetchDeliveryBoys === 'function') {
+        fetchDeliveryBoys();
+      }
+      if (typeof fetchDeliveries === 'function') {
+        fetchDeliveries();
+      }
+    } catch (e) {
+      console.warn('Sync duty status error:', e);
+    }
+  };
+
+  // Customer Extend Subscription States
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [extendDays, setExtendDays] = useState(30);
+  const [extendPayMethod, setExtendPayMethod] = useState('cash'); // 'cash' | 'upi' | 'prepaid' | 'credit'
+  const [extendAmount, setExtendAmount] = useState('');
+  const [extendNotes, setExtendNotes] = useState('');
+  const [isSubmittingExtend, setIsSubmittingExtend] = useState(false);
+  const [extendError, setExtendError] = useState('');
 
   // Partner Help & Support / Message Admin states
   const [supportCategory, setSupportCategory] = useState('Route & Delivery');
@@ -259,10 +340,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [custFormLandmark, setCustFormLandmark] = useState('');
   const [custFormMilkQty, setCustFormMilkQty] = useState(1);
   const [custFormCurdQty, setCustFormCurdQty] = useState(0);
+  const [custProductQuantities, setCustProductQuantities] = useState({});
   const [custFormFrequency, setCustFormFrequency] = useState('daily');
   const [custFormDays, setCustFormDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   const [custFormPaymentType, setCustFormPaymentType] = useState('credit');
   const [custFormNotes, setCustFormNotes] = useState('');
+  const [custFormLat, setCustFormLat] = useState(null);
+  const [custFormLng, setCustFormLng] = useState(null);
 
   const resetCustomerForm = () => {
     setCustFormName('');
@@ -274,10 +358,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setCustFormLandmark('');
     setCustFormMilkQty(1);
     setCustFormCurdQty(0);
+    // Auto-select primary milk product with 1L
+    const activeProds = (products && products.length > 0) ? products : [
+      { id: 'p1', name: 'Pure A2 Cow Milk', category: 'milk', unit: '1L', price: 60 },
+    ];
+    const defaultMilk = activeProds.find((p) => (p.category || '').toLowerCase() === 'milk' || (p.name || '').toLowerCase().includes('milk')) || activeProds[0];
+    const initialMap = {};
+    if (defaultMilk) {
+      initialMap[defaultMilk.id || defaultMilk._id] = 1;
+    }
+    setCustProductQuantities(initialMap);
     setCustFormFrequency('daily');
     setCustFormDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
     setCustFormPaymentType('credit');
     setCustFormNotes('');
+    setCustFormLat(null);
+    setCustFormLng(null);
     setCustomerFormError('');
   };
 
@@ -304,6 +400,31 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setCustFormDays(cust.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
     setCustFormPaymentType(cust.paymentInfo?.paymentType || 'credit');
     setCustFormNotes(cust.notes || '');
+    setCustFormLat(cust.latitude || null);
+    setCustFormLng(cust.longitude || null);
+
+    const initMap = {};
+    if (Array.isArray(cust.deliveryPlan?.extraProducts) && cust.deliveryPlan.extraProducts.length > 0) {
+      cust.deliveryPlan.extraProducts.forEach((ep) => {
+        const prodId = ep.productId || ep.id || ep._id;
+        if (prodId) {
+          initMap[prodId] = Number(ep.quantity) || 1;
+        } else {
+          const matched = (products || []).find((p) => p.name?.toLowerCase() === ep.name?.toLowerCase());
+          if (matched) {
+            initMap[matched.id || matched._id] = Number(ep.quantity) || 1;
+          }
+        }
+      });
+    } else {
+      const milkProd = (products || []).find((p) => (p.category || '').toLowerCase() === 'milk' || (p.name || '').toLowerCase().includes('milk'));
+      if (milkProd) initMap[milkProd.id || milkProd._id] = Number(cust.deliveryPlan?.milkQty ?? 1);
+      if (Number(cust.deliveryPlan?.curdQty) > 0) {
+        const curdProd = (products || []).find((p) => (p.category || '').toLowerCase() === 'curd' || (p.name || '').toLowerCase().includes('curd'));
+        if (curdProd) initMap[curdProd.id || curdProd._id] = 1;
+      }
+    }
+    setCustProductQuantities(initMap);
   };
 
   const handleSaveCustomer = async (e) => {
@@ -332,6 +453,45 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         : '/api/customers';
       const method = isEditing ? 'PUT' : 'POST';
 
+      const allActiveProds = (products && products.length > 0) ? products : [
+        { id: 'p1', name: 'Pure A2 Cow Milk', category: 'milk', unit: '1L', price: 60 },
+        { id: 'p2', name: 'Pure Buffalo Milk', category: 'milk', unit: '1L', price: 75 },
+        { id: 'p3', name: 'Fresh Farm Curd', category: 'curd', unit: '500g', price: 35 },
+        { id: 'p4', name: 'Bilona Pure Cow Ghee', category: 'ghee', unit: '500ml', price: 450 },
+        { id: 'p5', name: 'Farm Fresh Paneer', category: 'paneer', unit: '250g', price: 95 },
+        { id: 'p6', name: 'Desi White Butter (Makhan)', category: 'butter', unit: '250g', price: 120 },
+      ];
+
+      const extraProducts = [];
+      let calculatedMilkQty = 0;
+      let calculatedCurdQty = 0;
+      let primaryMilkType = 'Pure A2 Cow Milk';
+
+      allActiveProds.forEach((prod) => {
+        const pid = prod.id || prod._id;
+        const q = Number(custProductQuantities[pid]) || 0;
+        if (q > 0) {
+          extraProducts.push({
+            productId: pid,
+            name: prod.name,
+            quantity: q,
+            unit: prod.unit || 'pack',
+            price: Number(prod.price) || 0,
+          });
+          const cat = (prod.category || '').toLowerCase();
+          const nameLower = (prod.name || '').toLowerCase();
+          if (cat === 'milk' || nameLower.includes('milk')) {
+            calculatedMilkQty += q;
+            primaryMilkType = prod.name;
+          } else if (cat === 'curd' || nameLower.includes('curd')) {
+            calculatedCurdQty += q * 500;
+          }
+        }
+      });
+
+      const finalMilk = calculatedMilkQty > 0 ? calculatedMilkQty : (Number(custFormMilkQty) || 1);
+      const finalCurd = calculatedCurdQty > 0 ? calculatedCurdQty : (Number(custFormCurdQty) || 0);
+
       const payload = isEditing ? {
         name: custFormName.trim(),
         mobile: cleanMobile,
@@ -340,8 +500,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         address: custFormAddress.trim(),
         area: custFormArea.trim() || boyArea || 'Madhapur',
         landmark: custFormLandmark.trim(),
-        'deliveryPlan.milkQty': Number(custFormMilkQty) || 1,
-        'deliveryPlan.curdQty': Number(custFormCurdQty) || 0,
+        latitude: custFormLat,
+        longitude: custFormLng,
+        'deliveryPlan.milkQty': finalMilk,
+        'deliveryPlan.curdQty': finalCurd,
+        'deliveryPlan.milkType': primaryMilkType,
+        'deliveryPlan.extraProducts': extraProducts,
+        extraProducts: extraProducts,
         'deliveryPlan.frequency': custFormFrequency,
         'deliveryPlan.deliveryDays': custFormDays,
         'deliveryPlan.deliveryBoyId': boyId,
@@ -357,8 +522,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         address: custFormAddress.trim(),
         area: custFormArea.trim() || boyArea || 'Madhapur',
         landmark: custFormLandmark.trim(),
-        milkQty: Number(custFormMilkQty) || 1,
-        curdQty: Number(custFormCurdQty) || 0,
+        latitude: custFormLat,
+        longitude: custFormLng,
+        milkQty: finalMilk,
+        curdQty: finalCurd,
+        milkType: primaryMilkType,
+        extraProducts: extraProducts,
+        'deliveryPlan.extraProducts': extraProducts,
         frequency: custFormFrequency,
         deliveryDays: custFormDays,
         deliveryBoyId: boyId,
@@ -480,6 +650,75 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     }
   };
 
+  const handleExtendSubscription = async (e) => {
+    if (e) e.preventDefault();
+    if (!selectedCustomer) return;
+
+    const days = parseInt(extendDays, 10);
+    if (!days || days <= 0) {
+      setExtendError('Please choose or enter a valid number of days to extend.');
+      return;
+    }
+
+    setIsSubmittingExtend(true);
+    setExtendError('');
+
+    try {
+      const custId = selectedCustomer.id || selectedCustomer._id;
+      const res = await fetch(`/api/customers/${custId}/extend-subscription`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          days,
+          paymentMethod: extendPayMethod,
+          collectedAmount: Number(extendAmount) || 0,
+          notes: extendNotes || `Extended ${days} days by partner ${boyName || 'Driver'}`,
+          actor: boyName || 'Delivery Partner',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Failed to extend subscription.');
+      }
+
+      const updatedCust = data.customer || {};
+      const newEndDate = data.newEndDate || updatedCust.subscription?.endDate;
+
+      setSelectedCustomer((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          ...updatedCust,
+          subscription: {
+            ...(prev.subscription || {}),
+            ...(updatedCust.subscription || {}),
+            status: 'active',
+            endDate: newEndDate,
+          },
+          currentBalance: updatedCust.currentBalance !== undefined ? updatedCust.currentBalance : prev.currentBalance,
+          status: 'active',
+        };
+      });
+
+      setCustomerSuccessBanner(`🎉 Subscription extended by ${days} days for ${selectedCustomer.name}! New expiry: ${new Date(newEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.`);
+      setTimeout(() => setCustomerSuccessBanner(''), 5500);
+      setShowExtendModal(false);
+
+      await Promise.all([
+        loadAssignedCustomers(),
+        fetchDeliveries(selectedDate, 'all', boyId),
+      ]);
+    } catch (err) {
+      setExtendError(err.message || 'Error extending customer subscription');
+    } finally {
+      setIsSubmittingExtend(false);
+    }
+  };
+
   // Navigation tab: 'deliveries' | 'route' | 'customers' | 'cash' | 'profile'
   const [navTab, setNavTab] = useState(() => {
     const savedTab = localStorage.getItem('nmd_driver_tab');
@@ -527,7 +766,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [photoUploadError, setPhotoUploadError] = useState('');
   const [previewProofModal, setPreviewProofModal] = useState(null);
   const fileInputRef = useRef(null);
-  const { subscribe: wsSubscribe } = useWebSocket();
 
   // Not delivered form
   const [missedReason, setMissedReason] = useState('Customer Not Home');
@@ -989,6 +1227,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   };
 
   const openDeliverModal = (item) => {
+    if (!isDriverDutyOnline) {
+      alert('⚠️ You are currently OFFLINE.\n\nPlease toggle to "Online (On Duty)" in the top navigation bar to start marking deliveries.');
+      return;
+    }
     setActiveItem(item);
     setActionType('delivered');
     setMilkQty(item.plannedMilk || 1);
@@ -1005,6 +1247,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   };
 
   const openNotDeliveredModal = (item) => {
+    if (!isDriverDutyOnline) {
+      alert('⚠️ You are currently OFFLINE.\n\nPlease toggle to "Online (On Duty)" in the top navigation bar to start updating deliveries.');
+      return;
+    }
     setActiveItem(item);
     setActionType('not_delivered');
     setMissedReason('Customer Not Home');
@@ -1012,6 +1258,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   };
 
   const handleConfirmDelivery = async () => {
+    if (!isDriverDutyOnline) {
+      setPhotoUploadError('⚠️ You are currently Offline. Turn ON duty status in top navigation bar to complete deliveries.');
+      return;
+    }
     if (!activeItem) return;
 
     const result = await markDelivered(activeItem.id, {
@@ -2284,6 +2534,54 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               )}
             </button>
 
+            {/* Online / Offline Toggle (Desktop Header) */}
+            <button
+              type="button"
+              onClick={toggleDutyStatus}
+              title={isDriverDutyOnline ? 'Switch to Offline / Break' : 'Switch to Online / On Duty'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 12px',
+                borderRadius: '999px',
+                background: isDriverDutyOnline ? '#ecfdf5' : '#f1f5f9',
+                border: `1.2px solid ${isDriverDutyOnline ? '#86efac' : '#cbd5e1'}`,
+                color: isDriverDutyOnline ? '#065f46' : '#64748b',
+                fontSize: '0.8rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: isDriverDutyOnline ? '#10b981' : '#94a3b8',
+                  boxShadow: isDriverDutyOnline ? '0 0 0 2px rgba(16, 185, 129, 0.25)' : 'none',
+                }}
+              />
+              <span>{isDriverDutyOnline ? 'Online (On Duty)' : 'Offline (Break)'}</span>
+              <span
+                style={{
+                  width: '26px',
+                  height: '15px',
+                  borderRadius: '999px',
+                  background: isDriverDutyOnline ? '#059669' : '#cbd5e1',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '2px',
+                  boxSizing: 'border-box',
+                  justifyContent: isDriverDutyOnline ? 'flex-end' : 'flex-start',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <span style={{ width: '11px', height: '11px', borderRadius: '50%', background: '#ffffff' }} />
+              </span>
+            </button>
+
             {/* Route Territory Tag */}
             <div
               style={{
@@ -2306,8 +2604,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         </header>
 
         {/* Mobile Sticky Header (Native App Style, NO Hamburger Menu!) */}
-        <header className="driver-mobile-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+        <header className="driver-mobile-header" style={{ justifyContent: 'space-between', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '9px', minWidth: 0, maxWidth: '38%', flexShrink: 1 }}>
             <div
               style={{
                 width: '34px',
@@ -2324,9 +2622,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             >
               <img src="/logo.png" alt="Logo" style={{ width: '26px', height: '26px', objectFit: 'contain' }} />
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {boyName}
                 </span>
                 <span
@@ -2334,19 +2632,82 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
-                    background: isOnline ? '#10b981' : '#ef4444',
+                    background: isDriverDutyOnline ? '#10b981' : '#ef4444',
                     display: 'inline-block',
+                    flexShrink: 0,
                   }}
-                  title={isOnline ? 'Online' : 'Offline'}
+                  title={isDriverDutyOnline ? 'Online' : 'Offline'}
                 />
               </div>
               <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <MapPin size={11} /> {boyArea}
+                <MapPin size={11} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{boyArea}</span>
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* EXACT MATHEMATICAL DEAD CENTER OF NAV BAR: Online / Offline Toggle */}
+          <button
+            type="button"
+            onClick={toggleDutyStatus}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              borderRadius: '999px',
+              background: isDriverDutyOnline ? '#ecfdf5' : '#f1f5f9',
+              border: `1.2px solid ${isDriverDutyOnline ? '#86efac' : '#cbd5e1'}`,
+              color: isDriverDutyOnline ? '#065f46' : '#64748b',
+              fontSize: '0.75rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
+              boxShadow: isDriverDutyOnline ? '0 1px 4px rgba(16, 185, 129, 0.25)' : 'none',
+            }}
+          >
+            <span
+              style={{
+                width: '7px',
+                height: '7px',
+                borderRadius: '50%',
+                background: isDriverDutyOnline ? '#10b981' : '#94a3b8',
+                display: 'inline-block',
+              }}
+            />
+            <span>{isDriverDutyOnline ? 'Online' : 'Offline'}</span>
+            <span
+              style={{
+                width: '24px',
+                height: '14px',
+                borderRadius: '999px',
+                background: isDriverDutyOnline ? '#059669' : '#cbd5e1',
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '1.5px',
+                boxSizing: 'border-box',
+                justifyContent: isDriverDutyOnline ? 'flex-end' : 'flex-start',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <span
+                style={{
+                  width: '11px',
+                  height: '11px',
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  display: 'inline-block',
+                }}
+              />
+            </span>
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             {/* Notification Bell in Mobile Header (No Date, No Refresh, No Logout) */}
             <button
               type="button"
@@ -4271,8 +4632,101 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                     border: '1px solid #d1fae5',
                                   }}
                                 >
-                                  🥛 {plan.milkQty || 1}{plan.milkUnit || 'L'} Milk · {plan.frequency || 'Daily'}
+                                  🥛 {Number(plan.milkQty) > 0 ? plan.milkQty : (Number(cust.subscription?.plan?.milkQty) > 0 ? cust.subscription.plan.milkQty : (Number(cust.subscription?.milkQty) > 0 ? cust.subscription.milkQty : 1))}{plan.milkUnit || 'L'} Milk · {plan.frequency || 'Daily'}
                                 </span>
+                              </div>
+
+                              {/* Expiry Date & Overdue Row */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                {(() => {
+                                  const rawEnd = cust.subscription?.endDate || cust.subscriptionEnd || cust.plan?.endDate;
+                                  const endD = rawEnd ? new Date(rawEnd) : null;
+                                  const isExpired = endD ? (endD.getTime() < new Date().setHours(0, 0, 0, 0)) : false;
+                                  const daysLeft = endD ? Math.ceil((endD.getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)) : null;
+
+                                  let badgeBg = '#f5f3ff';
+                                  let badgeBorder = '#ddd6fe';
+                                  let badgeColor = '#7c3aed';
+                                  let badgeText = '📅 Active';
+
+                                  if (isExpired) {
+                                    badgeBg = '#fef2f2';
+                                    badgeBorder = '#fecaca';
+                                    badgeColor = '#dc2626';
+                                    badgeText = `⚠️ Expired (${endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`;
+                                  } else if (daysLeft !== null) {
+                                    if (daysLeft <= 5) {
+                                      badgeBg = '#fffbeb';
+                                      badgeBorder = '#fde68a';
+                                      badgeColor = '#b45309';
+                                      badgeText = `⏳ Expiring (${daysLeft}d)`;
+                                    } else {
+                                      badgeBg = '#f5f3ff';
+                                      badgeBorder = '#ddd6fe';
+                                      badgeColor = '#7c3aed';
+                                      badgeText = `📅 Till ${endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
+                                    }
+                                  }
+
+                                  const overdue = Number(cust.currentBalance || 0);
+
+                                  return (
+                                    <>
+                                      <span
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          color: badgeColor,
+                                          background: badgeBg,
+                                          border: `1px solid ${badgeBorder}`,
+                                          padding: '2px 7px',
+                                          borderRadius: '6px',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                        }}
+                                      >
+                                        {badgeText}
+                                      </span>
+
+                                      {overdue > 0 ? (
+                                        <span
+                                          style={{
+                                            fontSize: '0.68rem',
+                                            fontWeight: 800,
+                                            color: '#dc2626',
+                                            background: '#fef2f2',
+                                            border: '1px solid #fecaca',
+                                            padding: '2px 7px',
+                                            borderRadius: '6px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                        >
+                                          ⚠️ ₹{overdue} Due
+                                        </span>
+                                      ) : (
+                                        <span
+                                          style={{
+                                            fontSize: '0.68rem',
+                                            fontWeight: 700,
+                                            color: '#166534',
+                                            background: '#f0fdf4',
+                                            border: '1px solid #bbf7d0',
+                                            padding: '2px 7px',
+                                            borderRadius: '6px',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                        >
+                                          ✓ Settled
+                                        </span>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -7612,7 +8066,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
                 gap: '8px',
               }}
             >
@@ -7663,6 +8117,41 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <MessageCircle size={16} />
                 <span>WhatsApp</span>
               </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setExtendDays(30);
+                  const dailyMilk = Number(selectedCustomer.deliveryPlan?.milkQty) > 0
+                    ? Number(selectedCustomer.deliveryPlan.milkQty)
+                    : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
+                      ? Number(selectedCustomer.subscription.plan.milkQty)
+                      : 1);
+                  setExtendAmount(String(dailyMilk * 60 * 30));
+                  setExtendPayMethod('cash');
+                  setExtendNotes('');
+                  setExtendError('');
+                  setShowExtendModal(true);
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '9px 6px',
+                  borderRadius: '10px',
+                  background: '#f5f3ff',
+                  border: '1px solid #ddd6fe',
+                  color: '#7c3aed',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <Calendar size={16} />
+                <span>Extend</span>
+              </button>
 
               <button
                 type="button"
@@ -7753,7 +8242,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
                   <div>
                     <span style={{ color: '#64748b' }}>Daily Milk: </span>
-                    <strong style={{ color: '#0f172a' }}>{selectedCustomer.deliveryPlan?.milkQty || 1} {selectedCustomer.deliveryPlan?.milkUnit || 'L'}</strong>
+                    <strong style={{ color: '#0f172a' }}>
+                      {Number(selectedCustomer.deliveryPlan?.milkQty) > 0
+                        ? selectedCustomer.deliveryPlan.milkQty
+                        : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
+                          ? selectedCustomer.subscription.plan.milkQty
+                          : (Number(selectedCustomer.subscription?.milkQty) > 0 ? selectedCustomer.subscription.milkQty : 1))} {selectedCustomer.deliveryPlan?.milkUnit || 'L'}
+                    </strong>
                   </div>
                   <div>
                     <span style={{ color: '#64748b' }}>Curd Qty: </span>
@@ -7768,43 +8263,195 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     <strong style={{ color: '#0f172a' }}>{(selectedCustomer.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).join(', ')}</strong>
                   </div>
                 </div>
+
+                {Array.isArray(selectedCustomer.deliveryPlan?.extraProducts) && selectedCustomer.deliveryPlan.extraProducts.length > 0 && (
+                  <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                      All Subscribed Products:
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {selectedCustomer.deliveryPlan.extraProducts.map((p, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            background: '#ecfdf5',
+                            color: '#065f46',
+                            border: '1px solid #a7f3d0',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                          }}
+                        >
+                          {p.name}: {p.quantity} {p.unit || ''} {p.price ? `(₹${p.price})` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 2. Subscription & Payment Box */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
-                  <Wallet size={15} color="#059669" />
-                  <span>Subscription & Payment</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Payment Type: </span>
-                    <strong style={{ color: (selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? '#059669' : '#d97706' }}>
-                      {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
-                    </strong>
+              {(() => {
+                const rawEnd = selectedCustomer.subscription?.endDate || selectedCustomer.subscriptionEnd || selectedCustomer.plan?.endDate;
+                const endD = rawEnd ? new Date(rawEnd) : null;
+                const isExp = endD ? (endD.getTime() < new Date().setHours(0, 0, 0, 0)) : false;
+                const daysLeft = endD ? Math.ceil((endD.getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)) : null;
+                const rawStart = selectedCustomer.subscription?.startDate || selectedCustomer.subscriptionStart || selectedCustomer.plan?.startDate;
+                const startD = rawStart ? new Date(rawStart) : null;
+                const overdueAmt = Number(selectedCustomer.currentBalance || 0);
+
+                return (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>
+                        <Wallet size={15} color="#059669" />
+                        <span>Subscription & Billing Ledger</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtendDays(30);
+                          const dailyMilk = Number(selectedCustomer.deliveryPlan?.milkQty) > 0
+                    ? Number(selectedCustomer.deliveryPlan.milkQty)
+                    : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
+                      ? Number(selectedCustomer.subscription.plan.milkQty)
+                      : 1);
+                          setExtendAmount(String(dailyMilk * 60 * 30));
+                          setExtendPayMethod('cash');
+                          setExtendNotes('');
+                          setExtendError('');
+                          setShowExtendModal(true);
+                        }}
+                        style={{
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          borderRadius: '6px',
+                          padding: '3px 8px',
+                          color: '#047857',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <Plus size={12} />
+                        <span>Extend</span>
+                      </button>
+                    </div>
+
+                    {/* Expiry Banner */}
+                    <div
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        marginBottom: '10px',
+                        background: isExp ? '#fef2f2' : daysLeft !== null && daysLeft <= 5 ? '#fffbeb' : '#f5f3ff',
+                        border: `1px solid ${isExp ? '#fecaca' : daysLeft !== null && daysLeft <= 5 ? '#fde68a' : '#ddd6fe'}`,
+                        color: isExp ? '#b91c1c' : daysLeft !== null && daysLeft <= 5 ? '#b45309' : '#6b21a8',
+                        fontSize: '0.76rem',
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        <Calendar size={14} />
+                        <span>
+                          {isExp
+                            ? `Subscription Expired ${endD ? `(${endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })})` : ''}`
+                            : daysLeft !== null
+                            ? `Valid through ${endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : ''} (${daysLeft} days remaining)`
+                            : 'Active / Ongoing Subscription'}
+                        </span>
+                      </span>
+                      {isExp && (
+                        <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '4px' }}>
+                          EXPIRED
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Overdue Ledger Alert */}
+                    {overdueAmt > 0 ? (
+                      <div
+                        style={{
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          marginBottom: '10px',
+                          background: '#fff1f2',
+                          border: '1px solid #fecdd3',
+                          color: '#be123c',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <AlertCircle size={14} />
+                          <span>Overdue Balance: ₹{overdueAmt} (Pending Driver Collection)</span>
+                        </span>
+                        <span style={{ background: '#be123c', color: '#fff', fontSize: '0.65rem', padding: '1px 6px', borderRadius: '4px' }}>
+                          OVERDUE
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          marginBottom: '10px',
+                          background: '#f0fdf4',
+                          border: '1px solid #bbf7d0',
+                          color: '#166534',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        <CheckCircle2 size={13} />
+                        <span>Account Settled (₹0 Due Balance)</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                      <div>
+                        <span style={{ color: '#64748b' }}>Billing Mode: </span>
+                        <strong style={{ color: (selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? '#059669' : '#d97706' }}>
+                          {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span style={{ color: '#64748b' }}>Status: </span>
+                        <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
+                          {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
+                        </strong>
+                      </div>
+                      {startD && (
+                        <div>
+                          <span style={{ color: '#64748b' }}>Started On: </span>
+                          <strong style={{ color: '#334155' }}>
+                            {startD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </strong>
+                        </div>
+                      )}
+                      <div>
+                        <span style={{ color: '#64748b' }}>Valid Till: </span>
+                        <strong style={{ color: isExp ? '#dc2626' : '#6b21a8' }}>
+                          {endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Ongoing'}
+                        </strong>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Valid Through: </span>
-                    <strong style={{ color: '#6b21a8' }}>
-                      {selectedCustomer.subscription?.endDate
-                        ? new Date(selectedCustomer.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : 'Active / Ongoing'}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Outstanding Due: </span>
-                    <strong style={{ color: selectedCustomer.currentBalance > 0 ? '#dc2626' : '#059669' }}>
-                      ₹{selectedCustomer.currentBalance || 0}
-                    </strong>
-                  </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Status: </span>
-                    <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
-                      {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
-                    </strong>
-                  </div>
-                </div>
-              </div>
+                );
+              })()}
 
               {/* 3. Address & Drop Instructions */}
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
@@ -7849,6 +8496,43 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               </div>
             </div>
 
+            {/* Primary Action: Extend Subscription */}
+            <button
+              type="button"
+              onClick={() => {
+                setExtendDays(30);
+                const dailyMilk = Number(selectedCustomer.deliveryPlan?.milkQty) > 0
+                  ? Number(selectedCustomer.deliveryPlan.milkQty)
+                  : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
+                    ? Number(selectedCustomer.subscription.plan.milkQty)
+                    : 1);
+                setExtendAmount(String(dailyMilk * 60 * 30));
+                setExtendPayMethod('cash');
+                setExtendNotes('');
+                setExtendError('');
+                setShowExtendModal(true);
+              }}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                color: '#ffffff',
+                fontSize: '0.92rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(5, 150, 105, 0.25)',
+              }}
+            >
+              <Calendar size={18} />
+              <span>Extend Customer Subscription</span>
+            </button>
+
             {/* Close Button */}
             <button
               type="button"
@@ -7863,7 +8547,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 fontSize: '0.85rem',
                 fontWeight: 700,
                 cursor: 'pointer',
-                marginTop: '4px',
+                marginTop: '2px',
               }}
             >
               Close Details
@@ -7871,6 +8555,373 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           </div>
         </div>
       )}
+
+      {/* ============================================================ */}
+      {/* 4.5.1 EXTEND CUSTOMER SUBSCRIPTION MODAL                      */}
+      {/* ============================================================ */}
+      {showExtendModal && selectedCustomer && (() => {
+        const rawEndDate = selectedCustomer.subscription?.endDate || selectedCustomer.subscriptionEnd || selectedCustomer.plan?.endDate;
+        const currentEndDate = rawEndDate ? new Date(rawEndDate) : null;
+        const isCurrentlyExpired = currentEndDate ? currentEndDate.getTime() < new Date().setHours(0, 0, 0, 0) : true;
+        const baseDate = (!currentEndDate || isCurrentlyExpired) ? new Date() : new Date(currentEndDate);
+        const parsedDays = parseInt(extendDays, 10) || 0;
+        const calculatedNewEndDate = new Date(baseDate);
+        calculatedNewEndDate.setDate(calculatedNewEndDate.getDate() + parsedDays);
+
+        const dailyMilk = Number(selectedCustomer.deliveryPlan?.milkQty) > 0
+          ? Number(selectedCustomer.deliveryPlan.milkQty)
+          : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
+            ? Number(selectedCustomer.subscription.plan.milkQty)
+            : 1);
+        const estimatedPlanCost = parsedDays * dailyMilk * 60;
+
+        return (
+          <div
+            className="modal-overlay"
+            onClick={() => !isSubmittingExtend && setShowExtendModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.72)',
+              backdropFilter: 'blur(5px)',
+              WebkitBackdropFilter: 'blur(5px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1200,
+              padding: '16px',
+              boxSizing: 'border-box',
+            }}
+          >
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '480px',
+                width: '100%',
+                background: '#ffffff',
+                borderRadius: '20px',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                border: '1px solid #e2e8f0',
+                padding: '24px 22px',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+                boxSizing: 'border-box',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '12px',
+                      background: '#ecfdf5',
+                      color: '#059669',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Calendar size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                      Extend Subscription
+                    </h3>
+                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                      {selectedCustomer.name} · {selectedCustomer.customerId || `#${(selectedCustomer.id || '').slice(-6)}`}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={isSubmittingExtend}
+                  onClick={() => setShowExtendModal(false)}
+                  style={{
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Error Banner */}
+              {extendError && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    background: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    color: '#b91c1c',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  <AlertCircle size={16} />
+                  <span>{extendError}</span>
+                </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleExtendSubscription} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {/* Duration Pills */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                    Select Duration:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                    {[
+                      { label: '+7 Days', value: 7 },
+                      { label: '+15 Days', value: 15 },
+                      { label: '+30 Days', value: 30 },
+                      { label: '+60 Days', value: 60 },
+                    ].map((opt) => {
+                      const isSelected = parsedDays === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setExtendDays(opt.value);
+                            setExtendAmount(String(opt.value * dailyMilk * 60));
+                          }}
+                          style={{
+                            padding: '9px 4px',
+                            borderRadius: '10px',
+                            border: `2px solid ${isSelected ? '#059669' : '#e2e8f0'}`,
+                            background: isSelected ? '#ecfdf5' : '#ffffff',
+                            color: isSelected ? '#065f46' : '#475569',
+                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom Days Input */}
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Custom:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={extendDays}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10) || '';
+                        setExtendDays(val);
+                        if (val > 0) setExtendAmount(String(val * dailyMilk * 60));
+                      }}
+                      style={{
+                        width: '90px',
+                        padding: '6px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        color: '#0f172a',
+                      }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>days</span>
+                  </div>
+                </div>
+
+                {/* Expiry Date Live Preview Card */}
+                <div
+                  style={{
+                    background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                  }}
+                >
+                  <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Validity Extension Preview
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Current Expiry</div>
+                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: isCurrentlyExpired ? '#dc2626' : '#334155' }}>
+                        {currentEndDate ? currentEndDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Expired / None'}
+                      </div>
+                    </div>
+                    <ArrowRight size={18} color="#059669" />
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.72rem', color: '#047857', fontWeight: 700 }}>New Expiry Date</div>
+                      <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#047857' }}>
+                        {calculatedNewEndDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Collection Method */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '8px' }}>
+                    Payment Collection Method:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                    {[
+                      { id: 'cash', label: '💵 Cash Handover', desc: 'Driver collected cash' },
+                      { id: 'upi', label: '📱 UPI / QR Code', desc: 'Instant UPI transfer' },
+                      { id: 'prepaid', label: '💳 Prepaid Online', desc: 'Paid via customer app' },
+                      { id: 'credit', label: '📒 Account Ledger', desc: 'Add to customer dues' },
+                    ].map((pm) => {
+                      const isSelected = extendPayMethod === pm.id;
+                      return (
+                        <div
+                          key={pm.id}
+                          onClick={() => setExtendPayMethod(pm.id)}
+                          style={{
+                            padding: '10px',
+                            borderRadius: '10px',
+                            border: `2px solid ${isSelected ? '#059669' : '#e2e8f0'}`,
+                            background: isSelected ? '#ecfdf5' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.8rem', fontWeight: 800, color: isSelected ? '#065f46' : '#1e293b' }}>
+                            {pm.label}
+                          </div>
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
+                            {pm.desc}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Amount Collected */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 700, color: '#334155' }}>
+                      Amount Collected (₹):
+                    </label>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                      Estimate: ₹{estimatedPlanCost}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    value={extendAmount}
+                    onChange={(e) => setExtendAmount(e.target.value)}
+                    placeholder="Enter collected amount (₹)"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      color: '#0f172a',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                {/* Driver Notes */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Notes (Optional):
+                  </label>
+                  <input
+                    type="text"
+                    value={extendNotes}
+                    onChange={(e) => setExtendNotes(e.target.value)}
+                    placeholder="e.g., Handed over 30 days cash at doorstep"
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '10px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.84rem',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+
+                {/* Submit Buttons */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    disabled={isSubmittingExtend}
+                    onClick={() => setShowExtendModal(false)}
+                    style={{
+                      flex: 1,
+                      padding: '12px',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      color: '#475569',
+                      fontWeight: 700,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingExtend}
+                    style={{
+                      flex: 2,
+                      padding: '12px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: isSubmittingExtend ? '#94a3b8' : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.88rem',
+                      cursor: isSubmittingExtend ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+                    }}
+                  >
+                    {isSubmittingExtend ? (
+                      <>
+                        <RefreshCw size={16} className="driver-spin" />
+                        <span>Extending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={16} />
+                        <span>Confirm & Extend</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ============================================================ */}
       {/* 4.6. ROUTE STOP DETAILS MODAL (OPENED ON ROUTE CARD CLICK)   */}
@@ -8617,7 +9668,67 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               </div>
 
-              {/* Daily Delivery Plan: Milk & Curd */}
+              {/* Customer Location Pin (GPS) */}
+              <div
+                style={{
+                  background: (custFormLat && custFormLng) ? '#f0fdf4' : '#f8fafc',
+                  border: `1px solid ${(custFormLat && custFormLng) ? '#bbf7d0' : '#e2e8f0'}`,
+                  borderRadius: '10px',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MapPin size={18} color={(custFormLat && custFormLng) ? '#059669' : '#64748b'} />
+                  <div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: (custFormLat && custFormLng) ? '#065f46' : '#1e293b' }}>
+                      {(custFormLat && custFormLng) ? 'Doorstep GPS Pinned' : 'Customer Location Selection'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: (custFormLat && custFormLng) ? '#047857' : '#64748b' }}>
+                      {(custFormLat && custFormLng)
+                        ? `Lat: ${Number(custFormLat).toFixed(4)}, Lng: ${Number(custFormLng).toFixed(4)}`
+                        : 'Capture GPS coordinates for real-time admin dashboard map'}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.geolocation) {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          setCustFormLat(pos.coords.latitude);
+                          setCustFormLng(pos.coords.longitude);
+                        },
+                        (err) => alert('Could not get GPS location: ' + err.message)
+                      );
+                    } else {
+                      alert('Geolocation is not supported by your browser.');
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #a7f3d0',
+                    background: '#ecfdf5',
+                    color: '#047857',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Navigation size={12} />
+                  <span>{(custFormLat && custFormLng) ? 'Update GPS' : 'Pick Current GPS'}</span>
+                </button>
+              </div>
+
+              {/* Daily Delivery Plan: All Products */}
               <div
                 style={{
                   background: '#f8fafc',
@@ -8626,102 +9737,215 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   padding: '12px 14px',
                 }}
               >
-                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Truck size={15} color="#059669" />
-                  <span>Daily Delivery Quantity</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Truck size={15} color="#059669" />
+                    <span>All Products & Daily Quantities</span>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700, background: '#ecfdf5', padding: '2px 8px', borderRadius: '999px', border: '1px solid #a7f3d0' }}>
+                    ⚡ Real-time Catalog
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '12px' }}>
+                  Pick customer's daily doorstep milk, curd, paneer, ghee and dairy essentials:
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                      Milk Quantity (Liters)
-                    </label>
-                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                      {[0.5, 1, 1.5, 2].map((qty) => (
-                        <button
-                          key={qty}
-                          type="button"
-                          onClick={() => setCustFormMilkQty(qty)}
-                          style={{
-                            flex: 1,
-                            padding: '4px 2px',
-                            borderRadius: '6px',
-                            border: '1px solid',
-                            borderColor: custFormMilkQty === qty ? '#059669' : '#cbd5e1',
-                            background: custFormMilkQty === qty ? '#ecfdf5' : '#ffffff',
-                            color: custFormMilkQty === qty ? '#065f46' : '#334155',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {qty}L
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="20"
-                      value={custFormMilkQty}
-                      onChange={(e) => setCustFormMilkQty(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '7px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.84rem',
-                      }}
-                    />
-                  </div>
+                {(() => {
+                  const fallbackList = [
+                    { id: 'p1', name: 'Pure A2 Cow Milk', category: 'milk', unit: '1L', price: 60 },
+                    { id: 'p2', name: 'Pure Buffalo Milk', category: 'milk', unit: '1L', price: 75 },
+                    { id: 'p3', name: 'Fresh Farm Curd', category: 'curd', unit: '500g', price: 35 },
+                    { id: 'p4', name: 'Bilona Pure Cow Ghee', category: 'ghee', unit: '500ml', price: 450 },
+                    { id: 'p5', name: 'Farm Fresh Paneer', category: 'paneer', unit: '250g', price: 95 },
+                    { id: 'p6', name: 'Desi White Butter (Makhan)', category: 'butter', unit: '250g', price: 120 },
+                  ];
+                  const catalog = (products && products.length > 0) ? products : fallbackList;
 
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', marginBottom: '4px' }}>
-                      Curd Quantity (Grams)
-                    </label>
-                    <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                      {[0, 250, 500].map((qty) => (
-                        <button
-                          key={qty}
-                          type="button"
-                          onClick={() => setCustFormCurdQty(qty)}
-                          style={{
-                            flex: 1,
-                            padding: '4px 2px',
-                            borderRadius: '6px',
-                            border: '1px solid',
-                            borderColor: custFormCurdQty === qty ? '#059669' : '#cbd5e1',
-                            background: custFormCurdQty === qty ? '#ecfdf5' : '#ffffff',
-                            color: custFormCurdQty === qty ? '#065f46' : '#334155',
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {qty === 0 ? 'None' : `${qty}g`}
-                        </button>
-                      ))}
+                  const totalEstimate = catalog.reduce((acc, p) => {
+                    const pid = p.id || p._id;
+                    const q = Number(custProductQuantities[pid]) || 0;
+                    return acc + (q * (Number(p.price) || 0));
+                  }, 0);
+
+                  const selectedItems = catalog.filter((p) => (Number(custProductQuantities[p.id || p._id]) || 0) > 0);
+
+                  return (
+                    <div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+                          gap: '10px',
+                          marginBottom: '12px',
+                        }}
+                      >
+                        {catalog.map((prod) => {
+                          const pid = prod.id || prod._id;
+                          const currentQty = Number(custProductQuantities[pid]) || 0;
+                          const isMilk = (prod.category || '').toLowerCase() === 'milk' || (prod.name || '').toLowerCase().includes('milk');
+                          const step = isMilk ? 0.5 : 1;
+                          const presets = isMilk ? [0.5, 1, 1.5, 2] : [0, 1, 2, 3];
+
+                          return (
+                            <div
+                              key={pid}
+                              style={{
+                                background: currentQty > 0 ? '#f0fdf4' : '#ffffff',
+                                border: '1px solid',
+                                borderColor: currentQty > 0 ? '#86efac' : '#e2e8f0',
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                transition: 'all 0.15s ease',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: currentQty > 0 ? '#065f46' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {prod.name}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px' }}>
+                                      ₹{prod.price} / {prod.unit || (isMilk ? '1L' : 'pack')}
+                                    </span>
+                                    <span style={{ fontSize: '0.66rem', color: '#64748b', textTransform: 'capitalize' }}>
+                                      {prod.category || 'Dairy'}
+                                    </span>
+                                  </div>
+                                </div>
+                                {currentQty > 0 && (
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', background: '#dcfce7', padding: '2px 6px', borderRadius: '6px' }}>
+                                    ₹{Math.round(currentQty * (Number(prod.price) || 0))}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Stepper row */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f1f5f9', borderRadius: '8px', padding: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = Math.max(0, currentQty - step);
+                                      setCustProductQuantities((prev) => ({ ...prev, [pid]: next }));
+                                      if (isMilk) setCustFormMilkQty(next);
+                                    }}
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: currentQty > 0 ? '#ffffff' : '#e2e8f0',
+                                      color: currentQty > 0 ? '#0f172a' : '#94a3b8',
+                                      cursor: currentQty > 0 ? 'pointer' : 'default',
+                                      fontWeight: 800,
+                                      fontSize: '0.9rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    -
+                                  </button>
+                                  <span style={{ minWidth: '32px', textAlign: 'center', fontSize: '0.78rem', fontWeight: 800, color: currentQty > 0 ? '#065f46' : '#64748b' }}>
+                                    {currentQty > 0 ? (isMilk ? `${currentQty}L` : currentQty) : '0'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = currentQty + step;
+                                      setCustProductQuantities((prev) => ({ ...prev, [pid]: next }));
+                                      if (isMilk) setCustFormMilkQty(next);
+                                    }}
+                                    style={{
+                                      width: '24px',
+                                      height: '24px',
+                                      borderRadius: '6px',
+                                      border: 'none',
+                                      background: '#059669',
+                                      color: '#ffffff',
+                                      cursor: 'pointer',
+                                      fontWeight: 800,
+                                      fontSize: '0.9rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                    }}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+
+                                {/* Preset chips */}
+                                <div style={{ display: 'flex', gap: '3px' }}>
+                                  {presets.map((pVal) => (
+                                    <button
+                                      key={pVal}
+                                      type="button"
+                                      onClick={() => {
+                                        setCustProductQuantities((prev) => ({ ...prev, [pid]: pVal }));
+                                        if (isMilk) setCustFormMilkQty(pVal);
+                                      }}
+                                      style={{
+                                        padding: '2px 5px',
+                                        fontSize: '0.66rem',
+                                        fontWeight: 700,
+                                        borderRadius: '5px',
+                                        border: '1px solid',
+                                        borderColor: currentQty === pVal ? '#059669' : '#cbd5e1',
+                                        background: currentQty === pVal ? '#ecfdf5' : '#ffffff',
+                                        color: currentQty === pVal ? '#065f46' : '#64748b',
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      {pVal === 0 ? '0' : (isMilk ? `${pVal}L` : `${pVal}x`)}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Daily Basket Summary Strip */}
+                      <div
+                        style={{
+                          background: '#ecfdf5',
+                          border: '1px solid #a7f3d0',
+                          borderRadius: '10px',
+                          padding: '10px 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857' }}>
+                            DAILY SCHEDULED PRODUCTS ({selectedItems.length} items)
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#065f46', marginTop: '2px' }}>
+                            {selectedItems.length > 0
+                              ? selectedItems.map((p) => {
+                                  const pid = p.id || p._id;
+                                  const q = custProductQuantities[pid];
+                                  return `${p.name} (${q} ${p.unit || ''})`;
+                                }).join(' + ')
+                              : 'No products selected yet. Please select at least 1 product.'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '0.68rem', color: '#047857', display: 'block', fontWeight: 600 }}>Daily Estimated Total</span>
+                          <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#065f46' }}>₹{totalEstimate} / day</span>
+                        </div>
+                      </div>
                     </div>
-                    <input
-                      type="number"
-                      step="250"
-                      min="0"
-                      max="5000"
-                      value={custFormCurdQty}
-                      onChange={(e) => setCustFormCurdQty(Number(e.target.value))}
-                      style={{
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '7px 10px',
-                        borderRadius: '6px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.84rem',
-                      }}
-                    />
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Frequency */}
                 <div style={{ marginTop: '10px' }}>

@@ -19,13 +19,13 @@ import 'package:flutter/foundation.dart';
 /// ═══════════════════════════════════════════════════════════════════
 class AppConfig {
   /// ⬇️ ⬇️ ⬇️ [CHANGE HERE: true OR false] ⬇️ ⬇️ ⬇️
-  /// Set to `true` for Production (Any Network) or `false` for Local Testing
-  static const bool useLiveServer = true;
+  /// Set to `false` for Local Development (matches localhost:3000 web dashboard)
+  /// Set to `true` for Standalone Production Cloud Server
+  static const bool useLiveServer = false;
 
-  /// When you release the APK (flutter build apk --release / without debugging),
-  /// this safety guard ensures it ALWAYS connects to the live production server,
-  /// preventing accidental releases set to local IP.
-  static const bool autoEnforceLiveInRelease = true;
+  /// If true, release APKs will always use liveBaseUrl.
+  /// Set to false to allow local IP / candidate discovery during release testing.
+  static const bool autoEnforceLiveInRelease = false;
 
   /// Effective active server flag
   static bool get isLiveServerActive =>

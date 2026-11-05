@@ -430,7 +430,7 @@ export function CustomerSubscriptionPublicModal({ isOpen, onClose, customer, onN
   const isPaused = customer?.status === 'paused';
 
   const planName = plan.planName || deliveryPlan.milkType || 'Daily Farm Pure Cow Milk Plan';
-  const milkQty = deliveryPlan.milkQty ?? (plan.milkQty || 1);
+  const milkQty = Number(deliveryPlan.milkQty) > 0 ? Number(deliveryPlan.milkQty) : (Number(plan.plan?.milkQty) > 0 ? Number(plan.plan.milkQty) : (Number(plan.milkQty) > 0 ? Number(plan.milkQty) : 1));
   const curdQty = deliveryPlan.curdQty ?? (plan.curdQty || 0);
   const pricePerDay = (milkQty * 60) + ((curdQty / 500) * 30);
 

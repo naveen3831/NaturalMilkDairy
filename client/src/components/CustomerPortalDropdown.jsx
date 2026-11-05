@@ -32,7 +32,7 @@ export default function CustomerPortalDropdown({
   const deliveryPlan = currentCustomer.deliveryPlan || {};
 
   const planName = plan.planName || deliveryPlan.milkType || 'Daily Farm Pure Cow Milk Plan';
-  const milkQty = deliveryPlan.milkQty ?? (plan.milkQty || 1);
+  const milkQty = Number(deliveryPlan.milkQty) > 0 ? Number(deliveryPlan.milkQty) : (Number(plan.plan?.milkQty) > 0 ? Number(plan.plan.milkQty) : (Number(plan.milkQty) > 0 ? Number(plan.milkQty) : 1));
   const curdQty = deliveryPlan.curdQty ?? (plan.curdQty || 0);
 
   const initial = (currentCustomer.name || 'C').charAt(0).toUpperCase();

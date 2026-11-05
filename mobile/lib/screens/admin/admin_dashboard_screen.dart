@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
@@ -37,6 +39,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _initRealtime() {
     _wsSub = _realtime.eventStream.listen((event) {
+      final type = event['type']?.toString();
+      if ((type == 'DRIVER_DUTY_UPDATED' || type == 'DELIVERY_BOY_UPDATED') && event['payload'] is Map) {
+        final payload = event['payload'] as Map;
+        final pId = payload['id']?.toString() ?? payload['boyId']?.toString();
+        final pMob = payload['mobile']?.toString();
+        final pName = payload['name']?.toString() ?? payload['boyName']?.toString();
+        final isOnline = payload['isOnline'] == true;
+
+        if (mounted) {
+          setState(() {
+            for (var b in _deliveryBoys) {
+              final bId = b['id']?.toString() ?? b['_id']?.toString();
+              final bMob = b['mobile']?.toString();
+              final bName = b['name']?.toString();
+              final matches = (pId != null && bId != null && pId == bId) ||
+                  (pMob != null && bMob != null && pMob == bMob) ||
+                  (pName != null && bName != null && pName.toLowerCase() == bName.toLowerCase());
+              if (matches) {
+                b['isOnline'] = isOnline;
+                if (payload['lastOnlineAt'] != null) b['lastOnlineAt'] = payload['lastOnlineAt'];
+                if (payload['lastOfflineAt'] != null) b['lastOfflineAt'] = payload['lastOfflineAt'];
+                if (payload['dutyLogs'] != null) b['dutyLogs'] = payload['dutyLogs'];
+              }
+            }
+          });
+        }
+      }
       _loadAllData(silent: true);
     });
   }
@@ -595,6 +624,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       d['customerAddress'] ?? 'Madhapur Doorstep Drop',
                       style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
+                    if ((num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? '') != null) &&
+                        (num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? '') != null)) ...[
+                      const SizedBox(height: 3),
+                      InkWell(
+                        onTap: () {
+                          final dLat = num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? '');
+                          final dLng = num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? '');
+                          LauncherService.openMap(lat: dLat, lng: dLng, address: d['customerAddress']?.toString() ?? '');
+                        },
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.pin_drop_rounded, size: 12, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 3),
+                            Text(
+                              'GPS: ${num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? '')!.toStringAsFixed(3)}, ${num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? '')!.toStringAsFixed(3)}',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -656,6 +707,244 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  String _formatDutyTime(dynamic dateVal) {
+    if (dateVal == null || dateVal.toString().isEmpty) return '—';
+    try {
+      final dt = DateTime.parse(dateVal.toString()).toLocal();
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'PM' : 'AM';
+      final day = dt.day.toString().padLeft(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      return '$day $month, $hour:$minute $period';
+    } catch (_) {
+      return dateVal.toString();
+    }
+  }
+
+  Future<void> _togglePartnerDuty(Map<String, dynamic> b, [bool? targetState]) async {
+    final boyId = b['id'] ?? b['_id']?.toString() ?? '';
+    final name = b['name'] ?? 'Partner';
+    final currentState = b['isOnline'] == true;
+    final nextState = targetState ?? !currentState;
+    HapticFeedback.lightImpact();
+
+    setState(() {
+      final idx = _deliveryBoys.indexWhere((item) => (item['id'] ?? item['_id']) == boyId);
+      if (idx != -1) {
+        _deliveryBoys[idx]['isOnline'] = nextState;
+      }
+    });
+
+    try {
+      await _api.post('/api/delivery-boys/$boyId/duty-status', {
+        'isOnline': nextState,
+        'boyId': boyId,
+        'mobile': b['mobile'],
+        'name': name,
+        'area': b['assignedArea'],
+      });
+      _loadDeliveryBoys();
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(nextState ? '🟢 $name is now ONLINE (On Duty)' : '⏸ $name is now OFFLINE (Break)'),
+            backgroundColor: nextState ? const Color(0xFF059669) : const Color(0xFF475569),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error toggling duty: $e');
+      _loadDeliveryBoys();
+    }
+  }
+
+  void _showPartnerDutyLogsSheet(Map<String, dynamic> b) {
+    final name = b['name'] ?? 'Partner';
+    final area = b['assignedArea'] ?? 'Madhapur';
+    final bool isOnline = b['isOnline'] == true;
+    final lastOnline = b['lastOnlineAt'];
+    final lastOffline = b['lastOfflineAt'];
+    final List logs = (b['dutyLogs'] is List) ? (b['dutyLogs'] as List) : [];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.72,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$name Shift History',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      ),
+                      Text('Route: $area', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                    ],
+                  ),
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _togglePartnerDuty(b);
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Text(
+                        isOnline ? '🟢 ONLINE (Tap to toggle)' : '⏸ OFFLINE (Tap to toggle)',
+                        style: TextStyle(
+                          color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('LAST ONLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatDutyTime(lastOnline),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 30, color: const Color(0xFFCBD5E1)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('LAST OFFLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Text(
+                            _formatDutyTime(lastOffline),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'DUTY TRANSITION TIMELINE',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: logs.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No shift transitions logged yet for $name.',
+                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: logs.length,
+                        separatorBuilder: (_, _) => const Divider(height: 12, color: Color(0xFFF1F5F9)),
+                        itemBuilder: (context, idx) {
+                          final item = Map<String, dynamic>.from(logs[logs.length - 1 - idx] as Map);
+                          final status = (item['status'] ?? 'online').toString();
+                          final isLogOnline = status == 'online';
+                          final time = item['timestamp'];
+                          final logArea = item['area'] ?? area;
+
+                          return Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isLogOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isLogOnline ? '🟢 ONLINE' : '⏸ OFFLINE',
+                                  style: TextStyle(
+                                    color: isLogOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _formatDutyTime(time),
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)),
+                                    ),
+                                    Text(
+                                      'Territory: $logArea',
+                                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildPartnersView() {
     return ListView.separated(
       shrinkWrap: true,
@@ -670,6 +959,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         final vehicle = b['vehicleNumber'] ?? 'Two-Wheeler';
         final cash = b['todayCashCollected'] ?? 0;
         final upi = b['todayUpiCollected'] ?? 0;
+        final bool isOnline = b['isOnline'] == true;
+        final lastOnline = b['lastOnlineAt'];
+        final lastOffline = b['lastOfflineAt'];
 
         return Container(
           padding: const EdgeInsets.all(16),
@@ -704,17 +996,68 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(6),
+                  InkWell(
+                    onTap: () => _togglePartnerDuty(b),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: isOnline ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            isOnline ? 'ONLINE (ON DUTY)' : 'OFFLINE (BREAK)',
+                            style: TextStyle(
+                              color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: const Text('ON ROUTE', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800, fontSize: 10)),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
+              // Live timing status indicator (tap to view detailed shift logs)
+              InkWell(
+                onTap: () => _showPartnerDutyLogsSheet(b),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Icon(Icons.schedule_rounded, size: 13, color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B)),
+                      const SizedBox(width: 4),
+                      Text(
+                        isOnline && lastOnline != null
+                            ? 'Online since ${_formatDutyTime(lastOnline)}'
+                            : !isOnline && lastOffline != null
+                                ? 'Offline since ${_formatDutyTime(lastOffline)}'
+                                : 'Active Partner Shift',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B)),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 9, color: Color(0xFF94A3B8)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -743,6 +1086,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ],
                     ),
                   ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Duty Logs Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _showPartnerDutyLogsSheet(b),
+                  icon: const Icon(Icons.history_rounded, size: 15, color: Color(0xFF059669)),
+                  label: const Text('View Duty Timings & Shift Logs', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF065F46))),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFFBBF7D0)),
+                    backgroundColor: const Color(0xFFF0FDF4),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
                 ),
               ),
             ],
@@ -820,7 +1179,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
-                        Text('$mobile • ${milkQty}L Daily', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                        Text('$mobile • ${milkQty}L Daily${(c['area'] ?? '').toString().isNotEmpty ? ' • ${c['area']}' : ''}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                        if (num.tryParse(c['latitude']?.toString() ?? '') != null && num.tryParse(c['longitude']?.toString() ?? '') != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: InkWell(
+                              onTap: () {
+                                final lat = num.tryParse(c['latitude'].toString());
+                                final lng = num.tryParse(c['longitude'].toString());
+                                LauncherService.openMap(lat: lat, lng: lng, address: c['address']?.toString() ?? '');
+                              },
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.pin_drop_rounded, size: 11, color: Color(0xFF2563EB)),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    'GPS: ${num.tryParse(c['latitude'].toString())!.toStringAsFixed(3)}, ${num.tryParse(c['longitude'].toString())!.toStringAsFixed(3)}',
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

@@ -126,17 +126,40 @@ class AuthProvider extends ChangeNotifier {
     String? area,
   }) {
     if (_user != null) {
-      _user = UserModel(
-        id: _user!.id,
+      _user = _user!.copyWith(
         name: name,
         mobile: mobile,
         email: email ?? _user!.email,
-        role: _user!.role,
         address: address ?? _user!.address,
         area: area ?? _user!.area,
-        isActive: _user!.isActive,
       );
+      _persistUserLocally();
       notifyListeners();
+    }
+  }
+
+  Future<void> setOnlineDutyStatus(bool isOnline, {String? lastOnlineAt, String? lastOfflineAt}) async {
+    if (_user != null) {
+      _user = _user!.copyWith(
+        isOnline: isOnline,
+        lastOnlineAt: lastOnlineAt ?? (isOnline ? DateTime.now().toIso8601String() : _user!.lastOnlineAt),
+        lastOfflineAt: lastOfflineAt ?? (!isOnline ? DateTime.now().toIso8601String() : _user!.lastOfflineAt),
+      );
+      await _persistUserLocally();
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateUserFromMap(Map<String, dynamic> map) async {
+    _user = UserModel.fromJson(map);
+    await _persistUserLocally();
+    notifyListeners();
+  }
+
+  Future<void> _persistUserLocally() async {
+    if (_user != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.keyUserData, jsonEncode(_user!.toJson()));
     }
   }
 

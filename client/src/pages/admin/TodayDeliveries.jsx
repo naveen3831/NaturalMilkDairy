@@ -8,6 +8,7 @@ import {
   Clock,
   Phone,
   MapPin,
+  Navigation,
   Calendar,
   Search,
   CreditCard,
@@ -482,9 +483,32 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     </div>
                   )}
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#64748b' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: '#64748b', flexWrap: 'wrap' }}>
                     <MapPin size={13} color="#059669" />
                     <span>{item.customerAddress || 'Address on file'}</span>
+                    {(item.customerLatitude || item.latitude) && (item.customerLongitude || item.longitude) && (
+                      <a
+                        href={`https://www.google.com/maps?q=${item.customerLatitude || item.latitude},${item.customerLongitude || item.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          color: '#1d4ed8',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <Navigation size={10} />
+                        <span>GPS ({Number(item.customerLatitude || item.latitude).toFixed(3)}, {Number(item.customerLongitude || item.longitude).toFixed(3)})</span>
+                      </a>
+                    )}
                   </div>
 
                   {/* Partner Assignment Dropdown (Notifies Delivery Partner) */}
