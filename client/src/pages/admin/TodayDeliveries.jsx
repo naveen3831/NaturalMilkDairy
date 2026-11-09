@@ -18,6 +18,10 @@ import {
   Filter,
   Camera,
   Trash2,
+  ChevronRight,
+  User,
+  Users,
+  X,
 } from 'lucide-react';
 
 export default function TodayDeliveries({ onSelectCustomerLedger }) {
@@ -32,6 +36,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     assignDelivery,
     deleteDelivery,
     deliveryBoys,
+    customers,
   } = useDairy();
   const { subscribe: wsSubscribe } = useWebSocket();
   const [timeRange, setTimeRange] = useState('today');
@@ -39,11 +44,19 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [boyFilter, setBoyFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Modals for delivery action
   const [deliveringItem, setDeliveringItem] = useState(null);
   const [notDeliveringItem, setNotDeliveringItem] = useState(null);
   const [previewProof, setPreviewProof] = useState(null);
+  const [selectedDeliveryDetails, setSelectedDeliveryDetails] = useState(null);
 
   // Form states for delivery modal
   const [actualMilk, setActualMilk] = useState(1);
@@ -142,6 +155,841 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
     }
     return true;
   });
+
+  // Common Modals Rendered across Desktop and Mobile Responsive
+  const renderModals = () => (
+    <>
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmItem && (
+        <div className="modal-overlay" onClick={() => setDeleteConfirmItem(null)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '440px', borderRadius: '16px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '50%',
+                  background: '#fee2e2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#dc2626',
+                }}
+              >
+                <Trash2 size={18} />
+              </div>
+              <div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Delete Delivery?
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {deleteConfirmItem.customerName} • {deleteConfirmItem.deliveryDate}
+                </p>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+              This will remove the delivery from the <strong>Admin Console</strong> and <strong>Driver Dashboards</strong>.
+              <br /><br />
+              <span style={{ color: '#059669', fontWeight: 600 }}>
+                ✓ The customer's order history and ledger will be safely preserved.
+              </span>
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmItem(null)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = deleteConfirmItem;
+                  setDeleteConfirmItem(null);
+                  await deleteDelivery(target.id || target._id);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: '#dc2626',
+                  color: '#ffffff',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Delete from Dashboards
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delivered Confirmation Modal */}
+      {deliveringItem && (
+        <div className="modal-overlay" onClick={() => setDeliveringItem(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Confirm Delivery</h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {deliveringItem.customerName} • {deliveringItem.customerAddress}
+                </p>
+              </div>
+              <button onClick={() => setDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Milk Quantity Delivered (Litres)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={actualMilk}
+                  onChange={(e) => setActualMilk(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Curd Quantity Delivered (Grams)
+                </label>
+                <input
+                  type="number"
+                  step="250"
+                  value={actualCurd}
+                  onChange={(e) => setActualCurd(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMode}
+                  onChange={(e) => setPaymentMode(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                >
+                  <option value="credit">Monthly Credit Account (Bill to Ledger)</option>
+                  <option value="cash">Cash on Delivery</option>
+                  <option value="upi">UPI / Instant QR</option>
+                </select>
+              </div>
+
+              {(paymentMode === 'cash' || paymentMode === 'upi') && (
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                    Amount Collected (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={collectedAmount}
+                    onChange={(e) => setCollectedAmount(e.target.value)}
+                    style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Delivery Notes (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={deliveryNotes}
+                  onChange={(e) => setDeliveryNotes(e.target.value)}
+                  placeholder="e.g. Left at doorstep / bottle returned"
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setDeliveringItem(null)}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelivered}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#059669',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm Delivered
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Not Delivered Modal */}
+      {notDeliveringItem && (
+        <div className="modal-overlay" onClick={() => setNotDeliveringItem(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>Mark Not Delivered</h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {notDeliveringItem.customerName} • {notDeliveringItem.customerAddress}
+                </p>
+              </div>
+              <button onClick={() => setNotDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Reason for Non-Delivery
+                </label>
+                <select
+                  value={notDeliveredReason}
+                  onChange={(e) => setNotDeliveredReason(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                >
+                  <option value="Customer Not Home">Customer Not Home / Door Locked</option>
+                  <option value="Customer Requested Skip">Customer Requested Skip / Holiday</option>
+                  <option value="Delivery Boy Shortage">Out of Stock / Route Delay</option>
+                  <option value="Severe Weather">Inclement Weather / Road Block</option>
+                  <option value="Other">Other Specific Reason</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Additional Notes
+                </label>
+                <textarea
+                  rows="3"
+                  value={notDeliveredNotes}
+                  onChange={(e) => setNotDeliveredNotes(e.target.value)}
+                  placeholder="Explain why delivery was not completed..."
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setNotDeliveringItem(null)}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#64748b',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmNotDelivered}
+                  style={{
+                    flex: 1,
+                    padding: '9px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#dc2626',
+                    color: '#ffffff',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Confirm Not Delivered
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Modal for Proof Image */}
+      {previewProof && (
+        <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  📸 Doorstep Delivery Proof
+                </h3>
+                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                  {previewProof.customerName} • {previewProof.customerAddress}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
+              <img
+                src={previewProof.proofImage}
+                alt="Home doorstep proof photo"
+                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
+              />
+            </div>
+            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
+              <span>Fulfilled by: <strong>{previewProof.deliveryBoyName || 'Partner'}</strong></span>
+              <button
+                type="button"
+                onClick={() => setPreviewProof(null)}
+                style={{ padding: '6px 14px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  // ── SCREEN: MOBILE RESPONSIVE DELIVERIES (EXACT REPLICA OF MOBILE APP _buildOperationsView) ──
+  if (isMobile) {
+    const allDropsCount = deliveries.length;
+    const deliveredCount = deliveries.filter((d) => d.status === 'delivered').length;
+    const pendingCount = deliveries.filter((d) => d.status === 'pending').length;
+
+    const mobileFilteredDrops = filteredDeliveries.filter((d) => {
+      if (statusFilter === 'delivered') return d.status === 'delivered';
+      if (statusFilter === 'pending') return d.status === 'pending';
+      return true;
+    });
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Filter Chips Scroll matching Flutter _buildOperationsView() */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            overflowX: 'auto',
+            paddingBottom: '2px',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+          }}
+        >
+          {[
+            { id: 'all', label: `All Drops (${allDropsCount})` },
+            { id: 'delivered', label: `Delivered (${deliveredCount})` },
+            { id: 'pending', label: `Pending (${pendingCount})` },
+          ].map((chip) => {
+            const isSelected = statusFilter === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setStatusFilter(chip.id)}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '20px',
+                  border: isSelected ? '1px solid #059669' : '1px solid #e2e8f0',
+                  background: isSelected ? '#ecfdf5' : '#ffffff',
+                  color: isSelected ? '#059669' : '#64748b',
+                  fontWeight: 800,
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Deliveries List */}
+        {mobileFilteredDrops.length === 0 ? (
+          <div
+            style={{
+              padding: '24px',
+              background: '#ffffff',
+              borderRadius: '16px',
+              border: '1px solid #e2e8f0',
+              textAlign: 'center',
+              color: '#64748b',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+            }}
+          >
+            No drops match this filter
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {mobileFilteredDrops.map((d) => {
+              const isDelivered = d.status === 'delivered';
+              const isPending = d.status === 'pending';
+              const proofUrl = d.proofImage?.toString();
+              const driverName = d.deliveryBoyName?.toString() || 'Unassigned';
+              const lat = Number(d.customerLatitude || d.latitude);
+              const lng = Number(d.customerLongitude || d.longitude);
+              const hasGps = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+
+              return (
+                <div
+                  key={d.id || d._id}
+                  style={{
+                    padding: '16px',
+                    background: '#ffffff',
+                    borderRadius: '16px',
+                    border: `1px solid ${isDelivered ? '#bbf7d0' : '#e2e8f0'}`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  {/* Top row: Name & Status Pill */}
+                  <div
+                    onClick={() => setSelectedDeliveryDetails(d)}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                  >
+                    <span
+                      style={{
+                        fontWeight: 800,
+                        fontSize: '0.92rem',
+                        color: '#0f172a',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        marginRight: '8px',
+                      }}
+                    >
+                      {d.customerName || 'Customer'}
+                    </span>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.62rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        flexShrink: 0,
+                        background: isDelivered ? '#ecfdf5' : isPending ? '#fff8e1' : '#fef2f2',
+                        color: isDelivered ? '#059669' : isPending ? '#f57f17' : '#dc2626',
+                      }}
+                    >
+                      {isDelivered ? '✓ DELIVERED' : isPending ? 'PENDING' : 'MISSED'}
+                    </span>
+                  </div>
+
+                  {/* Address */}
+                  <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px', lineHeight: 1.35 }}>
+                    {d.customerAddress || 'Madhapur Doorstep Drop'}
+                  </div>
+
+                  {/* GPS Coordinate Link */}
+                  {hasGps && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        color: '#2563eb',
+                        textDecoration: 'none',
+                        marginTop: '2px',
+                        width: 'fit-content',
+                      }}
+                    >
+                      <MapPin size={12} color="#2563eb" />
+                      <span>GPS: {lat.toFixed(3)}, {lng.toFixed(3)}</span>
+                    </a>
+                  )}
+
+                  {/* Quantity & Partner */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginTop: '8px',
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#059669' }}>
+                      {d.actualMilk ?? d.plannedMilk ?? 1}L Milk
+                      {(d.actualCurd ?? d.plannedCurd ?? 0) > 0 ? ` + ${d.actualCurd ?? d.plannedCurd}g Curd` : ''}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                      Partner: {driverName}
+                    </span>
+                  </div>
+
+                  {/* Doorstep Proof button */}
+                  {proofUrl && (
+                    <>
+                      <div style={{ height: '1px', background: '#f1f5f9', margin: '8px 0 4px 0' }} />
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProof(d)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: 'none',
+                          border: 'none',
+                          padding: '4px 0',
+                          cursor: 'pointer',
+                          width: '100%',
+                          color: '#059669',
+                          fontSize: '0.76rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Camera size={14} color="#059669" />
+                          <span>View Doorstep Photo Proof</span>
+                        </span>
+                        <ChevronRight size={16} color="#059669" />
+                      </button>
+                    </>
+                  )}
+
+                  {/* Tap for customer details */}
+                  <div
+                    onClick={() => setSelectedDeliveryDetails(d)}
+                    role="button"
+                    tabIndex={0}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginTop: '8px',
+                      paddingTop: '6px',
+                      borderTop: '1px solid #f1f5f9',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.70rem', color: '#94a3b8', fontWeight: 600 }}>Tap for customer & delivery details</span>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#059669', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <span>Details</span>
+                      <ChevronRight size={13} />
+                    </span>
+                  </div>
+
+                  {/* Pending quick actions */}
+                  {isPending && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => openDeliveredModal(d)}
+                        style={{
+                          flex: 1,
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#059669',
+                          color: '#ffffff',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Check size={13} />
+                        <span>Deliver</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openNotDeliveredModal(d)}
+                        style={{
+                          flex: 1,
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #fee2e2',
+                          background: '#fef2f2',
+                          color: '#dc2626',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>Skip</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Customer & Delivery Details Bottom Sheet Modal (Mobile Responsive) */}
+        {selectedDeliveryDetails && (() => {
+          const d = selectedDeliveryDetails;
+          const matchingCust = customers?.find(
+            (c) => (c.id && c.id === d.customerId) ||
+                   (c._id && c._id === d.customerId) ||
+                   (c.customerId && c.customerId === d.customerId) ||
+                   (c.name && d.customerName && c.name.trim().toLowerCase() === d.customerName.trim().toLowerCase())
+          ) || {};
+          const isDelivered = d.status === 'delivered';
+          const isPending = d.status === 'pending';
+          const phone = matchingCust.mobile || d.customerPhone || d.phone || '';
+          const bal = matchingCust.currentBalance || 0;
+          const custAddress = d.customerAddress || matchingCust.address || 'Doorstep Drop';
+          const proofUrl = d.proofImage?.toString();
+          const driverName = d.deliveryBoyName?.toString() || 'Unassigned';
+          const plan = matchingCust.deliveryPlan || {};
+          const milkQty = plan.milkQty || d.actualMilk || d.plannedMilk || 1;
+
+          return (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                background: 'rgba(15, 23, 42, 0.65)',
+                backdropFilter: 'blur(3px)',
+                zIndex: 9999,
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+              }}
+              onClick={() => setSelectedDeliveryDetails(null)}
+            >
+              <div
+                style={{
+                  background: '#ffffff',
+                  width: '100%',
+                  maxHeight: '88vh',
+                  borderTopLeftRadius: '24px',
+                  borderTopRightRadius: '24px',
+                  padding: '20px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Drag handle */}
+                <div style={{ width: '40px', height: '4px', background: '#cbd5e1', borderRadius: '2px', margin: '0 auto 4px auto' }} />
+
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                      {d.customerName || 'Customer Details'}
+                    </h3>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                      Date: {d.deliveryDate || 'Today'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      style={{
+                        padding: '4px 9px',
+                        borderRadius: '6px',
+                        fontSize: '0.64rem',
+                        fontWeight: 800,
+                        background: isDelivered ? '#ecfdf5' : isPending ? '#fff8e1' : '#fef2f2',
+                        color: isDelivered ? '#059669' : isPending ? '#f57f17' : '#dc2626',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {isDelivered ? '✓ DELIVERED' : isPending ? 'PENDING' : 'MISSED'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDeliveryDetails(null)}
+                      style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Section 1: Customer Profile Details */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <User size={13} color="#059669" />
+                      <span>Customer Profile Details</span>
+                    </span>
+                    <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: matchingCust.status === 'paused' ? '#fffbeb' : '#ecfdf5', color: matchingCust.status === 'paused' ? '#b45309' : '#059669' }}>
+                      {(matchingCust.status || 'ACTIVE').toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ height: '1px', background: '#e2e8f0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Full Name</span>
+                    <span style={{ fontWeight: 800, color: '#0f172a' }}>{d.customerName}</span>
+                  </div>
+                  {phone && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#64748b' }}>Phone Number</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontWeight: 800, color: '#0f172a' }}>{phone}</span>
+                        <a
+                          href={`tel:${phone}`}
+                          style={{
+                            padding: '3px 8px',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '6px',
+                            color: '#2563eb',
+                            fontSize: '0.66rem',
+                            fontWeight: 800,
+                            textDecoration: 'none',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Phone size={10} />
+                          <span>Call</span>
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Doorstep Address</span>
+                    <span style={{ fontWeight: 700, color: '#0f172a', textAlign: 'right', maxWidth: '60%' }}>{custAddress}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Account Balance</span>
+                    <span style={{ fontWeight: 800, color: bal > 0 ? '#dc2626' : '#059669' }}>₹{bal}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Subscription Plan</span>
+                    <span style={{ fontWeight: 700, color: '#059669' }}>{milkQty}L Daily Milk • {plan.deliveryDays || 'Everyday'}</span>
+                  </div>
+                </div>
+
+                {/* Section 2: Delivery & Fulfillment Details */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Truck size={13} color="#2563eb" />
+                    <span>Delivery & Fulfillment Details</span>
+                  </span>
+                  <div style={{ height: '1px', background: '#e2e8f0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Delivered Products</span>
+                    <span style={{ fontWeight: 800, color: '#0f172a' }}>
+                      {d.actualMilk ?? d.plannedMilk ?? 1}L Milk
+                      {(d.actualCurd ?? d.plannedCurd ?? 0) > 0 ? ` + ${d.actualCurd ?? d.plannedCurd}g Curd` : ''}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Billed Amount</span>
+                    <span style={{ fontWeight: 800, color: '#7e22ce' }}>₹{d.totalAmount || 0} ({(d.paymentMethod || 'credit').toUpperCase()})</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                    <span style={{ color: '#64748b' }}>Assigned Partner</span>
+                    <span style={{ fontWeight: 800, color: '#0f172a' }}>{driverName}</span>
+                  </div>
+                  {proofUrl && (
+                    <div style={{ marginTop: '4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
+                        Doorstep Delivery Photo Proof:
+                      </span>
+                      <img
+                        src={proofUrl}
+                        alt="Proof"
+                        style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #e2e8f0' }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Action Buttons */}
+                {typeof onSelectCustomerLedger === 'function' && matchingCust._id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDeliveryDetails(null);
+                      onSelectCustomerLedger(matchingCust);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.80rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <BookOpen size={14} />
+                    <span>View Customer Ledger & History</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {renderModals()}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -736,338 +1584,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {deleteConfirmItem && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirmItem(null)}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '440px', borderRadius: '16px' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-              <div
-                style={{
-                  width: '38px',
-                  height: '38px',
-                  borderRadius: '50%',
-                  background: '#fee2e2',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#dc2626',
-                }}
-              >
-                <Trash2 size={18} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  Delete Delivery?
-                </h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {deleteConfirmItem.customerName} • {deleteConfirmItem.deliveryDate}
-                </p>
-              </div>
-            </div>
-
-            <p style={{ fontSize: '0.85rem', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              This will remove the delivery from the <strong>Admin Console</strong> and <strong>Driver Dashboards</strong>.
-              <br /><br />
-              <span style={{ color: '#059669', fontWeight: 600 }}>
-                ✓ The customer's order history and ledger will be safely preserved.
-              </span>
-            </p>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmItem(null)}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: '#ffffff',
-                  color: '#475569',
-                  fontWeight: 600,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  const target = deleteConfirmItem;
-                  setDeleteConfirmItem(null);
-                  await deleteDelivery(target.id || target._id);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: '#dc2626',
-                  color: '#ffffff',
-                  fontWeight: 700,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                }}
-              >
-                Delete from Dashboards
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delivered Confirmation Modal */}
-      {deliveringItem && (
-        <div className="modal-overlay" onClick={() => setDeliveringItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Confirm Delivery</h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {deliveringItem.customerName} • {deliveringItem.customerAddress}
-                </p>
-              </div>
-              <button onClick={() => setDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Milk Quantity Delivered (Litres)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={actualMilk}
-                  onChange={(e) => setActualMilk(e.target.value)}
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Curd Quantity Delivered (Grams)
-                </label>
-                <input
-                  type="number"
-                  step="250"
-                  value={actualCurd}
-                  onChange={(e) => setActualCurd(e.target.value)}
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Payment Method
-                </label>
-                <select
-                  value={paymentMode}
-                  onChange={(e) => setPaymentMode(e.target.value)}
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                >
-                  <option value="credit">Monthly Credit Account (Bill to Ledger)</option>
-                  <option value="cash">Cash on Delivery</option>
-                  <option value="upi">UPI / Instant QR</option>
-                </select>
-              </div>
-
-              {(paymentMode === 'cash' || paymentMode === 'upi') && (
-                <div>
-                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                    Amount Collected (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={collectedAmount}
-                    onChange={(e) => setCollectedAmount(e.target.value)}
-                    style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                    required
-                  />
-                </div>
-              )}
-
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Delivery Notes (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={deliveryNotes}
-                  onChange={(e) => setDeliveryNotes(e.target.value)}
-                  placeholder="e.g. Left at doorstep / bottle returned"
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setDeliveringItem(null)}
-                  style={{
-                    flex: 1,
-                    padding: '9px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    color: '#64748b',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelivered}
-                  style={{
-                    flex: 1,
-                    padding: '9px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: '#059669',
-                    color: '#ffffff',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Confirm Delivered
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Not Delivered Modal */}
-      {notDeliveringItem && (
-        <div className="modal-overlay" onClick={() => setNotDeliveringItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', borderRadius: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#dc2626', margin: 0 }}>Mark Not Delivered</h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {notDeliveringItem.customerName} • {notDeliveringItem.customerAddress}
-                </p>
-              </div>
-              <button onClick={() => setNotDeliveringItem(null)} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#94a3b8' }}>✕</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Reason for Non-Delivery
-                </label>
-                <select
-                  value={notDeliveredReason}
-                  onChange={(e) => setNotDeliveredReason(e.target.value)}
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                >
-                  <option value="Customer Not Home">Customer Not Home / Door Locked</option>
-                  <option value="Customer Requested Skip">Customer Requested Skip / Holiday</option>
-                  <option value="Delivery Boy Shortage">Out of Stock / Route Delay</option>
-                  <option value="Severe Weather">Inclement Weather / Road Block</option>
-                  <option value="Other">Other Specific Reason</option>
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
-                  Additional Notes
-                </label>
-                <textarea
-                  rows="3"
-                  value={notDeliveredNotes}
-                  onChange={(e) => setNotDeliveredNotes(e.target.value)}
-                  placeholder="Explain why delivery was not completed..."
-                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => setNotDeliveringItem(null)}
-                  style={{
-                    flex: 1,
-                    padding: '9px',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0',
-                    background: '#ffffff',
-                    color: '#64748b',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmNotDelivered}
-                  style={{
-                    flex: 1,
-                    padding: '9px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: '#dc2626',
-                    color: '#ffffff',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Confirm Not Delivered
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lightbox Modal for Proof Image */}
-      {previewProof && (
-        <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  📸 Doorstep Delivery Proof
-                </h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {previewProof.customerName} • {previewProof.customerAddress}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPreviewProof(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
-              <img
-                src={previewProof.proofImage}
-                alt="Home doorstep proof photo"
-                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
-              />
-            </div>
-            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
-              <span>Fulfilled by: <strong>{previewProof.deliveryBoyName || 'Partner'}</strong></span>
-              <button
-                type="button"
-                onClick={() => setPreviewProof(null)}
-                style={{ padding: '6px 14px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Close Preview
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderModals()}
     </div>
   );
 }

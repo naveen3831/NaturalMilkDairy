@@ -29,6 +29,7 @@ import AddDeliveryBoyPage from './pages/admin/AddDeliveryBoyPage';
 import EditDeliveryBoyPage from './pages/admin/EditDeliveryBoyPage';
 import AddProductPage from './pages/admin/AddProductPage';
 import EditProductPage from './pages/admin/EditProductPage';
+import AdminProfileView from './pages/admin/AdminProfileView';
 import DeliveryBoyApp from './pages/delivery/DeliveryBoyApp';
 import CustomerPortal from './pages/customer/CustomerPortal';
 import AdminLayout from './components/AdminLayout';
@@ -65,6 +66,7 @@ export default function App() {
     'edit-delivery-boy',
     'add-product',
     'edit-product',
+    'profile',
   ];
 
   const [isMobile, setIsMobile] = useState(() =>
@@ -547,6 +549,8 @@ export default function App() {
           {activeTab === 'audit-logs' && <AuditLogs />}
 
           {activeTab === 'supports' && <AdminSupportDesk />}
+
+          {activeTab === 'profile' && <AdminProfileView setActiveTab={navigateToTab} />}
         </AdminLayout>
       ) : activeTab === 'delivery-boy-app' ? (
         /* Dedicated Driver Portal Layout (Sidebar on Web, Bottom Bar on Mobile) */

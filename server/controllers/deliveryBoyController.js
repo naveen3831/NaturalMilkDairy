@@ -9,6 +9,12 @@ const { formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
 const { hashPassword, generateTemporaryPassword } = require('../security/password');
 
+const cleanPhoneDigits = (p) => {
+  if (!p) return '';
+  const digits = String(p).replace(/[^0-9]/g, '');
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 const getDeliveryBoys = async (req, res) => {
   try {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -22,14 +28,20 @@ const getDeliveryBoys = async (req, res) => {
     // Also include any users with role delivery_boy that might not be in DeliveryBoy model yet
     const driverList = [...boys];
     users.forEach((u) => {
-      const exists = driverList.some((b) => b.mobile === u.mobile);
+      const uPhone = cleanPhoneDigits(u.mobile);
+      const exists = driverList.some((b) => {
+        const bPhone = cleanPhoneDigits(b.mobile);
+        return (bPhone && uPhone && bPhone === uPhone) ||
+               (b.email && u.email && b.email.toLowerCase() === u.email.toLowerCase()) ||
+               (b.name && u.name && b.name.trim().toLowerCase() === u.name.trim().toLowerCase());
+      });
       if (!exists) {
         driverList.push({
           _id: u._id,
           name: u.name,
           mobile: u.mobile,
           email: u.email || '',
-          assignedArea: u.assignedArea || 'Andheri West',
+          assignedArea: u.assignedArea || 'Madhapur',
           vehicleNumber: '',
           status: u.status || 'active',
           isOnline: u.isOnline === true,
@@ -56,20 +68,51 @@ const getDeliveryBoys = async (req, res) => {
         .filter((d) => d.status === 'delivered' && d.paymentMethod === 'credit')
         .reduce((sum, d) => sum + (d.totalAmount || 0), 0);
 
-      const userMatch = users.find((u) => u.mobile === boy.mobile || (boy.email && u.email === boy.email));
+      const bPhone = cleanPhoneDigits(boy.mobile);
+      const userMatch = users.find((u) => {
+        const uPhone = cleanPhoneDigits(u.mobile);
+        return (bPhone && uPhone && bPhone === uPhone) ||
+               (boy.email && u.email && boy.email.toLowerCase() === u.email.toLowerCase()) ||
+               (boy.name && u.name && boy.name.trim().toLowerCase() === u.name.trim().toLowerCase());
+      });
+
+      // Synchronize latest online/offline status between boy and userMatch
+      let isOnline = boy.isOnline === true;
+      let lastOnlineAt = boy.lastOnlineAt || null;
+      let lastOfflineAt = boy.lastOfflineAt || null;
+      let dutyLogs = Array.isArray(boy.dutyLogs) ? boy.dutyLogs : [];
+
+      if (userMatch) {
+        const boyTime = Math.max(
+          boy.lastOnlineAt ? new Date(boy.lastOnlineAt).getTime() : 0,
+          boy.lastOfflineAt ? new Date(boy.lastOfflineAt).getTime() : 0
+        );
+        const userTime = Math.max(
+          userMatch.lastOnlineAt ? new Date(userMatch.lastOnlineAt).getTime() : 0,
+          userMatch.lastOfflineAt ? new Date(userMatch.lastOfflineAt).getTime() : 0
+        );
+        if (userTime > boyTime) {
+          isOnline = userMatch.isOnline === true;
+          if (userMatch.lastOnlineAt) lastOnlineAt = userMatch.lastOnlineAt;
+          if (userMatch.lastOfflineAt) lastOfflineAt = userMatch.lastOfflineAt;
+          if (Array.isArray(userMatch.dutyLogs) && userMatch.dutyLogs.length > dutyLogs.length) {
+            dutyLogs = userMatch.dutyLogs;
+          }
+        }
+      }
 
       return {
         id: boy._id.toString(),
         name: boy.name,
         email: boy.email || (userMatch ? userMatch.email : ''),
         mobile: boy.mobile,
-        assignedArea: boy.assignedArea || 'Andheri West',
+        assignedArea: boy.assignedArea || 'Madhapur',
         vehicleNumber: boy.vehicleNumber || '',
         status: boy.status || 'active',
-        isOnline: boy.isOnline === true,
-        lastOnlineAt: boy.lastOnlineAt || null,
-        lastOfflineAt: boy.lastOfflineAt || null,
-        dutyLogs: Array.isArray(boy.dutyLogs) ? boy.dutyLogs : [],
+        isOnline,
+        lastOnlineAt,
+        lastOfflineAt,
+        dutyLogs,
         todayCashCollected: boy.todayCashCollected || 0,
         todayUpiCollected: boy.todayUpiCollected || 0,
         todayStats: {
@@ -751,8 +794,20 @@ const toggleDutyStatus = async (req, res) => {
 
     // Also synchronize User model if exists
     try {
+      const userSyncFilters = [];
+      if (boy._id) userSyncFilters.push({ _id: boy._id });
+      if (targetId && String(targetId).length === 24) userSyncFilters.push({ _id: targetId });
+      if (boy.mobile) userSyncFilters.push({ mobile: boy.mobile });
+      if (cleanMobile) {
+        userSyncFilters.push({ mobile: cleanMobile });
+        userSyncFilters.push({ mobile: new RegExp(cleanMobile + '$') });
+      }
+      if (boy.name) {
+        userSyncFilters.push({ name: new RegExp(`^${boy.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+      }
+
       await User.updateMany(
-        { $or: [{ mobile: boy.mobile }, { _id: boy._id }] },
+        { $or: userSyncFilters },
         {
           $set: {
             isOnline: newOnlineState,
@@ -763,7 +818,7 @@ const toggleDutyStatus = async (req, res) => {
         }
       );
     } catch (uErr) {
-      // non-blocking
+      console.warn('Sync User duty status note:', uErr.message);
     }
 
     // Create real-time Admin Notification
@@ -796,30 +851,25 @@ const toggleDutyStatus = async (req, res) => {
       'driver'
     );
 
-    broadcast('DRIVER_DUTY_UPDATED', {
+    const dutyBroadcastPayload = {
       boyId: boy._id.toString(),
       id: boy._id.toString(),
+      targetId: String(targetId || boy._id),
       boyName: boy.name,
       name: boy.name,
       mobile: boy.mobile,
+      cleanMobile,
+      assignedArea: boy.assignedArea || area || 'madhapur',
+      area: boy.assignedArea || area || 'madhapur',
       isOnline: newOnlineState,
       lastOnlineAt: boy.lastOnlineAt,
       lastOfflineAt: boy.lastOfflineAt,
       dutyLogs: boy.dutyLogs,
       timestamp: now,
-    });
-    broadcast('DELIVERY_BOY_UPDATED', {
-      boyId: boy._id.toString(),
-      id: boy._id.toString(),
-      boyName: boy.name,
-      name: boy.name,
-      mobile: boy.mobile,
-      isOnline: newOnlineState,
-      lastOnlineAt: boy.lastOnlineAt,
-      lastOfflineAt: boy.lastOfflineAt,
-      dutyLogs: boy.dutyLogs,
-      timestamp: now,
-    });
+    };
+
+    broadcast('DRIVER_DUTY_UPDATED', dutyBroadcastPayload);
+    broadcast('DELIVERY_BOY_UPDATED', dutyBroadcastPayload);
     broadcast('NOTIFICATION_CREATED', { recipientRole: 'admin' });
 
     return res.json({

@@ -473,20 +473,36 @@ const getMe = async (req, res) => {
     safeUser.role = userDoc.role || req.user.role;
 
     if (safeUser.role === 'delivery_boy' || req.user.role === 'delivery_boy') {
-      if (typeof safeUser.isOnline !== 'boolean') {
-        const boyMatch = await DeliveryBoy.findOne({
-          $or: [
-            ...(String(safeUser.id).length === 24 ? [{ _id: safeUser.id }] : []),
-            ...(safeUser.mobile ? [{ mobile: safeUser.mobile }] : []),
-          ],
-        }).lean();
-        if (boyMatch) {
+      const cleanMob = safeUser.mobile ? String(safeUser.mobile).replace(/[^0-9]/g, '').slice(-10) : '';
+      const boyMatch = await DeliveryBoy.findOne({
+        $or: [
+          ...(String(safeUser.id).length === 24 ? [{ _id: safeUser.id }] : []),
+          ...(safeUser.mobile ? [{ mobile: safeUser.mobile }] : []),
+          ...(cleanMob ? [{ mobile: cleanMob }, { mobile: new RegExp(cleanMob + '$') }] : []),
+          ...(safeUser.name ? [{ name: new RegExp(`^${safeUser.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }] : []),
+        ],
+      }).lean();
+
+      if (boyMatch) {
+        const userTime = Math.max(
+          safeUser.lastOnlineAt ? new Date(safeUser.lastOnlineAt).getTime() : 0,
+          safeUser.lastOfflineAt ? new Date(safeUser.lastOfflineAt).getTime() : 0
+        );
+        const boyTime = Math.max(
+          boyMatch.lastOnlineAt ? new Date(boyMatch.lastOnlineAt).getTime() : 0,
+          boyMatch.lastOfflineAt ? new Date(boyMatch.lastOfflineAt).getTime() : 0
+        );
+
+        if (boyTime >= userTime) {
           safeUser.isOnline = boyMatch.isOnline === true;
           safeUser.lastOnlineAt = boyMatch.lastOnlineAt || null;
           safeUser.lastOfflineAt = boyMatch.lastOfflineAt || null;
+          safeUser.dutyLogs = Array.isArray(boyMatch.dutyLogs) ? boyMatch.dutyLogs : (safeUser.dutyLogs || []);
         } else {
-          safeUser.isOnline = true;
+          safeUser.isOnline = safeUser.isOnline === true;
         }
+      } else if (typeof safeUser.isOnline !== 'boolean') {
+        safeUser.isOnline = false;
       }
     }
 

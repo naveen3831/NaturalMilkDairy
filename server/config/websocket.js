@@ -17,7 +17,7 @@ function initWebSocket(server) {
   wss = new WebSocketServer({
     server,
     path: '/ws',
-    maxPayload: 1024,
+    maxPayload: 64 * 1024,
     verifyClient: ({ origin }, callback) => {
       callback(!origin || allowedOrigins.has(origin), 403, 'Origin not allowed');
     },

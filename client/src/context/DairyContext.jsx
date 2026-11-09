@@ -274,12 +274,13 @@ export const DairyProvider = ({ children }) => {
 
     const applyDutyPayload = (payload) => {
       if (!payload || typeof payload.isOnline !== 'boolean') return;
-      const pId = String(payload.id || payload.boyId || '');
+      const pId = String(payload.id || payload.boyId || payload.targetId || '');
       const pMob = payload.mobile ? String(payload.mobile).replace(/[^0-9]/g, '').slice(-10) : '';
       const pName = (payload.name || payload.boyName || '').trim().toLowerCase();
 
-      setDeliveryBoys((prev) =>
-        prev.map((b) => {
+      setDeliveryBoys((prev) => {
+        let matched = false;
+        const updated = prev.map((b) => {
           const bId = String(b.id || b._id || '');
           const bMob = b.mobile ? String(b.mobile).replace(/[^0-9]/g, '').slice(-10) : '';
           const bName = (b.name || '').trim().toLowerCase();
@@ -289,17 +290,25 @@ export const DairyProvider = ({ children }) => {
             (pMob && bMob && pMob === bMob) ||
             (pName && bName && pName === bName);
 
-          return matches
-            ? {
-                ...b,
-                isOnline: payload.isOnline,
-                lastOnlineAt: payload.lastOnlineAt || b.lastOnlineAt,
-                lastOfflineAt: payload.lastOfflineAt || b.lastOfflineAt,
-                dutyLogs: payload.dutyLogs || b.dutyLogs,
-              }
-            : b;
-        })
-      );
+          if (matches) {
+            matched = true;
+            return {
+              ...b,
+              isOnline: payload.isOnline,
+              lastOnlineAt: payload.lastOnlineAt || b.lastOnlineAt,
+              lastOfflineAt: payload.lastOfflineAt || b.lastOfflineAt,
+              dutyLogs: payload.dutyLogs || b.dutyLogs,
+            };
+          }
+          return b;
+        });
+
+        if (!matched && (pName || pMob)) {
+          setTimeout(() => fetchDeliveryBoys(), 100);
+        }
+        return updated;
+      });
+      notifyRealtimeSync();
     };
 
     const unsubDriver = wsSubscribe('DELIVERY_BOY_UPDATED', (data) => {

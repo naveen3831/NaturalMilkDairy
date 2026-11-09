@@ -97,6 +97,14 @@ export default function CustomerList({
   const [ledgerSearch, setLedgerSearch] = useState('');
   const [ledgerFilterType, setLedgerFilterType] = useState('all'); // 'all' | 'delivery' | 'payment'
 
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Fetch Delivery Boys on mount
   useEffect(() => {
     if (fetchDeliveryBoys) {
@@ -1317,8 +1325,212 @@ export default function CustomerList({
   // ═══════════════════════════════════════════════════════════════════════════
   // VIEW B: ALL CUSTOMERS DIRECTORY (The Default Directory View)
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── SCREEN: MOBILE RESPONSIVE CUSTOMERS (EXACT REPLICA OF MOBILE APP _buildCustomersView) ──
+  const renderMobileCustomersView = () => {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Search Bar matching Flutter TextField */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: '#ffffff',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              padding: '10px 14px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            <Search size={18} color="#94a3b8" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by customer name or phone..."
+              style={{
+                border: 'none',
+                outline: 'none',
+                width: '100%',
+                fontSize: '0.84rem',
+                color: '#0f172a',
+                background: 'transparent',
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{ border: 'none', background: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0 }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onOpenAddCustomer && onOpenAddCustomer()}
+            style={{
+              background: '#059669',
+              border: 'none',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.78rem',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              flexShrink: 0,
+              boxShadow: '0 1px 3px rgba(5, 150, 105, 0.25)',
+            }}
+          >
+            <Plus size={16} />
+            <span>Add</span>
+          </button>
+        </div>
+
+        {/* Customer Cards List */}
+        {filteredCustomers.length === 0 ? (
+          <div
+            style={{
+              padding: '24px',
+              background: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              textAlign: 'center',
+              color: '#64748b',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+            }}
+          >
+            No customers match this search
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {filteredCustomers.map((c) => {
+              const name = c.name || 'Customer';
+              const mobile = c.mobile || '';
+              const rawStatus = (c.status || 'active').toLowerCase();
+              const isPaused = rawStatus === 'paused';
+              const status = rawStatus.toUpperCase();
+              const plan = c.deliveryPlan && typeof c.deliveryPlan === 'object' ? c.deliveryPlan : (c.subscription || {});
+              const milkQty = plan.milkQty || plan.milkQuantity || 1;
+              const bal = c.currentBalance || 0;
+              const lat = Number(c.latitude);
+              const lng = Number(c.longitude);
+              const hasGps = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+
+              return (
+                <div
+                  key={c.id || c._id || c.customerId}
+                  onClick={() => setSelectedCustomerId(c.id || c._id || c.customerId)}
+                  style={{
+                    padding: '14px',
+                    background: '#ffffff',
+                    borderRadius: '14px',
+                    border: '1px solid #e2e8f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  {/* Left Initial Box 36x36 */}
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '10px',
+                      background: isPaused ? '#fffbeb' : '#ecfdf5',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontWeight: 900,
+                      fontSize: '0.94rem',
+                      color: isPaused ? '#b45309' : '#059669',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {name.length > 0 ? name[0].toUpperCase() : 'C'}
+                  </div>
+
+                  {/* Middle: Details */}
+                  <div style={{ flex: 1, marginLeft: '12px', minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {name}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {mobile} • {milkQty}L Daily{c.area ? ` • ${c.area}` : ''}
+                    </div>
+                    {hasGps && (
+                      <div style={{ marginTop: '2px' }}>
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                            fontSize: '0.66rem',
+                            fontWeight: 700,
+                            color: '#2563eb',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <MapPin size={11} color="#2563eb" />
+                          <span>GPS: {lat.toFixed(3)}, {lng.toFixed(3)}</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Status Pill & Balance */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '8px' }}>
+                    <div
+                      style={{
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        background: isPaused ? '#fffbeb' : '#ecfdf5',
+                        color: isPaused ? '#b45309' : '#059669',
+                        fontSize: '0.60rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.02em',
+                      }}
+                    >
+                      {status}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '0.76rem',
+                        fontWeight: 800,
+                        color: bal < 0 ? '#ef4444' : '#059669',
+                      }}
+                    >
+                      Bal: ₹{bal}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <>
+      {isMobile ? renderMobileCustomersView() : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* 1. Header Toolbar */}
       <div
         style={{
@@ -2151,6 +2363,8 @@ export default function CustomerList({
           </div>
         </div>
       )}
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {deletingCustomer && (
@@ -2301,6 +2515,6 @@ export default function CustomerList({
           onClose={() => setInternalEditingCustomer(null)}
         />
       )}
-    </div>
+    </>
   );
 }

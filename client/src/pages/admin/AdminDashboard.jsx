@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import {
   Users,
@@ -19,12 +19,22 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpenPaymentModal }) {
-  const { dashboardSummary, deliveryBoys, auditLogs, fetchDashboard, refreshAll } = useDairy();
+  const { dashboardSummary, deliveryBoys, deliveries, fetchDeliveries, auditLogs, fetchDashboard, refreshAll } = useDairy();
+
+  const [mobileFilter, setMobileFilter] = useState('all'); // 'all', 'delivered', 'pending'
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     fetchDashboard();
+    if (typeof fetchDeliveries === 'function') fetchDeliveries();
     refreshAll();
-  }, [fetchDashboard, refreshAll]);
+  }, [fetchDashboard, fetchDeliveries, refreshAll]);
 
   const summary = dashboardSummary || {
     totalCustomers: 0,
@@ -45,6 +55,746 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
   const deliveryProgress = summary.deliveriesCount > 0
     ? Math.round((summary.completed / summary.deliveriesCount) * 100)
     : 0;
+
+  const allDrops = deliveries || [];
+  const deliveredDrops = allDrops.filter((d) => d.status === 'delivered');
+  const pendingDrops = allDrops.filter((d) => d.status === 'pending');
+  const totalPlanned = allDrops.length > 0 ? allDrops.length : (summary.deliveriesCount || 0);
+
+  const filteredDrops = allDrops.filter((d) => {
+    if (mobileFilter === 'delivered') return d.status === 'delivered';
+    if (mobileFilter === 'pending') return d.status === 'pending';
+    return true;
+  });
+
+  // ── SCREEN: MOBILE RESPONSIVE OVERVIEW (FULL PARITY WITH WEB ADMIN CONSOLE) ──
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* 1. Executive Welcome & Live Operations Banner */}
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)',
+            border: '1px solid #d1fae5',
+            borderRadius: '16px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                color: '#065f46',
+                background: '#dcfce7',
+                padding: '3px 8px',
+                borderRadius: '12px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+              Live Operations
+            </span>
+            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+              Morning routes active
+            </span>
+          </div>
+          <div>
+            <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.01em' }}>
+              Welcome back, Dairy Admin 👋
+            </h1>
+            <p style={{ color: '#475569', fontSize: '0.78rem', marginTop: '3px', margin: 0, lineHeight: 1.35 }}>
+              Daily overview of farm milk subscriptions, delivery fulfillment, and customer accounts.
+            </p>
+          </div>
+        </div>
+
+        {/* 2. Today Route Fulfillment Card */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#065f46', letterSpacing: '0.04em' }}>
+                TODAY ROUTE FULFILLMENT
+              </span>
+            </div>
+            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#059669' }}>
+              {deliveryProgress}% Done
+            </span>
+          </div>
+
+          {/* Progress Bar */}
+          <div style={{ width: '100%', height: '6px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${deliveryProgress}%`,
+                height: '100%',
+                background: '#059669',
+                borderRadius: '4px',
+                transition: 'width 0.3s ease',
+              }}
+            />
+          </div>
+
+          {/* 3 Metric Cards Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '4px' }}>
+            {/* Card 1: Delivered */}
+            <div
+              onClick={() => setActiveTab('deliveries')}
+              role="button"
+              tabIndex={0}
+              title="View Today's Deliveries"
+              style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '12px', padding: '10px', cursor: 'pointer' }}
+            >
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#047857', letterSpacing: '0.04em' }}>
+                DELIVERED
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#065f46', margin: '2px 0 1px' }}>
+                {summary.completed || deliveredDrops.length} / {totalPlanned}
+              </div>
+              <div style={{ fontSize: '0.66rem', color: '#059669', fontWeight: 600 }}>
+                Doorstep drops
+              </div>
+            </div>
+
+            {/* Card 2: Today Milk */}
+            <div
+              onClick={() => setActiveTab('deliveries')}
+              role="button"
+              tabIndex={0}
+              title="View Today's Deliveries"
+              style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px', cursor: 'pointer' }}
+            >
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em' }}>
+                TODAY MILK
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: '2px 0 1px' }}>
+                {summary.todayMilkLitres || '0.0'} L
+              </div>
+              <div style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 600 }}>
+                {summary.todayCurdKg ? `${Math.round(parseFloat(summary.todayCurdKg) * 1000)} g` : '0 g'} Curd
+              </div>
+            </div>
+
+            {/* Card 3: Collections */}
+            <div
+              onClick={() => setActiveTab('payments')}
+              role="button"
+              tabIndex={0}
+              title="View Payments & Collections"
+              style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '12px', padding: '10px', cursor: 'pointer' }}
+            >
+              <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#b45309', letterSpacing: '0.04em' }}>
+                COLLECTIONS
+              </div>
+              <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309', margin: '2px 0 1px' }}>
+                ₹{summary.todaySales || summary.paymentsCollected || 0}
+              </div>
+              <div style={{ fontSize: '0.66rem', color: '#b45309', fontWeight: 600 }}>
+                Cash & UPI
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Operational & Financial KPI Metrics Grid (Web Dashboard Mirror) */}
+        <div>
+          <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+            Operational & Financial KPIs
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {/* Card 1: Total Customers */}
+            <div
+              onClick={() => setActiveTab('customers')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b' }}>CUSTOMERS</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Users size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {summary.totalCustomers}
+              </div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#059669' }}>
+                {summary.activeCustomers} Active Plans
+              </div>
+            </div>
+
+            {/* Card 2: Today's Deliveries */}
+            <div
+              onClick={() => setActiveTab('deliveries')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b' }}>TODAY'S DROPS</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Truck size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                {summary.deliveriesCount}
+              </div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#2563eb' }}>
+                {summary.completed} Done • {summary.pending} Pend
+              </div>
+            </div>
+
+            {/* Card 3: Today's Sales */}
+            <div
+              onClick={() => setActiveTab('deliveries')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b' }}>TODAY'S SALES</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <IndianRupee size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                ₹{Number(summary.todaySales || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                🥛 {summary.todayMilkLitres} L • 🥣 {summary.todayCurdKg} Kg
+              </div>
+            </div>
+
+            {/* Card 4: Credit Added */}
+            <div
+              onClick={() => setActiveTab('ledger')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b' }}>CREDIT ADDED</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#f3e8ff', color: '#7e22ce', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CreditCard size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
+                ₹{Number(summary.creditAdded || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Billed to customer ledgers
+              </div>
+            </div>
+
+            {/* Card 5: Collections */}
+            <div
+              onClick={() => setActiveTab('payments')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748b' }}>COLLECTIONS</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#ccfbf1', color: '#0f766e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Wallet size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f766e', lineHeight: 1.1 }}>
+                ₹{Number(summary.paymentsCollected || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Cash & UPI received today
+              </div>
+            </div>
+
+            {/* Card 6: Total Outstanding */}
+            <div
+              onClick={() => setActiveTab('outstanding')}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #fecaca',
+                borderRadius: '14px',
+                padding: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.66rem', fontWeight: 800, color: '#dc2626' }}>OUTSTANDING</span>
+                <div style={{ width: '26px', height: '26px', borderRadius: '6px', background: '#fee2e2', color: '#dc2626', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <AlertCircle size={14} />
+                </div>
+              </div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#dc2626', lineHeight: 1.1 }}>
+                ₹{Number(summary.totalOutstanding || 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: '#dc2626' }}>
+                Pending Credit Due
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Quick Action Hub */}
+        <div>
+          <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0 0 8px 0' }}>
+            Quick Actions Hub
+          </h2>
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              overflowX: 'auto',
+              paddingBottom: '2px',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+            }}
+          >
+            {[
+              { id: 'deliveries', label: 'Deliveries', icon: Truck, color: '#2563eb', bg: '#eff6ff', act: () => setActiveTab('deliveries') },
+              { id: 'add-customer', label: 'Add Customer', icon: Plus, color: '#059669', bg: '#ecfdf5', act: () => onOpenAddCustomer && onOpenAddCustomer() },
+              { id: 'partners', label: 'Partners', icon: UserCheck, color: '#047857', bg: '#f0fdf4', act: () => setActiveTab('delivery-boys') },
+              { id: 'payment', label: 'Record Payment', icon: Wallet, color: '#b45309', bg: '#fffbeb', act: () => onOpenPaymentModal && onOpenPaymentModal() },
+              { id: 'rates', label: 'Product Rates', icon: TrendingUp, color: '#6d28d9', bg: '#f5f3ff', act: () => setActiveTab('pricing') },
+            ].map((item) => {
+              const IconComp = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.act}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  }}
+                >
+                  <div style={{ width: '22px', height: '22px', borderRadius: '5px', background: item.bg, color: item.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <IconComp size={12} />
+                  </div>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 5. Partner Route Performance */}
+        {deliveryBoys && deliveryBoys.length > 0 && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div>
+                <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Partner Route Performance
+                </h2>
+                <p style={{ fontSize: '0.70rem', color: '#64748b', margin: '1px 0 0 0' }}>
+                  Live driver fulfillment & cash reconciliation
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('delivery-boys')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#059669',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+              >
+                <span>Manage</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {deliveryBoys.slice(0, 3).map((boy) => {
+                const boyId = boy.id || boy._id;
+                const completed = boy.todayStats?.completed ?? allDrops.filter((d) => (d.deliveryBoyId === boyId || d.deliveryBoyName === boy.name) && d.status === 'delivered').length;
+                const pending = boy.todayStats?.pending ?? allDrops.filter((d) => (d.deliveryBoyId === boyId || d.deliveryBoyName === boy.name) && d.status === 'pending').length;
+                const missed = boy.todayStats?.notDelivered ?? allDrops.filter((d) => (d.deliveryBoyId === boyId || d.deliveryBoyName === boy.name) && d.status === 'not_delivered').length;
+
+                return (
+                  <div
+                    key={boy.id || boy._id}
+                    onClick={() => setActiveTab('delivery-boys')}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '12px',
+                      border: '1px solid #e2e8f0',
+                      padding: '12px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.015)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a' }}>{boy.name}</div>
+                        <div style={{ fontSize: '0.70rem', color: '#64748b' }}>Route: {boy.assignedArea} • {boy.vehicleNumber || 'Bike Route'}</div>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          background: boy.isOnline ? '#ecfdf5' : '#f1f5f9',
+                          color: boy.isOnline ? '#059669' : '#64748b',
+                        }}
+                      >
+                        {boy.isOnline ? 'Online' : 'Offline'}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr 1fr',
+                        background: '#f8fafc',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: '0.60rem', fontWeight: 700, color: '#64748b' }}>DONE</div>
+                        <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#059669' }}>{completed}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.60rem', fontWeight: 700, color: '#64748b' }}>PENDING</div>
+                        <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#d97706' }}>{pending}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.60rem', fontWeight: 700, color: '#64748b' }}>MISSED</div>
+                        <div style={{ fontSize: '0.90rem', fontWeight: 800, color: '#dc2626' }}>{missed}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#475569' }}>
+                      <span>Cash: <strong>₹{boy.todayCashCollected || 0}</strong></span>
+                      <span>UPI: <strong>₹{boy.todayUpiCollected || 0}</strong></span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 6. Recent Operations Activity */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0' }}>
+            Recent Operations Activity
+          </h2>
+
+          {/* Filter Pills */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              overflowX: 'auto',
+              paddingBottom: '2px',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setMobileFilter('all')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                border: mobileFilter === 'all' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: mobileFilter === 'all' ? '#ecfdf5' : '#ffffff',
+                color: mobileFilter === 'all' ? '#059669' : '#64748b',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              All Drops ({totalPlanned})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileFilter('delivered')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                border: mobileFilter === 'delivered' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: mobileFilter === 'delivered' ? '#ecfdf5' : '#ffffff',
+                color: mobileFilter === 'delivered' ? '#059669' : '#64748b',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Delivered ({deliveredDrops.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileFilter('pending')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '0.76rem',
+                fontWeight: 800,
+                border: mobileFilter === 'pending' ? '1px solid #059669' : '1px solid #e2e8f0',
+                background: mobileFilter === 'pending' ? '#ecfdf5' : '#ffffff',
+                color: mobileFilter === 'pending' ? '#059669' : '#64748b',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Pending ({pendingDrops.length})
+            </button>
+          </div>
+
+          {/* Delivery Cards List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {filteredDrops.length === 0 ? (
+              <div
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '16px',
+                  border: '1px solid #e2e8f0',
+                  padding: '24px 16px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                  fontSize: '0.80rem',
+                }}
+              >
+                No doorstep drops found for this filter today.
+              </div>
+            ) : (
+              filteredDrops.slice(0, 10).map((item) => {
+                const isDone = item.status === 'delivered';
+                const isMissed = item.status === 'not_delivered';
+                const partnerName =
+                  item.deliveryBoyName ||
+                  item.deliveryBoyId?.name ||
+                  (deliveryBoys?.find((b) => b.id === item.deliveryBoyId || b._id === item.deliveryBoyId)?.name) ||
+                  'naveen';
+                const customerName = item.customerName || item.customerId?.name || 'Customer';
+                const address = item.address || item.customerId?.address || item.doorstepId || '';
+                const milkText = item.plannedMilk
+                  ? `${item.plannedMilk}L Milk`
+                  : item.items?.[0]
+                  ? `${item.items[0].quantity}${item.items[0].unit || 'L'} ${item.items[0].name}`
+                  : '1L Milk';
+
+                return (
+                  <div
+                    key={item.id || item._id}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: '14px',
+                      border: `1px solid ${isDone ? '#bbf7d0' : '#e2e8f0'}`,
+                      padding: '14px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.90rem', color: '#0f172a' }}>
+                        {customerName}
+                      </span>
+                      <span
+                        style={{
+                          padding: '3px 7px',
+                          borderRadius: '6px',
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
+                          color: isDone ? '#047857' : isMissed ? '#dc2626' : '#d97706',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {isDone ? 'DELIVERED' : isMissed ? 'NOT DELIVERED' : 'PENDING'}
+                      </span>
+                    </div>
+
+                    {address && (
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', lineHeight: 1.35, marginTop: '2px' }}>
+                        {address}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#059669' }}>
+                        {milkText}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                        Partner: {partnerName}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* 7. Recent Operational Log (Audit Trail) */}
+        {auditLogs && auditLogs.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h2 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+                  Recent Operational Log
+                </h2>
+                <p style={{ fontSize: '0.70rem', color: '#64748b', margin: '1px 0 0 0' }}>
+                  Immutable system record of customer deliveries and cash transactions
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('audit-logs')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#059669',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '2px',
+                }}
+              >
+                <span>All Logs</span>
+                <ArrowRight size={12} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {auditLogs.slice(0, 4).map((log) => (
+                <div
+                  key={log.id}
+                  onClick={() => setActiveTab('audit-logs')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #f1f5f9',
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      padding: '2px 5px',
+                      borderRadius: '4px',
+                      background: '#e2e8f0',
+                      color: '#334155',
+                      textTransform: 'uppercase',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {log.category}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <strong style={{ color: '#0f172a' }}>{log.action}: </strong>
+                    <span style={{ color: '#475569' }}>{log.details}</span>
+                  </div>
+                  <span style={{ fontSize: '0.68rem', color: '#94a3b8', flexShrink: 0 }}>by {log.actor}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>

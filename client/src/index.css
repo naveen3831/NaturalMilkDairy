@@ -1238,6 +1238,13 @@ table.dairy-table tr:hover {
 /* ========================================================== */
 /* ADMIN DASHBOARD MOBILE & TABLET RESPONSIVENESS            */
 /* ========================================================== */
+@media (min-width: 769px) {
+  .admin-mobile-header,
+  .admin-mobile-bottom-nav {
+    display: none !important;
+  }
+}
+
 @media (max-width: 900px) {
   .admin-sidebar {
     position: fixed !important;

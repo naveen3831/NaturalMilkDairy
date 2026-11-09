@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import {
   Truck,
@@ -16,6 +16,11 @@ import {
   CheckCircle,
   Loader2,
   Clock,
+  Bike,
+  ChevronRight,
+  History,
+  Users,
+  User,
 } from 'lucide-react';
 
 export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit }) {
@@ -28,9 +33,12 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
     reconcileCash,
     sendDeliveryBoyCredentials,
     locations,
+    customers,
+    deliveries,
   } = useDairy();
 
   const [sendingEmailBoyId, setSendingEmailBoyId] = useState(null);
+  const [selectedPartnerDetails, setSelectedPartnerDetails] = useState(null);
 
   // Add Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -74,6 +82,25 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 4000);
+  };
+
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const formatDutyTime = (dt) => {
+    if (!dt) return '';
+    try {
+      const d = new Date(dt);
+      if (isNaN(d.getTime())) return String(dt);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+      return String(dt);
+    }
   };
 
   const handleAddSubmit = async (e) => {
@@ -168,8 +195,638 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
     showToast(`💰 Cash collection reconciled for ${reconcilingBoy.name}.`);
   };
 
+  // ── SCREEN: MOBILE RESPONSIVE PARTNERS (EXACT REPLICA OF MOBILE APP _buildPartnersView) ──
+  const renderMobileView = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {/* Toast Banner */}
+      {toastMessage && (
+        <div
+          style={{
+            background: '#ecfdf5',
+            border: '1px solid #10b981',
+            color: '#065f46',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            fontSize: '0.80rem',
+            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <CheckCircle size={16} color="#059669" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Top Action Bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
+            Delivery Partners ({deliveryBoys.length})
+          </h2>
+          <p style={{ fontSize: '0.74rem', color: '#64748b', margin: '2px 0 0 0' }}>
+            Fleet duty status & shift operations
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (onNavigateToAdd) onNavigateToAdd();
+            else setShowAddModal(true);
+          }}
+          style={{
+            background: '#059669',
+            border: 'none',
+            color: '#ffffff',
+            fontWeight: 700,
+            fontSize: '0.76rem',
+            padding: '7px 12px',
+            borderRadius: '8px',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+          }}
+        >
+          <UserPlus size={14} />
+          <span>Add Partner</span>
+        </button>
+      </div>
+
+      {/* Partners List */}
+      {deliveryBoys.length === 0 ? (
+        <div
+          style={{
+            padding: '24px',
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            textAlign: 'center',
+            color: '#64748b',
+            fontSize: '0.84rem',
+            fontWeight: 600,
+          }}
+        >
+          No delivery partners registered yet.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {deliveryBoys.map((b) => {
+            const boyName = b.name || 'Partner';
+            const phone = b.mobile || 'N/A';
+            const area = b.assignedArea || 'Madhapur';
+            const vehicle = b.vehicleNumber || 'Two-Wheeler';
+            const cash = b.todayCashCollected || 0;
+            const upi = b.todayUpiCollected || 0;
+            const isOnline = b.isOnline === true;
+            const lastOnline = b.lastOnlineAt;
+            const lastOffline = b.lastOfflineAt;
+
+            const assignedCustomers = customers?.filter((c) => {
+              const plan = c.deliveryPlan || {};
+              const partnerId = b.id || b._id;
+              const partnerName = (b.name || '').trim().toLowerCase();
+              const partnerArea = (b.assignedArea || '').trim().toLowerCase();
+
+              const assignedBoyId = plan.deliveryBoyId || c.deliveryBoyId;
+              const assignedBoyName = (plan.deliveryBoyName || c.deliveryBoyName || '').trim().toLowerCase();
+              const custArea = (c.area || '').trim().toLowerCase();
+
+              return (partnerId && assignedBoyId && String(assignedBoyId) === String(partnerId)) ||
+                     (partnerName && assignedBoyName && assignedBoyName === partnerName) ||
+                     (partnerArea && custArea && custArea === partnerArea);
+            }) || [];
+
+            return (
+              <div
+                key={b.id || b._id}
+                style={{
+                  padding: '16px',
+                  background: '#ffffff',
+                  borderRadius: '16px',
+                  border: '1px solid #e2e8f0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                }}
+              >
+                {/* Row 1: Avatar, Name/Phone & Online Toggle Pill */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        background: '#ecfdf5',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Bike size={18} color="#059669" />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#0f172a' }}>
+                        {boyName}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                        {phone}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Toggle duty pill */}
+                  <button
+                    type="button"
+                    onClick={() => toggleDeliveryBoyDuty(b.id, b.isOnline)}
+                    style={{
+                      padding: '4px 9px',
+                      borderRadius: '20px',
+                      border: isOnline ? '1px solid #86efac' : '1px solid #cbd5e1',
+                      background: isOnline ? '#ecfdf5' : '#f1f5f9',
+                      color: isOnline ? '#059669' : '#64748b',
+                      fontWeight: 800,
+                      fontSize: '0.62rem',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: isOnline ? '#10b981' : '#94a3b8',
+                      }}
+                    />
+                    <span>{isOnline ? 'ONLINE (ON DUTY)' : 'OFFLINE (BREAK)'}</span>
+                  </button>
+                </div>
+
+                {/* Row 2: Live Timing Status Indicator */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDutyLogsBoy(b)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '2px 0',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    width: 'fit-content',
+                  }}
+                >
+                  <Clock size={13} color={isOnline ? '#059669' : '#64748b'} />
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      color: isOnline ? '#059669' : '#64748b',
+                    }}
+                  >
+                    {isOnline && lastOnline
+                      ? `Online since ${formatDutyTime(lastOnline)}`
+                      : !isOnline && lastOffline
+                      ? `Offline since ${formatDutyTime(lastOffline)}`
+                      : 'Active Partner Shift'}
+                  </span>
+                  <ChevronRight size={11} color="#94a3b8" />
+                </button>
+
+                {/* Row 3: 3-column stats bar */}
+                <div
+                  style={{
+                    padding: '10px',
+                    background: '#f8fafc',
+                    borderRadius: '10px',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3, 1fr)',
+                    textAlign: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b' }}>
+                      ROUTE
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#0f172a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {area}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b' }}>
+                      VEHICLE
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#0f172a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {vehicle}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748b' }}>
+                      CASH / UPI
+                    </div>
+                    <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#059669', marginTop: '2px' }}>
+                      ₹{cash} / ₹{upi}
+                    </div>
+                  </div>
+                </div>
+
+                {/* View Assigned Customers Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedPartnerDetails(b)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#059669',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Users size={14} color="#ffffff" />
+                  <span>View Assigned Customers ({assignedCustomers.length}) & Details</span>
+                </button>
+
+                {/* Row 4: View Duty Timings & Shift Logs Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDutyLogsBoy(b)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    borderRadius: '8px',
+                    border: '1px solid #bbf7d0',
+                    background: '#f0fdf4',
+                    color: '#065f46',
+                    fontWeight: 700,
+                    fontSize: '0.74rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <History size={14} color="#059669" />
+                  <span>View Duty Timings & Shift Logs</span>
+                </button>
+
+                {/* Row 5: Action chips for Edit, Reconcile, Credentials, Delete */}
+                <div style={{ display: 'flex', gap: '6px', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(b)}
+                    style={{
+                      flex: 1,
+                      padding: '6px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                      background: '#ffffff',
+                      color: '#334155',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '3px',
+                    }}
+                  >
+                    <Edit2 size={11} />
+                    <span>Edit</span>
+                  </button>
+                  {cash > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setReconcilingBoy(b)}
+                      style={{
+                        flex: 1,
+                        padding: '6px',
+                        borderRadius: '6px',
+                        border: '1px solid #bbf7d0',
+                        background: '#ecfdf5',
+                        color: '#059669',
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Wallet size={11} />
+                      <span>Reconcile</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => sendDeliveryBoyCredentials(b.id)}
+                    disabled={sendingEmailBoyId === b.id}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                      background: '#ffffff',
+                      color: '#64748b',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Resend login credentials via email"
+                  >
+                    <Mail size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletingBoy(b)}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid #fee2e2',
+                      background: '#fef2f2',
+                      color: '#dc2626',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Delete delivery partner"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Partner & Assigned Customers Details Bottom Sheet Modal (Mobile Responsive) */}
+      {selectedPartnerDetails && (() => {
+        const b = selectedPartnerDetails;
+        const partnerId = b.id || b._id;
+        const partnerName = (b.name || '').trim().toLowerCase();
+        const partnerArea = (b.assignedArea || '').trim().toLowerCase();
+
+        const assignedCustomers = customers?.filter((c) => {
+          const plan = c.deliveryPlan || {};
+          const assignedBoyId = plan.deliveryBoyId || c.deliveryBoyId;
+          const assignedBoyName = (plan.deliveryBoyName || c.deliveryBoyName || '').trim().toLowerCase();
+          const custArea = (c.area || '').trim().toLowerCase();
+
+          return (partnerId && assignedBoyId && String(assignedBoyId) === String(partnerId)) ||
+                 (partnerName && assignedBoyName && assignedBoyName === partnerName) ||
+                 (partnerArea && custArea && custArea === partnerArea);
+        }) || [];
+
+        const completedCount = deliveries?.filter((d) =>
+          (d.deliveryBoyId === partnerId || (d.deliveryBoyName || '').toLowerCase() === partnerName) &&
+          d.status === 'delivered'
+        ).length || 0;
+
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(15, 23, 42, 0.65)',
+              backdropFilter: 'blur(3px)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
+            }}
+            onClick={() => setSelectedPartnerDetails(null)}
+          >
+            <div
+              style={{
+                background: '#ffffff',
+                width: '100%',
+                maxHeight: '88vh',
+                borderTopLeftRadius: '24px',
+                borderTopRightRadius: '24px',
+                padding: '20px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                boxShadow: '0 -8px 30px rgba(0,0,0,0.15)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drag handle */}
+              <div style={{ width: '40px', height: '4px', background: '#cbd5e1', borderRadius: '2px', margin: '0 auto 4px auto' }} />
+
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Bike size={20} color="#059669" />
+                  </div>
+                  <div>
+                    <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                      {b.name}
+                    </h3>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                      Route: {b.assignedArea || 'Madhapur'} • {b.vehicleNumber || 'Two-Wheeler'}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {b.mobile && (
+                    <a
+                      href={`tel:${b.mobile}`}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '6px',
+                        color: '#2563eb',
+                        fontSize: '0.66rem',
+                        fontWeight: 800,
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                      }}
+                    >
+                      <Phone size={11} />
+                      <span>Call</span>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPartnerDetails(null)}
+                    style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats 4-grid */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '10px',
+                  textAlign: 'center',
+                  gap: '4px',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#64748b' }}>USERS</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{assignedCustomers.length}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#64748b' }}>DELIVERED</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{completedCount}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#64748b' }}>COLLECTED</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 900, color: '#0f766e', marginTop: '2px' }}>₹{(b.todayCashCollected || 0) + (b.todayUpiCollected || 0)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.58rem', fontWeight: 800, color: '#64748b' }}>DUTY</div>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 900, color: b.isOnline ? '#059669' : '#64748b', marginTop: '2px' }}>
+                    {b.isOnline ? 'ONLINE' : 'BREAK'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Assigned Customers Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>
+                  Assigned Customers ({assignedCustomers.length})
+                </span>
+                <span style={{ fontSize: '0.70rem', color: '#64748b' }}>
+                  Fulfillment on this route
+                </span>
+              </div>
+
+              {/* Assigned Customers List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {assignedCustomers.length === 0 ? (
+                  <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '12px', textAlign: 'center', color: '#64748b', fontSize: '0.78rem' }}>
+                    No customers currently assigned to this partner route.
+                  </div>
+                ) : (
+                  assignedCustomers.map((c) => {
+                    const custName = c.name || 'Customer';
+                    const custPhone = c.mobile || '';
+                    const custAddress = c.address || c.doorstepId || b.assignedArea;
+                    const plan = c.deliveryPlan || {};
+                    const milkQty = plan.milkQty || 1;
+                    const bal = c.currentBalance || 0;
+
+                    // Find today's delivery for this customer
+                    const custDeliv = deliveries?.find((del) =>
+                      (del.customerId && (del.customerId === c.id || del.customerId === c._id)) ||
+                      (del.customerName && del.customerName.trim().toLowerCase() === custName.trim().toLowerCase())
+                    );
+                    const isDone = custDeliv?.status === 'delivered';
+                    const isPend = custDeliv?.status === 'pending';
+
+                    return (
+                      <div
+                        key={c.id || c._id}
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '12px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '4px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.84rem', color: '#0f172a' }}>
+                            {custName}
+                          </span>
+                          <span
+                            style={{
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontSize: '0.60rem',
+                              fontWeight: 800,
+                              background: isDone ? '#ecfdf5' : isPend ? '#fff8e1' : '#f1f5f9',
+                              color: isDone ? '#059669' : isPend ? '#f57f17' : '#64748b',
+                            }}
+                          >
+                            {isDone ? '✓ DELIVERED' : isPend ? 'PENDING' : 'NO DROP'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                          {custAddress}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                            {milkQty}L Daily Milk • Bal: ₹{bal}
+                          </span>
+                          {custPhone && (
+                            <a
+                              href={`tel:${custPhone}`}
+                              style={{
+                                padding: '2px 6px',
+                                background: '#eff6ff',
+                                borderRadius: '4px',
+                                color: '#2563eb',
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '2px',
+                              }}
+                            >
+                              <Phone size={9} />
+                              <span>Call</span>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <>
+      {isMobile ? renderMobileView() : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Toast Banner */}
       {toastMessage && (
         <div
@@ -581,6 +1238,8 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
               </div>
             );
           })}
+        </div>
+      )}
         </div>
       )}
 
@@ -1316,6 +1975,6 @@ export default function DeliveryBoysManager({ onNavigateToAdd, onNavigateToEdit 
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

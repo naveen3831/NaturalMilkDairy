@@ -4,6 +4,9 @@ import { useDairy } from '../context/DairyContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import {
   LayoutDashboard,
+  LayoutGrid,
+  Bike,
+  User,
   Truck,
   Users,
   FileText,
@@ -36,11 +39,18 @@ export default function AdminLayout({
   onOpenPaymentModal,
 }) {
   const { user, token, logout } = useAuth();
-  const { selectedDate, setSelectedDate, dashboardSummary } = useDairy();
+  const { selectedDate, setSelectedDate, dashboardSummary, deliveryBoys, deliveries } = useDairy();
   const { unreadCount, setIsNotificationOpen } = useNotifications();
   const { subscribe: wsSubscribe } = useWebSocket();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [pendingHandoversCount, setPendingHandoversCount] = useState(0);
+
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Fetch pending handovers count for the sidebar badge
   const fetchPendingHandovers = useCallback(async () => {
@@ -569,109 +579,171 @@ export default function AdminLayout({
       {/* 2. MAIN CONTENT AREA & HEADER                                 */}
       {/* ============================================================ */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflowX: 'hidden' }}>
-        {/* Sleek Top Bar */}
-        <header
-          className="admin-top-header"
-          style={{
-            background: '#ffffff',
-            borderBottom: '1px solid #e2e8f0',
-            position: 'sticky',
-            top: 0,
-            zIndex: 90,
-            padding: '12px 28px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-          }}
-        >
-          {/* Left: Mobile Trigger & Page Header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <button
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="admin-mobile-menu-trigger"
-              style={{
-                display: 'none',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '6px',
-                cursor: 'pointer',
-                color: '#0f172a',
-              }}
-            >
-              <Menu size={18} />
-            </button>
-
-            <div>
-              <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
-                {currentNav.label}
+        {isMobile ? (
+          /* Mobile App Bar matching Flutter Mobile App */
+          <header
+            style={{
+              background: '#ffffff',
+              borderBottom: '1px solid #e2e8f0',
+              position: 'sticky',
+              top: 0,
+              zIndex: 90,
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  padding: '4px',
+                }}
+              >
+                <img
+                  src={CLOUDINARY_MEDIA.logo}
+                  alt="Natural Milk Dairy"
+                  onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+                  style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+                />
               </div>
-              <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 500 }}>
-                {currentNav.desc}
+              <div>
+                <div style={{ fontSize: '1.08rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
+                  {activeTab === 'profile' ? 'Admin Profile' : 'Admin Console'}
+                </div>
+                <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669' }}>
+                  {activeTab === 'profile' ? 'Super Admin Details' : 'Natural Milk Dairy'}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Right: Notification Only */}
-          <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {/* Notification Bell Button */}
-            <button
-              type="button"
-              onClick={() => setIsNotificationOpen(true)}
+            <div
               style={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                color: '#0f172a',
-                fontWeight: 700,
-                fontSize: '0.82rem',
-                padding: '6px 12px',
-                borderRadius: '8px',
-                cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '7px',
-                position: 'relative',
-                transition: 'all 0.15s ease',
+                gap: '6px',
+                padding: '4px 12px',
+                borderRadius: '20px',
+                background: '#ffffff',
+                border: '1px solid #a7f3d0',
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#f8fafc';
-                e.currentTarget.style.borderColor = '#059669';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#ffffff';
-                e.currentTarget.style.borderColor = '#e2e8f0';
-              }}
-              aria-label="View notifications"
             >
-              <Bell size={16} color="#059669" />
-              <span>Notifications</span>
-              {unreadCount > 0 && (
-                <span
-                  style={{
-                    background: '#e11d48',
-                    color: '#ffffff',
-                    fontSize: '0.66rem',
-                    fontWeight: 800,
-                    padding: '1px 6px',
-                    borderRadius: '10px',
-                  }}
-                >
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </header>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }} />
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#059669' }}>Live</span>
+            </div>
+          </header>
+        ) : (
+          /* Sleek Desktop Top Bar - Completely Unchanged */
+          <header
+            className="admin-top-header"
+            style={{
+              background: '#ffffff',
+              borderBottom: '1px solid #e2e8f0',
+              position: 'sticky',
+              top: 0,
+              zIndex: 90,
+              padding: '12px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px',
+            }}
+          >
+            {/* Left: Mobile Trigger & Page Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <button
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="admin-mobile-menu-trigger"
+                style={{
+                  display: 'none',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '6px',
+                  cursor: 'pointer',
+                  color: '#0f172a',
+                }}
+              >
+                <Menu size={18} />
+              </button>
 
+              <div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.2 }}>
+                  {currentNav.label}
+                </div>
+                <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 500 }}>
+                  {currentNav.desc}
+                </div>
+              </div>
+            </div>
 
+            {/* Right: Notification Only */}
+            <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Notification Bell Button */}
+              <button
+                type="button"
+                onClick={() => setIsNotificationOpen(true)}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  color: '#0f172a',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  position: 'relative',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#f8fafc';
+                  e.currentTarget.style.borderColor = '#059669';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#ffffff';
+                  e.currentTarget.style.borderColor = '#e2e8f0';
+                }}
+                aria-label="View notifications"
+              >
+                <Bell size={16} color="#059669" />
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      background: '#e11d48',
+                      color: '#ffffff',
+                      fontSize: '0.66rem',
+                      fontWeight: 800,
+                      padding: '1px 6px',
+                      borderRadius: '10px',
+                    }}
+                  >
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Page Content Container */}
         <main
           className="admin-main-content"
           style={{
             flex: 1,
-            padding: '24px 28px',
+            padding: isMobile ? '16px 14px 80px' : '24px 28px',
             maxWidth: '1440px',
             width: '100%',
             margin: '0 auto',
@@ -680,6 +752,214 @@ export default function AdminLayout({
         >
           {children}
         </main>
+
+        {/* Mobile Bottom Navigation Bar matching Mobile App */}
+        {isMobile && (
+          <nav
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '62px',
+              background: '#ffffff',
+              borderTop: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-around',
+              zIndex: 1000,
+              boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.03)',
+            }}
+          >
+            {/* 1. Overview */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('dashboard')}
+              style={{
+                background: 'none',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                color: activeTab === 'dashboard' ? '#059669' : '#64748b',
+                fontWeight: activeTab === 'dashboard' ? 800 : 600,
+                fontSize: '0.72rem',
+              }}
+            >
+              <LayoutGrid size={22} color={activeTab === 'dashboard' ? '#059669' : '#64748b'} />
+              <span>Overview</span>
+            </button>
+
+            {/* 2. Deliveries */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('deliveries')}
+              style={{
+                background: 'none',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                color: activeTab === 'deliveries' ? '#059669' : '#64748b',
+                fontWeight: activeTab === 'deliveries' ? 800 : 600,
+                fontSize: '0.72rem',
+                position: 'relative',
+              }}
+            >
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Truck size={22} color={activeTab === 'deliveries' ? '#059669' : '#64748b'} />
+                {summary.deliveriesCount > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-9px',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      minWidth: '16px',
+                      height: '16px',
+                      borderRadius: '8px',
+                      padding: '0 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {summary.deliveriesCount}
+                  </span>
+                )}
+              </div>
+              <span>Deliveries</span>
+            </button>
+
+            {/* 3. Partners */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('delivery-boys')}
+              style={{
+                background: 'none',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                color: (activeTab === 'delivery-boys' || activeTab === 'add-delivery-boy' || activeTab === 'edit-delivery-boy') ? '#059669' : '#64748b',
+                fontWeight: (activeTab === 'delivery-boys' || activeTab === 'add-delivery-boy' || activeTab === 'edit-delivery-boy') ? 800 : 600,
+                fontSize: '0.72rem',
+              }}
+            >
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Bike size={22} color={(activeTab === 'delivery-boys' || activeTab === 'add-delivery-boy' || activeTab === 'edit-delivery-boy') ? '#059669' : '#64748b'} />
+                {(deliveryBoys?.length > 0) && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-9px',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      minWidth: '16px',
+                      height: '16px',
+                      borderRadius: '8px',
+                      padding: '0 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {deliveryBoys.length}
+                  </span>
+                )}
+              </div>
+              <span>Partners</span>
+            </button>
+
+            {/* 4. Customers */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('customers')}
+              style={{
+                background: 'none',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                color: (activeTab === 'customers' || activeTab === 'ledger') ? '#059669' : '#64748b',
+                fontWeight: (activeTab === 'customers' || activeTab === 'ledger') ? 800 : 600,
+                fontSize: '0.72rem',
+              }}
+            >
+              <div style={{ position: 'relative', display: 'inline-flex' }}>
+                <Users size={22} color={(activeTab === 'customers' || activeTab === 'ledger') ? '#059669' : '#64748b'} />
+                {(summary.totalCustomers > 0) && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: '-5px',
+                      right: '-9px',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontSize: '0.62rem',
+                      fontWeight: 800,
+                      minWidth: '16px',
+                      height: '16px',
+                      borderRadius: '8px',
+                      padding: '0 4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {summary.totalCustomers}
+                  </span>
+                )}
+              </div>
+              <span>Customers</span>
+            </button>
+
+            {/* 5. Profile */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('profile')}
+              style={{
+                background: 'none',
+                border: 'none',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                color: activeTab === 'profile' ? '#059669' : '#64748b',
+                fontWeight: activeTab === 'profile' ? 800 : 600,
+                fontSize: '0.72rem',
+              }}
+            >
+              <User size={22} color={activeTab === 'profile' ? '#059669' : '#64748b'} />
+              <span>Profile</span>
+            </button>
+          </nav>
+        )}
       </div>
     </div>
   );

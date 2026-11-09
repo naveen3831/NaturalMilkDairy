@@ -66,6 +66,8 @@ import {
   ReceiptText,
   MessageSquare,
   ShieldAlert,
+  Package,
+  History,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import { resolveProofUrl } from '../../services/api';
@@ -76,6 +78,9 @@ const getDeliveryRoute = () => {
     return null;
   }
   const profileViews = [
+    'deliveries-details',
+    'subscriptions-history',
+    'support',
     'assigned-route',
     'shift-schedule',
     'vehicle',
@@ -778,6 +783,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   // Profile tab interactive states
   const [copiedId, setCopiedId] = useState(false);
   const [syncingNow, setSyncingNow] = useState(false);
+
+  // Profile Sub-Screen Detailed Views (Deliveries Details & Subscriptions History)
+  const [profileDelFilter, setProfileDelFilter] = useState('all');
+  const [profileDelSearch, setProfileDelSearch] = useState('');
+  const [profileSubHistTab, setProfileSubHistTab] = useState('subscriptions');
+  const [profileSubSearch, setProfileSubSearch] = useState('');
+  const [profileSubFilter, setProfileSubFilter] = useState('all');
   const [syncMessage, setSyncMessage] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeletePartnerModal, setShowDeletePartnerModal] = useState(false);
@@ -1369,20 +1381,33 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       label: 'Driver Profile',
       icon: User,
       badge: null,
-      desc: 'Partner profile & account details',
+      desc: 'Partner profile & operations',
     },
   ];
 
   const currentNav = navItems.find((n) => n.id === navTab) || navItems[0];
   const profileDetailPages = {
+    'deliveries-details': {
+      title: 'All Deliveries & Route Stops',
+      description: 'Review stop sequence, customer details, doorstep drops, and live delivery actions.',
+    },
+    'subscriptions-history': {
+      title: 'Subscription History & Orders',
+      description: 'Active plans, order fulfillment ledger, and Madhapur Hub bottle/crate reconciliation.',
+    },
     'personal-details': {
       title: 'Personal Information',
-      description: 'Your delivery partner identity and credentials.',
+      description: 'Your verified delivery partner identity, contact and route credentials.',
+      action: 'edit-personal',
       rows: [
         ['Full name', profileName || boyName || 'Delivery Partner'],
         ['Partner ID', `NMD-DRV-${(boyId || '').replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '8492'}`],
         ['Designation', 'Delivery Partner'],
-        ['Account status', isOnline ? 'On duty' : 'Offline'],
+        ['Account status', isOnline ? 'On duty 🟢' : 'Offline 🔴'],
+        ['Primary phone', profilePhone || user?.mobile || user?.phone || 'Not provided'],
+        ['Email address', profileEmail || user?.email || 'Not provided'],
+        ['Assigned sector', profileArea || boyArea || 'Madhapur'],
+        ['Allocated vehicle', `${bikePlate || 'AP40DT9792'} · ${bikeModel || 'Commercial Cargo EV'}`],
         ['Blood group', profileBloodGroup || 'Not specified'],
         ['Driving license', profileLicense || 'Not provided'],
         ['Member since', profileJoiningDate || 'Active Partner'],
@@ -5523,6 +5548,1035 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* ========================================================= */}
           {navTab === 'profile' && (
             profileDetailView ? (
+                            profileDetailView === 'deliveries-details' ? (
+                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: '0 4px 28px' }}>
+                  {/* Top Bar with Back Button */}
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 18px' }}>
+                    <button
+                      type="button"
+                      className="modern-profile-header-btn"
+                      onClick={backToDriverProfile}
+                      aria-label="Back to profile"
+                    >
+                      <ArrowLeft size={21} />
+                    </button>
+                    <div style={{ flex: 1 }}>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem', fontWeight: 800 }}>
+                        All Deliveries & Route Stops
+                      </h2>
+                      <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                        {boyArea || 'Madhapur'} • {myDeliveries.length} doorstep stops scheduled for today
+                      </p>
+                    </div>
+                  </header>
+
+                  {/* KPI Metrics Cards Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Drops</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{myDeliveries.length}</div>
+                    </div>
+                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '14px', padding: '12px 14px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Delivered</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>{completedList.length}</div>
+                    </div>
+                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '14px', padding: '12px 14px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>Pending</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>{pendingList.length}</div>
+                    </div>
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '14px', padding: '12px 14px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b91c1c', textTransform: 'uppercase' }}>Missed</span>
+                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b91c1c', marginTop: '2px' }}>{missedList.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Collections Summary Banner */}
+                  <div style={{ background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)', borderRadius: '16px', padding: '16px 20px', color: '#ffffff', marginBottom: '16px', boxShadow: '0 4px 12px rgba(13,92,58,0.15)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>TODAY'S COLLECTIONS</span>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 900, marginTop: '2px' }}>
+                          ₹{totalCashCollected + totalUpiCollected}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '14px' }}>
+                        <div style={{ background: 'rgba(255,255,255,0.14)', padding: '6px 14px', borderRadius: '10px' }}>
+                          <span style={{ fontSize: '0.68rem', opacity: 0.85, display: 'block' }}>CASH IN HAND</span>
+                          <strong style={{ fontSize: '0.95rem' }}>₹{totalCashCollected}</strong>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.14)', padding: '6px 14px', borderRadius: '10px' }}>
+                          <span style={{ fontSize: '0.68rem', opacity: 0.85, display: 'block' }}>UPI RECEIVED</span>
+                          <strong style={{ fontSize: '0.95rem' }}>₹{totalUpiCollected}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Search Bar & Filter Chips */}
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '8px 12px', marginBottom: '12px' }}>
+                      <Search size={16} color="#94a3b8" />
+                      <input
+                        type="text"
+                        value={profileDelSearch}
+                        onChange={(e) => setProfileDelSearch(e.target.value)}
+                        placeholder="Search deliveries by customer name, address or phone..."
+                        style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.85rem', color: '#0f172a' }}
+                      />
+                      {profileDelSearch && (
+                        <button type="button" onClick={() => setProfileDelSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: 0 }}>✕</button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+                      {[
+                        { key: 'all', label: `All (${myDeliveries.length})` },
+                        { key: 'pending', label: `Pending (${pendingList.length})` },
+                        { key: 'delivered', label: `Delivered (${completedList.length})` },
+                        { key: 'not_delivered', label: `Missed (${missedList.length})` },
+                        { key: 'cash', label: 'Cash Only' },
+                        { key: 'upi', label: 'UPI / Online' },
+                      ].map((chip) => {
+                        const isChipActive = profileDelFilter === chip.key;
+                        return (
+                          <button
+                            key={chip.key}
+                            type="button"
+                            onClick={() => setProfileDelFilter(chip.key)}
+                            style={{
+                              padding: '5px 12px',
+                              borderRadius: '999px',
+                              border: isChipActive ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
+                              background: isChipActive ? '#0d5c3a' : '#f8fafc',
+                              color: isChipActive ? '#ffffff' : '#64748b',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            {chip.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Delivery Cards List */}
+                  {(() => {
+                    const filtered = myDeliveries.filter((d) => {
+                      if (profileDelFilter === 'pending' && d.status !== 'pending') return false;
+                      if (profileDelFilter === 'delivered' && d.status !== 'delivered') return false;
+                      if (profileDelFilter === 'not_delivered' && d.status !== 'not_delivered') return false;
+                      if (profileDelFilter === 'cash' && d.paymentMethod !== 'cash') return false;
+                      if (profileDelFilter === 'upi' && d.paymentMethod !== 'upi') return false;
+
+                      if (profileDelSearch.trim()) {
+                        const q = profileDelSearch.toLowerCase();
+                        const matchName = d.customerName?.toLowerCase().includes(q);
+                        const matchAddr = d.customerAddress?.toLowerCase().includes(q);
+                        const matchPhone = d.customerPhone?.toLowerCase().includes(q);
+                        return matchName || matchAddr || matchPhone;
+                      }
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#64748b' }}>
+                          <Truck size={36} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
+                          <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>No Deliveries Found</h3>
+                          <p style={{ margin: 0, fontSize: '0.82rem' }}>No stops match your active search or filter criteria.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {filtered.map((d, idx) => {
+                          const isDelivered = d.status === 'delivered';
+                          const isMissed = d.status === 'not_delivered';
+                          const isPending = !isDelivered && !isMissed;
+
+                          return (
+                            <div
+                              key={d._id || d.id || idx}
+                              style={{
+                                background: '#ffffff',
+                                border: `1.5px solid ${isDelivered ? '#bbf7d0' : isMissed ? '#fecaca' : '#e2e8f0'}`,
+                                borderRadius: '16px',
+                                padding: '16px',
+                                boxShadow: '0 2px 6px rgba(15,23,42,0.03)',
+                              }}
+                            >
+                              {/* Card Top: Sequence, Name & Status */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span
+                                    style={{
+                                      width: '26px',
+                                      height: '26px',
+                                      borderRadius: '50%',
+                                      background: '#0d5c3a',
+                                      color: '#ffffff',
+                                      fontSize: '0.74rem',
+                                      fontWeight: 900,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {d.sequenceNumber || idx + 1}
+                                  </span>
+                                  <div>
+                                    <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>
+                                      {d.customerName || 'Customer'}
+                                    </h4>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                      {d.deliveryTime || '5:00 AM – 7:30 AM'} • {d.customerArea || boyArea}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    padding: '4px 10px',
+                                    borderRadius: '999px',
+                                    background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
+                                    color: isDelivered ? '#047857' : isMissed ? '#b91c1c' : '#b45309',
+                                    border: `1px solid ${isDelivered ? '#86efac' : isMissed ? '#fca5a5' : '#fde68a'}`,
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {isDelivered ? '✓ DELIVERED' : isMissed ? '✕ MISSED' : '⏱ PENDING'}
+                                </span>
+                              </div>
+
+                              {/* Customer Phone & Address Actions */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', color: '#475569', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Phone size={13} color="#059669" />
+                                    <strong>{d.customerPhone || 'No phone provided'}</strong>
+                                  </span>
+                                  {d.customerPhone && (
+                                    <a
+                                      href={`tel:${d.customerPhone}`}
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        color: '#059669',
+                                        background: '#ecfdf5',
+                                        padding: '3px 9px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}
+                                    >
+                                      <PhoneCall size={11} /> Call Customer
+                                    </a>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                                  <span style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1 }}>
+                                    <MapPin size={13} color="#059669" style={{ marginTop: '2px', flexShrink: 0 }} />
+                                    <span>{d.customerAddress || 'Address on file'}</span>
+                                  </span>
+                                  {d.customerAddress && (
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.customerAddress)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 800,
+                                        color: '#2563eb',
+                                        background: '#eff6ff',
+                                        padding: '3px 9px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      <Navigation size={11} /> Directions
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Itemized Order Details & Drop Instructions */}
+                              <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: (d.notes || d.doorstepDropNote) ? '8px' : '0' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0c2340', background: '#e2f1ea', padding: '2px 8px', borderRadius: '6px' }}>
+                                      🥛 {d.plannedMilk || 1}L Cow Milk
+                                    </span>
+                                    {d.plannedCurd > 0 && (
+                                      <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0c2340', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
+                                        🥣 {d.plannedCurd}g Curd
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
+                                    ₹{d.totalAmount || 60} • <span style={{ textTransform: 'uppercase', color: '#64748b' }}>{d.paymentMethod || 'credit'}</span>
+                                  </span>
+                                </div>
+
+                                {(d.notes || d.doorstepDropNote) && (
+                                  <div style={{ fontSize: '0.74rem', color: '#475569', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                    <Info size={12} color="#059669" />
+                                    <span>{d.doorstepDropNote || d.notes}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Proof Image Thumbnail if exists */}
+                              {d.proofImage && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                  <div
+                                    onClick={() => setPreviewProofModal(resolveProofUrl(d.proofImage))}
+                                    style={{
+                                      width: '48px',
+                                      height: '48px',
+                                      borderRadius: '8px',
+                                      overflow: 'hidden',
+                                      border: '1px solid #cbd5e1',
+                                      cursor: 'pointer',
+                                      position: 'relative',
+                                    }}
+                                    title="Click to view doorstep proof photo"
+                                  >
+                                    <img
+                                      src={resolveProofUrl(d.proofImage)}
+                                      alt="Proof"
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                  </div>
+                                  <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
+                                    ✓ Doorstep photo recorded
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Action Buttons for Pending Stops */}
+                              {isPending && (
+                                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => openDeliverModal(d)}
+                                    style={{
+                                      flex: 1,
+                                      padding: '9px 12px',
+                                      borderRadius: '10px',
+                                      border: 'none',
+                                      background: '#0d5c3a',
+                                      color: '#ffffff',
+                                      fontSize: '0.82rem',
+                                      fontWeight: 800,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                    }}
+                                  >
+                                    <Check size={15} /> Mark Delivered
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => openNotDeliveredModal(d)}
+                                    style={{
+                                      padding: '9px 12px',
+                                      borderRadius: '10px',
+                                      border: '1px solid #fca5a5',
+                                      background: '#fef2f2',
+                                      color: '#b91c1c',
+                                      fontSize: '0.82rem',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '4px',
+                                    }}
+                                  >
+                                    <X size={15} /> Missed
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </section>
+              ) : profileDetailView === 'subscriptions-history' ? (
+                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: '0 4px 28px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 18px' }}>
+                    <button
+                      type="button"
+                      className="modern-profile-header-btn"
+                      onClick={backToDriverProfile}
+                      aria-label="Back to profile"
+                    >
+                      <ArrowLeft size={21} />
+                    </button>
+                    <div style={{ flex: 1 }}>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem', fontWeight: 800 }}>
+                        Subscriptions & Orders
+                      </h2>
+                      <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                        Manage active household plans, daily fulfillment history, and crate counts.
+                      </p>
+                    </div>
+                  </header>
+
+                  {/* Clean 4-Metric Summary (Simple & Professional, replaces dark gradient) */}
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '16px 18px',
+                      marginBottom: '16px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Truck size={16} color="#0d5c3a" />
+                        </div>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          ROUTE DISPATCH SUMMARY
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#64748b' }}>
+                        {assignedCustomers.length || myDeliveries.length} Households
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
+                      <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669', lineHeight: 1.2 }}>
+                          {assignedCustomers.filter(c => c.status !== 'paused' && c.status !== 'inactive').length || myDeliveries.length}
+                        </div>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                          ACTIVE PLANS
+                        </span>
+                      </div>
+                      <div style={{ background: '#fef3c7', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#d97706', lineHeight: 1.2 }}>
+                          {assignedCustomers.filter(c => c.status === 'paused').length}
+                        </div>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#b45309', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                          ON HOLD
+                        </span>
+                      </div>
+                      <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
+                          {myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)} L
+                        </div>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                          DAILY DEMAND
+                        </span>
+                      </div>
+                      <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1d4ed8', lineHeight: 1.2, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          {boyArea || 'Madhapur'}
+                        </div>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e40af', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
+                          ROUTE AREA
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3-Segment Switcher (Pill Style) */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      background: '#f1f5f9',
+                      padding: '4px',
+                      borderRadius: '14px',
+                      border: '1px solid #e2e8f0',
+                      marginBottom: '16px',
+                    }}
+                  >
+                    {[
+                      { key: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
+                      { key: 'history', label: 'Order History', icon: FileText },
+                      { key: 'crates', label: 'Crates & Hub', icon: Package },
+                    ].map((tab) => {
+                      const isTabActive = profileSubHistTab === tab.key;
+                      const IconComp = tab.icon;
+                      return (
+                        <button
+                          key={tab.key}
+                          type="button"
+                          onClick={() => setProfileSubHistTab(tab.key)}
+                          style={{
+                            flex: 1,
+                            padding: '10px 8px',
+                            borderRadius: '10px',
+                            border: 'none',
+                            background: isTabActive ? '#0d5c3a' : 'transparent',
+                            color: isTabActive ? '#ffffff' : '#64748b',
+                            fontSize: '0.82rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            boxShadow: isTabActive ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <IconComp size={15} />
+                          <span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* SEGMENT 1: Subscriptions View */}
+                  {profileSubHistTab === 'subscriptions' && (
+                    <div>
+                      {/* Search & Filter */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '8px 12px', marginBottom: '10px' }}>
+                          <Search size={16} color="#94a3b8" />
+                          <input
+                            type="text"
+                            value={profileSubSearch}
+                            onChange={(e) => setProfileSubSearch(e.target.value)}
+                            placeholder="Search subscriptions by customer or phone..."
+                            style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.85rem', color: '#0f172a' }}
+                          />
+                          {profileSubSearch && (
+                            <button type="button" onClick={() => setProfileSubSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: 0 }}>✕</button>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {[
+                            { key: 'all', label: `All Plans (${assignedCustomers.length || myDeliveries.length})` },
+                            { key: 'active', label: 'Active Only' },
+                            { key: 'paused', label: 'Paused / Holds' },
+                          ].map((chip) => {
+                            const isActive = profileSubFilter === chip.key;
+                            return (
+                              <button
+                                key={chip.key}
+                                type="button"
+                                onClick={() => setProfileSubFilter(chip.key)}
+                                style={{
+                                  padding: '5px 12px',
+                                  borderRadius: '999px',
+                                  border: isActive ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
+                                  background: isActive ? '#0d5c3a' : '#f8fafc',
+                                  color: isActive ? '#ffffff' : '#64748b',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {chip.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Subscription Cards List */}
+                      {(() => {
+                        const list = (assignedCustomers.length > 0 ? assignedCustomers : myDeliveries).filter((c) => {
+                          const status = c.subscription?.status || c.status || 'active';
+                          if (profileSubFilter === 'active' && status === 'paused') return false;
+                          if (profileSubFilter === 'paused' && status !== 'paused') return false;
+
+                          if (profileSubSearch.trim()) {
+                            const q = profileSubSearch.toLowerCase();
+                            const name = (c.name || c.customerName || '').toLowerCase();
+                            const phone = (c.mobile || c.customerPhone || '').toLowerCase();
+                            const addr = (c.address || c.customerAddress || '').toLowerCase();
+                            return name.includes(q) || phone.includes(q) || addr.includes(q);
+                          }
+                          return true;
+                        });
+
+                        if (list.length === 0) {
+                          return (
+                            <div style={{ textAlign: 'center', padding: '36px 20px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#64748b' }}>
+                              <RefreshCw size={32} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
+                              <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>No Subscriptions Match</h3>
+                              <p style={{ margin: 0, fontSize: '0.82rem' }}>Try clearing the search query or changing your filter.</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {list.map((c, idx) => {
+                              const cName = c.name || c.customerName || `Customer #${idx + 1}`;
+                              const cPhone = c.mobile || c.customerPhone || '';
+                              const cAddr = c.address || c.customerAddress || 'Address on file';
+                              const qty = c.deliveryPlan?.milkQty || c.plannedMilk || 1;
+                              const isPaused = c.subscription?.status === 'paused' || c.status === 'paused';
+                              const startDate = c.subscription?.startDate ? new Date(c.subscription.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '01 Nov';
+                              const endDate = c.subscription?.endDate ? new Date(c.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '30 Nov';
+                              const initial = cName.trim() ? cName.trim()[0].toUpperCase() : 'S';
+
+                              return (
+                                <div
+                                  key={c._id || c.id || idx}
+                                  style={{
+                                    background: '#ffffff',
+                                    border: `1px solid ${isPaused ? '#fde68a' : '#e2e8f0'}`,
+                                    borderRadius: '16px',
+                                    padding: '16px',
+                                    boxShadow: '0 1px 3px rgba(15,23,42,0.02)',
+                                  }}
+                                >
+                                  {/* Header: Initial Avatar, Name, Status */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                      <div
+                                        style={{
+                                          width: '38px',
+                                          height: '38px',
+                                          borderRadius: '10px',
+                                          background: isPaused ? '#fef3c7' : '#ecfdf5',
+                                          color: isPaused ? '#b45309' : '#0d5c3a',
+                                          fontSize: '0.92rem',
+                                          fontWeight: 800,
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {initial}
+                                      </div>
+                                      <div style={{ minWidth: 0 }}>
+                                        <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                          {cName}
+                                        </h4>
+                                        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                          ID: #{idx + 101} • {boyArea || 'Madhapur'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <span
+                                      style={{
+                                        fontSize: '0.68rem',
+                                        fontWeight: 800,
+                                        padding: '3px 10px',
+                                        borderRadius: '999px',
+                                        background: isPaused ? '#fef3c7' : '#ecfdf5',
+                                        color: isPaused ? '#92400e' : '#065f46',
+                                        border: `1px solid ${isPaused ? '#fde68a' : '#86efac'}`,
+                                        flexShrink: 0,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}
+                                    >
+                                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isPaused ? '#d97706' : '#059669' }} />
+                                      {isPaused ? 'Vacation Hold' : 'Active Plan'}
+                                    </span>
+                                  </div>
+
+                                  {/* Address */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', fontSize: '0.76rem', color: '#475569', marginBottom: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
+                                      <MapPin size={13} color="#0d5c3a" style={{ marginTop: '2px', flexShrink: 0 }} />
+                                      <span>{cAddr}</span>
+                                    </div>
+                                    {cAddr && (
+                                      <a
+                                        href={`https://maps.google.com/?q=${encodeURIComponent(cAddr)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          color: '#0d5c3a',
+                                          background: '#f0fdf4',
+                                          padding: '2px 8px',
+                                          borderRadius: '6px',
+                                          border: '1px solid #bbf7d0',
+                                          textDecoration: 'none',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '3px',
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        <Navigation size={10} /> Map
+                                      </a>
+                                    )}
+                                  </div>
+
+                                  {/* Plan Box */}
+                                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', margin: '8px 0' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                                        🥛 {qty}L Pure Cow Milk
+                                      </span>
+                                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff', padding: '2px 7px', borderRadius: '4px' }}>
+                                        DAILY MORNING
+                                      </span>
+                                    </div>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '6px' }}>
+                                      Slot: 5:00 AM – 7:30 AM Doorstep Drop
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b', marginTop: '6px' }}>
+                                      <span>Start: {startDate}</span>
+                                      <span style={{ fontWeight: 700, color: '#0d5c3a' }}>Renewal: {endDate}</span>
+                                    </div>
+                                    <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden', marginTop: '4px' }}>
+                                      <div style={{ width: '65%', height: '100%', background: '#059669', borderRadius: '999px' }} />
+                                    </div>
+                                  </div>
+
+                                  {/* Bottom Actions */}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                      {cPhone ? `📞 ${cPhone}` : 'No phone registered'}
+                                    </span>
+                                    {cPhone && (
+                                      <a
+                                        href={`tel:${cPhone}`}
+                                        style={{
+                                          fontSize: '0.72rem',
+                                          fontWeight: 800,
+                                          color: '#0d5c3a',
+                                          background: '#f0fdf4',
+                                          border: '1px solid #86efac',
+                                          padding: '4px 12px',
+                                          borderRadius: '8px',
+                                          textDecoration: 'none',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: '5px',
+                                        }}
+                                      >
+                                        <PhoneCall size={12} /> Call Customer
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* SEGMENT 2: Order History View */}
+                  {profileSubHistTab === 'history' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '16px',
+                          border: '1px solid #e2e8f0',
+                          padding: '16px 18px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#059669', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                              TODAY'S FULFILLMENT LEDGER
+                            </span>
+                            <h4 style={{ margin: '2px 0 0', fontSize: '0.98rem', fontWeight: 900, color: '#0f172a' }}>
+                              {completedList.length} of {myDeliveries.length} Orders Delivered
+                            </h4>
+                          </div>
+                          <span
+                            style={{
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              background: '#ecfdf5',
+                              color: '#065f46',
+                              border: '1px solid #86efac',
+                            }}
+                          >
+                            {myDeliveries.length > 0 ? Math.round((completedList.length / myDeliveries.length) * 100) : 0}% Done
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              width: `${myDeliveries.length > 0 ? (completedList.length / myDeliveries.length) * 100 : 0}%`,
+                              height: '100%',
+                              background: '#059669',
+                              borderRadius: '999px',
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {myDeliveries.map((d, idx) => {
+                        const isDelivered = d.status === 'delivered';
+                        const isMissed = d.status === 'not_delivered';
+                        return (
+                          <div
+                            key={d._id || d.id || idx}
+                            style={{
+                              background: '#ffffff',
+                              borderRadius: '14px',
+                              border: '1px solid #e2e8f0',
+                              padding: '14px 16px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '12px',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <div
+                                style={{
+                                  width: '38px',
+                                  height: '38px',
+                                  borderRadius: '10px',
+                                  background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fef3c7',
+                                  color: isDelivered ? '#059669' : isMissed ? '#dc2626' : '#d97706',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {isDelivered ? <CheckCircle2 size={20} /> : isMissed ? <AlertCircle size={20} /> : <Clock size={20} />}
+                              </div>
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                                  <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{d.customerName}</strong>
+                                  <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
+                                    Stop #{d.sequenceNumber || idx + 1}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                                  {d.plannedMilk || 1}L Milk • {d.customerAddress || 'Madhapur'}
+                                </div>
+                                {isDelivered && (
+                                  <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
+                                    ✓ Delivered at {d.deliveryTime || '06:15 AM'}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#059669' }}>
+                                  ₹{d.totalAmount || 60}
+                                </div>
+                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
+                                  {(d.paymentMethod || 'Prepaid').toUpperCase()}
+                                </span>
+                              </div>
+
+                              {d.proofImage && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewProofModal(resolveProofUrl(d.proofImage))}
+                                  style={{
+                                    border: '1px solid #cbd5e1',
+                                    background: '#f8fafc',
+                                    color: '#059669',
+                                    borderRadius: '8px',
+                                    padding: '6px 10px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                  }}
+                                >
+                                  <Camera size={13} /> View Proof
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* SEGMENT 3: Crates & Hub View */}
+                  {profileSubHistTab === 'crates' && (
+                    <div>
+                      {/* Crates Metric Cards */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '16px',
+                          padding: '16px 18px',
+                          marginBottom: '16px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+                          <Package size={17} color="#0d5c3a" />
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                            CRATE & BOTTLE RECONCILIATION
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
+                          <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
+                              {Math.ceil(myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) / 12) || 4}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                              CRATES OUT
+                            </span>
+                          </div>
+                          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#1d4ed8' }}>
+                              {myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 42}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                              BOTTLES OUT
+                            </span>
+                          </div>
+                          <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>
+                              {completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 0}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
+                              RETURNED
+                            </span>
+                          </div>
+                          <div style={{ background: '#fef3c7', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#d97706' }}>
+                              {Math.max(0, (myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)) - (completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)))}
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>
+                              PENDING
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Dispatch Hub Card */}
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px 18px', marginBottom: '16px' }}>
+                        <h4 style={{ margin: '0 0 4px', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                          {boyArea || 'Madhapur'} Hub Bay Instructions
+                        </h4>
+                        <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.45 }}>
+                          Please return crates and collected empty glass bottles to the depot bay by 8:30 AM after completing your morning drop sequence.
+                        </p>
+                        <a
+                          href={`tel:${profileEmergencyContact || '9876543210'}`}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            background: '#f0fdf4',
+                            border: '1px solid #86efac',
+                            color: '#0d5c3a',
+                            fontSize: '0.76rem',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <PhoneCall size={13} /> Call Hub Supervisor
+                        </a>
+                      </div>
+
+                      {/* Household Bottle Ledger */}
+                      <h4 style={{ margin: '0 0 10px', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
+                        Household Bottle Ledger
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {(assignedCustomers.length > 0 ? assignedCustomers : myDeliveries).map((c, i) => {
+                          const cName = c.name || c.customerName || `Household #${i + 1}`;
+                          const cAddr = c.address || c.customerAddress || 'Madhapur';
+                          const out = c.outstandingBottles || (1 + (i % 2));
+                          const initial = cName.trim() ? cName.trim()[0].toUpperCase() : 'H';
+                          return (
+                            <div
+                              key={c._id || c.id || i}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '12px',
+                                padding: '12px 14px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div
+                                  style={{
+                                    width: '34px',
+                                    height: '34px',
+                                    borderRadius: '8px',
+                                    background: '#ecfdf5',
+                                    color: '#0d5c3a',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 800,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {initial}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>{cName}</div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{cAddr}</div>
+                                </div>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '0.72rem',
+                                  fontWeight: 800,
+                                  padding: '3px 10px',
+                                  borderRadius: '8px',
+                                  background: '#fef3c7',
+                                  color: '#92400e',
+                                  border: '1px solid #fde68a',
+                                }}
+                              >
+                                {out} Due
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ) :
+
               profileDetailView === 'support' ? (
                 <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
                   <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
@@ -5921,6 +6975,518 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </div>
                   )}
                 </section>
+              ) : profileDetailView === 'vehicle' ? (
+                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 18px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <button
+                        type="button"
+                        className="modern-profile-header-btn"
+                        onClick={() => {
+                          if (isEditingBike) setIsEditingBike(false);
+                          else backToDriverProfile();
+                        }}
+                        aria-label="Back to profile"
+                      >
+                        <ArrowLeft size={21} />
+                      </button>
+                      <div>
+                        <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
+                          {isEditingBike ? 'Edit Vehicle Details' : 'Vehicle & Equipment'}
+                        </h2>
+                        <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                          {isEditingBike
+                            ? 'Update vehicle number plate, model, and crate capacity.'
+                            : 'Delivery cargo vehicle specs, insulated crates & gear status.'}
+                        </p>
+                      </div>
+                    </div>
+                    {!isEditingBike && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingBike(true)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: '#f0fdf4',
+                          border: '1px solid #86efac',
+                          borderRadius: '8px',
+                          padding: '6px 12px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          color: '#0d5c3a',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Edit2 size={13} />
+                        <span>Edit</span>
+                      </button>
+                    )}
+                  </header>
+
+                  {isEditingBike ? (
+                    /* ── EDIT VEHICLE FORM ── */
+                    <form
+                      onSubmit={handleSaveBike}
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '16px',
+                        padding: '20px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px',
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>
+                        Vehicle Identification
+                      </h4>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                          Vehicle Registration Plate *
+                        </label>
+                        <input
+                          type="text"
+                          value={bikePlate}
+                          onChange={(e) => setBikePlate(e.target.value.toUpperCase())}
+                          placeholder="e.g. TS-09-EV-4412"
+                          required
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.5px',
+                            outline: 'none',
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                          Vehicle Model & Make *
+                        </label>
+                        <input
+                          type="text"
+                          value={bikeModel}
+                          onChange={(e) => setBikeModel(e.target.value)}
+                          placeholder="e.g. Commercial Cargo EV / Hero Electric Nyx"
+                          required
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                          Vehicle Propulsion / Type
+                        </label>
+                        <select
+                          value={bikeType}
+                          onChange={(e) => setBikeType(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <option value="Electric Cargo EV">Electric Cargo EV</option>
+                          <option value="Petrol Two-Wheeler / Scooter">Petrol Two-Wheeler / Scooter</option>
+                          <option value="Commercial Motorcycle">Commercial Motorcycle</option>
+                          <option value="Three-Wheeler Cargo Auto">Three-Wheeler Cargo Auto</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                          Crate Carrying Capacity
+                        </label>
+                        <select
+                          value={bikeCratesCapacity}
+                          onChange={(e) => setBikeCratesCapacity(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            outline: 'none',
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        >
+                          <option value="4 Insulated Crates (48 Litres)">4 Insulated Crates (48 Litres)</option>
+                          <option value="3 Insulated Crates (36 Litres)">3 Insulated Crates (36 Litres)</option>
+                          <option value="5 Insulated Crates (60 Litres)">5 Insulated Crates (60 Litres)</option>
+                          <option value="6 Insulated Crates (72 Litres)">6 Insulated Crates (72 Litres)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                          Commercial Driving License Number
+                        </label>
+                        <input
+                          type="text"
+                          value={profileLicense}
+                          onChange={(e) => setProfileLicense(e.target.value.toUpperCase())}
+                          placeholder="e.g. TS-09-2023-0091"
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '10px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.88rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.5px',
+                            outline: 'none',
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+
+                      <div
+                        style={{
+                          background: '#fef3c7',
+                          border: '1px solid #fde68a',
+                          borderRadius: '12px',
+                          padding: '12px 14px',
+                          fontSize: '0.78rem',
+                          color: '#92400e',
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Updated vehicle details will be saved to your delivery partner credentials and synced with the depot dispatch ledger.
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                        <button
+                          type="submit"
+                          style={{
+                            flex: 1,
+                            padding: '12px',
+                            borderRadius: '10px',
+                            background: '#059669',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontWeight: 800,
+                            fontSize: '0.86rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Save Vehicle Details
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingBike(false)}
+                          style={{
+                            padding: '12px 18px',
+                            borderRadius: '10px',
+                            background: '#f1f5f9',
+                            color: '#475569',
+                            border: '1px solid #cbd5e1',
+                            fontWeight: 700,
+                            fontSize: '0.86rem',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    /* ── VIEW VEHICLE DETAILS ── */
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {/* Vehicle Hero Card */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '16px',
+                          padding: '16px 18px',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '12px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          <div
+                            style={{
+                              width: '48px',
+                              height: '48px',
+                              borderRadius: '12px',
+                              background: '#ecfdf5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#0d5c3a',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Bike size={26} />
+                          </div>
+                          <div>
+                            {/* Indian HSRP Plate Replica */}
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                background: '#ffffff',
+                                border: '1.5px solid #0f172a',
+                                borderRadius: '6px',
+                                padding: '3px 8px',
+                                marginBottom: '4px',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.62rem', fontWeight: 900, color: '#1d4ed8', letterSpacing: '-0.2px' }}>
+                                IND
+                              </span>
+                              <strong style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a', letterSpacing: '1px' }}>
+                                {(bikePlate || 'TS-09-EV-4412').toUpperCase()}
+                              </strong>
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+                              {bikeModel || 'Commercial Cargo EV'} • {bikeType || 'Electric Cargo EV'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            padding: '4px 10px',
+                            borderRadius: '999px',
+                            background: '#ecfdf5',
+                            color: '#065f46',
+                            border: '1px solid #86efac',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
+                          Assigned & Active
+                        </span>
+                      </div>
+
+                      {/* 4-Card Quick Specs Grid */}
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
+                        <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>4 Crates</div>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
+                            CAPACITY (48L)
+                          </span>
+                        </div>
+                        <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669' }}>88% ⚡</div>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
+                            BATTERY (45 KM)
+                          </span>
+                        </div>
+                        <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1d4ed8' }}>3.8°C</div>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
+                            COLD CHAIN OK
+                          </span>
+                        </div>
+                        <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0d5c3a' }}>5/5 OK</div>
+                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>
+                            GEAR VERIFIED
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Technical Specs Card */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          VEHICLE SPECIFICATIONS
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {[
+                            ['Registration Plate', bikePlate || 'TS-09-EV-4412'],
+                            ['Vehicle Model & Make', bikeModel || 'Commercial Cargo EV'],
+                            ['Propulsion / Fuel', bikeType || 'Electric Cargo EV'],
+                            ['Crate Carrying Capacity', bikeCratesCapacity || '4 Insulated Crates (48 Litres)'],
+                            ['Assigned Depot & Hub', `${boyArea || 'Madhapur'} Hub, Bay #4`],
+                            ['Driving License Number', profileLicense || 'TS-09-2023-0091'],
+                          ].map(([label, val], idx) => (
+                            <div
+                              key={label}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '10px 0',
+                                borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</span>
+                              <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>{val}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Equipment Checklist Card */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          SAFETY GEAR & EQUIPMENT CHECKLIST
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {[
+                            { title: 'Insulated Milk Cold-Box', desc: 'Pre-cooled verified 3.8°C • 4-Crate Sealed' },
+                            { title: 'Reflective Safety Jacket', desc: 'High-visibility neon green • Issued & Active' },
+                            { title: 'ISI Approved Safety Helmet', desc: 'Personal safety gear • Compliant' },
+                            { title: 'Handlebar Phone Mount', desc: 'Vibration-damped waterproof mount installed' },
+                            { title: 'Thermal Crate Liners & Straps', desc: 'Heavy-duty cargo bungees • 4/4 Available' },
+                          ].map((item) => (
+                            <div
+                              key={item.title}
+                              style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '10px',
+                                padding: '10px 12px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{item.desc}</div>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  background: '#ecfdf5',
+                                  color: '#059669',
+                                  border: '1px solid #86efac',
+                                  padding: '2px 8px',
+                                  borderRadius: '6px',
+                                }}
+                              >
+                                ✓ OK
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Documents & Compliance Card */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          DOCUMENTS & COMPLIANCE
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          {[
+                            ['Commercial Vehicle Insurance', 'Valid (Expires 24 Nov 2027)'],
+                            ['Pollution Under Control (PUC)', 'Exempt (Green Zero-Emission EV)'],
+                            ['Road Tax & Depot Clearance', 'Up to date • Approved'],
+                          ].map(([label, val], idx) => (
+                            <div
+                              key={label}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '10px 0',
+                                borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
+                              }}
+                            >
+                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</span>
+                              <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>{val}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingBike(true)}
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            borderRadius: '10px',
+                            background: '#0d5c3a',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontWeight: 800,
+                            fontSize: '0.86rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <Edit2 size={15} />
+                          <span>Edit Vehicle Details</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openProfileDetail('support')}
+                          style={{
+                            width: '100%',
+                            padding: '12px',
+                            borderRadius: '10px',
+                            background: '#fef2f2',
+                            color: '#dc2626',
+                            border: '1px solid #fca5a5',
+                            fontWeight: 700,
+                            fontSize: '0.84rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                          }}
+                        >
+                          <AlertCircle size={15} />
+                          <span>Report Breakdown / Vehicle Issue</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </section>
               ) : (
                 <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
                   <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
@@ -5957,6 +7523,17 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       >
                         <Navigation size={15} />
                         <span>Open route and stops</span>
+                      </button>
+                    )}
+                    {activeProfileDetail?.action === 'edit-personal' && (
+                      <button
+                        type="button"
+                        className="profile-card-action-btn"
+                        style={{ margin: '14px 0 10px' }}
+                        onClick={openEditProfile}
+                      >
+                        <Edit2 size={15} />
+                        <span>Edit Personal Information</span>
                       </button>
                     )}
                     {activeProfileDetail?.phone && (
@@ -6303,7 +7880,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 </div>
 
-                {/* 3. SECTION 1: Account & Billing (Matching Group 1 in Screenshot) */}
+                {/* 3. SECTION 1: Deliveries & Operations */}
                 <div
                   style={{
                     background: '#ffffff',
@@ -6314,51 +7891,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   }}
                 >
                   <div
-                    onClick={() => openProfileDetail('personal-details')}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       marginBottom: '12px',
-                      cursor: 'pointer',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <CreditCard size={18} color="#0d5c3a" />
+                      <Truck size={18} color="#0d5c3a" />
                       <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0c2340' }}>
-                        Account & Billing
+                        Deliveries & Operations
                       </span>
                     </div>
-                    <ChevronRight size={18} color="#9ca3af" />
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {/* Item 1: Account Details */}
+                    {/* Item 1: Deliveries */}
                     <div
-                      onClick={() => openProfileDetail('personal-details')}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f3f7f4', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <UserRound size={18} color="#0d5c3a" />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Account Details</div>
-                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>View and update your personal information</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} color="#9ca3af" />
-                    </div>
-
-                    {/* Item 2: Deliveries */}
-                    <div
-                      onClick={() => handleNavChange('deliveries')}
+                      onClick={() => openProfileDetail('deliveries-details')}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -6373,14 +7924,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         </div>
                         <div>
                           <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Deliveries</div>
-                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Track your latest doorstep deliveries</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Track all doorstep deliveries, route stops & live drops</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '3px 9px', borderRadius: '12px' }}>
                           {myDeliveries.filter((d) => d.status === 'pending').length > 0
                             ? `${myDeliveries.filter((d) => d.status === 'pending').length} Drops`
-                            : `${myDeliveries.length || 9} Drops`}
+                            : `${myDeliveries.length || 0} Drops`}
                         </span>
                         <ChevronRight size={18} color="#9ca3af" />
                       </div>
@@ -6388,7 +7939,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                     {/* Item 3: Subscription History & Orders */}
                     <div
-                      onClick={() => handleNavChange('route')}
+                      onClick={() => openProfileDetail('subscriptions-history')}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -6403,7 +7954,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         </div>
                         <div>
                           <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscription History & Orders</div>
-                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>View active route, dispatched crates & drop orders</div>
+                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>View active plans, order fulfillment ledger & crates</div>
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
