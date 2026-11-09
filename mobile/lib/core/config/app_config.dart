@@ -21,7 +21,7 @@ class AppConfig {
   /// ⬇️ ⬇️ ⬇️ [CHANGE HERE: true OR false] ⬇️ ⬇️ ⬇️
   /// Set to `false` for Local Development (matches localhost:3000 web dashboard)
   /// Set to `true` for Standalone Production Cloud Server
-  static const bool useLiveServer = false;
+  static const bool useLiveServer = true;
 
   /// If true, release APKs will always use liveBaseUrl.
   /// Set to false to allow local IP / candidate discovery during release testing.
