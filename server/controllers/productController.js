@@ -72,7 +72,16 @@ const addProduct = async (req, res) => {
     }
 
     const cleanName = name.trim();
-    const finalImg = (image || imageUrl || '').trim();
+    let finalImg = (image || imageUrl || '').trim();
+    if (finalImg.startsWith('data:image/')) {
+      try {
+        const { uploadUrlOrBase64 } = require('../config/cloudinary');
+        const cloudRes = await uploadUrlOrBase64(finalImg, 'natural-milk-dairy/products');
+        finalImg = cloudRes.secure_url;
+      } catch (err) {
+        console.error('Failed to upload product image to Cloudinary:', err);
+      }
+    }
     const newProduct = await Product.create({
       name: cleanName,
       category: category || 'milk',
@@ -123,7 +132,16 @@ const updateProduct = async (req, res) => {
     if (price !== undefined) product.price = Number(price);
     if (description !== undefined) product.description = description.trim();
     if (image !== undefined || imageUrl !== undefined) {
-      const updatedImg = (image !== undefined ? image : imageUrl).trim();
+      let updatedImg = (image !== undefined ? image : imageUrl).trim();
+      if (updatedImg.startsWith('data:image/')) {
+        try {
+          const { uploadUrlOrBase64 } = require('../config/cloudinary');
+          const cloudRes = await uploadUrlOrBase64(updatedImg, 'natural-milk-dairy/products');
+          updatedImg = cloudRes.secure_url;
+        } catch (err) {
+          console.error('Failed to upload updated product image to Cloudinary:', err);
+        }
+      }
       product.image = updatedImg;
       product.imageUrl = updatedImg;
     }

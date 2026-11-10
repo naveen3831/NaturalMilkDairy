@@ -34,6 +34,21 @@ class CustomerProvider extends ChangeNotifier {
 
   String get name => _customerData?['name']?.toString() ?? '';
   String get mobile => _customerData?['mobile']?.toString() ?? '';
+  String get customerId {
+    final cid = _customerData?['customerId'] ?? _customerData?['id'];
+    return cid?.toString() ?? '';
+  }
+  String get deliveryPlanName {
+    final plan = _customerData?['deliveryPlan'];
+    if (plan is Map && plan['planName'] != null && plan['planName'].toString().isNotEmpty) {
+      return plan['planName'].toString();
+    }
+    final sub = _customerData?['subscription'];
+    if (sub is Map && sub['planName'] != null && sub['planName'].toString().isNotEmpty) {
+      return sub['planName'].toString();
+    }
+    return '';
+  }
   String get address => _customerData?['address']?.toString() ?? '';
   String get area => _customerData?['area']?.toString() ?? '';
   String get landmark => _customerData?['landmark']?.toString() ?? '';
@@ -86,14 +101,38 @@ class CustomerProvider extends ChangeNotifier {
     return num.tryParse(bal?.toString() ?? '0') ?? 0;
   }
 
+  bool get hasActiveSubscription {
+    final sub = _customerData?['subscription'];
+    if (sub is Map && sub['status']?.toString().toLowerCase() == 'active') {
+      final end = subscriptionEndDate;
+      if (end != null) {
+        final today = DateTime.now();
+        final todayStart = DateTime(today.year, today.month, today.day);
+        return !end.isBefore(todayStart);
+      }
+      return true;
+    }
+    final hasActiveInList = _subscriptions.any((s) => s['status']?.toString().toLowerCase() == 'active') ||
+        _subscriptionsHistory.any((s) => s['status']?.toString().toLowerCase() == 'active');
+    return hasActiveInList;
+  }
+
   DateTime? get subscriptionEndDate {
     final sub = _customerData?['subscription'];
     dynamic rawDate = (sub is Map) ? sub['endDate'] : null;
     if (rawDate == null && _subscriptionsHistory.isNotEmpty) {
-      rawDate = _subscriptionsHistory.first['endDate'];
+      final activeItem = _subscriptionsHistory.firstWhere(
+        (s) => s['status']?.toString().toLowerCase() == 'active',
+        orElse: () => <String, dynamic>{},
+      );
+      rawDate = activeItem['endDate'];
     }
     if (rawDate == null && _subscriptions.isNotEmpty) {
-      rawDate = _subscriptions.first['endDate'];
+      final activeItem = _subscriptions.firstWhere(
+        (s) => s['status']?.toString().toLowerCase() == 'active',
+        orElse: () => <String, dynamic>{},
+      );
+      rawDate = activeItem['endDate'];
     }
     if (rawDate != null) {
       try {
@@ -107,10 +146,18 @@ class CustomerProvider extends ChangeNotifier {
     final sub = _customerData?['subscription'];
     dynamic rawDate = (sub is Map) ? sub['startDate'] : null;
     if (rawDate == null && _subscriptionsHistory.isNotEmpty) {
-      rawDate = _subscriptionsHistory.first['startDate'];
+      final activeItem = _subscriptionsHistory.firstWhere(
+        (s) => s['status']?.toString().toLowerCase() == 'active',
+        orElse: () => <String, dynamic>{},
+      );
+      rawDate = activeItem['startDate'];
     }
     if (rawDate == null && _subscriptions.isNotEmpty) {
-      rawDate = _subscriptions.first['startDate'];
+      final activeItem = _subscriptions.firstWhere(
+        (s) => s['status']?.toString().toLowerCase() == 'active',
+        orElse: () => <String, dynamic>{},
+      );
+      rawDate = activeItem['startDate'];
     }
     if (rawDate != null) {
       try {
@@ -122,13 +169,14 @@ class CustomerProvider extends ChangeNotifier {
 
   int get subscriptionDaysRemaining {
     final end = subscriptionEndDate;
-    if (end == null) {
-      return 30;
+    if (end == null || !hasActiveSubscription) {
+      return 0;
     }
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(end.year, end.month, end.day);
-    return target.difference(today).inDays;
+    final diff = target.difference(today).inDays;
+    return diff < 0 ? 0 : diff;
   }
 
   bool get isSubscriptionExpired {
@@ -141,15 +189,29 @@ class CustomerProvider extends ChangeNotifier {
   }
 
   String get formattedExpiryDate {
-    final end = subscriptionEndDate ?? DateTime.now().add(const Duration(days: 30));
+    final end = subscriptionEndDate;
+    if (end == null) return 'No active plan';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${end.day.toString().padLeft(2, '0')} ${months[end.month - 1]} ${end.year}';
   }
 
   String get formattedStartDate {
-    final start = subscriptionStartDate ?? DateTime.now().subtract(const Duration(days: 0));
+    final start = subscriptionStartDate;
+    if (start == null) return 'Not started';
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${start.day.toString().padLeft(2, '0')} ${months[start.month - 1]} ${start.year}';
+  }
+
+  void clearCustomerData() {
+    _customerData = null;
+    _deliveries = [];
+    _subscriptions = [];
+    _subscriptionsHistory = [];
+    _ledgerSummary = null;
+    _savedAddresses = [];
+    _errorMessage = null;
+    _lastSyncTime = null;
+    notifyListeners();
   }
 
   List<Map<String, dynamic>> get extraProducts {
@@ -207,10 +269,11 @@ class CustomerProvider extends ChangeNotifier {
           fetchSubscriptionHistory(),
         ]);
       } else {
-        await Future.wait([
-          _loadPublicRecentProofs(),
-          fetchSubscriptionHistory(),
-        ]);
+        _deliveries = [];
+        _subscriptions = [];
+        _subscriptionsHistory = [];
+        _ledgerSummary = null;
+        _customerData = null;
       }
       _lastSyncTime = DateTime.now();
     } catch (e) {
@@ -219,25 +282,6 @@ class CustomerProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> _loadPublicRecentProofs() async {
-    try {
-      final res = await _api.get('/api/deliveries/recent-proofs');
-      if (res['success'] == true && res['deliveries'] is List) {
-        final entries = (res['deliveries'] as List)
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
-        entries.sort((a, b) {
-          final dateA = a['date']?.toString() ?? '';
-          final dateB = b['date']?.toString() ?? '';
-          return dateB.compareTo(dateA);
-        });
-        _deliveries = entries;
-      }
-    } catch (e) {
-      debugPrint('Error loading public recent proofs: $e');
     }
   }
 
@@ -266,6 +310,8 @@ class CustomerProvider extends ChangeNotifier {
             return dateB.compareTo(dateA);
           });
           _deliveries = entries;
+        } else {
+          _deliveries = [];
         }
         _ledgerSummary = {
           'grossBill': res['grossBill'],
@@ -273,9 +319,12 @@ class CustomerProvider extends ChangeNotifier {
           'totalMilkDelivered': res['totalMilkDelivered'],
           'totalCurdDelivered': res['totalCurdDelivered'],
         };
+      } else {
+        _deliveries = [];
       }
     } catch (e) {
       debugPrint('Error fetching customer ledger: $e');
+      _deliveries = [];
     }
   }
 
@@ -286,9 +335,12 @@ class CustomerProvider extends ChangeNotifier {
         _subscriptions = (res['subscriptions'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
+      } else {
+        _subscriptions = [];
       }
     } catch (e) {
       debugPrint('Error fetching subscriptions: $e');
+      _subscriptions = [];
     }
   }
 
@@ -303,10 +355,14 @@ class CustomerProvider extends ChangeNotifier {
         _subscriptionsHistory = (res['subscriptions'] as List)
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
-        notifyListeners();
+      } else {
+        _subscriptionsHistory = [];
       }
+      notifyListeners();
     } catch (e) {
       debugPrint('Error fetching subscription history: $e');
+      _subscriptionsHistory = [];
+      notifyListeners();
     }
   }
 

@@ -27,6 +27,7 @@ import {
   BadgeAlert,
   MapPin,
   Headphones,
+  Share2,
 } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
@@ -188,9 +189,23 @@ export default function AdminLayout({
       badgeColor: '#0284c7',
       desc: 'Driver & customer real-time messages',
     },
+    {
+      id: 'contact-settings',
+      label: 'Contact & Social Links',
+      icon: Share2,
+      badge: null,
+      desc: 'Helplines, WhatsApp, office address & social media handles',
+    },
   ];
 
   const currentNav = (() => {
+    if (activeTab === 'contact-settings') {
+      return {
+        id: 'contact-settings',
+        label: 'Contact Details & Social Media Links',
+        desc: 'Manage customer care phone numbers, WhatsApp, dispatch office address & social media channels',
+      };
+    }
     if (activeTab === 'supports') {
       return {
         id: 'supports',
@@ -286,10 +301,10 @@ export default function AdminLayout({
           <div
             onClick={() => {
               if (typeof setActiveTab === 'function') {
-                setActiveTab('home');
+                setActiveTab('dashboard');
               }
             }}
-            title="Go to Home Page"
+            title="Admin Dashboard"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -527,7 +542,7 @@ export default function AdminLayout({
             <button
               onClick={() => {
                 logout();
-                setActiveTab('login');
+                setActiveTab('home');
               }}
               title="Sign Out"
               style={{

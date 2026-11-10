@@ -30,6 +30,7 @@ import EditDeliveryBoyPage from './pages/admin/EditDeliveryBoyPage';
 import AddProductPage from './pages/admin/AddProductPage';
 import EditProductPage from './pages/admin/EditProductPage';
 import AdminProfileView from './pages/admin/AdminProfileView';
+import ContactSettingsView from './pages/admin/ContactSettingsView';
 import DeliveryBoyApp from './pages/delivery/DeliveryBoyApp';
 import CustomerPortal from './pages/customer/CustomerPortal';
 import AdminLayout from './components/AdminLayout';
@@ -62,6 +63,7 @@ export default function App() {
     'locations',
     'audit-logs',
     'supports',
+    'contact-settings',
     'add-delivery-boy',
     'edit-delivery-boy',
     'add-product',
@@ -91,6 +93,33 @@ export default function App() {
       const pathParts = window.location.pathname.split('/').filter(Boolean);
       const isMob = typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
 
+      // 0. Once the admin is logged in: NEVER show public pages!
+      if (savedUser?.role === 'admin') {
+        const directTab = pathParts[0];
+        if (directTab && adminTabs.includes(directTab)) {
+          return directTab;
+        }
+        if (savedAdminTab && adminTabs.includes(savedAdminTab)) {
+          return savedAdminTab;
+        }
+        return 'dashboard';
+      }
+
+      // If user is NOT logged in, NEVER allow admin/internal portal tabs!
+      const internalTabs = [
+        ...adminTabs,
+        'delivery-boy-app',
+        'customer-portal',
+        'my-subscription',
+        'my-deliveries',
+        'my-address',
+        'pause-delivery',
+      ];
+      const directTab = pathParts[0];
+      if (!savedUser && directTab && internalTabs.includes(directTab)) {
+        return 'home';
+      }
+
       // 1. Direct portal links (from dispatch emails)
       if (portalParam === 'delivery' || tabParam === 'delivery') {
         if (savedUser?.role === 'delivery_boy') {
@@ -106,8 +135,7 @@ export default function App() {
         return 'login';
       }
 
-      // Root path ("/" or empty path): ALWAYS open the public Home page!
-      // Opening the website should never automatically hijack the user into the customer dashboard or any internal portal.
+      // Root path ("/" or empty path): ALWAYS open the public Home page for guests/customers!
       if (pathParts.length === 0) {
         return 'home';
       }
@@ -128,15 +156,23 @@ export default function App() {
         return 'login';
       }
 
-      const directTab = pathParts[0];
       const knownTabs = [
         'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register',
         'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
+        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'contact-settings', 'profile', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length === 1 && knownTabs.includes(directTab)) {
+        if (!savedUser && internalTabs.includes(directTab)) {
+          return 'home';
+        }
+        if (savedUser?.role === 'customer' && adminTabs.includes(directTab)) {
+          return isMob ? 'customer-portal' : 'home';
+        }
+        if (savedUser?.role === 'delivery_boy' && adminTabs.includes(directTab)) {
+          return 'delivery-boy-app';
+        }
         return directTab;
       }
 
@@ -210,9 +246,60 @@ export default function App() {
     }
   }, [activeTab]);
 
+  // Handle explicit logout event: always immediately reset activeTab to 'home' and URL to '/'
+  useEffect(() => {
+    const handleLogout = () => {
+      setActiveTab('home');
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({ nmdPage: 'home' }, '', '/');
+      }
+      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('nmd_auth_logout', handleLogout);
+    return () => window.removeEventListener('nmd_auth_logout', handleLogout);
+  }, []);
+
   useEffect(() => {
     const syncTabFromLocation = () => {
       const pathParts = window.location.pathname.split('/').filter(Boolean);
+
+      // Once admin logs in, NEVER show public pages under any circumstances
+      if (user?.role === 'admin') {
+        const pathTab = pathParts[0] || 'dashboard';
+        if (adminTabs.includes(pathTab)) {
+          setActiveTab(pathTab);
+        } else {
+          const lastAdminTab = localStorage.getItem('nmd_admin_tab') || 'dashboard';
+          const validTab = adminTabs.includes(lastAdminTab) ? lastAdminTab : 'dashboard';
+          setActiveTab(validTab);
+          if (window.location.pathname !== `/${validTab}`) {
+            window.history.replaceState({ nmdPage: validTab }, '', `/${validTab}`);
+          }
+        }
+        return;
+      }
+
+      // If user is logged out (no user session), NEVER allow admin or internal portal tabs!
+      if (!user) {
+        const pathTab = pathParts[0] || 'home';
+        const internalTabs = [
+          ...adminTabs,
+          'delivery-boy-app',
+          'customer-portal',
+          'my-subscription',
+          'my-deliveries',
+          'my-address',
+          'pause-delivery',
+        ];
+        if (internalTabs.includes(pathTab)) {
+          setActiveTab('home');
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({ nmdPage: 'home' }, '', '/');
+          }
+          return;
+        }
+      }
+
       if (pathParts[0] === 'customer') {
         if (user?.role === 'customer') {
           if (isMobile) {
@@ -248,16 +335,28 @@ export default function App() {
         'home', 'products', 'story', 'faqs', 'contact', 'register', 'subscription',
         'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
-        'subscriptions', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'add-delivery-boy',
+        'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'contact-settings', 'profile', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
       if (pathParts.length <= 1 && routeTabs.includes(pathTab)) {
+        if (user?.role === 'customer' && adminTabs.includes(pathTab)) {
+          const target = isMobile ? 'customer-portal' : 'home';
+          setActiveTab(target);
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({ nmdPage: target }, '', isMobile ? '/customer/dashboard' : '/');
+          }
+          return;
+        }
+        if (user?.role === 'delivery_boy' && adminTabs.includes(pathTab)) {
+          setActiveTab('delivery-boy-app');
+          return;
+        }
         setActiveTab(pathTab);
       }
     };
     window.addEventListener('popstate', syncTabFromLocation);
     return () => window.removeEventListener('popstate', syncTabFromLocation);
-  }, [user]);
+  }, [user, isMobile]);
 
   // Whenever activeTab changes, automatically scroll to the starting top of the page
   useEffect(() => {
@@ -266,9 +365,29 @@ export default function App() {
 
   const navigateToTab = (tab, optionsOrProductId = null) => {
     let targetTab = tab;
-    if (user?.role === 'customer') {
+    if (user?.role === 'admin') {
+      // Once admin logs in, block navigation to public pages and retain admin view
+      if (!adminTabs.includes(targetTab)) {
+        targetTab = localStorage.getItem('nmd_admin_tab') || 'dashboard';
+        if (!adminTabs.includes(targetTab)) targetTab = 'dashboard';
+      }
+    } else if (user?.role === 'customer') {
       if (adminTabs.includes(tab) || (!isMobile && tab === 'customer-portal')) {
         targetTab = (tab === 'dashboard' || tab === 'home' || tab === 'customer-portal') ? 'home' : (isMobile ? 'customer-portal' : 'home');
+      }
+    } else if (!user) {
+      // Unauthenticated users cannot navigate to internal portals
+      const internalTabs = [
+        ...adminTabs,
+        'delivery-boy-app',
+        'customer-portal',
+        'my-subscription',
+        'my-deliveries',
+        'my-address',
+        'pause-delivery',
+      ];
+      if (internalTabs.includes(targetTab)) {
+        targetTab = 'home';
       }
     }
     const targetProductId = typeof optionsOrProductId === 'string'
@@ -307,16 +426,39 @@ export default function App() {
     }, 40);
   };
 
+  // Strict Unauthenticated Protection:
+  // When user is not logged in, NEVER allow them on internal/admin/portal tabs - ALWAYS redirect to home page!
+  useEffect(() => {
+    if (!user) {
+      const internalTabs = [
+        ...adminTabs,
+        'delivery-boy-app',
+        'customer-portal',
+        'my-subscription',
+        'my-deliveries',
+        'my-address',
+        'pause-delivery',
+      ];
+      if (internalTabs.includes(activeTab)) {
+        setActiveTab('home');
+        if (window.location.pathname !== '/') {
+          window.history.replaceState({ nmdPage: 'home' }, '', '/');
+        }
+      }
+    }
+  }, [user, activeTab]);
+
   // Strict Role Isolation:
-  // Admin isolation
+  // Admin isolation: once admin logs in, strictly stay in admin tabs and never show public pages
   useEffect(() => {
     if (user?.role === 'admin') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const isExplicitPortal = urlParams.get('portal') === 'delivery' || urlParams.get('portal') === 'customer';
-      const allowedAdminTabs = [...adminTabs, 'home', 'landing', 'products', 'story', 'faqs', 'contact', 'login'];
-      if (!isExplicitPortal && !allowedAdminTabs.includes(activeTab) && activeTab !== 'login') {
+      if (!adminTabs.includes(activeTab)) {
         const lastAdminTab = localStorage.getItem('nmd_admin_tab') || 'dashboard';
-        setActiveTab(lastAdminTab);
+        const validTab = adminTabs.includes(lastAdminTab) ? lastAdminTab : 'dashboard';
+        setActiveTab(validTab);
+        if (window.location.pathname !== `/${validTab}`) {
+          window.history.replaceState({ nmdPage: validTab }, '', `/${validTab}`);
+        }
       }
     }
   }, [user, activeTab]);
@@ -335,8 +477,15 @@ export default function App() {
     if (user?.role === 'customer') {
       if (!isMobile && activeTab === 'customer-portal') {
         setActiveTab('home');
+        if (window.location.pathname.startsWith('/customer/')) {
+          window.history.replaceState({ nmdPage: 'home' }, '', '/');
+        }
       } else if (adminTabs.includes(activeTab)) {
-        setActiveTab(isMobile ? 'customer-portal' : 'home');
+        const target = isMobile ? 'customer-portal' : 'home';
+        setActiveTab(target);
+        if (window.location.pathname !== (isMobile ? '/customer/dashboard' : '/')) {
+          window.history.replaceState({ nmdPage: target }, '', isMobile ? '/customer/dashboard' : '/');
+        }
       }
     }
   }, [user, activeTab, isMobile]);
@@ -388,8 +537,9 @@ export default function App() {
     setIsTempQtyOpen(true);
   };
 
-  const publicTabsList = ['home', 'landing', 'products', 'story', 'faqs', 'contact'];
-  const isAdminView = user?.role === 'admin' && (adminTabs.includes(activeTab) || !publicTabsList.includes(activeTab));
+  const publicTabsList = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'subscription', 'register'];
+  // Once the admin logins, NEVER show public pages! Always keep admin strictly in AdminLayout
+  const isAdminView = user?.role === 'admin';
 
   return (
     <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -423,7 +573,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'dashboard' && (
+          {(activeTab === 'dashboard' || !adminTabs.includes(activeTab)) && (
             <AdminDashboard
               setActiveTab={setActiveTab}
               onOpenAddCustomer={() => setIsAddCustomerOpen(true)}
@@ -550,6 +700,8 @@ export default function App() {
 
           {activeTab === 'supports' && <AdminSupportDesk />}
 
+          {activeTab === 'contact-settings' && <ContactSettingsView />}
+
           {activeTab === 'profile' && <AdminProfileView setActiveTab={navigateToTab} />}
         </AdminLayout>
       ) : activeTab === 'delivery-boy-app' ? (
@@ -624,13 +776,37 @@ export default function App() {
             )}
 
             {/* Customer Self-Service Portal (Preserved for mobile view; website desktop uses public pages & modals) */}
-            {activeTab === 'customer-portal' && isMobile && (
-              <CustomerPortal
-                setActiveTab={navigateToTab}
-                onOpenPauseModal={handleOpenPause}
-                onOpenTempQtyModal={handleOpenTempQty}
-                onOpenPaymentModal={handleOpenPayment}
-              />
+            {activeTab === 'customer-portal' && (
+              isMobile ? (
+                <CustomerPortal
+                  setActiveTab={navigateToTab}
+                  onOpenPauseModal={handleOpenPause}
+                  onOpenTempQtyModal={handleOpenTempQty}
+                  onOpenPaymentModal={handleOpenPayment}
+                />
+              ) : (
+                <HomePage setActiveTab={navigateToTab} />
+              )
+            )}
+
+            {/* Fallback to HomePage if no public route matches */}
+            {![
+              'home',
+              'landing',
+              'products',
+              'subscription',
+              'story',
+              'faqs',
+              'contact',
+              'login',
+              'register',
+              'my-subscription',
+              'my-deliveries',
+              'my-address',
+              'pause-delivery',
+              'customer-portal',
+            ].includes(activeTab) && (
+              <HomePage setActiveTab={navigateToTab} />
             )}
           </main>
 

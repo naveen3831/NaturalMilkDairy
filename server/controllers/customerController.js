@@ -128,6 +128,55 @@ const getCustomerById = async (req, res) => {
   }
 };
 
+// Helper to extract GPS coordinates from pasted Google Maps URLs or coordinate strings
+const parseCoordinatesFromInput = (input) => {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+  if (!str) return null;
+
+  // 1. Raw lat,lng pattern: "17.4483, 78.3915" or "17.4483,78.3915"
+  const rawCoordMatch = str.match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (rawCoordMatch) {
+    const lat = parseFloat(rawCoordMatch[1]);
+    const lng = parseFloat(rawCoordMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 2. Google maps @lat,lng e.g. https://www.google.com/maps/.../@17.4483,78.3915,16z
+  const atMatch = str.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 3. Query params: q=lat,lng or query=lat,lng or ll=lat,lng or destination=lat,lng
+  const queryMatch = str.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (queryMatch) {
+    const lat = parseFloat(queryMatch[1]);
+    const lng = parseFloat(queryMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 4. Place or dir paths: /place/lat,lng or /dir/.../lat,lng
+  const placeMatch = str.match(/\/(?:place|dir|search)\/(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (placeMatch) {
+    const lat = parseFloat(placeMatch[1]);
+    const lng = parseFloat(placeMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  return null;
+};
+
 // Create customer
 const createCustomer = async (req, res) => {
   try {
@@ -162,6 +211,9 @@ const createCustomer = async (req, res) => {
       actor,
       latitude,
       longitude,
+      googleMapsUrl,
+      locationUrl,
+      mapLocation,
     } = req.body;
 
     if (
@@ -271,10 +323,17 @@ const createCustomer = async (req, res) => {
     const customerCount = await Customer.countDocuments();
     const customerId = `CUST-${customerCount + 101}`;
 
+    const rawGoogleMapsUrl = String(googleMapsUrl || locationUrl || mapLocation || '').trim();
+    const extractedCoords = parseCoordinatesFromInput(rawGoogleMapsUrl);
+
     const parsedLat = Number(latitude);
     const parsedLng = Number(longitude);
-    const finalLat = (!isNaN(parsedLat) && parsedLat !== 0) ? parsedLat : (validLocation.latitude || 17.4483);
-    const finalLng = (!isNaN(parsedLng) && parsedLng !== 0) ? parsedLng : (validLocation.longitude || 78.3915);
+    const finalLat = (!isNaN(parsedLat) && parsedLat !== 0)
+      ? parsedLat
+      : (extractedCoords ? extractedCoords.latitude : (validLocation.latitude || 17.4483));
+    const finalLng = (!isNaN(parsedLng) && parsedLng !== 0)
+      ? parsedLng
+      : (extractedCoords ? extractedCoords.longitude : (validLocation.longitude || 78.3915));
     const customerArea = area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur');
 
     const deliveryPlanInput = deliveryPlan && typeof deliveryPlan === 'object' ? deliveryPlan : {};
@@ -310,20 +369,28 @@ const createCustomer = async (req, res) => {
       address: address.trim(),
       area: customerArea,
       landmark: landmark || '',
+      googleMapsUrl: rawGoogleMapsUrl,
       latitude: finalLat,
       longitude: finalLng,
       addresses: [{
+        id: 'addr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        type: 'home',
         label: 'Home',
+        flatNo: '',
+        apartmentStreet: address.trim(),
         street: address.trim(),
         city: 'Hyderabad',
         state: 'Telangana',
         area: customerArea,
         landmark: landmark || '',
+        googleMapsUrl: rawGoogleMapsUrl,
         latitude: finalLat,
         longitude: finalLng,
         isDefault: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
       }],
-      status: 'active',
+      status: (req.body.status && ['active', 'paused', 'inactive'].includes(req.body.status)) ? req.body.status : 'active',
       pauseFrom: null,
       pauseUntil: null,
       temporaryQty: null,
@@ -409,6 +476,26 @@ const createCustomer = async (req, res) => {
       } catch (notifErr) {
         console.warn('Driver customer creation notification error:', notifErr.message);
       }
+    }
+
+    // Instant personalized welcome notification for the newly created customer
+    try {
+      await Notification.create({
+        recipientRole: 'customer',
+        recipientId: newCustomer._id.toString(),
+        title: '🥛 Welcome to Natural Milk Dairy!',
+        message: `Welcome, ${cleanName}! Your customer account (${newCustomer.customerId}) is active. Pure, unadulterated farm milk deliveries are scheduled to your doorstep.`,
+        type: 'system',
+        data: {
+          customerId: newCustomer.customerId,
+          customerName: cleanName,
+          customerPhone: cleanMobile,
+          milkQty: newCustomer.deliveryPlan.milkQty,
+          area: newCustomer.area,
+        },
+      });
+    } catch (notifErr) {
+      console.warn('Customer welcome notification error:', notifErr.message);
     }
 
     await ensureDeliveriesForDate(formatDate());
@@ -515,7 +602,7 @@ const updateCustomer = async (req, res) => {
     }
 
     const adminFields = [
-      'name', 'email', 'mobile', 'whatsapp', 'address', 'area', 'landmark',
+      'name', 'email', 'mobile', 'whatsapp', 'address', 'area', 'landmark', 'googleMapsUrl',
       'status', 'currentBalance', 'notes', 'password', 'latitude', 'longitude',
       'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
       'deliveryBoyId', 'deliveryBoyName', 'paymentType', 'paymentCycle',
@@ -526,7 +613,7 @@ const updateCustomer = async (req, res) => {
       'paymentInfo.paymentType', 'paymentInfo.paymentCycle',
     ];
     const driverFields = [
-      'whatsapp', 'address', 'landmark', 'notes', 'latitude', 'longitude',
+      'whatsapp', 'address', 'landmark', 'googleMapsUrl', 'notes', 'latitude', 'longitude',
       'milkQty', 'milkUnit', 'curdQty', 'curdUnit', 'frequency', 'deliveryDays',
       'deliveryPlan.milkQty', 'deliveryPlan.milkUnit',
       'deliveryPlan.curdQty', 'deliveryPlan.curdUnit', 'deliveryPlan.frequency',
@@ -537,6 +624,17 @@ const updateCustomer = async (req, res) => {
     for (const field of (isDriver ? driverFields : adminFields)) {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
         updateData[field] = req.body[field];
+      }
+    }
+    // Also accept locationUrl / mapLocation alias
+    if (updateData.googleMapsUrl === undefined && (req.body.locationUrl !== undefined || req.body.mapLocation !== undefined)) {
+      updateData.googleMapsUrl = String(req.body.locationUrl || req.body.mapLocation || '').trim();
+    }
+    if (updateData.googleMapsUrl !== undefined && typeof updateData.googleMapsUrl === 'string') {
+      const parsedCoords = parseCoordinatesFromInput(updateData.googleMapsUrl);
+      if (parsedCoords && (updateData.latitude === undefined || updateData.latitude === null || isNaN(Number(updateData.latitude)))) {
+        updateData.latitude = parsedCoords.latitude;
+        updateData.longitude = parsedCoords.longitude;
       }
     }
     if (updateData.extraProducts !== undefined) {
@@ -611,6 +709,14 @@ const updateCustomer = async (req, res) => {
       updateData.area = existingCust.area;
       updateData['deliveryPlan.deliveryBoyId'] = req.user.boyId || req.user.id;
       updateData['deliveryPlan.deliveryBoyName'] = req.user.name;
+    }
+
+    if (updateData.googleMapsUrl !== undefined && existingCust.addresses && existingCust.addresses.length > 0) {
+      updateData['addresses.0.googleMapsUrl'] = updateData.googleMapsUrl;
+    }
+    if (updateData.latitude !== undefined && existingCust.addresses && existingCust.addresses.length > 0) {
+      updateData['addresses.0.latitude'] = updateData.latitude;
+      updateData['addresses.0.longitude'] = updateData.longitude;
     }
 
     const updated = await Customer.findOneAndUpdate(query, { $set: updateData }, { new: true });
@@ -934,13 +1040,51 @@ const getCustomerLedger = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    const custIds = [customer._id.toString(), customer.customerId];
+    const custIds = [customer._id.toString(), customer.customerId].filter(Boolean);
 
     // Deliveries and payments for this customer (respecting user-deleted history entries)
-    const [customerDeliveries, customerPayments] = await Promise.all([
+    const [rawCustomerDeliveries, rawCustomerPayments] = await Promise.all([
       Delivery.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
       Payment.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
     ]);
+
+    // STRICT CUSTOMER IDENTITY SCOPING: Ensure legacy/reused customerId test records from other users never leak
+    const cleanCustomerPhone = (customer.mobile || '').replace(/\D/g, '').slice(-10);
+    const cleanCustomerName = (customer.name || '').toLowerCase().trim();
+    const customerCreatedTime = customer.createdAt ? new Date(customer.createdAt).getTime() - 24 * 60 * 60 * 1000 : 0;
+
+    const customerDeliveries = rawCustomerDeliveries.filter((del) => {
+      // 1. If delivery has customerPhone, it MUST match this customer's mobile
+      if (del.customerPhone && cleanCustomerPhone) {
+        const delPhone = String(del.customerPhone).replace(/\D/g, '').slice(-10);
+        if (delPhone && delPhone !== cleanCustomerPhone) {
+          return false;
+        }
+      }
+      // 2. If delivery has customerName, it must match this customer's name
+      if (del.customerName && cleanCustomerName) {
+        const delName = String(del.customerName).toLowerCase().trim();
+        if (delName && delName !== cleanCustomerName && !delName.includes(cleanCustomerName) && !cleanCustomerName.includes(delName)) {
+          return false;
+        }
+      }
+      // 3. If delivery was created before this customer account was created, drop it
+      if (customerCreatedTime && del.createdAt) {
+        const delTime = new Date(del.createdAt).getTime();
+        if (delTime < customerCreatedTime) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const customerPayments = rawCustomerPayments.filter((pay) => {
+      if (pay.customerPhone && cleanCustomerPhone) {
+        const pmtPhone = String(pay.customerPhone).replace(/\D/g, '').slice(-10);
+        if (pmtPhone && pmtPhone !== cleanCustomerPhone) return false;
+      }
+      return true;
+    });
 
     const ledgerEntries = [];
 

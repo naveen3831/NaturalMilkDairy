@@ -72,6 +72,54 @@ import {
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import { resolveProofUrl } from '../../services/api';
 
+const parseCoordinatesFromInput = (input) => {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+  if (!str) return null;
+
+  // 1. Raw lat,lng
+  const rawCoordMatch = str.match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (rawCoordMatch) {
+    const lat = parseFloat(rawCoordMatch[1]);
+    const lng = parseFloat(rawCoordMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 2. Google maps @lat,lng
+  const atMatch = str.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 3. Query params: q=lat,lng or query=lat,lng or ll=lat,lng or destination=lat,lng
+  const queryMatch = str.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (queryMatch) {
+    const lat = parseFloat(queryMatch[1]);
+    const lng = parseFloat(queryMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 4. Place or dir paths
+  const placeMatch = str.match(/\/(?:place|dir|search)\/(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (placeMatch) {
+    const lat = parseFloat(placeMatch[1]);
+    const lng = parseFloat(placeMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  return null;
+};
+
 const getDeliveryRoute = () => {
   const [section, page, detail] = window.location.pathname.split('/').filter(Boolean);
   if (section !== 'delivery' || !['deliveries', 'route', 'customers', 'cash', 'profile'].includes(page)) {
@@ -339,28 +387,43 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [custFormName, setCustFormName] = useState('');
   const [custFormMobile, setCustFormMobile] = useState('');
   const [custFormEmail, setCustFormEmail] = useState('');
+  const [custFormPassword, setCustFormPassword] = useState('');
   const [custFormWhatsapp, setCustFormWhatsapp] = useState('');
   const [custFormAddress, setCustFormAddress] = useState('');
   const [custFormArea, setCustFormArea] = useState(boyArea || 'Madhapur');
   const [custFormLandmark, setCustFormLandmark] = useState('');
+  const [custFormStatus, setCustFormStatus] = useState('active');
   const [custFormMilkQty, setCustFormMilkQty] = useState(1);
   const [custFormCurdQty, setCustFormCurdQty] = useState(0);
   const [custProductQuantities, setCustProductQuantities] = useState({});
   const [custFormFrequency, setCustFormFrequency] = useState('daily');
   const [custFormDays, setCustFormDays] = useState(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   const [custFormPaymentType, setCustFormPaymentType] = useState('credit');
+  const [custFormPaymentCycle, setCustFormPaymentCycle] = useState('monthly');
   const [custFormNotes, setCustFormNotes] = useState('');
+  const [custFormGoogleMapsUrl, setCustFormGoogleMapsUrl] = useState('');
   const [custFormLat, setCustFormLat] = useState(null);
   const [custFormLng, setCustFormLng] = useState(null);
+
+  const handlePartnerMapsUrlChange = (val) => {
+    setCustFormGoogleMapsUrl(val);
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setCustFormLat(parsed.latitude);
+      setCustFormLng(parsed.longitude);
+    }
+  };
 
   const resetCustomerForm = () => {
     setCustFormName('');
     setCustFormMobile('');
     setCustFormEmail('');
+    setCustFormPassword('');
     setCustFormWhatsapp('');
     setCustFormAddress('');
     setCustFormArea(boyArea || 'Madhapur');
     setCustFormLandmark('');
+    setCustFormStatus('active');
     setCustFormMilkQty(1);
     setCustFormCurdQty(0);
     // Auto-select primary milk product with 1L
@@ -376,7 +439,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setCustFormFrequency('daily');
     setCustFormDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
     setCustFormPaymentType('credit');
+    setCustFormPaymentCycle('monthly');
     setCustFormNotes('');
+    setCustFormGoogleMapsUrl('');
     setCustFormLat(null);
     setCustFormLng(null);
     setCustomerFormError('');
@@ -395,16 +460,21 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setCustFormName(cust.name || '');
     setCustFormMobile(cust.mobile || '');
     setCustFormEmail(cust.email || '');
+    setCustFormPassword('');
     setCustFormWhatsapp(cust.whatsapp || cust.mobile || '');
     setCustFormAddress(cust.address || '');
     setCustFormArea(cust.area || boyArea || 'Madhapur');
     setCustFormLandmark(cust.landmark || '');
+    setCustFormStatus(cust.status || 'active');
     setCustFormMilkQty(cust.deliveryPlan?.milkQty ?? 1);
     setCustFormCurdQty(cust.deliveryPlan?.curdQty ?? 0);
     setCustFormFrequency(cust.deliveryPlan?.frequency || 'daily');
     setCustFormDays(cust.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
     setCustFormPaymentType(cust.paymentInfo?.paymentType || 'credit');
+    setCustFormPaymentCycle(cust.paymentInfo?.paymentCycle || 'monthly');
     setCustFormNotes(cust.notes || '');
+    const existingUrl = cust.googleMapsUrl || cust.addresses?.[0]?.googleMapsUrl || '';
+    setCustFormGoogleMapsUrl(existingUrl || (cust.latitude && cust.longitude ? `https://www.google.com/maps?q=${cust.latitude},${cust.longitude}` : ''));
     setCustFormLat(cust.latitude || null);
     setCustFormLng(cust.longitude || null);
 
@@ -501,10 +571,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         name: custFormName.trim(),
         mobile: cleanMobile,
         email: custFormEmail.trim().toLowerCase(),
+        ...(custFormPassword.trim() ? { password: custFormPassword.trim() } : {}),
         whatsapp: (custFormWhatsapp || cleanMobile).trim(),
         address: custFormAddress.trim(),
         area: custFormArea.trim() || boyArea || 'Madhapur',
         landmark: custFormLandmark.trim(),
+        status: custFormStatus,
+        googleMapsUrl: custFormGoogleMapsUrl.trim(),
         latitude: custFormLat,
         longitude: custFormLng,
         'deliveryPlan.milkQty': finalMilk,
@@ -517,16 +590,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         'deliveryPlan.deliveryBoyId': boyId,
         'deliveryPlan.deliveryBoyName': boyName,
         'paymentInfo.paymentType': custFormPaymentType,
+        'paymentInfo.paymentCycle': custFormPaymentCycle,
+        paymentType: custFormPaymentType,
+        paymentCycle: custFormPaymentCycle,
         notes: custFormNotes.trim(),
         actor: boyName,
       } : {
         name: custFormName.trim(),
         mobile: cleanMobile,
         email: custFormEmail.trim().toLowerCase(),
+        ...(custFormPassword.trim() ? { password: custFormPassword.trim() } : {}),
         whatsapp: (custFormWhatsapp || cleanMobile).trim(),
         address: custFormAddress.trim(),
         area: custFormArea.trim() || boyArea || 'Madhapur',
         landmark: custFormLandmark.trim(),
+        status: custFormStatus,
+        googleMapsUrl: custFormGoogleMapsUrl.trim(),
         latitude: custFormLat,
         longitude: custFormLng,
         milkQty: finalMilk,
@@ -539,7 +618,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         deliveryBoyId: boyId,
         deliveryBoyName: boyName,
         paymentType: custFormPaymentType,
-        paymentCycle: 'monthly',
+        paymentCycle: custFormPaymentCycle,
         initialBalance: 0,
         notes: custFormNotes.trim(),
         actor: boyName,
@@ -11142,6 +11221,50 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               </div>
 
+              {/* Customer Email & Password */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Customer Email (For Credentials)
+                  </label>
+                  <input
+                    type="email"
+                    value={custFormEmail}
+                    onChange={(e) => setCustFormEmail(e.target.value)}
+                    placeholder="e.g. customer@gmail.com"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Portal Password (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={custFormPassword}
+                    onChange={(e) => setCustFormPassword(e.target.value)}
+                    placeholder="Leave blank for auto-generated"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                    }}
+                  />
+                </div>
+              </div>
+
               {/* Delivery Address */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
@@ -11165,7 +11288,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 />
               </div>
 
-              {/* Area & Landmark */}
+              {/* Area, Status & Landmark */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
@@ -11199,13 +11322,11 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                    Landmark (Optional)
+                    Account Status
                   </label>
-                  <input
-                    type="text"
-                    value={custFormLandmark}
-                    onChange={(e) => setCustFormLandmark(e.target.value)}
-                    placeholder="Near Pillar 24"
+                  <select
+                    value={custFormStatus}
+                    onChange={(e) => setCustFormStatus(e.target.value)}
                     style={{
                       width: '100%',
                       boxSizing: 'border-box',
@@ -11214,69 +11335,155 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       border: '1px solid #cbd5e1',
                       fontSize: '0.86rem',
                       color: '#0f172a',
+                      background: '#ffffff',
                     }}
-                  />
+                  >
+                    <option value="active">Active (Deliveries Running)</option>
+                    <option value="paused">Paused (Deliveries On Hold)</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Customer Location Pin (GPS) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                  Landmark (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={custFormLandmark}
+                  onChange={(e) => setCustFormLandmark(e.target.value)}
+                  placeholder="e.g. Near Metro Station / Opp. Bank"
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.86rem',
+                    color: '#0f172a',
+                  }}
+                />
+              </div>
+
+              {/* Customer Location Pin & Google Maps Sync (Optional) */}
               <div
                 style={{
                   background: (custFormLat && custFormLng) ? '#f0fdf4' : '#f8fafc',
                   border: `1px solid ${(custFormLat && custFormLng) ? '#bbf7d0' : '#e2e8f0'}`,
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: '8px',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  transition: 'all 0.2s ease',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MapPin size={18} color={(custFormLat && custFormLng) ? '#059669' : '#64748b'} />
-                  <div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: 800, color: (custFormLat && custFormLng) ? '#065f46' : '#1e293b' }}>
-                      {(custFormLat && custFormLng) ? 'Doorstep GPS Pinned' : 'Customer Location Selection'}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: (custFormLat && custFormLng) ? '#047857' : '#64748b' }}>
-                      {(custFormLat && custFormLng)
-                        ? `Lat: ${Number(custFormLat).toFixed(4)}, Lng: ${Number(custFormLng).toFixed(4)}`
-                        : 'Capture GPS coordinates for real-time admin dashboard map'}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MapPin size={18} color={(custFormLat && custFormLng) ? '#059669' : '#64748b'} />
+                    <div>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: (custFormLat && custFormLng) ? '#065f46' : '#1e293b' }}>
+                        Customer Doorstep Location (Optional)
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: (custFormLat && custFormLng) ? '#047857' : '#64748b' }}>
+                        Paste Google Maps link or capture GPS for real-time delivery route navigation
+                      </div>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                          (pos) => {
+                            const lat = Number(pos.coords.latitude.toFixed(6));
+                            const lng = Number(pos.coords.longitude.toFixed(6));
+                            setCustFormLat(lat);
+                            setCustFormLng(lng);
+                            setCustFormGoogleMapsUrl(`https://www.google.com/maps?q=${lat},${lng}`);
+                          },
+                          (err) => alert('Could not get GPS location: ' + err.message)
+                        );
+                      } else {
+                        alert('Geolocation is not supported by your browser.');
+                      }
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #a7f3d0',
+                      background: '#ecfdf5',
+                      color: '#047857',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Navigation size={12} />
+                    <span>{(custFormLat && custFormLng) ? 'Update GPS' : 'Pick Current GPS'}</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (navigator.geolocation) {
-                      navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                          setCustFormLat(pos.coords.latitude);
-                          setCustFormLng(pos.coords.longitude);
-                        },
-                        (err) => alert('Could not get GPS location: ' + err.message)
-                      );
-                    } else {
-                      alert('Geolocation is not supported by your browser.');
-                    }
-                  }}
+
+                <input
+                  type="text"
+                  value={custFormGoogleMapsUrl}
+                  onChange={(e) => handlePartnerMapsUrlChange(e.target.value)}
+                  placeholder="Paste Google Maps location link (e.g. https://maps.app.goo.gl/... or 17.4483, 78.3915)"
                   style={{
-                    padding: '6px 12px',
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '8px 12px',
                     borderRadius: '8px',
-                    border: '1px solid #a7f3d0',
-                    background: '#ecfdf5',
-                    color: '#047857',
-                    fontSize: '0.76rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.82rem',
+                    color: '#0f172a',
+                    background: '#ffffff',
                   }}
-                >
-                  <Navigation size={12} />
-                  <span>{(custFormLat && custFormLng) ? 'Update GPS' : 'Pick Current GPS'}</span>
-                </button>
+                />
+
+                {custFormLat && custFormLng && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: '#dcfce7',
+                      border: '1px solid #86efac',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.72rem',
+                      color: '#065f46',
+                      fontWeight: 700,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <CheckCircle2 size={13} color="#059669" />
+                      <span>✓ GPS Synced: {Number(custFormLat).toFixed(4)}, {Number(custFormLng).toFixed(4)}</span>
+                    </div>
+                    <a
+                      href={`https://www.google.com/maps?q=${custFormLat},${custFormLng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: '#047857',
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        background: '#ffffff',
+                        padding: '2px 6px',
+                        borderRadius: '4px',
+                        border: '1px solid #a7f3d0',
+                        fontSize: '0.7rem',
+                      }}
+                    >
+                      <span>Open Map</span>
+                      <ExternalLink size={10} />
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Daily Delivery Plan: All Products */}
@@ -11568,37 +11775,53 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 )}
               </div>
 
-              {/* Payment Type */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                  Billing & Payment Type
-                </label>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {[
-                    { id: 'credit', label: 'Monthly Credit (Postpaid)' },
-                    { id: 'prepaid', label: 'Prepaid (Advance)' },
-                    { id: 'cod', label: 'Cash on Delivery' },
-                  ].map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setCustFormPaymentType(p.id)}
-                      style={{
-                        flex: 1,
-                        padding: '7px 8px',
-                        borderRadius: '8px',
-                        border: '1px solid',
-                        borderColor: custFormPaymentType === p.id ? '#059669' : '#cbd5e1',
-                        background: custFormPaymentType === p.id ? '#ecfdf5' : '#ffffff',
-                        color: custFormPaymentType === p.id ? '#065f46' : '#475569',
-                        fontSize: '0.74rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+              {/* Billing & Settlement Settings */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Billing Type
+                  </label>
+                  <select
+                    value={custFormPaymentType}
+                    onChange={(e) => setCustFormPaymentType(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                    }}
+                  >
+                    <option value="credit">Monthly Credit Account</option>
+                    <option value="prepaid">Prepaid (Advance)</option>
+                    <option value="cod">Cash on Delivery</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                    Settlement Cycle
+                  </label>
+                  <select
+                    value={custFormPaymentCycle}
+                    onChange={(e) => setCustFormPaymentCycle(e.target.value)}
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '0.86rem',
+                      color: '#0f172a',
+                      background: '#ffffff',
+                    }}
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="daily">Daily</option>
+                  </select>
                 </div>
               </div>
 

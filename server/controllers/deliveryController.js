@@ -11,23 +11,14 @@ const { broadcast } = require('../config/websocket');
 
 const isPersistedProof = (proofImage) => {
   const proofUrl = typeof proofImage === 'string' ? proofImage.trim() : '';
-  if (proofUrl.length > 2048) return false;
+  if (!proofUrl || proofUrl.length > 2048) return false;
+  if (proofUrl.startsWith('data:')) return false;
 
-  if (/^\/uploads\/[a-z0-9_.-]+$/i.test(proofUrl)) {
-    const fs = require('fs');
-    const path = require('path');
-    return fs.existsSync(path.join(__dirname, '../uploads', path.basename(proofUrl)));
+  // Cloudinary URL or valid HTTPS URL
+  if (proofUrl.includes('res.cloudinary.com') || /^https?:\/\//i.test(proofUrl)) {
+    return true;
   }
-
-  if (!process.env.CLOUDINARY_CLOUD_NAME) return false;
-  try {
-    const proofUrlObject = new URL(proofUrl);
-    return proofUrlObject.protocol === 'https:' &&
-      proofUrlObject.hostname === 'res.cloudinary.com' &&
-      proofUrlObject.pathname.startsWith(`/${process.env.CLOUDINARY_CLOUD_NAME}/image/upload/`);
-  } catch (error) {
-    return false;
-  }
+  return false;
 };
 
 const canManageDelivery = (user, delivery) => {
@@ -411,21 +402,17 @@ const markDelivered = async (req, res) => {
       ? proofImage.trim()
       : (typeof req.body.proofUrl === 'string' ? req.body.proofUrl.trim() : '');
 
-    // If photo is captured via device camera as base64, persist directly to uploads folder
-    if (proofUrl.startsWith('data:image/')) {
+    // If photo is captured via device camera as base64, directly upload to Cloudinary
+    if (proofUrl.startsWith('data:image/') || (proofUrl.length > 100 && !proofUrl.startsWith('http') && !proofUrl.startsWith('/'))) {
       try {
-        const fs = require('fs');
-        const path = require('path');
-        const uploadDir = path.join(__dirname, '../uploads');
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
+        const { uploadUrlOrBase64 } = require('../config/cloudinary');
+        const formatted = proofUrl.startsWith('data:') ? proofUrl : `data:image/jpeg;base64,${proofUrl}`;
+        const cloudResult = await uploadUrlOrBase64(formatted, 'natural-milk-dairy/delivery-proofs');
+        if (cloudResult && cloudResult.secure_url) {
+          proofUrl = cloudResult.secure_url;
         }
-        const base64Data = proofUrl.replace(/^data:image\/\w+;base64,/, '');
-        const filename = `proof_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
-        fs.writeFileSync(path.join(uploadDir, filename), base64Data, 'base64');
-        proofUrl = `/uploads/${filename}`;
       } catch (err) {
-        console.error('Failed to save base64 proof image:', err);
+        console.error('Failed to upload proof image to Cloudinary:', err);
       }
     }
 

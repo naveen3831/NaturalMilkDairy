@@ -17,12 +17,14 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useDairy } from '../context/DairyContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function ContactPage({ setActiveTab }) {
   const { user, getAuthHeaders } = useAuth();
+  const { contactInfo } = useDairy();
   const { subscribe: wsSubscribe } = useWebSocket();
 
   // Responsive mobile detection
@@ -62,19 +64,20 @@ export default function ContactPage({ setActiveTab }) {
   const [copiedKey, setCopiedKey] = useState('');
   const chatBottomRef = useRef(null);
 
-  // Admin Profile Constants
+  // Admin Profile Constants (Dynamic from Database)
+  const info = contactInfo || {};
   const adminDetails = {
     name: 'Naveen Kumar',
     role: 'Operations Head & Lead System Administrator',
-    company: 'Natural Milk Dairy Dispatch Center',
-    phone: '+91 98765 43210',
-    cleanPhone: '919876543210',
-    emergencyPhone: '+91 97018 78789',
-    email: 'care@naturalmilkdairy.com',
-    adminEmail: 'admin@naturalmilkdairy.com',
-    hubAddress: 'Plot 14, Green Valley Agro Hub, Andheri / Madhapur Hub Depot',
-    timings: '5:00 AM – 9:00 PM Every Day (365 Days Active)',
-    deliveryWindow: 'Early Morning 5:00 AM – 6:30 AM Doorstep Drops',
+    company: info.companyName || 'Natural Milk Dairy Dispatch Center',
+    phone: info.phone || '+91 98765 43210',
+    cleanPhone: info.cleanPhone || '919876543210',
+    emergencyPhone: info.phone || '+91 97018 78789',
+    email: info.email || 'care@naturalmilkdairy.com',
+    adminEmail: info.email || 'admin@naturalmilkdairy.com',
+    hubAddress: info.address || 'Plot 14, Green Valley Agro Hub, Andheri / Madhapur Hub Depot',
+    timings: info.workingHours || '5:00 AM – 9:00 PM Every Day (365 Days Active)',
+    deliveryWindow: info.deliveryHours || 'Early Morning 5:00 AM – 6:30 AM Doorstep Drops',
   };
 
   const quickChips = [

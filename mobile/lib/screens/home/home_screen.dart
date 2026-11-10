@@ -110,13 +110,60 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  bool _isNotificationForCurrentCustomer(Map<String, dynamic> item) {
+    try {
+      final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
+      if (role == 'all') return true;
+      if (role == 'delivery_boy' || role == 'admin') return false;
+
+      final recipId = (item['recipientId']?.toString() ?? '').toLowerCase().trim();
+
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final customer = Provider.of<CustomerProvider>(context, listen: false);
+      final currentUser = auth.user;
+
+      final Set<String> myIds = {};
+      if (currentUser != null) {
+        if (currentUser.id.isNotEmpty) myIds.add(currentUser.id.toLowerCase().trim());
+        if (currentUser.customerId.isNotEmpty) myIds.add(currentUser.customerId.toLowerCase().trim());
+        if (currentUser.mobile.isNotEmpty) myIds.add(currentUser.mobile.toLowerCase().trim());
+        if (currentUser.email != null && currentUser.email!.isNotEmpty) {
+          myIds.add(currentUser.email!.toLowerCase().trim());
+        }
+      }
+
+      final cData = customer.customerData;
+      if (cData != null) {
+        final cid = (cData['_id']?.toString() ?? cData['id']?.toString() ?? '').toLowerCase().trim();
+        if (cid.isNotEmpty) myIds.add(cid);
+        final cCode = (cData['customerId']?.toString() ?? '').toLowerCase().trim();
+        if (cCode.isNotEmpty) myIds.add(cCode);
+        final cPhone = (cData['mobile']?.toString() ?? '').toLowerCase().trim();
+        if (cPhone.isNotEmpty) myIds.add(cPhone);
+        final cMail = (cData['email']?.toString() ?? '').toLowerCase().trim();
+        if (cMail.isNotEmpty) myIds.add(cMail);
+      }
+
+      if (recipId.isNotEmpty) {
+        return myIds.contains(recipId);
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _fetchUnreadNotifCount() async {
     try {
       final res = await _api.get('/api/notifications');
       if (res['success'] == true && res['notifications'] is List && mounted) {
         final list = res['notifications'] as List;
+        final myItems = list.where((raw) {
+          if (raw is! Map) return false;
+          return _isNotificationForCurrentCustomer(Map<String, dynamic>.from(raw));
+        }).toList();
         setState(() {
-          _unreadNotifCount = list.where((n) => n['isRead'] != true).length;
+          _unreadNotifCount = myItems.where((n) => n['isRead'] != true).length;
         });
       }
     } catch (_) {}
@@ -2330,31 +2377,101 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: Color(0xFF0C2340),
                   ),
                 ),
-                InkWell(
-                  onTap: () {
-                    _openSubscriptionDetails();
-                  },
-                  child: const Row(
-                    children: [
-                      Text(
-                        'View All',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0D5C3A),
+                if (customerProvider.hasActiveSubscription)
+                  InkWell(
+                    onTap: () {
+                      _openSubscriptionDetails();
+                    },
+                    child: const Row(
+                      children: [
+                        Text(
+                          'View All',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0D5C3A),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 3),
-                      Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 13),
-                    ],
+                        SizedBox(width: 3),
+                        Icon(Icons.arrow_forward_rounded, color: Color(0xFF0D5C3A), size: 13),
+                      ],
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 12),
 
-            // ACTIVE SUBSCRIPTION CARD (Matching Image 2)
-            InkWell(
+            if (!customerProvider.hasActiveSubscription)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE2EBE5)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE8F5EE),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0D5C3A), size: 28),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'No Active Subscription Yet',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0C2340),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'You do not have any active subscriptions. Subscribe now to get 100% pure farm-fresh milk delivered daily.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Color(0xFF6B7280),
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => setState(() => _currentIndex = 1),
+                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                        label: const Text(
+                          'Choose a Plan & Subscribe',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0D5C3A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              // ACTIVE SUBSCRIPTION CARD (Matching Image 2)
+              InkWell(
               onTap: () {
                 _openSubscriptionDetails();
               },
@@ -3006,108 +3123,7 @@ class _HomeScreenState extends State<HomeScreen> {
               'driver': item['deliveryBoyName']?.toString() ?? 'Naveen Kumar',
             };
           }).toList()
-        : [
-            // Sample upcoming
-            {
-              'id': 'u1',
-              'date': '2026-10-29',
-              'day': 'Thu',
-              'dayNum': '29',
-              'monthYear': 'Oct 2026',
-              'timeSlot': '5:00 AM - 6:30 AM',
-              'milkQty': '1 L',
-              'curdQty': '0 g',
-              'isDelivered': false,
-              'paymentStatus': 'Advance',
-              'proofImage': null,
-              'driver': 'Naveen Kumar',
-            },
-            {
-              'id': 'u2',
-              'date': '2026-10-28',
-              'day': 'Wed',
-              'dayNum': '28',
-              'monthYear': 'Oct 2026',
-              'timeSlot': '5:00 AM - 6:30 AM',
-              'milkQty': '1 L',
-              'curdQty': '500 g',
-              'isDelivered': false,
-              'paymentStatus': 'Advance',
-              'proofImage': null,
-              'driver': 'Naveen Kumar',
-            },
-            {
-              'id': 'u3',
-              'date': '2026-10-27',
-              'day': 'Tue',
-              'dayNum': '27',
-              'monthYear': 'Oct 2026',
-              'timeSlot': '5:00 AM - 6:30 AM',
-              'milkQty': '1 L',
-              'curdQty': '0 g',
-              'isDelivered': false,
-              'paymentStatus': 'Advance',
-              'proofImage': null,
-              'driver': 'Naveen Kumar',
-            },
-            // Sample delivery history
-            {
-              'id': 'h1',
-              'date': '2026-10-26',
-              'day': 'Mon',
-              'dayNum': '26',
-              'monthYear': 'Oct 2026',
-              'timeSlot': 'Delivered 6:15 AM',
-              'milkQty': '1 L',
-              'curdQty': '500 g',
-              'isDelivered': true,
-              'paymentStatus': 'Paid',
-              'proofImage': 'assets/images/dairy_hero.jpg',
-              'driver': 'Naveen Kumar',
-            },
-            {
-              'id': 'h2',
-              'date': '2026-10-25',
-              'day': 'Sun',
-              'dayNum': '25',
-              'monthYear': 'Oct 2026',
-              'timeSlot': 'Delivered 6:05 AM',
-              'milkQty': '1 L',
-              'curdQty': '0 g',
-              'isDelivered': true,
-              'paymentStatus': 'Paid',
-              'proofImage': 'assets/images/dairy_hero.jpg',
-              'driver': 'Naveen Kumar',
-            },
-            {
-              'id': 'h3',
-              'date': '2026-10-24',
-              'day': 'Sat',
-              'dayNum': '24',
-              'monthYear': 'Oct 2026',
-              'timeSlot': 'Delivered 6:20 AM',
-              'milkQty': '1 L',
-              'curdQty': '500 g',
-              'isDelivered': true,
-              'paymentStatus': 'Paid',
-              'proofImage': 'assets/images/dairy_hero.jpg',
-              'driver': 'Naveen Kumar',
-            },
-            {
-              'id': 'h4',
-              'date': '2026-10-23',
-              'day': 'Fri',
-              'dayNum': '23',
-              'monthYear': 'Oct 2026',
-              'timeSlot': 'Delivered 6:10 AM',
-              'milkQty': '1 L',
-              'curdQty': '500 g',
-              'isDelivered': true,
-              'paymentStatus': 'Paid',
-              'proofImage': 'assets/images/dairy_hero.jpg',
-              'driver': 'Naveen Kumar',
-            },
-          ];
+        : <Map<String, dynamic>>[];
 
     final upcomingDeliveries = allDeliveries.where((d) => d['isDelivered'] != true).toList();
     final historyDeliveries = allDeliveries.where((d) => d['isDelivered'] == true).toList();
@@ -4248,6 +4264,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () async {
                     Navigator.pop(ctx);
                     final navigator = Navigator.of(context);
+                    if (context.mounted) {
+                      context.read<CustomerProvider>().clearCustomerData();
+                    }
                     await auth.logout();
                     if (!mounted) return;
                     navigator.pushAndRemoveUntil(

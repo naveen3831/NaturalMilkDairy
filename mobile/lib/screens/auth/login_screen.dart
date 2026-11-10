@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../data/services/api_service.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/customer_provider.dart';
 import '../admin/admin_dashboard_screen.dart';
 import '../delivery/delivery_dashboard_screen.dart';
 import '../home/home_screen.dart';
@@ -42,6 +43,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
 
     if (success) {
+      if (mounted) {
+        context.read<CustomerProvider>().clearCustomerData();
+      }
       final user = auth.user;
       Widget target = const HomeScreen();
       if (auth.isAdmin || user?.isAdmin == true) {

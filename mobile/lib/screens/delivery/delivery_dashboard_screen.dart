@@ -331,11 +331,37 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     return d.length > 10 ? d.substring(d.length - 10) : d;
   }
 
+  bool _isNotificationForDriver(Map<String, dynamic> item) {
+    try {
+      final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
+      if (role == 'all') return true;
+      if (role == 'customer' || role == 'admin') return false;
+
+      final recipId = (item['recipientId']?.toString() ?? '').toLowerCase().trim();
+      if (recipId.isEmpty) return true; // General driver broadcast
+
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final currentUser = auth.user;
+      final Set<String> myIds = {};
+      if (currentUser != null) {
+        if (currentUser.id.isNotEmpty) myIds.add(currentUser.id.toLowerCase().trim());
+        if (currentUser.mobile.isNotEmpty) myIds.add(currentUser.mobile.toLowerCase().trim());
+      }
+      return myIds.contains(recipId);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _loadNotifications({bool silent = false}) async {
     try {
       final res = await _api.get('/api/notifications');
       if (res['success'] == true && res['notifications'] is List) {
         final list = (res['notifications'] as List)
+            .where((e) {
+              if (e is! Map) return false;
+              return _isNotificationForDriver(Map<String, dynamic>.from(e));
+            })
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         if (mounted) {
@@ -2395,6 +2421,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         builder: (ctx) => _FullScreenAddCustomerPage(
           api: _api,
           defaultArea: _profileArea,
+          partnerName: _profileName,
           onSuccess: () => _loadData(silent: true),
         ),
       ),
@@ -6967,11 +6994,13 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
 class _FullScreenAddCustomerPage extends StatefulWidget {
   final ApiService api;
   final String defaultArea;
+  final String partnerName;
   final VoidCallback onSuccess;
 
   const _FullScreenAddCustomerPage({
     required this.api,
     required this.defaultArea,
+    this.partnerName = '',
     required this.onSuccess,
   });
 
@@ -6982,13 +7011,35 @@ class _FullScreenAddCustomerPage extends StatefulWidget {
 class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> {
   final _nameCtrl = TextEditingController();
   final _mobileCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  final _whatsappCtrl = TextEditingController();
+  final _landmarkCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
-  late final TextEditingController _areaCtrl;
+  final _googleMapsUrlCtrl = TextEditingController();
+  final _milkQtyCtrl = TextEditingController(text: '1');
+  final _curdQtyCtrl = TextEditingController(text: '0');
+  final _notesCtrl = TextEditingController();
+
+  late String _selectedArea;
+  String _status = 'active'; // 'active', 'paused', 'inactive'
+  String _frequency = 'daily'; // 'daily', 'alternate', 'custom'
+  String _paymentType = 'credit'; // 'credit', 'prepaid', 'cod'
+  String _paymentCycle = 'monthly'; // 'monthly', 'weekly', 'daily'
+
   double? _latitude;
   double? _longitude;
-  String _frequency = 'daily';
-  String _paymentType = 'credit';
   bool _isSubmitting = false;
+
+  final List<String> _serviceLocations = [
+    'Madhapur',
+    'Gachibowli',
+    'Kondapur',
+    'Jubilee Hills',
+    'Banjara Hills',
+    'Hitec City',
+    'Financial District',
+  ];
 
   List<ProductModel> _products = [];
   bool _isLoadingProducts = true;
@@ -6998,7 +7049,11 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
   @override
   void initState() {
     super.initState();
-    _areaCtrl = TextEditingController(text: widget.defaultArea);
+    final defArea = widget.defaultArea.trim();
+    if (defArea.isNotEmpty && !_serviceLocations.contains(defArea)) {
+      _serviceLocations.insert(0, defArea);
+    }
+    _selectedArea = defArea.isNotEmpty ? defArea : 'Madhapur';
     _loadProducts();
     _initProductRealtime();
   }
@@ -7025,7 +7080,6 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
         setState(() {
           _products = list.isNotEmpty ? list : ProductModel.defaultCatalog;
           _isLoadingProducts = false;
-          // Pre-select 1L for the primary milk product if no product is selected yet
           if (_productQuantities.isEmpty && _products.isNotEmpty) {
             final defaultMilk = _products.firstWhere(
               (p) => p.category.toLowerCase() == 'milk' || p.name.toLowerCase().contains('milk'),
@@ -7050,9 +7104,115 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
     _wsProductSub?.cancel();
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    _whatsappCtrl.dispose();
+    _landmarkCtrl.dispose();
     _addressCtrl.dispose();
-    _areaCtrl.dispose();
+    _googleMapsUrlCtrl.dispose();
+    _milkQtyCtrl.dispose();
+    _curdQtyCtrl.dispose();
+    _notesCtrl.dispose();
     super.dispose();
+  }
+
+  void _onMapsUrlChanged(String val) {
+    final str = val.trim();
+    if (str.isEmpty) return;
+
+    // 1. Raw lat, lng e.g. 17.4483, 78.3915
+    final rawRegex = RegExp(r'^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$');
+    final rawMatch = rawRegex.firstMatch(str);
+    if (rawMatch != null) {
+      final lat = double.tryParse(rawMatch.group(1)!);
+      final lng = double.tryParse(rawMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 2. Google maps @lat,lng
+    final atRegex = RegExp(r'@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final atMatch = atRegex.firstMatch(str);
+    if (atMatch != null) {
+      final lat = double.tryParse(atMatch.group(1)!);
+      final lng = double.tryParse(atMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 3. Query params: q=lat,lng or query=lat,lng or ll=lat,lng
+    final queryRegex = RegExp(r'[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final queryMatch = queryRegex.firstMatch(str);
+    if (queryMatch != null) {
+      final lat = double.tryParse(queryMatch.group(1)!);
+      final lng = double.tryParse(queryMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 4. Place or dir paths
+    final placeRegex = RegExp(r'\/(?:place|dir|search)\/(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final placeMatch = placeRegex.firstMatch(str);
+    if (placeMatch != null) {
+      final lat = double.tryParse(placeMatch.group(1)!);
+      final lng = double.tryParse(placeMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+  }
+
+  void _showMapLocationSelector() async {
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SelectLocationMapScreen(
+          initialLat: _latitude ?? 17.4483,
+          initialLng: _longitude ?? 78.3915,
+          initialArea: _selectedArea.isNotEmpty ? _selectedArea : widget.defaultArea,
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _latitude = (result['latitude'] as num?)?.toDouble();
+        _longitude = (result['longitude'] as num?)?.toDouble();
+        if (_latitude != null && _longitude != null) {
+          _googleMapsUrlCtrl.text = 'https://www.google.com/maps?q=$_latitude,$_longitude';
+        }
+        final area = result['area']?.toString();
+        final addressSnippet = result['address']?.toString();
+        if (area != null && area.isNotEmpty) {
+          if (!_serviceLocations.contains(area)) {
+            _serviceLocations.add(area);
+          }
+          _selectedArea = area;
+        }
+        if (addressSnippet != null && addressSnippet.isNotEmpty && _addressCtrl.text.isEmpty) {
+          _addressCtrl.text = addressSnippet;
+        }
+      });
+    }
   }
 
   double get _dailyTotalEstimate {
@@ -7073,45 +7233,36 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
     return _products.where((p) => (_productQuantities[p.id] ?? 0.0) > 0).toList();
   }
 
-  void _showMapLocationSelector() async {
-    final result = await Navigator.push<Map<String, dynamic>>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SelectLocationMapScreen(
-          initialLat: _latitude ?? 17.4483,
-          initialLng: _longitude ?? 78.3915,
-          initialArea: _areaCtrl.text.isNotEmpty ? _areaCtrl.text : widget.defaultArea,
-        ),
-      ),
-    );
-
-    if (result != null && mounted) {
-      setState(() {
-        _latitude = (result['latitude'] as num?)?.toDouble();
-        _longitude = (result['longitude'] as num?)?.toDouble();
-        final area = result['area']?.toString();
-        final addressSnippet = result['address']?.toString();
-        if (area != null && area.isNotEmpty) {
-          _areaCtrl.text = area;
-        }
-        if (addressSnippet != null && addressSnippet.isNotEmpty && _addressCtrl.text.isEmpty) {
-          _addressCtrl.text = addressSnippet;
-        }
-      });
-    }
-  }
-
   Future<void> _submit() async {
-    if (_nameCtrl.text.trim().isEmpty || _mobileCtrl.text.trim().isEmpty || _addressCtrl.text.trim().isEmpty) {
+    final name = _nameCtrl.text.trim();
+    final mobile = _mobileCtrl.text.trim();
+    final address = _addressCtrl.text.trim();
+
+    if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields (Name, Mobile, Address)')),
+        const SnackBar(content: Text('Please enter customer full name.')),
+      );
+      return;
+    }
+
+    final cleanPhone = mobile.replaceAll(RegExp(r'\D'), '');
+    if (cleanPhone.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid 10-digit mobile number.')),
+      );
+      return;
+    }
+
+    if (address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter delivery address.')),
       );
       return;
     }
 
     final extraProducts = <Map<String, dynamic>>[];
-    double totalMilk = 0.0;
-    double totalCurd = 0.0;
+    double totalMilk = double.tryParse(_milkQtyCtrl.text.trim()) ?? 1.0;
+    double totalCurd = double.tryParse(_curdQtyCtrl.text.trim()) ?? 0.0;
     String milkType = 'Pure A2 Cow Milk';
 
     for (final prod in _products) {
@@ -7130,43 +7281,61 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
         final cat = prod.category.toLowerCase();
         final nameLower = prod.name.toLowerCase();
         if (cat == 'milk' || nameLower.contains('milk')) {
-          totalMilk += qty;
           milkType = prod.name;
-        } else if (cat == 'curd' || nameLower.contains('curd')) {
-          totalCurd += (qty * 500);
         }
       }
     }
 
-    if (extraProducts.isEmpty && totalMilk == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select at least one product with quantity > 0.')),
-      );
-      return;
+    // Auto-generate fallback password if user leaves password blank
+    String finalPassword = _passwordCtrl.text.trim();
+    if (finalPassword.isEmpty) {
+      final last4 = cleanPhone.length >= 4 ? cleanPhone.substring(cleanPhone.length - 4) : '1234';
+      finalPassword = 'Nmd@${last4}123';
     }
 
     setState(() => _isSubmitting = true);
+
     final payload = {
-      'name': _nameCtrl.text.trim(),
-      'mobile': _mobileCtrl.text.trim(),
-      'address': _addressCtrl.text.trim(),
-      'area': _areaCtrl.text.trim(),
+      'name': name,
+      'mobile': cleanPhone.length == 10 ? cleanPhone : cleanPhone.substring(cleanPhone.length - 10),
+      'email': _emailCtrl.text.trim(),
+      'password': finalPassword,
+      'whatsapp': _whatsappCtrl.text.trim().isNotEmpty ? _whatsappCtrl.text.trim() : cleanPhone,
+      'address': address,
+      'area': _selectedArea,
+      'landmark': _landmarkCtrl.text.trim(),
+      'googleMapsUrl': _googleMapsUrlCtrl.text.trim(),
       if (_latitude != null) 'latitude': _latitude,
       if (_longitude != null) 'longitude': _longitude,
-      'milkQty': totalMilk > 0 ? totalMilk : 1.0,
+      'status': _status,
+      'milkQty': totalMilk,
+      'milkUnit': 'L',
       'curdQty': totalCurd,
+      'curdUnit': 'g',
       'milkType': milkType,
+      'frequency': _frequency,
+      'paymentType': _paymentType,
+      'paymentCycle': _paymentCycle,
+      'notes': _notesCtrl.text.trim(),
       'extraProducts': extraProducts,
       'deliveryPlan': {
-        'milkQty': totalMilk > 0 ? totalMilk : 1.0,
+        'milkQty': totalMilk,
+        'milkUnit': 'L',
         'curdQty': totalCurd,
+        'curdUnit': 'g',
         'milkType': milkType,
         'planName': 'Daily Farm Pure Milk Plan',
         'extraProducts': extraProducts,
         'frequency': _frequency,
+        'deliveryBoyName': widget.partnerName,
       },
-      'paymentInfo': {'paymentType': _paymentType},
+      'paymentInfo': {
+        'paymentType': _paymentType,
+        'paymentCycle': _paymentCycle,
+      },
+      'actor': widget.partnerName.isNotEmpty ? widget.partnerName : 'Delivery Partner',
     };
+
     final res = await widget.api.post('/api/customers', payload);
 
     if (!mounted) return;
@@ -7176,422 +7345,301 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
       widget.onSuccess();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✓ Customer added to route successfully!')),
+        const SnackBar(
+          backgroundColor: Color(0xFF059669),
+          content: Text('✓ Customer added & credentials sent successfully!'),
+        ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res['message'] ?? 'Failed to add customer')),
+        SnackBar(
+          backgroundColor: const Color(0xFFE11D48),
+          content: Text(res['message'] ?? 'Failed to add customer. Please try again.'),
+        ),
       );
     }
+  }
+
+  InputDecoration _inputDecor({
+    required String label,
+    String? hint,
+    IconData? icon,
+    String? prefixText,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixText: prefixText,
+      prefixIcon: icon != null ? Icon(icon, size: 18, color: const Color(0xFF059669)) : null,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF059669), width: 1.8)),
+      filled: true,
+      fillColor: const Color(0xFFFAFAFA),
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+      hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+    );
+  }
+
+  Widget _sectionTitle(String title, {IconData? icon, String? subtitle}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: const Color(0xFF059669)),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              title,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14.5,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+          ),
+        ],
+        const SizedBox(height: 10),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A), size: 24),
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A), size: 22),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'Add Customer to Route',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Add New Customer',
+              style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+            ),
+            Text(
+              'Create profile & send login credentials via email',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+            ),
+          ],
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Customer Profile', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-            const SizedBox(height: 12),
-            TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Customer Full Name *', border: OutlineInputBorder(), isDense: true)),
-            const SizedBox(height: 12),
-            TextField(controller: _mobileCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile Phone Number *', prefixText: '+91 ', border: OutlineInputBorder(), isDense: true)),
-            const SizedBox(height: 12),
-            TextField(controller: _addressCtrl, decoration: const InputDecoration(labelText: 'Flat / Doorstep Address *', border: OutlineInputBorder(), isDense: true)),
-            const SizedBox(height: 12),
-            TextField(controller: _areaCtrl, decoration: const InputDecoration(labelText: 'Assigned Territory / Area', border: OutlineInputBorder(), isDense: true)),
-            const SizedBox(height: 14),
-
-            // Map Location Pin Selector Card (Matches user mobile app experience)
+            // CARD 1: Customer Details
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _latitude != null ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: _latitude != null ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _latitude != null ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(
-                      Icons.pin_drop_rounded,
-                      color: _latitude != null ? const Color(0xFF059669) : const Color(0xFF64748B),
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _latitude != null ? 'Location Pinned on Map' : 'Select Customer Location on Map',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: _latitude != null ? const Color(0xFF065F46) : const Color(0xFF0C2340),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _latitude != null
-                              ? 'GPS: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}'
-                              : 'Tap to pick exact customer doorstep coordinates',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: _latitude != null ? const Color(0xFF166534) : const Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showMapLocationSelector,
-                    icon: Icon(
-                      _latitude != null ? Icons.edit_location_alt_rounded : Icons.map_rounded,
-                      size: 14,
-                      color: const Color(0xFF059669),
-                    ),
-                    label: Text(
-                      _latitude != null ? 'Change' : 'Pick on Map',
-                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
-                    ),
-                    style: TextButton.styleFrom(
-                      backgroundColor: const Color(0xFFDCFCE7),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Products & Daily Delivery Schedule Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'All Products & Daily Quantities',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A)),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFFA7F3D0)),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.bolt, size: 12, color: Color(0xFF059669)),
-                      SizedBox(width: 3),
-                      Text(
-                        'Live Catalog',
-                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Select customer\'s daily milk and dairy products (curd, paneer, ghee, butter):',
-              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 12),
-
-            if (_isLoadingProducts)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: CircularProgressIndicator(color: Color(0xFF059669)),
-                ),
-              )
-            else
-              Column(
-                children: _products.map((prod) {
-                  final currentQty = _productQuantities[prod.id] ?? 0.0;
-                  final isMilk = prod.category.toLowerCase() == 'milk' || prod.name.toLowerCase().contains('milk');
-                  final step = isMilk ? 0.5 : 1.0;
-                  final presets = isMilk ? [0.5, 1.0, 1.5, 2.0] : [0.0, 1.0, 2.0, 3.0];
-                  final unitPrice = prod.numericPrice > 0
-                      ? prod.numericPrice
-                      : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
-                  final itemTotal = (currentQty * unitPrice).toInt();
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: currentQty > 0 ? const Color(0xFFF0FDF4) : Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: currentQty > 0 ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
-                        width: currentQty > 0 ? 1.5 : 1.0,
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 38,
-                              height: 38,
-                              decoration: BoxDecoration(
-                                color: currentQty > 0 ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(
-                                isMilk
-                                    ? Icons.water_drop_rounded
-                                    : (prod.category.toLowerCase() == 'curd'
-                                        ? Icons.breakfast_dining_rounded
-                                        : Icons.inventory_2_rounded),
-                                color: currentQty > 0 ? const Color(0xFF059669) : const Color(0xFF64748B),
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    prod.name,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13.5,
-                                      color: currentQty > 0 ? const Color(0xFF065F46) : const Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '₹${prod.price} / ${prod.unit}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 12,
-                                          color: Color(0xFF059669),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFF1F5F9),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          prod.category.toUpperCase(),
-                                          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (currentQty > 0)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFDCFCE7),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '₹$itemTotal',
-                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: Color(0xFF047857)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-
-                        // Stepper row and preset chips
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Stepper (- [qty] +)
-                            Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  InkWell(
-                                    onTap: currentQty > 0
-                                        ? () {
-                                            setState(() {
-                                              final next = (currentQty - step).clamp(0.0, 50.0);
-                                              _productQuantities[prod.id] = next;
-                                            });
-                                          }
-                                        : null,
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(
-                                        Icons.remove,
-                                        size: 16,
-                                        color: currentQty > 0 ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    constraints: const BoxConstraints(minWidth: 42),
-                                    alignment: Alignment.center,
-                                    child: Text(
-                                      currentQty > 0
-                                          ? (isMilk ? '${currentQty.toStringAsFixed(currentQty.truncateToDouble() == currentQty ? 0 : 1)}L' : '${currentQty.toInt()}')
-                                          : '0',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 12.5,
-                                        color: currentQty > 0 ? const Color(0xFF065F46) : const Color(0xFF64748B),
-                                      ),
-                                    ),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        final next = currentQty + step;
-                                        _productQuantities[prod.id] = next;
-                                      });
-                                    },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF059669),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Icon(
-                                        Icons.add,
-                                        size: 16,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Presets
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: presets.map((pVal) {
-                                final isSel = currentQty == pVal;
-                                final label = pVal == 0
-                                    ? '0'
-                                    : (isMilk ? '${pVal.toStringAsFixed(pVal.truncateToDouble() == pVal ? 0 : 1)}L' : '${pVal.toInt()}x');
-                                return Padding(
-                                  padding: const EdgeInsets.only(left: 4),
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        _productQuantities[prod.id] = pVal;
-                                      });
-                                    },
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: isSel ? const Color(0xFFECFDF5) : Colors.white,
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(
-                                          color: isSel ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        label,
-                                        style: TextStyle(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: isSel ? const Color(0xFF065F46) : const Color(0xFF475569),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
-
-            // Live Daily Basket Summary Card
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFA7F3D0)),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'DAILY SCHEDULED PRODUCTS (${_selectedProductsList.length} items)',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11, color: Color(0xFF047857)),
-                      ),
-                      Text(
-                        '₹${_dailyTotalEstimate.toStringAsFixed(0)} / day',
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Color(0xFF065F46)),
-                      ),
-                    ],
+                  _sectionTitle('Customer Details', icon: Icons.person_outline_rounded),
+                  TextField(
+                    controller: _nameCtrl,
+                    decoration: _inputDecor(label: 'Customer Name *', hint: 'e.g. Ramesh Kulkarni', icon: Icons.person_rounded),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _selectedProductsList.isNotEmpty
-                        ? _selectedProductsList.map((p) {
-                            final q = _productQuantities[p.id] ?? 0;
-                            final isMilk = p.category.toLowerCase() == 'milk' || p.name.toLowerCase().contains('milk');
-                            final qStr = isMilk ? '${q.toStringAsFixed(q.truncateToDouble() == q ? 0 : 1)}L' : '${q.toInt()} ${p.unit}';
-                            return '${p.name} ($qStr)';
-                          }).join(' • ')
-                        : 'No products selected yet. Please select at least 1 product.',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: _selectedProductsList.isNotEmpty ? const Color(0xFF065F46) : const Color(0xFFB45309),
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _mobileCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: _inputDecor(label: 'Mobile Number *', hint: '10 digit mobile', prefixText: '+91 ', icon: Icons.phone_android_rounded),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inputDecor(label: 'Customer Email (For Credentials)', hint: 'e.g. customer@gmail.com', icon: Icons.alternate_email_rounded),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _passwordCtrl,
+                    obscureText: true,
+                    decoration: _inputDecor(label: 'Portal Password (Optional)', hint: 'Leave blank for auto-generated', icon: Icons.lock_outline_rounded),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _whatsappCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: _inputDecor(label: 'WhatsApp Number', hint: 'Defaults to mobile', icon: Icons.chat_rounded),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Area / Territory Dropdown
+                  InputDecorator(
+                    decoration: _inputDecor(label: 'Service Location / Area *', icon: Icons.map_outlined),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isDense: true,
+                        isExpanded: true,
+                        value: _selectedArea,
+                        items: _serviceLocations.map((area) {
+                          return DropdownMenuItem<String>(
+                            value: area,
+                            child: Text(area, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedArea = val);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Account Status Dropdown
+                  InputDecorator(
+                    decoration: _inputDecor(label: 'Account Status', icon: Icons.shield_outlined),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isDense: true,
+                        isExpanded: true,
+                        value: _status,
+                        items: const [
+                          DropdownMenuItem(value: 'active', child: Text('Active (Deliveries Running)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF059669)))),
+                          DropdownMenuItem(value: 'paused', child: Text('Paused (Deliveries On Hold)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFD97706)))),
+                          DropdownMenuItem(value: 'inactive', child: Text('Inactive', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)))),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => _status = val);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _landmarkCtrl,
+                    decoration: _inputDecor(label: 'Landmark', hint: 'e.g. Near Metro Station / Opp. Bank', icon: Icons.store_rounded),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _addressCtrl,
+                    maxLines: 2,
+                    decoration: _inputDecor(label: 'Delivery Address *', hint: 'Flat / Wing, Society Name, Street', icon: Icons.home_rounded),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // CARD 2: Location Pin & Real-time GPS Detection
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle(
+                    'Google Maps Location / Pin',
+                    icon: Icons.location_on_rounded,
+                    subtitle: 'Paste Google Maps link or pick on map for live navigation',
+                  ),
+                  TextField(
+                    controller: _googleMapsUrlCtrl,
+                    onChanged: _onMapsUrlChanged,
+                    decoration: _inputDecor(
+                      label: 'Google Maps Link or Coordinates (Optional)',
+                      hint: 'Paste maps link or "17.4483, 78.3915"',
+                      icon: Icons.link_rounded,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _latitude != null ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _latitude != null ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _latitude != null ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.pin_drop_rounded,
+                            color: _latitude != null ? const Color(0xFF059669) : const Color(0xFF64748B),
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _latitude != null ? 'Coordinates Detected' : 'Pin Customer Doorstep',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: _latitude != null ? const Color(0xFF065F46) : const Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _latitude != null
+                                    ? 'GPS: ${_latitude!.toStringAsFixed(5)}, ${_longitude!.toStringAsFixed(5)}'
+                                    : 'Select on map for accurate partner delivery route',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: _latitude != null ? const Color(0xFF166534) : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _showMapLocationSelector,
+                          icon: Icon(
+                            _latitude != null ? Icons.edit_location_alt_rounded : Icons.map_rounded,
+                            size: 14,
+                            color: const Color(0xFF059669),
+                          ),
+                          label: Text(
+                            _latitude != null ? 'Change' : 'Pick on Map',
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                          ),
+                          style: TextButton.styleFrom(
+                            backgroundColor: const Color(0xFFDCFCE7),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -7599,71 +7647,369 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
             ),
             const SizedBox(height: 16),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('Delivery Frequency:', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                DropdownButton<String>(
-                  value: _frequency,
-                  items: const [
-                    DropdownMenuItem(value: 'daily', child: Text('Everyday (Daily)')),
-                    DropdownMenuItem(value: 'alternate', child: Text('Alternate Days')),
-                  ],
-                  onChanged: (v) => setState(() => _frequency = v ?? _frequency),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+            // CARD 3: Morning Subscription Plan
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle('Morning Subscription Plan', icon: Icons.local_drink_rounded),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _milkQtyCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: _inputDecor(label: 'Daily Milk Qty (L)', hint: '1', icon: Icons.water_drop_outlined),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _curdQtyCtrl,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: _inputDecor(label: 'Daily Curd Qty (g)', hint: '0', icon: Icons.breakfast_dining_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
-            const Text('Billing & Settlement Type', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Center(child: Text('Monthly Credit')),
-                    selected: _paymentType == 'credit',
-                    selectedColor: const Color(0xFFECFDF5),
-                    onSelected: (s) => setState(() => _paymentType = 'credit'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: _inputDecor(label: 'Delivery Frequency', icon: Icons.repeat_rounded),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isDense: true,
+                              isExpanded: true,
+                              value: _frequency,
+                              items: const [
+                                DropdownMenuItem(value: 'daily', child: Text('Daily (Every Day)', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'alternate', child: Text('Alternate Days', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'custom', child: Text('Custom Days', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600))),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) setState(() => _frequency = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: _inputDecor(label: 'Assigned Partner', icon: Icons.delivery_dining_rounded),
+                          child: Text(
+                            widget.partnerName.isNotEmpty ? widget.partnerName : 'Current Partner',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Center(child: Text('Prepaid')),
-                    selected: _paymentType == 'prepaid',
-                    selectedColor: const Color(0xFFECFDF5),
-                    onSelected: (s) => setState(() => _paymentType = 'prepaid'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ChoiceChip(
-                    label: const Center(child: Text('COD')),
-                    selected: _paymentType == 'cod',
-                    selectedColor: const Color(0xFFECFDF5),
-                    onSelected: (s) => setState(() => _paymentType = 'cod'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
+                  const SizedBox(height: 16),
 
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                    : const Text('✓ Add Customer to Route', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.white)),
+                  // Live catalog products selector
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Live Catalog Products',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0F172A)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.bolt, size: 11, color: Color(0xFF059669)),
+                            SizedBox(width: 2),
+                            Text('Live Store', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  if (_isLoadingProducts)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    Column(
+                      children: _products.map((prod) {
+                        final currentQty = _productQuantities[prod.id] ?? 0.0;
+                        final isMilk = prod.category.toLowerCase() == 'milk' || prod.name.toLowerCase().contains('milk');
+                        final step = isMilk ? 0.5 : 1.0;
+                        final presets = isMilk ? [0.5, 1.0, 1.5, 2.0] : [0.0, 1.0, 2.0, 3.0];
+                        final unitPrice = prod.numericPrice > 0
+                            ? prod.numericPrice
+                            : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+                        final itemTotal = (currentQty * unitPrice).toInt();
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: currentQty > 0 ? const Color(0xFFF0FDF4) : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: currentQty > 0 ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0),
+                              width: currentQty > 0 ? 1.4 : 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          prod.name,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12.5,
+                                            color: currentQty > 0 ? const Color(0xFF065F46) : const Color(0xFF0F172A),
+                                          ),
+                                        ),
+                                        Text(
+                                          '₹${prod.price} / ${prod.unit}',
+                                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: Color(0xFF059669)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (currentQty > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                      decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(5)),
+                                      child: Text('₹$itemTotal', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11.5, color: Color(0xFF047857))),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Container(
+                                    decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(6)),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        InkWell(
+                                          onTap: currentQty > 0
+                                              ? () => setState(() => _productQuantities[prod.id] = (currentQty - step).clamp(0.0, 50.0))
+                                              : null,
+                                          child: const Padding(padding: EdgeInsets.all(5), child: Icon(Icons.remove, size: 14)),
+                                        ),
+                                        Container(
+                                          constraints: const BoxConstraints(minWidth: 32),
+                                          alignment: Alignment.center,
+                                          child: Text(
+                                            currentQty > 0
+                                                ? (isMilk ? '${currentQty.toStringAsFixed(currentQty.truncateToDouble() == currentQty ? 0 : 1)}L' : '${currentQty.toInt()}')
+                                                : '0',
+                                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5),
+                                          ),
+                                        ),
+                                        InkWell(
+                                          onTap: () => setState(() => _productQuantities[prod.id] = currentQty + step),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(5),
+                                            decoration: BoxDecoration(color: const Color(0xFF059669), borderRadius: BorderRadius.circular(5)),
+                                            child: const Icon(Icons.add, size: 14, color: Colors.white),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: presets.map((pVal) {
+                                      final isSel = currentQty == pVal;
+                                      final label = pVal == 0
+                                          ? '0'
+                                          : (isMilk ? '${pVal.toStringAsFixed(pVal.truncateToDouble() == pVal ? 0 : 1)}L' : '${pVal.toInt()}x');
+                                      return Padding(
+                                        padding: const EdgeInsets.only(left: 3),
+                                        child: InkWell(
+                                          onTap: () => setState(() => _productQuantities[prod.id] = pVal),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: isSel ? const Color(0xFFECFDF5) : Colors.white,
+                                              borderRadius: BorderRadius.circular(5),
+                                              border: Border.all(color: isSel ? const Color(0xFF059669) : const Color(0xFFCBD5E1)),
+                                            ),
+                                            child: Text(label, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: isSel ? const Color(0xFF065F46) : const Color(0xFF475569))),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+
+                  // Scheduled Products Summary
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'DAILY SCHEDULE ESTIMATE (${_selectedProductsList.length} items)',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 10.5, color: Color(0xFF047857)),
+                        ),
+                        Text(
+                          '₹${_dailyTotalEstimate.toStringAsFixed(0)} / day',
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF065F46)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // CARD 4: Billing & Ledger Settings
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _sectionTitle('Billing & Ledger Settings', icon: Icons.receipt_long_rounded),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: _inputDecor(label: 'Billing Type', icon: Icons.account_balance_wallet_outlined),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isDense: true,
+                              isExpanded: true,
+                              value: _paymentType,
+                              items: const [
+                                DropdownMenuItem(value: 'credit', child: Text('Monthly Credit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'prepaid', child: Text('Prepaid Advance', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'cod', child: Text('Cash on Delivery', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) setState(() => _paymentType = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InputDecorator(
+                          decoration: _inputDecor(label: 'Settlement Cycle', icon: Icons.calendar_today_outlined),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isDense: true,
+                              isExpanded: true,
+                              value: _paymentCycle,
+                              items: const [
+                                DropdownMenuItem(value: 'monthly', child: Text('Monthly', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'weekly', child: Text('Weekly', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                                DropdownMenuItem(value: 'daily', child: Text('Daily', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) setState(() => _paymentCycle = val);
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: _notesCtrl,
+                    maxLines: 2,
+                    decoration: _inputDecor(label: 'Delivery Instructions / Notes', hint: 'e.g. Ring bell once / leave on doorstep rack', icon: Icons.note_outlined),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // ACTION BUTTONS (Cancel & Submit)
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton(
+                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700, fontSize: 13.5)),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 3,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text(
+                            '✓ Save & Add to Route',
+                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Colors.white),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),

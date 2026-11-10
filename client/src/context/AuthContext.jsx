@@ -183,7 +183,21 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('nmd_customer_page');
       localStorage.removeItem('nmd_driver_tab');
       localStorage.removeItem('nmd_pending_subscription');
+
+      // Clear user-specific notification caches so next user never sees prior user's notifications
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('nmd_notifs_')) {
+          localStorage.removeItem(key);
+        }
+      });
     } catch (e) {}
+    // Immediately redirect to home page and notify App
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nmd_auth_logout'));
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({ nmdPage: 'home' }, '', '/');
+      }
+    }
   }, []);
 
   return (

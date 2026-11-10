@@ -1510,11 +1510,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           scrollDirection: Axis.horizontal,
           child: Row(
             children: [
+              _buildQuickActionPill('+ Add Customer', Icons.person_add_rounded, const Color(0xFF059669), const Color(0xFFECFDF5), () => _openAddCustomerModal()),
+              const SizedBox(width: 8),
               _buildQuickActionPill('Deliveries', Icons.local_shipping_rounded, const Color(0xFF2563EB), const Color(0xFFEFF6FF), () => setState(() => _selectedTabIndex = 1)),
               const SizedBox(width: 8),
               _buildQuickActionPill('Partners', Icons.sports_motorsports_rounded, const Color(0xFF059669), const Color(0xFFECFDF5), () => setState(() => _selectedTabIndex = 2)),
               const SizedBox(width: 8),
               _buildQuickActionPill('Customers', Icons.people_rounded, const Color(0xFF7E22CE), const Color(0xFFF3E8FF), () => setState(() => _selectedTabIndex = 3)),
+              const SizedBox(width: 8),
+              _buildQuickActionPill('Contact & Links', Icons.share_rounded, const Color(0xFFD97706), const Color(0xFFFEF3C7), () => _openContactSettingsModal()),
               const SizedBox(width: 8),
               _buildQuickActionPill('Profile', Icons.person_rounded, const Color(0xFF0F766E), const Color(0xFFCCFBF1), () => setState(() => _selectedTabIndex = 4)),
             ],
@@ -2415,16 +2419,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     return Column(
       children: [
-        TextField(
-          onChanged: (v) => setState(() => _customerSearch = v.trim()),
-          decoration: InputDecoration(
-            hintText: 'Search by customer name or phone...',
-            prefixIcon: const Icon(Icons.search_rounded, size: 18),
-            isDense: true,
-            filled: true,
-            fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                onChanged: (v) => setState(() => _customerSearch = v.trim()),
+                decoration: InputDecoration(
+                  hintText: 'Search customer name or phone...',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                  isDense: true,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: () => _openAddCustomerModal(),
+              icon: const Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+              label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         ListView.separated(
@@ -2783,6 +2804,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 title: 'Customer Directory & Accounts',
                 subtitle: 'Manage $totalCustomers households & subscriptions',
                 onTap: () => setState(() => _selectedTabIndex = 3),
+              ),
+              _buildDivider(),
+              _buildNavigationRow(
+                icon: Icons.share_rounded,
+                title: 'Contact Details & Social Media',
+                subtitle: 'Manage helplines, WhatsApp & official channels',
+                onTap: () => _openContactSettingsModal(),
               ),
               _buildDivider(),
               _buildNavigationRow(
@@ -3216,6 +3244,1183 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           },
         ),
       ),
+    );
+  }
+
+  void _openContactSettingsModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ContactSettingsBottomSheet(
+        api: _api,
+        onSaved: () => _loadAllData(silent: true),
+      ),
+    );
+  }
+
+  void _openAddCustomerModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AddCustomerBottomSheet(
+        api: _api,
+        deliveryBoys: _deliveryBoys,
+        onCreated: () {
+          _loadCustomers();
+          _loadDashboardSummary();
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD NEW CUSTOMER BOTTOM SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+class _AddCustomerBottomSheet extends StatefulWidget {
+  final ApiService api;
+  final List<Map<String, dynamic>> deliveryBoys;
+  final VoidCallback onCreated;
+
+  const _AddCustomerBottomSheet({
+    required this.api,
+    required this.deliveryBoys,
+    required this.onCreated,
+  });
+
+  @override
+  State<_AddCustomerBottomSheet> createState() => _AddCustomerBottomSheetState();
+}
+
+class _AddCustomerBottomSheetState extends State<_AddCustomerBottomSheet> {
+  final _nameController = TextEditingController();
+  final _mobileController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _whatsappController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _googleMapsUrlController = TextEditingController();
+  final _landmarkController = TextEditingController();
+  final _areaController = TextEditingController(text: 'Madhapur');
+  final _milkQtyController = TextEditingController(text: '1.0');
+  final _curdQtyController = TextEditingController(text: '0');
+  final _notesController = TextEditingController();
+
+  double? _latitude;
+  double? _longitude;
+
+  String _frequency = 'daily';
+  String _paymentType = 'credit';
+  String? _selectedDeliveryBoyId;
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  void _onMapsUrlChanged(String val) {
+    final str = val.trim();
+    if (str.isEmpty) {
+      setState(() {
+        _latitude = null;
+        _longitude = null;
+      });
+      return;
+    }
+
+    // 1. Raw lat, lng e.g. 17.4483, 78.3915
+    final rawRegex = RegExp(r'^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$');
+    final rawMatch = rawRegex.firstMatch(str);
+    if (rawMatch != null) {
+      final lat = double.tryParse(rawMatch.group(1)!);
+      final lng = double.tryParse(rawMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 2. Google maps @lat,lng
+    final atRegex = RegExp(r'@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final atMatch = atRegex.firstMatch(str);
+    if (atMatch != null) {
+      final lat = double.tryParse(atMatch.group(1)!);
+      final lng = double.tryParse(atMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 3. Query params: q=lat,lng or query=lat,lng or ll=lat,lng
+    final queryRegex = RegExp(r'[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final queryMatch = queryRegex.firstMatch(str);
+    if (queryMatch != null) {
+      final lat = double.tryParse(queryMatch.group(1)!);
+      final lng = double.tryParse(queryMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    // 4. Place or dir paths
+    final placeRegex = RegExp(r'\/(?:place|dir|search)\/(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final placeMatch = placeRegex.firstMatch(str);
+    if (placeMatch != null) {
+      final lat = double.tryParse(placeMatch.group(1)!);
+      final lng = double.tryParse(placeMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.deliveryBoys.isNotEmpty) {
+      final first = widget.deliveryBoys.first;
+      _selectedDeliveryBoyId = first['id']?.toString() ?? first['_id']?.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _mobileController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _whatsappController.dispose();
+    _addressController.dispose();
+    _googleMapsUrlController.dispose();
+    _landmarkController.dispose();
+    _areaController.dispose();
+    _milkQtyController.dispose();
+    _curdQtyController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final mobile = _mobileController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final address = _addressController.text.trim();
+
+    setState(() => _errorMessage = null);
+
+    if (name.length < 2) {
+      setState(() => _errorMessage = 'Please enter customer name (at least 2 characters).');
+      return;
+    }
+    if (!RegExp(r'^(?:\+?91[- ]?)?[6-9]\d{9}$').hasMatch(mobile)) {
+      setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (address.length < 4) {
+      setState(() => _errorMessage = 'Please enter a complete delivery address.');
+      return;
+    }
+    if (password.isEmpty && email.isEmpty) {
+      setState(() => _errorMessage = 'Provide an email or set a portal password for customer login.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final payload = {
+        'name': name,
+        'mobile': mobile,
+        'email': email,
+        'password': password.isNotEmpty ? password : null,
+        'whatsapp': _whatsappController.text.trim().isNotEmpty ? _whatsappController.text.trim() : mobile,
+        'address': address,
+        'area': _areaController.text.trim().isNotEmpty ? _areaController.text.trim() : 'Madhapur',
+        'landmark': _landmarkController.text.trim(),
+        'googleMapsUrl': _googleMapsUrlController.text.trim(),
+        if (_latitude != null) 'latitude': _latitude,
+        if (_longitude != null) 'longitude': _longitude,
+        'status': 'active',
+        'milkQty': double.tryParse(_milkQtyController.text.trim()) ?? 1.0,
+        'milkUnit': 'L',
+        'curdQty': int.tryParse(_curdQtyController.text.trim()) ?? 0,
+        'curdUnit': 'g',
+        'frequency': _frequency,
+        'deliveryBoyId': _selectedDeliveryBoyId,
+        'paymentType': _paymentType,
+        'paymentCycle': 'monthly',
+        'notes': _notesController.text.trim(),
+        'actor': 'Admin',
+      };
+
+      final res = await widget.api.post('/api/customers', payload);
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      if (res['success'] == true) {
+        widget.onCreated();
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Customer "$name" created successfully!'),
+            backgroundColor: const Color(0xFF059669),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        setState(() => _errorMessage = res['message']?.toString() ?? 'Failed to add customer. Please try again.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = 'Error: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.90,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 20,
+        right: 20,
+        top: 14,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.person_add_rounded, color: Color(0xFF059669), size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Add New Customer',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        'Create profile & set delivery quota',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+              ),
+            ],
+          ),
+
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 12),
+
+          // Scrollable Form Body
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionHeader('Personal Details'),
+                  const SizedBox(height: 8),
+                  _buildTextField(_nameController, 'Customer Name *', 'e.g. Ramesh Kulkarni', Icons.person_outline_rounded),
+                  const SizedBox(height: 10),
+                  _buildTextField(_mobileController, 'Mobile Number *', '10-digit mobile number', Icons.phone_outlined, keyboardType: TextInputType.phone),
+                  const SizedBox(height: 10),
+                  _buildTextField(_emailController, 'Customer Email (For Login)', 'e.g. customer@gmail.com', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+                  const SizedBox(height: 10),
+                  _buildTextField(_passwordController, 'Portal Password (Optional)', 'Leave blank for auto-generated', Icons.lock_outline_rounded),
+                  const SizedBox(height: 10),
+                  _buildTextField(_whatsappController, 'WhatsApp Number', 'Defaults to mobile', Icons.chat_bubble_outline_rounded, keyboardType: TextInputType.phone),
+                  const SizedBox(height: 10),
+                  _buildTextField(_areaController, 'Service Area / Location *', 'e.g. Madhapur, Hitec City', Icons.location_on_outlined),
+                  const SizedBox(height: 10),
+                  _buildTextField(_landmarkController, 'Landmark', 'e.g. Near Metro Station', Icons.flag_outlined),
+                  const SizedBox(height: 10),
+                  _buildTextField(_addressController, 'Delivery Address *', 'Flat / Wing, Society Name, Street', Icons.home_outlined, maxLines: 2),
+                  const SizedBox(height: 10),
+                  _buildTextField(
+                    _googleMapsUrlController,
+                    'Google Maps Location / Link (Optional)',
+                    'Paste maps link (e.g. maps.app.goo.gl/... or 17.4483, 78.3915)',
+                    Icons.map_outlined,
+                    onChanged: _onMapsUrlChanged,
+                  ),
+                  if (_latitude != null && _longitude != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFF86EFAC)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '✓ Live GPS Detected: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)} (Real-Time)',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF065F46)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  _buildSectionHeader('Morning Subscription Plan'),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(_milkQtyController, 'Milk Qty (L)', '1.0', Icons.water_drop_outlined, keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildTextField(_curdQtyController, 'Curd Qty (g)', '0', Icons.egg_outlined, keyboardType: TextInputType.number),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Delivery Frequency dropdown
+                  const Text('Delivery Frequency', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFF8FAFC),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _frequency,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: 'daily', child: Text('Daily (Every Day)', style: TextStyle(fontSize: 13))),
+                          DropdownMenuItem(value: 'alternate', child: Text('Alternate Days', style: TextStyle(fontSize: 13))),
+                          DropdownMenuItem(value: 'selected', child: Text('Selected Days', style: TextStyle(fontSize: 13))),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _frequency = v);
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // Assigned Delivery Partner dropdown
+                  const Text('Assigned Delivery Partner', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFF8FAFC),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _selectedDeliveryBoyId,
+                        isExpanded: true,
+                        hint: const Text('Unassigned Partner', style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+                        items: [
+                          const DropdownMenuItem<String>(
+                            value: null,
+                            child: Text('Unassigned Partner', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                          ),
+                          ...widget.deliveryBoys.map((b) {
+                            final id = b['id']?.toString() ?? b['_id']?.toString() ?? '';
+                            final bName = b['name']?.toString() ?? 'Partner';
+                            final bArea = b['assignedArea']?.toString() ?? '';
+                            return DropdownMenuItem<String>(
+                              value: id,
+                              child: Text(
+                                bArea.isNotEmpty ? '$bName ($bArea)' : bName,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (v) => setState(() => _selectedDeliveryBoyId = v),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  _buildSectionHeader('Billing & Ledger Settings'),
+                  const SizedBox(height: 8),
+
+                  // Billing Type dropdown
+                  const Text('Billing Type', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(10),
+                      color: const Color(0xFFF8FAFC),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _paymentType,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: 'credit', child: Text('Monthly Credit Account', style: TextStyle(fontSize: 13))),
+                          DropdownMenuItem(value: 'prepaid', child: Text('Prepaid Advance', style: TextStyle(fontSize: 13))),
+                          DropdownMenuItem(value: 'cod', child: Text('Daily Cash on Delivery', style: TextStyle(fontSize: 13))),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) setState(() => _paymentType = v);
+                        },
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+                  _buildTextField(_notesController, 'Delivery Instructions / Notes', 'e.g. Ring bell once / leave on shelf', Icons.note_alt_outlined),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+
+          // Actions Row
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _isSubmitting ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Save & Create Customer', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    String hint,
+    IconData icon, {
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          maxLines: maxLines,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+            prefixIcon: Icon(icon, size: 18, color: const Color(0xFF64748B)),
+            isDense: true,
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTACT DETAILS & SOCIAL MEDIA SETTINGS BOTTOM SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+class _ContactSettingsBottomSheet extends StatefulWidget {
+  final ApiService api;
+  final VoidCallback onSaved;
+
+  const _ContactSettingsBottomSheet({
+    required this.api,
+    required this.onSaved,
+  });
+
+  @override
+  State<_ContactSettingsBottomSheet> createState() => _ContactSettingsBottomSheetState();
+}
+
+class _ContactSettingsBottomSheetState extends State<_ContactSettingsBottomSheet> {
+  final _phoneController = TextEditingController();
+  final _whatsappController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _hoursController = TextEditingController();
+  final _fbController = TextEditingController();
+  final _twController = TextEditingController();
+  final _liController = TextEditingController();
+  final _igController = TextEditingController();
+  final _ytController = TextEditingController();
+
+  bool _isLoading = true;
+  bool _isSaving = false;
+  bool _isEditing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    _whatsappController.dispose();
+    _emailController.dispose();
+    _addressController.dispose();
+    _hoursController.dispose();
+    _fbController.dispose();
+    _twController.dispose();
+    _liController.dispose();
+    _igController.dispose();
+    _ytController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final data = await widget.api.getContactInfo();
+      if (data != null && mounted) {
+        _phoneController.text = data['phone']?.toString() ?? '+91 98765 43210';
+        _whatsappController.text = data['whatsapp']?.toString() ?? '+91 98765 43210';
+        _emailController.text = data['email']?.toString() ?? 'care@naturalmilkdairy.com';
+        _addressController.text = data['address']?.toString() ?? 'Natural Milk Dairy, Unit 12/B, Knowledge Park Rd, Near WEH, Andheri West, Mumbai, Maharashtra 400053';
+        _hoursController.text = data['workingHours']?.toString() ?? '5:00 AM – 9:00 PM Daily (365 Days)';
+
+        final socials = data['socialLinks'] as Map<String, dynamic>? ?? {};
+        _fbController.text = socials['facebook']?.toString() ?? 'https://facebook.com';
+        _twController.text = socials['twitter']?.toString() ?? 'https://twitter.com';
+        _liController.text = socials['linkedin']?.toString() ?? 'https://linkedin.com';
+        _igController.text = socials['instagram']?.toString() ?? 'https://instagram.com';
+        _ytController.text = socials['youtube']?.toString() ?? 'https://youtube.com';
+      }
+    } catch (e) {
+      debugPrint('Error loading contact info: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveData() async {
+    setState(() => _isSaving = true);
+    try {
+      final payload = {
+        'phone': _phoneController.text.trim(),
+        'whatsapp': _whatsappController.text.trim(),
+        'email': _emailController.text.trim(),
+        'address': _addressController.text.trim(),
+        'workingHours': _hoursController.text.trim(),
+        'socialLinks': {
+          'facebook': _fbController.text.trim(),
+          'twitter': _twController.text.trim(),
+          'linkedin': _liController.text.trim(),
+          'instagram': _igController.text.trim(),
+          'youtube': _ytController.text.trim(),
+        },
+      };
+
+      final res = await widget.api.updateContactInfo(payload);
+      if (mounted) {
+        setState(() => _isSaving = false);
+        if (res['success'] == true) {
+          widget.onSaved();
+          setState(() => _isEditing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Contact details & social media links updated successfully!'),
+              backgroundColor: Color(0xFF059669),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Failed to update contact info'),
+              backgroundColor: const Color(0xFFDC2626),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving contact info: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _resetData() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Defaults?', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        content: const Text('Reset contact details and social links back to standard company defaults?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            child: const Text('Reset', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final res = await widget.api.resetContactInfo();
+      if (res['success'] == true) {
+        await _loadData();
+        widget.onSaved();
+        setState(() => _isEditing = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Contact details reset to standard defaults.'),
+              backgroundColor: Color(0xFF059669),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Reset error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.9,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          // Header Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _isEditing ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    _isEditing ? Icons.edit_rounded : Icons.share_rounded,
+                    color: _isEditing ? const Color(0xFFD97706) : const Color(0xFF059669),
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isEditing ? 'Edit Contact & Social Media' : 'Contact & Social Links',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        _isEditing ? 'Make updates then tap Save Changes' : 'Live business helplines, WhatsApp & social directory',
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_isEditing)
+                  TextButton.icon(
+                    onPressed: () => setState(() => _isEditing = true),
+                    icon: const Icon(Icons.edit_rounded, size: 15, color: Color(0xFF059669)),
+                    label: const Text('Edit', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800, fontSize: 13)),
+                  )
+                else
+                  IconButton(
+                    onPressed: () {
+                      _loadData();
+                      setState(() => _isEditing = false);
+                    },
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                  ),
+              ],
+            ),
+          ),
+
+          // Body: View Details Mode vs Edit Form Mode
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669)))
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: _isEditing ? _buildEditForm() : _buildViewDetails(),
+                  ),
+          ),
+
+          // Bottom Action Bar
+          Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 12,
+              bottom: 12 + MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+            ),
+            child: _isEditing
+                ? Row(
+                    children: [
+                      OutlinedButton(
+                        onPressed: (_isLoading || _isSaving)
+                            ? null
+                            : () {
+                                _loadData();
+                                setState(() => _isEditing = false);
+                              },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF64748B),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: (_isLoading || _isSaving) ? null : _resetData,
+                        icon: const Icon(Icons.refresh_rounded, size: 15),
+                        label: const Text('Reset', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFB45309),
+                          side: const BorderSide(color: Color(0xFFFDE68A)),
+                          backgroundColor: const Color(0xFFFFFBEB),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: (_isLoading || _isSaving) ? null : _saveData,
+                          icon: _isSaving
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.check_circle_outline_rounded, size: 18, color: Colors.white),
+                          label: Text(
+                            _isSaving ? 'Saving...' : 'Save Changes',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => setState(() => _isEditing = true),
+                      icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.white),
+                      label: const Text(
+                        'Edit Contact Details & Links',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 1. VIEW DETAILS READ-ONLY MODE
+  Widget _buildViewDetails() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Helpline & Support Section
+        _buildSectionHeader('Support & Helplines', Icons.phone_rounded, const Color(0xFF059669)),
+        const SizedBox(height: 10),
+        _buildDetailCard(
+          icon: Icons.phone_rounded,
+          iconBg: const Color(0xFFECFDF5),
+          iconColor: const Color(0xFF059669),
+          title: 'Phone Helpline',
+          value: _phoneController.text.isNotEmpty ? _phoneController.text : '+91 98765 43210',
+          subtitle: 'Direct customer incoming support calls',
+        ),
+        const SizedBox(height: 10),
+        _buildDetailCard(
+          icon: Icons.chat_bubble_rounded,
+          iconBg: const Color(0xFFF0FDF4),
+          iconColor: const Color(0xFF15803D),
+          title: 'WhatsApp Operations Desk',
+          value: _whatsappController.text.isNotEmpty ? _whatsappController.text : '+91 98765 43210',
+          subtitle: 'Real-time customer WhatsApp communication',
+        ),
+        const SizedBox(height: 10),
+        _buildDetailCard(
+          icon: Icons.mail_rounded,
+          iconBg: const Color(0xFFEFF6FF),
+          iconColor: const Color(0xFF2563EB),
+          title: 'Official Support Email',
+          value: _emailController.text.isNotEmpty ? _emailController.text : 'care@naturalmilkdairy.com',
+          subtitle: 'Billing questions, inquiries & corporate contracts',
+        ),
+        const SizedBox(height: 10),
+        _buildDetailCard(
+          icon: Icons.access_time_rounded,
+          iconBg: const Color(0xFFFEF3C7),
+          iconColor: const Color(0xFFD97706),
+          title: 'Helpline Active Hours',
+          value: _hoursController.text.isNotEmpty ? _hoursController.text : '5:00 AM – 9:00 PM Daily (365 Days)',
+          subtitle: 'Morning delivery fulfillment active before 6:30 AM',
+        ),
+        const SizedBox(height: 22),
+
+        // Physical Office & Dispatch Address
+        _buildSectionHeader('Office & Farm Dispatch Address', Icons.location_on_rounded, const Color(0xFFD97706)),
+        const SizedBox(height: 10),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.pin_drop_rounded, size: 16, color: Color(0xFFD97706)),
+                  const SizedBox(width: 6),
+                  const Text('Registered Physical Address', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _addressController.text.isNotEmpty ? _addressController.text : 'Natural Milk Dairy, Unit 12/B, Knowledge Park Rd, Near WEH, Andheri West, Mumbai, Maharashtra 400053',
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A), height: 1.45),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 22),
+
+        // Official Social Media Channels
+        _buildSectionHeader('Social Media Links', Icons.public_rounded, const Color(0xFF2563EB)),
+        const SizedBox(height: 10),
+        _buildSocialViewItem('Facebook', _fbController.text, Icons.facebook, const Color(0xFF1877F2)),
+        const SizedBox(height: 8),
+        _buildSocialViewItem('X (formerly Twitter)', _twController.text, Icons.tag_rounded, const Color(0xFF0F172A)),
+        const SizedBox(height: 8),
+        _buildSocialViewItem('LinkedIn', _liController.text, Icons.business_rounded, const Color(0xFF0A66C2)),
+        const SizedBox(height: 8),
+        _buildSocialViewItem('Instagram', _igController.text, Icons.camera_alt_rounded, const Color(0xFFE1306C)),
+        const SizedBox(height: 8),
+        _buildSocialViewItem('YouTube', _ytController.text, Icons.play_circle_fill_rounded, const Color(0xFFEF4444)),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildDetailCard({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    required String value,
+    required String subtitle,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                const SizedBox(height: 2),
+                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                Text(subtitle, style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSocialViewItem(String network, String url, IconData icon, Color color) {
+    final cleanUrl = url.trim();
+    final hasUrl = cleanUrl.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(network, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+                Text(
+                  hasUrl ? cleanUrl : 'Not configured',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (hasUrl)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6)),
+              child: const Text('Linked', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 2. EDIT FORM MODE
+  Widget _buildEditForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader('Support & Helplines', Icons.phone_rounded, const Color(0xFF059669)),
+        const SizedBox(height: 12),
+        _buildTextField('Phone / Helpline Number', _phoneController, Icons.phone_outlined),
+        const SizedBox(height: 12),
+        _buildTextField('WhatsApp Helpline', _whatsappController, Icons.chat_bubble_outline_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('Support Email', _emailController, Icons.mail_outline_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('Working Hours', _hoursController, Icons.access_time_rounded),
+        const SizedBox(height: 22),
+
+        _buildSectionHeader('Office & Farm Address', Icons.location_on_rounded, const Color(0xFFD97706)),
+        const SizedBox(height: 12),
+        _buildTextField('Complete Address', _addressController, Icons.map_outlined, maxLines: 3),
+        const SizedBox(height: 22),
+
+        _buildSectionHeader('Social Media Links', Icons.public_rounded, const Color(0xFF2563EB)),
+        const SizedBox(height: 12),
+        _buildTextField('Facebook URL', _fbController, Icons.link_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('Twitter / X URL', _twController, Icons.link_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('LinkedIn URL', _liController, Icons.link_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('Instagram URL', _igController, Icons.link_rounded),
+        const SizedBox(height: 12),
+        _buildTextField('YouTube URL', _ytController, Icons.link_rounded),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, {int maxLines = 1}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF475569)),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          maxLines: maxLines,
+          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 18),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5)),
+          ),
+        ),
+      ],
     );
   }
 }

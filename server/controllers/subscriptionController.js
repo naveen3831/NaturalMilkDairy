@@ -762,9 +762,43 @@ const getMySubscriptions = async (req, res) => {
     }
     const subscriptions = await Subscription.find({
       $or: [{ customer: customer._id }, { customerId: customer.customerId }, { whatsapp: customer.mobile }],
-    }).sort({ createdAt: -1 });
+    }).sort({ createdAt: -1 }).lean();
 
-    return res.json({ success: true, subscriptions });
+    const cleanPhone = (customer.mobile || '').replace(/\D/g, '').slice(-10);
+    const custIdStr = customer._id.toString();
+    const cleanCustomerName = (customer.name || '').toLowerCase().trim();
+    const customerCreatedTime = customer.createdAt ? new Date(customer.createdAt).getTime() - 60 * 1000 : 0;
+
+    const filteredSubs = subscriptions.filter((sub) => {
+      // If subscription has a customer reference, it MUST match this customer
+      if (sub.customer && String(sub.customer) !== custIdStr) {
+        return false;
+      }
+      // If subscription has whatsapp/mobile, it MUST match this customer's mobile
+      if (sub.whatsapp && cleanPhone) {
+        const subPhone = String(sub.whatsapp).replace(/\D/g, '').slice(-10);
+        if (subPhone && subPhone !== cleanPhone) {
+          return false;
+        }
+      }
+      // If subscription has customerName, it must match this customer's name
+      if (sub.customerName && cleanCustomerName) {
+        const subName = String(sub.customerName).toLowerCase().trim();
+        if (subName && subName !== cleanCustomerName && !subName.includes(cleanCustomerName) && !cleanCustomerName.includes(subName)) {
+          return false;
+        }
+      }
+      // If subscription was created before this customer account was created, drop it
+      if (customerCreatedTime && sub.createdAt) {
+        const subTime = new Date(sub.createdAt).getTime();
+        if (subTime < customerCreatedTime) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    return res.json({ success: true, subscriptions: filteredSubs });
   } catch (error) {
     console.error('Customer subscriptions fetch failed:', error.message);
     return res.status(500).json({ success: false, message: 'Unable to load your subscriptions.' });

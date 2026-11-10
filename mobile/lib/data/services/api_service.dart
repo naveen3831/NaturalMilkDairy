@@ -374,4 +374,23 @@ class ApiService {
     }
     return ProductModel.defaultCatalog;
   }
+
+  /// 6. Fetch Contact Details & Social Media Links
+  Future<Map<String, dynamic>?> getContactInfo() async {
+    final res = await get('/api/contact-info');
+    if (res['success'] == true && res['contactInfo'] is Map<String, dynamic>) {
+      return res['contactInfo'] as Map<String, dynamic>;
+    }
+    return null;
+  }
+
+  /// 7. Update Contact Details & Social Media Links (Admin)
+  Future<Map<String, dynamic>> updateContactInfo(Map<String, dynamic> payload) async {
+    return await put('/api/contact-info', payload);
+  }
+
+  /// 8. Reset Contact Details & Social Media Links to Factory Defaults (Admin)
+  Future<Map<String, dynamic>> resetContactInfo() async {
+    return await post('/api/contact-info/reset', {});
+  }
 }

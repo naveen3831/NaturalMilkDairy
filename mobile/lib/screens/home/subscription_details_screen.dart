@@ -28,16 +28,23 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     final auth = context.watch<AuthProvider>();
     final user = auth.user;
     final customerProvider = context.watch<CustomerProvider>();
+    final bool hasActiveSubscription = customerProvider.hasActiveSubscription || widget.subscription != null;
 
     final String planName = widget.subscription != null && widget.subscription['planName'] != null
         ? widget.subscription['planName'].toString()
-        : 'Daily Farm Pure Milk Plan';
+        : (customerProvider.deliveryPlanName.isNotEmpty
+            ? customerProvider.deliveryPlanName
+            : 'Daily Farm Pure Milk Plan');
 
-    final String customerId = (user?.id.isNotEmpty == true)
-        ? 'CUST-${user!.id.substring(0, user.id.length > 4 ? 4 : user.id.length).toUpperCase()}'
-        : 'CUST-101';
+    final String customerId = customerProvider.customerId.isNotEmpty
+        ? customerProvider.customerId
+        : (user != null && user.customerId.isNotEmpty
+            ? user.customerId
+            : (user != null && user.id.isNotEmpty
+                ? 'CUST-${user.id.substring(0, user.id.length > 4 ? 4 : user.id.length).toUpperCase()}'
+                : ''));
     final String partnerName = customerProvider.deliveryBoyName.isNotEmpty ? customerProvider.deliveryBoyName : 'Naveen';
-    final String areaName = (user?.area != null && user!.area!.isNotEmpty) ? user.area! : 'Madhupur';
+    final String areaName = (user != null && user.area != null && user.area!.isNotEmpty) ? user.area! : 'Madhapur';
     final String milkQty = customerProvider.milkQuantity > 0
         ? '${customerProvider.milkQuantity} L / day'
         : '1 L / day';
@@ -61,23 +68,27 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
     if (rawEndDate == null && subHistory.isNotEmpty) {
       rawEndDate = subHistory.first['endDate'];
     }
-    DateTime? calcEndDate;
-    if (rawEndDate != null) {
+    DateTime? calcEndDate = customerProvider.subscriptionEndDate;
+    if (calcEndDate == null && rawEndDate != null) {
       try {
         calcEndDate = DateTime.parse(rawEndDate.toString()).toLocal();
       } catch (_) {}
     }
-    calcEndDate ??= DateTime.now().add(const Duration(days: 30));
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final targetEnd = DateTime(calcEndDate.year, calcEndDate.month, calcEndDate.day);
-    final int daysRemaining = targetEnd.difference(today).inDays;
-    final bool isExpired = targetEnd.isBefore(today) || daysRemaining < 0;
-    final bool isExpiringSoon = !isExpired && daysRemaining <= 3;
+    final targetEnd = calcEndDate != null ? DateTime(calcEndDate.year, calcEndDate.month, calcEndDate.day) : null;
+    final int daysRemaining = targetEnd != null ? targetEnd.difference(today).inDays : 0;
+    final bool isExpired = targetEnd != null ? (targetEnd.isBefore(today) || daysRemaining < 0) : false;
+    final bool isExpiringSoon = !isExpired && daysRemaining > 0 && daysRemaining <= 3;
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    final String expiryDateFormatted = '${calcEndDate.day.toString().padLeft(2, '0')} ${monthNames[calcEndDate.month - 1]} ${calcEndDate.year}';
-    final String startDateFormatted = '${today.day.toString().padLeft(2, '0')} ${monthNames[today.month - 1]} ${today.year}';
+    final String expiryDateFormatted = calcEndDate != null
+        ? '${calcEndDate.day.toString().padLeft(2, '0')} ${monthNames[calcEndDate.month - 1]} ${calcEndDate.year}'
+        : 'N/A';
+    final startDt = customerProvider.subscriptionStartDate;
+    final String startDateFormatted = startDt != null
+        ? '${startDt.day.toString().padLeft(2, '0')} ${monthNames[startDt.month - 1]} ${startDt.year}'
+        : '${today.day.toString().padLeft(2, '0')} ${monthNames[today.month - 1]} ${today.year}';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAF9),
@@ -190,7 +201,100 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         ],
       ),
       bottomNavigationBar: _buildCustomBottomNav(context),
-      body: SingleChildScrollView(
+      body: !hasActiveSubscription
+          ? Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE8F5EE),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0D5C3A), size: 38),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'No Active Subscription Yet',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0C2340),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'You do not have an active milk plan. Subscribe to 100% farm-fresh, unadulterated milk delivered daily to your doorstep before 7:30 AM.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: Color(0xFF6B7280),
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SubscribeCheckoutScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.add_shopping_cart_rounded, size: 19),
+                        label: const Text(
+                          'Choose a Plan & Subscribe',
+                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0D5C3A),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const SubscriptionHistoryScreen(),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Color(0xFF0D5C3A), width: 1.2),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text(
+                          'View Subscription History',
+                          style: TextStyle(
+                            color: Color(0xFF0D5C3A),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

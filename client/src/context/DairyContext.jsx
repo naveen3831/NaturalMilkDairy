@@ -16,6 +16,30 @@ export const DairyProvider = ({ children }) => {
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [pendingCredit, setPendingCredit] = useState({ totalOutstanding: 0, customers: [] });
   const [auditLogs, setAuditLogs] = useState([]);
+  const [contactInfo, setContactInfo] = useState({
+    companyName: 'NATURAL MILK DAIRY PRIVATE LIMITED',
+    tagline: 'Natural • Pure • Healthy',
+    description:
+      'Delivering pure farm-fresh unpasteurized milk and authentic dairy products directly to your doorstep across Mumbai.',
+    address:
+      'Natural Milk Dairy, Unit 12/B, Knowledge Park Rd, Near WEH, Andheri West, Mumbai, Maharashtra 400053',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    pincode: '400053',
+    phone: '+91 98765 43210',
+    cleanPhone: '919876543210',
+    email: 'care@naturalmilkdairy.com',
+    whatsapp: '+91 98765 43210',
+    workingHours: '5:00 AM – 9:00 PM Daily (365 Days)',
+    deliveryHours: '5:00 AM – 6:30 AM Doorstep Drop',
+    socialLinks: {
+      facebook: 'https://facebook.com',
+      twitter: 'https://twitter.com',
+      linkedin: 'https://linkedin.com',
+      instagram: 'https://instagram.com',
+      youtube: 'https://youtube.com',
+    },
+  });
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
@@ -184,18 +208,6 @@ export const DairyProvider = ({ children }) => {
     }
   }, [getAuthHeaders]);
 
-  // Reload everything
-  const refreshAll = useCallback(() => {
-    fetchDashboard();
-    fetchDeliveries();
-    fetchCustomers();
-    fetchProducts();
-    fetchDeliveryBoys();
-    fetchLocations();
-    fetchPendingCredit();
-    fetchAuditLogs();
-  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchPendingCredit, fetchAuditLogs]);
-
   // Real-time synchronization notifier (broadcasts to all open tabs and windows)
   const notifyRealtimeSync = useCallback(() => {
     try {
@@ -209,6 +221,76 @@ export const DairyProvider = ({ children }) => {
       // ignore
     }
   }, []);
+
+  // Fetch Contact Details & Social Links
+  const fetchContactInfo = useCallback(async () => {
+    try {
+      const res = await fetch('/api/contact-info');
+      const data = await res.json();
+      if (data.success && data.contactInfo) {
+        setContactInfo(data.contactInfo);
+      }
+    } catch (err) {
+      console.warn('Contact info fetch error:', err);
+    }
+  }, []);
+
+  // Update Contact Details & Social Links (Admin)
+  const updateContactInfo = useCallback(
+    async (payload) => {
+      try {
+        const res = await fetch('/api/contact-info', {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.success && data.contactInfo) {
+          setContactInfo(data.contactInfo);
+          notifyRealtimeSync();
+          return { success: true, contactInfo: data.contactInfo, message: data.message };
+        }
+        return { success: false, message: data.message || 'Failed to update contact info' };
+      } catch (err) {
+        console.error('updateContactInfo error:', err);
+        return { success: false, message: err.message || 'Network error updating contact info' };
+      }
+    },
+    [getAuthHeaders, notifyRealtimeSync]
+  );
+
+  // Reset Contact Details & Social Links (Admin)
+  const resetContactInfo = useCallback(async () => {
+    try {
+      const res = await fetch('/api/contact-info/reset', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success && data.contactInfo) {
+        setContactInfo(data.contactInfo);
+        notifyRealtimeSync();
+        return { success: true, contactInfo: data.contactInfo, message: data.message };
+      }
+      return { success: false, message: data.message || 'Failed to reset contact info' };
+    } catch (err) {
+      console.error('resetContactInfo error:', err);
+      return { success: false, message: err.message || 'Network error resetting contact info' };
+    }
+  }, [getAuthHeaders, notifyRealtimeSync]);
+
+  // Reload everything
+  const refreshAll = useCallback(() => {
+    fetchDashboard();
+    fetchDeliveries();
+    fetchCustomers();
+    fetchProducts();
+    fetchDeliveryBoys();
+    fetchLocations();
+    fetchPendingCredit();
+    fetchAuditLogs();
+    fetchContactInfo();
+  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo]);
 
   useEffect(() => {
     refreshAll();
@@ -327,6 +409,14 @@ export const DairyProvider = ({ children }) => {
       fetchLocations();
     });
 
+    const unsubContactInfo = wsSubscribe('CONTACT_INFO_UPDATED', (data) => {
+      if (data?.contactInfo) {
+        setContactInfo(data.contactInfo);
+      } else {
+        fetchContactInfo();
+      }
+    });
+
     return () => {
       unsubDelivery();
       unsubCustomer();
@@ -335,8 +425,9 @@ export const DairyProvider = ({ children }) => {
       unsubDriver();
       unsubDuty();
       unsubLocation();
+      unsubContactInfo();
     };
-  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations]);
+  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchContactInfo]);
 
   // Mark Delivery as Delivered
   const markDelivered = async (id, payload) => {
@@ -1033,6 +1124,10 @@ export const DairyProvider = ({ children }) => {
         addLocation,
         updateLocation,
         deleteLocation,
+        contactInfo,
+        fetchContactInfo,
+        updateContactInfo,
+        resetContactInfo,
       }}
     >
       {children}

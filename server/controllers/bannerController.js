@@ -88,10 +88,20 @@ exports.createBanner = async (req, res) => {
     if (!title || !imageUrl) {
       return res.status(400).json({ success: false, message: 'Title and image URL are required' });
     }
+    let finalImageUrl = imageUrl;
+    if (finalImageUrl.startsWith('data:image/')) {
+      try {
+        const { uploadUrlOrBase64 } = require('../config/cloudinary');
+        const cloudRes = await uploadUrlOrBase64(finalImageUrl, 'natural-milk-dairy/banners');
+        finalImageUrl = cloudRes.secure_url;
+      } catch (err) {
+        console.error('Failed to upload banner image to Cloudinary:', err);
+      }
+    }
     const banner = new Banner({
       title,
       subtitle: subtitle || '',
-      imageUrl,
+      imageUrl: finalImageUrl,
       category: category || 'milk',
       order: Number(order) || 0,
       isActive: isActive !== false,
@@ -117,7 +127,19 @@ exports.updateBanner = async (req, res) => {
     }
     if (title !== undefined) banner.title = title;
     if (subtitle !== undefined) banner.subtitle = subtitle;
-    if (imageUrl !== undefined) banner.imageUrl = imageUrl;
+    if (imageUrl !== undefined) {
+      let finalImageUrl = imageUrl;
+      if (finalImageUrl.startsWith('data:image/')) {
+        try {
+          const { uploadUrlOrBase64 } = require('../config/cloudinary');
+          const cloudRes = await uploadUrlOrBase64(finalImageUrl, 'natural-milk-dairy/banners');
+          finalImageUrl = cloudRes.secure_url;
+        } catch (err) {
+          console.error('Failed to upload updated banner image to Cloudinary:', err);
+        }
+      }
+      banner.imageUrl = finalImageUrl;
+    }
     if (category !== undefined) banner.category = category;
     if (order !== undefined) banner.order = Number(order);
     if (isActive !== undefined) banner.isActive = Boolean(isActive);

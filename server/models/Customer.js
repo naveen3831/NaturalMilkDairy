@@ -9,17 +9,24 @@ const customerSchema = new mongoose.Schema({
   address: { type: String, required: true },
   area: { type: String, required: true },
   landmark: { type: String, default: '' },
+  googleMapsUrl: { type: String, default: '' },
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
   addresses: [{
-    id: { type: String, required: true },
+    id: {
+      type: String,
+      default: () => 'addr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    },
     type: { type: String, enum: ['home', 'work', 'other'], default: 'home' },
     label: { type: String, default: 'Home' },
     flatNo: { type: String, default: '' },
     apartmentStreet: { type: String, default: '' },
+    street: { type: String, default: '' },
     area: { type: String, default: 'Madhapur' },
     landmark: { type: String, default: '' },
+    googleMapsUrl: { type: String, default: '' },
     city: { type: String, default: 'Hyderabad' },
+    state: { type: String, default: 'Telangana' },
     pincode: { type: String, default: '' },
     latitude: { type: Number, default: null },
     longitude: { type: Number, default: null },
@@ -73,6 +80,19 @@ const customerSchema = new mongoose.Schema({
   createdByDriverName: { type: String, default: '' },
   notes: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
+});
+
+// Safeguard hook: Guarantee every address has a unique non-empty string ID
+customerSchema.pre('validate', function(next) {
+  if (Array.isArray(this.addresses)) {
+    this.addresses.forEach((addr, idx) => {
+      if (!addr || typeof addr !== 'object') return;
+      if (!addr.id || typeof addr.id !== 'string' || !addr.id.trim()) {
+        addr.id = 'addr_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).substring(2, 7);
+      }
+    });
+  }
+  next();
 });
 
 module.exports = mongoose.models.Customer || mongoose.model('Customer', customerSchema);

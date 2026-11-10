@@ -29,13 +29,28 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
 
   List<Map<String, dynamic>> _chatMessages = [];
   StreamSubscription? _realtimeSub;
+  Map<String, dynamic> _contactInfo = {};
 
   @override
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab;
     _loadChatHistory();
+    _loadContactInfo();
     _subscribeRealtime();
+  }
+
+  Future<void> _loadContactInfo() async {
+    try {
+      final info = await _api.getContactInfo();
+      if (info != null && mounted) {
+        setState(() {
+          _contactInfo = info;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading contact info in mobile: $e');
+    }
   }
 
   @override
@@ -88,6 +103,8 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
             _loadChatHistory(silent: true);
           }
         }
+      } else if (type == 'CONTACT_INFO_UPDATED') {
+        _loadContactInfo();
       }
     });
   }
@@ -768,6 +785,14 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
 
   // 2. ADMIN DETAILS VIEW
   Widget _buildAdminDetailsView() {
+    final phone = _contactInfo['phone']?.toString() ?? '+91 98765 43210';
+    final cleanPhone = _contactInfo['cleanPhone']?.toString() ?? phone.replaceAll(RegExp(r'\D'), '');
+    final email = _contactInfo['email']?.toString() ?? 'care@naturalmilkdairy.com';
+    final whatsapp = _contactInfo['whatsapp']?.toString() ?? phone;
+    final address = _contactInfo['address']?.toString() ?? 'Plot 14, Green Valley Agro Hub, Andheri, Mumbai 400053';
+    final hours = _contactInfo['workingHours']?.toString() ?? '5:00 AM – 9:00 PM Daily (365 Days)';
+    final deliveryHours = _contactInfo['deliveryHours']?.toString() ?? '5:00 AM – 6:30 AM Doorstep Drop';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
       child: Column(
@@ -885,9 +910,9 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
             iconBg: const Color(0xFFDCFCE7),
             iconColor: const Color(0xFF166534),
             title: 'Call Admin Directly',
-            subtitle: '+91 98765 43210 (Immediate assistance)',
+            subtitle: '$phone (Immediate assistance)',
             buttonLabel: 'Call Now',
-            onTap: () => _launchCall('+919876543210'),
+            onTap: () => _launchCall(cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone'),
           ),
 
           // Action 2: WhatsApp Admin
@@ -896,9 +921,9 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
             iconBg: const Color(0xFFDCFCE7),
             iconColor: const Color(0xFF15803D),
             title: 'WhatsApp Operations Desk',
-            subtitle: '+91 98765 43210 (Fast WhatsApp replies)',
+            subtitle: '$whatsapp (Fast WhatsApp replies)',
             buttonLabel: 'Open Chat',
-            onTap: () => _launchWhatsApp('+919876543210'),
+            onTap: () => _launchWhatsApp(cleanPhone.startsWith('+') ? cleanPhone : '+$cleanPhone'),
           ),
 
           // Action 3: Email Desk
@@ -907,9 +932,9 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
             iconBg: const Color(0xFFE0F2FE),
             iconColor: const Color(0xFF0369A1),
             title: 'Email Management Desk',
-            subtitle: 'care@naturalmilkdairy.com',
+            subtitle: email,
             buttonLabel: 'Send Email',
-            onTap: () => _launchEmail('care@naturalmilkdairy.com'),
+            onTap: () => _launchEmail(email),
           ),
 
           const SizedBox(height: 22),
@@ -932,24 +957,24 @@ class _ContactSupportScreenState extends State<ContactSupportScreen>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFE2EBE5)),
             ),
-            child: const Column(
+            child: Column(
               children: [
                 _DetailRow(
                   icon: Icons.schedule_rounded,
                   label: 'Helpline Hours',
-                  value: '5:00 AM – 9:00 PM Daily (365 Days)',
+                  value: hours,
                 ),
-                SizedBox(height: 14),
+                const SizedBox(height: 14),
                 _DetailRow(
                   icon: Icons.local_shipping_outlined,
                   label: 'Morning Delivery Drop',
-                  value: '5:00 AM – 6:30 AM Doorstep Drop',
+                  value: deliveryHours,
                 ),
-                SizedBox(height: 14),
+                const SizedBox(height: 14),
                 _DetailRow(
                   icon: Icons.location_on_outlined,
                   label: 'Farm & Dispatch Center',
-                  value: 'Plot 14, Green Valley Agro Hub, Andheri, Mumbai 400053',
+                  value: address,
                 ),
               ],
             ),

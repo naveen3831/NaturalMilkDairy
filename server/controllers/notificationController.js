@@ -8,7 +8,7 @@ const defaultSeedNotifications = [
     recipientRole: 'delivery_boy',
     recipientId: '',
     title: '📦 Shift Route Assigned',
-    message: 'Dispatch Admin assigned your morning route with 5 customer doorstep deliveries in Madhapur.',
+    message: 'Dispatch Admin assigned your morning route with planned customer doorstep deliveries.',
     type: 'delivery_assigned',
     isRead: false,
     createdAt: new Date(Date.now() - 15 * 60 * 1000),
@@ -17,7 +17,7 @@ const defaultSeedNotifications = [
     recipientRole: 'delivery_boy',
     recipientId: '',
     title: '⏰ Shift Start Reminder',
-    message: 'Morning delivery window begins at 04:30 AM. Battery charged to 85% on vehicle TS 09 EA 4812.',
+    message: 'Morning delivery window begins at 04:30 AM. Please verify vehicle battery and crate counts.',
     type: 'system',
     isRead: false,
     createdAt: new Date(Date.now() - 45 * 60 * 1000),
@@ -25,53 +25,17 @@ const defaultSeedNotifications = [
   {
     recipientRole: 'admin',
     recipientId: '',
-    title: '✅ Delivery Completed',
-    message: 'Naveen Kumar delivered 2L Farm Fresh Cow Milk to K. Rajesh Varma (Sai Teja Residency). Collected ₹150 cash.',
-    type: 'delivery_completed',
-    isRead: false,
-    createdAt: new Date(Date.now() - 8 * 60 * 1000),
-  },
-  {
-    recipientRole: 'admin',
-    recipientId: '',
-    title: '✅ Delivery Completed',
-    message: 'Naveen Kumar delivered 1.5L Milk to Dr. Sunita Reddy (Kavuri Hills). Paid via UPI: ₹90.',
-    type: 'delivery_completed',
-    isRead: false,
-    createdAt: new Date(Date.now() - 25 * 60 * 1000),
-  },
-  {
-    recipientRole: 'admin',
-    recipientId: '',
-    title: '📦 New Route Generated',
-    message: 'Daily dispatch route generated for today: 5 planned deliveries assigned across Madhapur depot.',
+    title: '📦 Operations Center Online',
+    message: 'Daily dispatch route generator ready. Real-time fleet tracking active.',
     type: 'route_update',
     isRead: true,
     createdAt: new Date(Date.now() - 60 * 60 * 1000),
   },
   {
-    recipientRole: 'customer',
+    recipientRole: 'all',
     recipientId: '',
-    title: '🥛 Morning Milk Dispatched',
-    message: 'Your 1.5L Farm Fresh Cow Milk is out for doorstep delivery with delivery partner Naveen Kumar.',
-    type: 'delivery_assigned',
-    isRead: false,
-    createdAt: new Date(Date.now() - 12 * 60 * 1000),
-  },
-  {
-    recipientRole: 'customer',
-    recipientId: '',
-    title: '✅ Doorstep Delivery Completed',
-    message: 'Your morning milk pouch was delivered safely into your doorstep bag at 06:15 AM.',
-    type: 'delivery_completed',
-    isRead: false,
-    createdAt: new Date(Date.now() - 50 * 60 * 1000),
-  },
-  {
-    recipientRole: 'customer',
-    recipientId: '',
-    title: '🌿 100% Pure & Chilled Batch',
-    message: 'Today\'s batch chilled at 3.8°C with uncompromised natural freshness and zero adulteration.',
+    title: '🌿 100% Pure & Fresh Dairy',
+    message: 'Farm-fresh milk chilled to 4°C with zero adulteration and authentic morning doorstep delivery.',
     type: 'system',
     isRead: true,
     createdAt: new Date(Date.now() - 120 * 60 * 1000),
@@ -81,31 +45,145 @@ const defaultSeedNotifications = [
 let memoryNotifications = [...defaultSeedNotifications];
 let hasSeededDB = false;
 
-const getUserNotificationScope = (user) => {
-  const ids = [user.id, user.customerId, user.boyId].filter(Boolean);
-  return {
-    $or: [
-      { recipientRole: user.role },
-      { recipientRole: 'all' },
-      ...(ids.length ? [{ recipientId: { $in: ids } }] : []),
-    ],
-  };
+// Resolve all possible user identifiers (User _id, Customer _id, customerId, mobile, email)
+const resolveUserIdentifiers = async (user) => {
+  const rawId = (user.id || user._id || '').toString().trim();
+  const ids = new Set();
+  if (rawId) ids.add(rawId);
+  if (user.customerId && String(user.customerId).trim()) ids.add(String(user.customerId).trim());
+  if (user.boyId && String(user.boyId).trim()) ids.add(String(user.boyId).trim());
+  if (user.mobile && String(user.mobile).trim()) ids.add(String(user.mobile).trim());
+  if (user.email && String(user.email).trim()) ids.add(String(user.email).trim().toLowerCase());
+
+  if (user.role === 'customer' || user.role === 'user') {
+    // Always look up the Customer document to grab Customer._id and Customer.customerId
+    try {
+      const Customer = mongoose.models.Customer || require('../models/Customer');
+      const orClauses = [];
+      if (rawId && rawId.length === 24) orClauses.push({ _id: rawId });
+      if (user.customerId && String(user.customerId).trim()) orClauses.push({ customerId: String(user.customerId).trim() });
+      if (user.mobile && String(user.mobile).trim().length >= 10) orClauses.push({ mobile: String(user.mobile).trim() });
+      if (user.email && String(user.email).trim()) orClauses.push({ email: String(user.email).trim().toLowerCase() });
+
+      if (orClauses.length > 0) {
+        const customer = await Customer.findOne({ $or: orClauses }).maxTimeMS(2000).lean();
+        if (customer) {
+          if (customer._id) ids.add(customer._id.toString());
+          if (customer.customerId) ids.add(String(customer.customerId).trim());
+          if (customer.mobile) ids.add(String(customer.mobile).trim());
+          if (customer.email) ids.add(String(customer.email).trim().toLowerCase());
+        }
+      }
+    } catch (err) {
+      console.warn('Customer resolution note:', err.message);
+    }
+  } else if (user.role === 'delivery_boy') {
+    if (!user.boyId) {
+      try {
+        const DeliveryBoy = mongoose.models.DeliveryBoy || require('../models/DeliveryBoy');
+        const boy = await DeliveryBoy.findOne({
+          $or: [
+            ...(rawId && rawId.length === 24 ? [{ _id: rawId }] : []),
+            ...(user.mobile ? [{ mobile: user.mobile }] : []),
+          ],
+        }).maxTimeMS(2000).lean();
+        if (boy) {
+          if (boy._id) ids.add(boy._id.toString());
+          if (boy.boyId) ids.add(String(boy.boyId).trim());
+          if (boy.mobile) ids.add(String(boy.mobile).trim());
+        }
+      } catch (err) {
+        console.warn('Driver resolution note:', err.message);
+      }
+    }
+  }
+
+  return Array.from(ids).map((id) => String(id).trim()).filter(Boolean);
 };
 
-const canAccessNotification = (notification, user) => {
-  if (user.role === 'admin') return true;
-  const ids = [user.id, user.customerId, user.boyId].filter(Boolean).map(String);
-  return (
-    notification.recipientRole === user.role ||
-    notification.recipientRole === 'all' ||
-    ids.includes(String(notification.recipientId || ''))
-  );
+// Build strictly user-scoped MongoDB query
+const getUserNotificationScope = async (user) => {
+  if (user.role === 'admin') {
+    return {
+      $or: [
+        { recipientRole: 'admin' },
+        { recipientRole: 'all' },
+        { recipientRole: { $exists: false } },
+      ],
+    };
+  }
+
+  const ids = await resolveUserIdentifiers(user);
+
+  if (user.role === 'customer' || user.role === 'user') {
+    const validIds = ids.filter((id) => id && typeof id === 'string' && id.trim().length > 0);
+    if (validIds.length === 0) {
+      return { recipientRole: 'all' };
+    }
+    return {
+      $or: [
+        {
+          recipientRole: 'customer',
+          recipientId: { $in: validIds },
+        },
+        {
+          recipientRole: 'all',
+        },
+      ],
+    };
+  }
+
+  if (user.role === 'delivery_boy') {
+    return {
+      $or: [
+        {
+          recipientRole: 'delivery_boy',
+          $or: [
+            { recipientId: { $in: ids } },
+            { recipientId: '' },
+            { recipientId: null },
+            { recipientId: { $exists: false } },
+          ],
+        },
+        {
+          recipientRole: 'all',
+        },
+      ],
+    };
+  }
+
+  return { recipientRole: 'none' };
+};
+
+const canAccessNotification = (notification, user, ids = []) => {
+  if (notification.recipientRole === 'all') return true;
+
+  const targetId = String(notification.recipientId || '').trim();
+
+  if (user.role === 'admin') {
+    if (notification.recipientRole === 'admin' || !notification.recipientRole) return true;
+    return false;
+  }
+
+  if (user.role === 'customer' || user.role === 'user') {
+    if (notification.recipientRole !== 'customer') return false;
+    if (!targetId) return false;
+    return ids.includes(targetId);
+  }
+
+  if (user.role === 'delivery_boy') {
+    if (notification.recipientRole !== 'delivery_boy') return false;
+    if (!targetId) return true; // General driver broadcast
+    return ids.includes(targetId);
+  }
+
+  return false;
 };
 
 const getNotifications = async (req, res) => {
   try {
-    const role = req.user.role;
-    const filter = role === 'admin' ? {} : getUserNotificationScope(req.user);
+    const ids = await resolveUserIdentifiers(req.user);
+    const filter = await getUserNotificationScope(req.user);
 
     let list = [];
     let isDbConnected = false;
@@ -127,8 +205,11 @@ const getNotifications = async (req, res) => {
 
     // Only fallback to in-memory store if DB query failed
     if (!isDbConnected) {
-      list = memoryNotifications.filter((n) => canAccessNotification(n, req.user));
+      list = memoryNotifications.filter((n) => canAccessNotification(n, req.user, ids));
     }
+
+    // Double check: Strictly ensure only accessible notifications reach the response
+    list = list.filter((n) => canAccessNotification(n, req.user, ids));
 
     // Format list with consistent ID and type
     list = list.map((n) => {
@@ -245,7 +326,8 @@ const markAsRead = async (req, res) => {
 
 const markAllAsRead = async (req, res) => {
   try {
-    const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
+    const ids = await resolveUserIdentifiers(req.user);
+    const filter = await getUserNotificationScope(req.user);
 
     try {
       await Notification.updateMany(filter, { isRead: true });
@@ -254,7 +336,7 @@ const markAllAsRead = async (req, res) => {
     }
 
     memoryNotifications = memoryNotifications.map((n) => {
-      return canAccessNotification(n, req.user) ? { ...n, isRead: true } : n;
+      return canAccessNotification(n, req.user, ids) ? { ...n, isRead: true } : n;
     });
 
     broadcast('NOTIFICATION_UPDATED', { action: 'read_all', role: req.user.role });
@@ -267,7 +349,8 @@ const markAllAsRead = async (req, res) => {
 
 const clearAll = async (req, res) => {
   try {
-    const filter = req.user.role === 'admin' ? {} : getUserNotificationScope(req.user);
+    const ids = await resolveUserIdentifiers(req.user);
+    const filter = await getUserNotificationScope(req.user);
 
     try {
       await Notification.deleteMany(filter);
@@ -276,7 +359,7 @@ const clearAll = async (req, res) => {
     }
 
     memoryNotifications = memoryNotifications.filter((n) => {
-      return !canAccessNotification(n, req.user);
+      return !canAccessNotification(n, req.user, ids);
     });
 
     // Realtime broadcast permanent clearing to all dashboards & mobile apps
@@ -297,9 +380,10 @@ const deleteNotification = async (req, res) => {
     const isObjectId = mongoose.Types.ObjectId.isValid(id);
     const idFilter = isObjectId ? { $or: [{ _id: id }, { id }] } : { id };
 
+    const userScope = await getUserNotificationScope(req.user);
     const queryFilter = req.user.role === 'admin'
       ? idFilter
-      : { ...idFilter, ...getUserNotificationScope(req.user) };
+      : { ...idFilter, ...userScope };
 
     try {
       await Notification.deleteMany(queryFilter);

@@ -27,3 +27,6 @@ Thumbs.db
 # Storage JSON files (database is MongoDB Atlas)
 server/storage/*.json
 
+# Local uploads ignore (all media stored in Cloudinary)
+server/uploads/*
+!server/uploads/.gitkeep

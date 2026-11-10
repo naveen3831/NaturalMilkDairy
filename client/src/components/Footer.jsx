@@ -1,8 +1,29 @@
 import React, { useState } from 'react';
 import { MapPin, Phone, Mail, X } from 'lucide-react';
+import { useDairy } from '../context/DairyContext';
 
 export default function Footer({ setActiveTab }) {
   const [legalModal, setLegalModal] = useState(null);
+  const { contactInfo } = useDairy();
+
+  const info = contactInfo || {};
+  const companyName = info.companyName || 'NATURAL MILK DAIRY PRIVATE LIMITED';
+  const tagline = info.tagline || 'Pure • Fresh • Healthy';
+  const description =
+    info.description ||
+    'Delivering pure farm-fresh unpasteurized milk and authentic dairy products directly to your doorstep across Mumbai.';
+  const address =
+    info.address ||
+    'Natural Milk Dairy, Unit 12/B, Knowledge Park Rd, Near WEH, Andheri West, Mumbai, Maharashtra 400053';
+  const phone = info.phone || '+91 98765 43210';
+  const cleanPhone = info.cleanPhone || '919876543210';
+  const email = info.email || 'care@naturalmilkdairy.com';
+  const socials = info.socialLinks || {};
+  const facebookUrl = socials.facebook || 'https://facebook.com';
+  const twitterUrl = socials.twitter || 'https://twitter.com';
+  const linkedinUrl = socials.linkedin || 'https://linkedin.com';
+  const instagramUrl = socials.instagram || 'https://instagram.com';
+  const youtubeUrl = socials.youtube || 'https://youtube.com';
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -48,13 +69,13 @@ export default function Footer({ setActiveTab }) {
               </div>
 
               <p className="nmd-spesh-desc">
-                Delivering pure farm-fresh unpasteurized milk and authentic dairy products directly to your doorstep across Mumbai.
+                {description}
               </p>
 
               {/* Social Icons matching reference: f, X, in, Instagram, YouTube */}
               <div className="nmd-spesh-socials">
                 <a
-                  href="https://facebook.com"
+                  href={facebookUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nmd-spesh-social-btn"
@@ -66,7 +87,7 @@ export default function Footer({ setActiveTab }) {
                 </a>
 
                 <a
-                  href="https://twitter.com"
+                  href={twitterUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nmd-spesh-social-btn"
@@ -78,7 +99,7 @@ export default function Footer({ setActiveTab }) {
                 </a>
 
                 <a
-                  href="https://linkedin.com"
+                  href={linkedinUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nmd-spesh-social-btn"
@@ -92,7 +113,7 @@ export default function Footer({ setActiveTab }) {
                 </a>
 
                 <a
-                  href="https://instagram.com"
+                  href={instagramUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nmd-spesh-social-btn"
@@ -115,7 +136,7 @@ export default function Footer({ setActiveTab }) {
                 </a>
 
                 <a
-                  href="https://youtube.com"
+                  href={youtubeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="nmd-spesh-social-btn"
@@ -205,23 +226,21 @@ export default function Footer({ setActiveTab }) {
                 <div className="nmd-spesh-contact-row">
                   <MapPin size={17} className="nmd-spesh-icon" />
                   <span className="nmd-spesh-contact-text">
-                    Natural Milk Dairy, Unit 12/B, Knowledge Park Rd,
-                    Near WEH, Andheri West, Mumbai,
-                    Maharashtra 400053
+                    {address}
                   </span>
                 </div>
 
                 <div className="nmd-spesh-contact-row">
                   <Phone size={17} className="nmd-spesh-icon" />
-                  <a href="tel:+919876543210" className="nmd-spesh-contact-link">
-                    +91 98765 43210
+                  <a href={`tel:${phone.replace(/\s+/g, '')}`} className="nmd-spesh-contact-link">
+                    {phone}
                   </a>
                 </div>
 
                 <div className="nmd-spesh-contact-row">
                   <Mail size={17} className="nmd-spesh-icon" />
-                  <a href="mailto:care@naturalmilkdairy.com" className="nmd-spesh-contact-link">
-                    care@naturalmilkdairy.com
+                  <a href={`mailto:${email}`} className="nmd-spesh-contact-link">
+                    {email}
                   </a>
                 </div>
               </div>
@@ -288,21 +307,21 @@ export default function Footer({ setActiveTab }) {
 
         {/* Quick Contact Line */}
         <div className="nmd-mobile-footer-contacts">
-          <a href="tel:+919876543210" className="nmd-mobile-footer-contact-link">
+          <a href={`tel:${phone.replace(/\s+/g, '')}`} className="nmd-mobile-footer-contact-link">
             <Phone size={13} />
-            <span>+91 98765 43210</span>
+            <span>{phone}</span>
           </a>
           <span className="nmd-mobile-footer-pipe">|</span>
-          <a href="mailto:care@naturalmilkdairy.com" className="nmd-mobile-footer-contact-link">
+          <a href={`mailto:${email}`} className="nmd-mobile-footer-contact-link">
             <Mail size={13} />
-            <span>care@naturalmilkdairy.com</span>
+            <span>{email}</span>
           </a>
         </div>
 
         {/* Compact Socials */}
         <div className="nmd-mobile-footer-socials">
           <a
-            href="https://facebook.com"
+            href={facebookUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="nmd-mobile-footer-social-btn"
@@ -314,7 +333,7 @@ export default function Footer({ setActiveTab }) {
           </a>
 
           <a
-            href="https://twitter.com"
+            href={twitterUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="nmd-mobile-footer-social-btn"
@@ -326,7 +345,7 @@ export default function Footer({ setActiveTab }) {
           </a>
 
           <a
-            href="https://linkedin.com"
+            href={linkedinUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="nmd-mobile-footer-social-btn"
@@ -340,7 +359,7 @@ export default function Footer({ setActiveTab }) {
           </a>
 
           <a
-            href="https://instagram.com"
+            href={instagramUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="nmd-mobile-footer-social-btn"
@@ -363,7 +382,7 @@ export default function Footer({ setActiveTab }) {
           </a>
 
           <a
-            href="https://youtube.com"
+            href={youtubeUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="nmd-mobile-footer-social-btn"

@@ -78,6 +78,11 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
   const plan = current.subscription || {};
   const deliveryPlan = current.deliveryPlan || {};
   const isPaused = current.status === 'paused';
+  const hasActiveSub = Boolean(
+    (current.subscription?.status === 'active' ||
+      (current.subscription?.endDate && new Date(current.subscription.endDate) >= new Date())) &&
+    current.status !== 'inactive'
+  );
 
   const planName = plan.planName || deliveryPlan.milkType || 'Daily Farm Pure Cow Milk Plan';
   const milkQty = Number(deliveryPlan.milkQty) > 0 ? Number(deliveryPlan.milkQty) : (Number(plan.plan?.milkQty) > 0 ? Number(plan.plan.milkQty) : (Number(plan.milkQty) > 0 ? Number(plan.milkQty) : 1));
@@ -118,6 +123,83 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
           </div>
         </div>
 
+        {!hasActiveSub ? (
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '24px',
+              padding: '60px 32px',
+              textAlign: 'center',
+              border: '1.5px solid #e2ebe5',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
+              maxWidth: '680px',
+              margin: '20px auto 0',
+            }}
+          >
+            <div
+              style={{
+                width: '72px',
+                height: '72px',
+                borderRadius: '50%',
+                background: '#ecfdf5',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 20px',
+              }}
+            >
+              <CalendarDays size={36} />
+            </div>
+            <h2 style={{ fontSize: '1.6rem', fontWeight: 900, color: '#0f172a', margin: '0 0 10px' }}>
+              No Active Subscription Yet
+            </h2>
+            <p style={{ fontSize: '0.96rem', color: '#64748b', lineHeight: 1.6, margin: '0 auto 28px', maxWidth: '480px' }}>
+              You do not have an active daily milk plan. Subscribe now to get 100% pure, unadulterated farm-fresh milk delivered right to your doorstep every morning before 7:30 AM.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setActiveTab('subscription')}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '12px 28px',
+                  borderRadius: '12px',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.94rem',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                <span>Choose a Plan & Subscribe</span>
+                <ChevronRight size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('home')}
+                style={{
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontWeight: 700,
+                  fontSize: '0.94rem',
+                  border: '1.5px solid #cbd5e1',
+                  cursor: 'pointer',
+                }}
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+
         {/* Hero Section Banner */}
         <div
           style={{
@@ -149,7 +231,7 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
                   {isPaused ? 'Deliveries Paused' : '● Active Milk Subscription'}
                 </span>
                 <span style={{ fontSize: '0.82rem', opacity: 0.9 }}>
-                  ID: <strong>{current.customerId || 'CUST-101'}</strong>
+                  ID: <strong>{current.customerId || current.id || ''}</strong>
                 </span>
               </div>
               <h1 style={{ margin: '0 0 8px', fontSize: '2rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
@@ -433,6 +515,8 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
             </button>
           </div>
         </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -569,10 +653,12 @@ export function CustomerDeliveriesPage({ setActiveTab }) {
           >
             <Truck size={48} color="#94a3b8" style={{ margin: '0 auto 16px' }} />
             <h3 style={{ margin: '0 0 8px', fontSize: '1.15rem', fontWeight: 800, color: '#0f172a' }}>
-              No deliveries match this filter
+              {deliveries.length === 0 ? 'No Deliveries Scheduled Yet' : 'No deliveries match this filter'}
             </h3>
             <p style={{ margin: 0, fontSize: '0.88rem', color: '#64748b' }}>
-              Deliveries are dispatched daily between 5:30 AM and 7:30 AM.
+              {deliveries.length === 0
+                ? 'Your daily doorstep deliveries and verified drop photos will be displayed here once your subscription starts.'
+                : 'Deliveries are dispatched daily between 5:30 AM and 7:30 AM.'}
             </p>
           </div>
         ) : (

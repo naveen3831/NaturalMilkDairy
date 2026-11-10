@@ -197,26 +197,35 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const currentCustomer = ledgerCustomer || matchedCustomer;
 
   const customerDeliveries = deliveries
-    .filter((delivery) =>
-      delivery.customerId === currentCustomer.id ||
-      delivery.customerId === currentCustomer.customerId ||
-      (delivery.customerPhone && delivery.customerPhone === currentCustomer.mobile) ||
-      (delivery.customerName && currentCustomer.name && delivery.customerName.toLowerCase() === currentCustomer.name.toLowerCase())
-    )
+    .filter((delivery) => {
+      const matchesId = delivery.customerId === currentCustomer.id || delivery.customerId === currentCustomer.customerId;
+      if (!matchesId) return false;
+      if (delivery.customerPhone && currentCustomer.mobile) {
+        const dPhone = String(delivery.customerPhone).replace(/\D/g, '').slice(-10);
+        const cPhone = String(currentCustomer.mobile).replace(/\D/g, '').slice(-10);
+        if (dPhone && cPhone && dPhone !== cPhone) return false;
+      }
+      if (delivery.customerName && currentCustomer.name) {
+        const dName = String(delivery.customerName).toLowerCase().trim();
+        const cName = String(currentCustomer.name).toLowerCase().trim();
+        if (dName && cName && dName !== cName && !dName.includes(cName) && !cName.includes(dName)) return false;
+      }
+      return true;
+    })
     .reverse();
   const isPaused = currentCustomer.status === 'paused';
   const balance = Number(currentCustomer.currentBalance) || 0;
   const subscriptionThrough = currentCustomer.subscription?.endDate
     ? new Date(currentCustomer.subscription.endDate)
     : null;
-  const hasPaidSubscription = ['active', 'expired'].includes(currentCustomer.subscription?.status);
+  const hasPaidSubscription = currentCustomer.subscription?.status === 'active';
   const subscriptionStatusLabel = currentCustomer.subscription?.status === 'pending_payment'
     ? 'Payment pending'
     : currentCustomer.subscription?.status === 'expired'
       ? 'Expired'
       : isPaused
         ? 'Paused'
-        : currentCustomer.subscription?.status === 'active' || !currentCustomer.subscription?.status
+        : currentCustomer.subscription?.status === 'active'
           ? 'Active'
           : 'Not subscribed';
   const address = [currentCustomer.address, currentCustomer.area]

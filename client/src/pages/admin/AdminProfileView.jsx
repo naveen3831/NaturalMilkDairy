@@ -15,6 +15,7 @@ import {
   Droplet,
   ChevronRight,
   Bike,
+  Share2,
 } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 
@@ -46,7 +47,7 @@ export default function AdminProfileView({ setActiveTab }) {
     if (window.confirm('Are you sure you want to sign out from the Natural Milk Dairy Admin Console?')) {
       logout();
       if (typeof setActiveTab === 'function') {
-        setActiveTab('login');
+        setActiveTab('home');
       }
     }
   };
@@ -266,6 +267,22 @@ export default function AdminProfileView({ setActiveTab }) {
               <div>
                 <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Customer Directory & Accounts</div>
                 <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Manage {totalCustomers} households & subscriptions</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#94a3b8" />
+          </div>
+
+          <div
+            onClick={() => setActiveTab('contact-settings')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Share2 size={17} color="#059669" />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Contact & Social Media Links</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Update helplines, WhatsApp & official channels</div>
               </div>
             </div>
             <ChevronRight size={18} color="#94a3b8" />

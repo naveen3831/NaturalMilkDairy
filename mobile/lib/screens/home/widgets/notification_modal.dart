@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../data/services/api_service.dart';
 import '../../../data/services/realtime_service.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/customer_provider.dart';
 
 class NotificationModal extends StatefulWidget {
   final Function(String date, String? proofUrl, String? driverName)? onViewProof;
@@ -77,45 +80,83 @@ class _NotificationModalState extends State<NotificationModal> {
     super.dispose();
   }
 
+  bool _isNotificationForCurrentCustomer(Map<String, dynamic> item) {
+    try {
+      final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
+      // Global broadcast notifications intended for all users
+      if (role == 'all') return true;
+
+      // Notifications intended for admin or delivery boy should never appear in customer modal
+      if (role == 'delivery_boy' || role == 'admin') return false;
+
+      final recipId = (item['recipientId']?.toString() ?? '').toLowerCase().trim();
+
+      // Collect all current user identifiers
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final customer = Provider.of<CustomerProvider>(context, listen: false);
+      final currentUser = auth.user;
+
+      final Set<String> myIds = {};
+      if (currentUser != null) {
+        if (currentUser.id.isNotEmpty) myIds.add(currentUser.id.toLowerCase().trim());
+        if (currentUser.customerId.isNotEmpty) myIds.add(currentUser.customerId.toLowerCase().trim());
+        if (currentUser.mobile.isNotEmpty) myIds.add(currentUser.mobile.toLowerCase().trim());
+        if (currentUser.email != null && currentUser.email!.isNotEmpty) {
+          myIds.add(currentUser.email!.toLowerCase().trim());
+        }
+      }
+
+      final cData = customer.customerData;
+      if (cData != null) {
+        final cid = (cData['_id']?.toString() ?? cData['id']?.toString() ?? '').toLowerCase().trim();
+        if (cid.isNotEmpty) myIds.add(cid);
+        final cCode = (cData['customerId']?.toString() ?? '').toLowerCase().trim();
+        if (cCode.isNotEmpty) myIds.add(cCode);
+        final cPhone = (cData['mobile']?.toString() ?? '').toLowerCase().trim();
+        if (cPhone.isNotEmpty) myIds.add(cPhone);
+        final cMail = (cData['email']?.toString() ?? '').toLowerCase().trim();
+        if (cMail.isNotEmpty) myIds.add(cMail);
+      }
+
+      // If notification has a specific recipient, it MUST match one of current customer's IDs
+      if (recipId.isNotEmpty) {
+        return myIds.contains(recipId);
+      }
+
+      // If role is 'customer' but has no recipientId, reject to prevent cross-customer leak
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _fetchServerNotifications() async {
     try {
       final res = await _api.get('/api/notifications');
       if (res['success'] == true && res['notifications'] is List && mounted) {
-        final serverList = res['notifications'] as List;
+        final rawList = res['notifications'] as List;
+        final serverList = rawList.where((raw) {
+          if (raw is! Map) return false;
+          return _isNotificationForCurrentCustomer(Map<String, dynamic>.from(raw));
+        }).toList();
+
         setState(() {
           if (serverList.isEmpty) {
-            _notifications = [
-              {
-                'id': 'delivery-completed-sample',
-                '_id': 'delivery-completed-sample',
-                'type': 'delivery_completed',
-                'tag': 'DELIVERED',
-                'tagColor': const Color(0xFF047857),
-                'tagBg': const Color(0xFFD1FAE5),
-                'icon': Icons.check_circle_outline_rounded,
-                'iconColor': const Color(0xFF059669),
-                'iconBg': const Color(0xFFECFDF5),
-                'title': 'Delivery Completed',
-                'body':
-                    'Your delivery for 2026-10-28 is complete. View the doorstep photo proof in your delivery...',
-                'time': '0h ago',
-                'isRead': true,
-                'date': '2026-10-28',
-                'proofUrl': null,
-                'driverName': 'Naveen Kumar',
-              }
-            ];
+            _notifications = [];
           } else {
             _notifications = serverList.map((item) {
-              final type = item['type']?.toString() ?? 'system';
+              final map = Map<String, dynamic>.from(item as Map);
+              final type = map['type']?.toString() ?? 'system';
               final isDispatch = type == 'delivery_assigned';
               final isDelivered = type == 'delivery_completed';
-              final notifId = item['_id']?.toString() ?? item['id']?.toString() ?? '';
+              final notifId = map['_id']?.toString() ?? map['id']?.toString() ?? '';
               final isMarkedReadLocally = _readIds.contains(notifId);
 
               return {
                 'id': notifId,
                 '_id': notifId,
+                'recipientRole': map['recipientRole']?.toString() ?? 'customer',
+                'recipientId': map['recipientId']?.toString() ?? '',
                 'type': type,
                 'tag': isDispatch ? 'DISPATCH' : (isDelivered ? 'DELIVERED' : 'ALERT'),
                 'tagColor': isDispatch
@@ -133,13 +174,13 @@ class _NotificationModalState extends State<NotificationModal> {
                 'iconBg': isDispatch
                     ? const Color(0xFFEFF6FF)
                     : (isDelivered ? const Color(0xFFECFDF5) : const Color(0xFFE8F5EE)),
-                'title': item['title']?.toString() ?? (isDelivered ? 'Delivery Completed' : 'Delivery Notification'),
-                'body': item['message']?.toString() ?? '',
-                'time': _formatRelativeTime(item['createdAt']?.toString()),
-                'isRead': isMarkedReadLocally || item['isRead'] == true,
-                'date': item['data']?['date']?.toString() ?? 'Today',
-                'proofUrl': item['data']?['proofUrl']?.toString() ?? item['proofUrl']?.toString(),
-                'driverName': item['data']?['driverName']?.toString() ?? 'Naveen Kumar',
+                'title': map['title']?.toString() ?? (isDelivered ? 'Delivery Completed' : 'Delivery Notification'),
+                'body': map['message']?.toString() ?? '',
+                'time': _formatRelativeTime(map['createdAt']?.toString()),
+                'isRead': isMarkedReadLocally || map['isRead'] == true,
+                'date': map['data']?['date']?.toString() ?? 'Today',
+                'proofUrl': map['data']?['proofUrl']?.toString() ?? map['proofUrl']?.toString(),
+                'driverName': map['data']?['driverName']?.toString() ?? 'Naveen Kumar',
               };
             }).toList();
           }
@@ -150,29 +191,6 @@ class _NotificationModalState extends State<NotificationModal> {
     } catch (_) {
       if (mounted) {
         setState(() {
-          if (_notifications.isEmpty) {
-            _notifications = [
-              {
-                'id': 'delivery-completed-sample',
-                '_id': 'delivery-completed-sample',
-                'type': 'delivery_completed',
-                'tag': 'DELIVERED',
-                'tagColor': const Color(0xFF047857),
-                'tagBg': const Color(0xFFD1FAE5),
-                'icon': Icons.check_circle_outline_rounded,
-                'iconColor': const Color(0xFF059669),
-                'iconBg': const Color(0xFFECFDF5),
-                'title': 'Delivery Completed',
-                'body':
-                    'Your delivery for 2026-10-28 is complete. View the doorstep photo proof in your delivery...',
-                'time': '0h ago',
-                'isRead': true,
-                'date': '2026-10-28',
-                'proofUrl': null,
-                'driverName': 'Naveen Kumar',
-              }
-            ];
-          }
           _isLoading = false;
         });
       }

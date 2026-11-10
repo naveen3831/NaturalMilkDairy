@@ -41,10 +41,10 @@ router.get('/test', async (req, res) => {
 });
 
 /**
- * Upload single image via multipart/form-data
+ * Upload single image via multipart/form-data directly to Cloudinary
  * POST /api/upload
  */
-router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, res) => {
+router.post('/', verifyToken, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Please select an image file to upload' });
@@ -52,57 +52,29 @@ router.post('/', verifyToken, requireAdmin, upload.single('image'), async (req, 
 
     const folder = req.body.folder || 'natural-milk-dairy';
 
-    try {
-      const result = await uploadToCloudinary(req.file.buffer, folder);
+    const result = await uploadToCloudinary(req.file.buffer, folder);
 
-      return res.status(201).json({
-        success: true,
-        message: 'Image successfully uploaded to Cloudinary',
-        url: result.secure_url,
-        publicId: result.public_id,
-        format: result.format,
-        width: result.width,
-        height: result.height,
-        bytes: result.bytes,
-      });
-    } catch (cloudErr) {
-      console.warn('Cloudinary upload warning:', cloudErr.message);
-
-      const fs = require('fs');
-      const path = require('path');
-      const uploadDir = path.join(__dirname, '../uploads');
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
-      const ext = (req.file.mimetype.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '');
-      const filename = `upload_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-      const filePath = path.join(uploadDir, filename);
-      fs.writeFileSync(filePath, req.file.buffer);
-
-      const localUrl = `/uploads/${filename}`;
-      const isMissingPerm = cloudErr.message && cloudErr.message.includes('missing permissions');
-
-      return res.status(201).json({
-        success: true,
-        message: isMissingPerm
-          ? 'Image saved locally (Cloudinary API key is missing "create" permission in Cloudinary console)'
-          : 'Image uploaded successfully',
-        url: localUrl,
-        warning: isMissingPerm ? 'Please enable "Create / Media Management" permission on your Cloudinary API key in Settings -> Access Keys.' : null,
-      });
-    }
+    return res.status(201).json({
+      success: true,
+      message: 'Image successfully uploaded to Cloudinary',
+      url: result.secure_url,
+      publicId: result.public_id,
+      format: result.format,
+      width: result.width,
+      height: result.height,
+      bytes: result.bytes,
+    });
   } catch (err) {
-    console.error('Upload handler error:', err);
-    return res.status(500).json({ success: false, message: 'Server upload error', error: err.message });
+    console.error('Cloudinary upload error:', err);
+    return res.status(500).json({ success: false, message: 'Cloudinary upload failed', error: err.message });
   }
 });
 
 /**
- * Upload image via Base64 or remote URL
+ * Upload image via Base64 or remote URL directly to Cloudinary
  * POST /api/upload/base64
  */
-router.post('/base64', verifyToken, requireAdmin, async (req, res) => {
+router.post('/base64', verifyToken, async (req, res) => {
   try {
     const { image, folder = 'natural-milk-dairy' } = req.body;
     if (!image) {

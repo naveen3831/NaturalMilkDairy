@@ -202,7 +202,7 @@ const login = async (req, res) => {
         mobile: foundCustomer.mobile,
         role: 'customer',
         status: customerStatus,
-        customerId: foundCustomer.customerId || 'CUST-101',
+        customerId: foundCustomer.customerId || '',
         area: foundCustomer.area || '',
       };
       const token = generateToken(custPayload);
@@ -238,6 +238,20 @@ const login = async (req, res) => {
         });
       }
 
+      // If this genericUser is a customer, try to find matching customerId if not already stored
+      let linkedCustomerId = genericUser.customerId || '';
+      if (!linkedCustomerId && (genericUser.role === 'customer' || genericUser.role === 'user')) {
+        const linkedCust = await Customer.findOne({
+          $or: [
+            ...(genericUser.mobile ? [{ mobile: genericUser.mobile }] : []),
+            ...(genericUser.email ? [{ email: genericUser.email }] : []),
+          ],
+        }).lean();
+        if (linkedCust?.customerId) {
+          linkedCustomerId = linkedCust.customerId;
+        }
+      }
+
       const genericPayload = {
         id: genericUser._id.toString(),
         name: genericUser.name,
@@ -245,6 +259,7 @@ const login = async (req, res) => {
         mobile: genericUser.mobile,
         role: genericUser.role || 'customer',
         status: genericUser.status || 'active',
+        customerId: linkedCustomerId,
         assignedArea: genericUser.assignedArea || 'All Areas',
       };
       const token = generateToken(genericPayload);

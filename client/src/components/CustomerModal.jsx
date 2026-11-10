@@ -1,6 +1,54 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useDairy } from '../context/DairyContext';
-import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles, Edit3 } from 'lucide-react';
+import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles, Edit3, Navigation, CheckCircle2, ExternalLink } from 'lucide-react';
+
+const parseCoordinatesFromInput = (input) => {
+  if (!input || typeof input !== 'string') return null;
+  const str = input.trim();
+  if (!str) return null;
+
+  // 1. Raw lat,lng (e.g. 17.4483, 78.3915)
+  const rawCoordMatch = str.match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (rawCoordMatch) {
+    const lat = parseFloat(rawCoordMatch[1]);
+    const lng = parseFloat(rawCoordMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 2. Google maps @lat,lng
+  const atMatch = str.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (atMatch) {
+    const lat = parseFloat(atMatch[1]);
+    const lng = parseFloat(atMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 3. Query params: q=lat,lng or query=lat,lng or ll=lat,lng or destination=lat,lng
+  const queryMatch = str.match(/[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (queryMatch) {
+    const lat = parseFloat(queryMatch[1]);
+    const lng = parseFloat(queryMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  // 4. Place or dir paths
+  const placeMatch = str.match(/\/(?:place|dir|search)\/(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if (placeMatch) {
+    const lat = parseFloat(placeMatch[1]);
+    const lng = parseFloat(placeMatch[2]);
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { latitude: lat, longitude: lng };
+    }
+  }
+
+  return null;
+};
 
 export default function CustomerModal({ isOpen, onClose, customerToEdit = null, customer = null }) {
   const { addCustomer, updateCustomer, deliveryBoys, locations } = useDairy();
@@ -15,6 +63,9 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
   const [address, setAddress] = useState('');
   const [area, setArea] = useState('Madhapur');
   const [landmark, setLandmark] = useState('');
+  const [googleMapsUrl, setGoogleMapsUrl] = useState('');
+  const [latitude, setLatitude] = useState(null);
+  const [longitude, setLongitude] = useState(null);
   const [status, setStatus] = useState('active');
   const [milkQty, setMilkQty] = useState(1);
   const [milkUnit, setMilkUnit] = useState('L');
@@ -28,134 +79,234 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const prevOpenRef = useRef(false);
+  const prevTargetIdRef = useRef(null);
+  const targetId = targetCustomer ? (targetCustomer.id || targetCustomer._id || targetCustomer.customerId || 'editing') : null;
+
   useEffect(() => {
-    if (targetCustomer) {
-      setName(targetCustomer.name || '');
-      setEmail(targetCustomer.email || '');
-      setPassword('');
-      setMobile(targetCustomer.mobile || '');
-      setWhatsapp(targetCustomer.whatsapp || targetCustomer.mobile || '');
-      setAddress(targetCustomer.address || '');
-      setArea(targetCustomer.area || 'Madhapur');
-      setLandmark(targetCustomer.landmark || '');
-      setStatus(targetCustomer.status || 'active');
-      setMilkQty(targetCustomer.deliveryPlan?.milkQty ?? 1);
-      setMilkUnit(targetCustomer.deliveryPlan?.milkUnit || 'L');
-      setCurdQty(targetCustomer.deliveryPlan?.curdQty ?? 0);
-      setCurdUnit(targetCustomer.deliveryPlan?.curdUnit || 'g');
-      setFrequency(targetCustomer.deliveryPlan?.frequency || 'daily');
-      setDeliveryBoyId(targetCustomer.deliveryPlan?.deliveryBoyId || '');
-      setPaymentType(targetCustomer.paymentInfo?.paymentType || 'credit');
-      setPaymentCycle(targetCustomer.paymentInfo?.paymentCycle || 'monthly');
-      setNotes(targetCustomer.notes || '');
-    } else {
-      setName('');
-      setEmail('');
-      setPassword('');
-      setMobile('');
-      setWhatsapp('');
-      setAddress('');
-      const firstActiveLoc = locations.find((l) => l.isActive)?.name || 'Madhapur';
-      setArea(firstActiveLoc);
-      setLandmark('');
-      setStatus('active');
-      setMilkQty(1);
-      setMilkUnit('L');
-      setCurdQty(0);
-      setCurdUnit('g');
-      setFrequency('daily');
-      setDeliveryBoyId(deliveryBoys[0]?.id || deliveryBoys[0]?._id || '');
-      setPaymentType('credit');
-      setPaymentCycle('monthly');
-      setNotes('');
+    // Only reset/populate form fields when modal transitions from closed to open,
+    // or when switching to a different customer in edit mode.
+    // NEVER reset while the user is actively entering details in the open form!
+    const justOpened = isOpen && !prevOpenRef.current;
+    const customerChanged = isOpen && targetId !== prevTargetIdRef.current;
+
+    if (justOpened || customerChanged) {
+      if (targetCustomer) {
+        setName(targetCustomer.name || '');
+        setEmail(targetCustomer.email || '');
+        setPassword('');
+        setMobile(targetCustomer.mobile || '');
+        setWhatsapp(targetCustomer.whatsapp || targetCustomer.mobile || '');
+        setAddress(targetCustomer.address || '');
+        setArea(targetCustomer.area || 'Madhapur');
+        setLandmark(targetCustomer.landmark || '');
+        const existingUrl = targetCustomer.googleMapsUrl || targetCustomer.addresses?.[0]?.googleMapsUrl || '';
+        const existingLat = targetCustomer.latitude || targetCustomer.addresses?.[0]?.latitude || null;
+        const existingLng = targetCustomer.longitude || targetCustomer.addresses?.[0]?.longitude || null;
+        setGoogleMapsUrl(existingUrl || (existingLat && existingLng ? `https://www.google.com/maps?q=${existingLat},${existingLng}` : ''));
+        setLatitude(existingLat);
+        setLongitude(existingLng);
+        setStatus(targetCustomer.status || 'active');
+        setMilkQty(targetCustomer.deliveryPlan?.milkQty ?? 1);
+        setMilkUnit(targetCustomer.deliveryPlan?.milkUnit || 'L');
+        setCurdQty(targetCustomer.deliveryPlan?.curdQty ?? 0);
+        setCurdUnit(targetCustomer.deliveryPlan?.curdUnit || 'g');
+        setFrequency(targetCustomer.deliveryPlan?.frequency || 'daily');
+        setDeliveryBoyId(targetCustomer.deliveryPlan?.deliveryBoyId || '');
+        setPaymentType(targetCustomer.paymentInfo?.paymentType || 'credit');
+        setPaymentCycle(targetCustomer.paymentInfo?.paymentCycle || 'monthly');
+        setNotes(targetCustomer.notes || '');
+      } else {
+        setName('');
+        setEmail('');
+        setPassword('');
+        setMobile('');
+        setWhatsapp('');
+        setAddress('');
+        const firstActiveLoc = (locations || []).find((l) => l.isActive)?.name || 'Madhapur';
+        setArea(firstActiveLoc);
+        setLandmark('');
+        setGoogleMapsUrl('');
+        setLatitude(null);
+        setLongitude(null);
+        setStatus('active');
+        setMilkQty(1);
+        setMilkUnit('L');
+        setCurdQty(0);
+        setCurdUnit('g');
+        setFrequency('daily');
+        setDeliveryBoyId(deliveryBoys?.[0]?.id || deliveryBoys?.[0]?._id || '');
+        setPaymentType('credit');
+        setPaymentCycle('monthly');
+        setNotes('');
+      }
+      setErrorMessage('');
     }
-    setErrorMessage('');
-  }, [targetCustomer, isOpen, deliveryBoys, locations]);
+
+    prevOpenRef.current = isOpen;
+    prevTargetIdRef.current = targetId;
+  }, [isOpen, targetId, targetCustomer]);
+
+  const handleGoogleMapsUrlChange = (val) => {
+    setGoogleMapsUrl(val);
+    const parsed = parseCoordinatesFromInput(val);
+    if (parsed) {
+      setLatitude(parsed.latitude);
+      setLongitude(parsed.longitude);
+    }
+  };
+
+  const handleGetCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(6));
+          const lng = Number(pos.coords.longitude.toFixed(6));
+          setLatitude(lat);
+          setLongitude(lng);
+          setGoogleMapsUrl(`https://www.google.com/maps?q=${lat},${lng}`);
+        },
+        (err) => {
+          alert('Could not retrieve current GPS: ' + err.message);
+        }
+      );
+    } else {
+      alert('Geolocation is not supported by your browser.');
+    }
+  };
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
-    if (!name || !mobile || !address) return;
+
+    if (!name.trim()) {
+      setErrorMessage('Please enter the customer name.');
+      return;
+    }
+    const cleanMobile = mobile.trim();
+    if (!cleanMobile || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(cleanMobile)) {
+      setErrorMessage('Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).');
+      return;
+    }
+    if (!address.trim() || address.trim().length < 4) {
+      setErrorMessage('Please enter a complete delivery address (at least 4 characters).');
+      return;
+    }
+    if (!isEditMode && !password.trim() && !email.trim()) {
+      setErrorMessage('Please provide either an email or set a portal password for customer login.');
+      return;
+    }
 
     setIsSubmitting(true);
+    try {
+      if (isEditMode) {
+        const updatePayload = {
+          name: name.trim(),
+          email: email.trim(),
+          mobile: cleanMobile,
+          whatsapp: whatsapp ? whatsapp.trim() : cleanMobile,
+          address: address.trim(),
+          area: area.trim(),
+          landmark: landmark.trim(),
+          googleMapsUrl: googleMapsUrl.trim(),
+          latitude: latitude !== null && !isNaN(Number(latitude)) ? Number(latitude) : undefined,
+          longitude: longitude !== null && !isNaN(Number(longitude)) ? Number(longitude) : undefined,
+          status,
+          milkQty: Number(milkQty),
+          milkUnit,
+          curdQty: Number(curdQty),
+          curdUnit,
+          frequency,
+          deliveryBoyId,
+          paymentType,
+          paymentCycle,
+          notes: notes.trim(),
+          actor: 'Admin',
+        };
+        if (password && password.trim()) {
+          updatePayload.password = password.trim();
+        }
 
-    if (isEditMode) {
-      const updatePayload = {
-        name: name.trim(),
-        email: email.trim(),
-        mobile: mobile.trim(),
-        whatsapp: whatsapp ? whatsapp.trim() : mobile.trim(),
-        address: address.trim(),
-        area: area.trim(),
-        landmark: landmark.trim(),
-        status,
-        milkQty: Number(milkQty),
-        milkUnit,
-        curdQty: Number(curdQty),
-        curdUnit,
-        frequency,
-        deliveryBoyId,
-        paymentType,
-        paymentCycle,
-        notes: notes.trim(),
-        actor: 'Admin',
-      };
-      if (password && password.trim()) {
-        updatePayload.password = password.trim();
+        const res = await updateCustomer(targetCustomer.id || targetCustomer._id, updatePayload);
+        setIsSubmitting(false);
+
+        if (!res || !res.success) {
+          setErrorMessage(res?.message || 'Failed to update customer details.');
+          return;
+        }
+        onClose();
+      } else {
+        const res = await addCustomer({
+          name: name.trim(),
+          email: email.trim(),
+          password: password.trim(),
+          mobile: cleanMobile,
+          whatsapp: whatsapp ? whatsapp.trim() : cleanMobile,
+          address: address.trim(),
+          area: area.trim(),
+          landmark: landmark.trim(),
+          googleMapsUrl: googleMapsUrl.trim(),
+          latitude: latitude !== null && !isNaN(Number(latitude)) ? Number(latitude) : undefined,
+          longitude: longitude !== null && !isNaN(Number(longitude)) ? Number(longitude) : undefined,
+          status,
+          milkQty: Number(milkQty),
+          milkUnit,
+          curdQty: Number(curdQty),
+          curdUnit,
+          frequency,
+          deliveryBoyId,
+          paymentType,
+          paymentCycle,
+          notes: notes.trim(),
+          actor: 'Admin',
+        });
+        setIsSubmitting(false);
+
+        if (!res || !res.success) {
+          setErrorMessage(res?.message || 'Failed to add customer. Please check phone number and email.');
+          return;
+        }
+
+        setName('');
+        setEmail('');
+        setPassword('');
+        setGoogleMapsUrl('');
+        setLatitude(null);
+        setLongitude(null);
+        setMobile('');
+        setWhatsapp('');
+        setAddress('');
+        onClose();
       }
-
-      const res = await updateCustomer(targetCustomer.id || targetCustomer._id, updatePayload);
+    } catch (err) {
       setIsSubmitting(false);
-
-      if (!res || !res.success) {
-        setErrorMessage(res?.message || 'Failed to update customer details.');
-        return;
-      }
-      onClose();
-    } else {
-      const res = await addCustomer({
-        name: name.trim(),
-        email: email.trim(),
-        password: password.trim(),
-        mobile: mobile.trim(),
-        whatsapp: whatsapp ? whatsapp.trim() : mobile.trim(),
-        address: address.trim(),
-        area: area.trim(),
-        landmark: landmark.trim(),
-        status,
-        milkQty: Number(milkQty),
-        milkUnit,
-        curdQty: Number(curdQty),
-        curdUnit,
-        frequency,
-        deliveryBoyId,
-        paymentType,
-        paymentCycle,
-        notes: notes.trim(),
-        actor: 'Admin',
-      });
-      setIsSubmitting(false);
-
-      if (!res || !res.success) {
-        setErrorMessage(res?.message || 'Failed to add customer. Please check phone number and email.');
-        return;
-      }
-
-      setName('');
-      setEmail('');
-      setPassword('');
-      setMobile('');
-      setWhatsapp('');
-      setAddress('');
-      onClose();
+      setErrorMessage(err.message || 'An unexpected error occurred. Please try again.');
     }
   };
 
   return (
-    <div className="modal-overlay customer-modal-overlay" onClick={onClose}>
-      <div className="modal-content customer-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '640px', borderRadius: '16px' }}>
+    <div
+      className="modal-overlay customer-modal-overlay"
+      onMouseDown={(e) => {
+        // Prevent accidental closing on touch drag or text selection
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="modal-content customer-modal-content"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '640px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          borderRadius: '16px',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -323,6 +474,105 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
                 style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', fontSize: '0.84rem' }}
                 required
               />
+            </div>
+
+            {/* Optional Location / Google Maps Link with Real-Time Coordinate Sync */}
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                background: latitude && longitude ? '#f0fdf4' : '#f8fafc',
+                border: `1px solid ${latitude && longitude ? '#bbf7d0' : '#e2e8f0'}`,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <MapPin size={13} color="#059669" />
+                  <span>Doorstep Location / Google Maps Link (Optional)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGetCurrentLocation}
+                  style={{
+                    background: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: '#047857',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title="Detect GPS coordinates using device GPS"
+                >
+                  <Navigation size={11} />
+                  <span>Use Current GPS</span>
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Paste Google Maps link (e.g. https://maps.app.goo.gl/... or 17.4483, 78.3915)"
+                value={googleMapsUrl}
+                onChange={(e) => handleGoogleMapsUrlChange(e.target.value)}
+                style={{
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  padding: '8px 12px',
+                  fontSize: '0.84rem',
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: '#ffffff',
+                }}
+              />
+              {latitude !== null && longitude !== null && (
+                <div
+                  style={{
+                    marginTop: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '6px',
+                    background: '#dcfce7',
+                    border: '1px solid #86efac',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.74rem',
+                    color: '#065f46',
+                    fontWeight: 700,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <CheckCircle2 size={13} color="#059669" />
+                    <span>✓ Live GPS Detected: {latitude}, {longitude} (Synced Real-Time)</span>
+                  </div>
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: '#047857',
+                      textDecoration: 'none',
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '3px',
+                      background: '#ffffff',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      border: '1px solid #a7f3d0',
+                    }}
+                  >
+                    <span>View Map Pin</span>
+                    <ExternalLink size={10} />
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
