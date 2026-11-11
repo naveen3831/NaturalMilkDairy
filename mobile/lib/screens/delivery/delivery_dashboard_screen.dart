@@ -11,6 +11,8 @@ import '../../providers/auth_provider.dart';
 import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
 import '../home/select_location_map_screen.dart';
+import '../../widgets/report_download_sheet.dart';
+import '../../services/delivery_proof_watermarker.dart';
 
 // ============================================================================
 // HELPER: DELIVERY PROOF PHOTO RENDERER & LIGHTBOX
@@ -91,6 +93,8 @@ class DeliveryProofHelper {
     required String proofStr,
     required String customerName,
     required String address,
+    String? timestamp,
+    String? partnerName,
   }) {
     showDialog(
       context: context,
@@ -98,10 +102,11 @@ class DeliveryProofHelper {
       builder: (ctx) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Header
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: const BoxDecoration(
@@ -110,7 +115,7 @@ class DeliveryProofHelper {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.camera_alt_rounded, color: Color(0xFF34D399), size: 20),
+                    const Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -146,18 +151,85 @@ class DeliveryProofHelper {
                   ],
                 ),
               ),
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                child: Container(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.7,
-                  ),
-                  color: Colors.black,
-                  child: InteractiveViewer(
-                    minScale: 0.8,
-                    maxScale: 4.0,
-                    child: buildImageFromSource(proofStr, fit: BoxFit.contain),
-                  ),
+              // Image Container
+              Container(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.60,
+                ),
+                color: Colors.black,
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4.0,
+                  child: buildImageFromSource(proofStr, fit: BoxFit.contain),
+                ),
+              ),
+              // Bottom Timestamp & Location Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0B1E14),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
+                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF059669),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'DOORSTEP VERIFIED',
+                            style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            timestamp != null && timestamp.isNotEmpty ? '🕒 $timestamp' : '🕒 Realtime Timestamp Recorded',
+                            style: const TextStyle(color: Color(0xFFA7F3D0), fontSize: 11.5, fontWeight: FontWeight.w700),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '📍 Location: ${address.isNotEmpty ? address : 'Doorstep Drop Coordinates Verified'}',
+                            style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 11.5, height: 1.2),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (partnerName != null && partnerName.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(Icons.delivery_dining_rounded, size: 14, color: Color(0xFF38BDF8)),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Delivered by: $partnerName',
+                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -213,6 +285,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   int _unreadNotifCount = 2;
   String _notifFilter = 'all'; // 'all', 'unread', 'deliveries', 'system'
   final List<Map<String, dynamic>> _sentSupportMessages = [];
+
+  // Route Stops Search State
+  String _routeSearchQuery = '';
+  final TextEditingController _routeSearchCtrl = TextEditingController();
 
   // Deliveries Details Sub-Screen States
   String _delSubFilter = 'all'; // 'all', 'pending', 'delivered', 'not_delivered', 'cash', 'upi'
@@ -437,6 +513,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     _wsSub?.cancel();
     _delSubSearchCtrl.dispose();
     _subHistSearchCtrl.dispose();
+    _routeSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -1310,24 +1387,76 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. PAGE TITLE & SUBTITLE
-          const Text(
-            'Your deliveries',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-              letterSpacing: -0.3,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '$boyArea · $_pendingCount remaining of $_totalCount stops',
-            style: const TextStyle(
-              fontSize: 13,
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
-            ),
+          // 1. PAGE TITLE & SUBTITLE WITH PDF REPORT ACTION
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Your deliveries',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '$boyArea · $_pendingCount remaining of $_totalCount stops',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => ReportDownloadSheet.show(
+                  context,
+                  role: 'partner',
+                  initialCustomers: _assignedCustomers,
+                  initialDeliveries: _deliveries,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D5C3A),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0D5C3A).withValues(alpha: 0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 15),
+                      SizedBox(width: 5),
+                      Text(
+                        'Report PDF',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
           if (!_isOnDuty) ...[
             const SizedBox(height: 12),
@@ -2011,7 +2140,9 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 context: context,
                 proofStr: proofStr,
                 customerName: d['customerName']?.toString() ?? 'Customer',
-                address: d['customerAddress']?.toString() ?? '',
+                address: d['customerAddress']?.toString() ?? d['deliveryAddress']?.toString() ?? d['area']?.toString() ?? '',
+                timestamp: d['deliveredAt'] != null ? d['deliveredAt'].toString() : (d['deliveryDate'] != null ? '${d['deliveryDate']} • Morning Drop' : null),
+                partnerName: d['deliveryBoyName']?.toString() ?? _profileName,
               ),
               child: Stack(
                 children: [
@@ -2076,6 +2207,23 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   // TAB 1: ROUTE & STOPS
   // =========================================================
   Widget _buildRouteTab(String boyArea) {
+    // Filter route deliveries in realtime by name, address, mobile, or customer/stop ID
+    final filteredEntries = _deliveries.asMap().entries.where((entry) {
+      if (_routeSearchQuery.isEmpty) return true;
+      final idx = entry.key + 1;
+      final d = entry.value;
+      final name = (d['customerName'] ?? '').toString().toLowerCase();
+      final addr = (d['customerAddress'] ?? '').toString().toLowerCase();
+      final phone = (d['customerPhone'] ?? '').toString().toLowerCase();
+      final custId = (d['customerId'] ?? d['id'] ?? '').toString().toLowerCase();
+      final stopSeq = idx.toString();
+      return name.contains(_routeSearchQuery) ||
+          addr.contains(_routeSearchQuery) ||
+          phone.contains(_routeSearchQuery) ||
+          custId.contains(_routeSearchQuery) ||
+          stopSeq == _routeSearchQuery;
+    }).toList();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -2102,24 +2250,92 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+
+          // Route Search Bar
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFCBD5E1)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: TextField(
+              controller: _routeSearchCtrl,
+              onChanged: (val) => setState(() => _routeSearchQuery = val.trim().toLowerCase()),
+              decoration: InputDecoration(
+                hintText: 'Search stops by name, address, phone or #...',
+                hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF059669), size: 20),
+                suffixIcon: _routeSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                        onPressed: () {
+                          _routeSearchCtrl.clear();
+                          setState(() => _routeSearchQuery = '');
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
           if (_deliveries.isEmpty)
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
               child: const Center(child: Text('No route stops scheduled for today')),
             )
+          else if (filteredEntries.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Center(
+                child: Column(
+                  children: [
+                    const Icon(Icons.search_off_rounded, size: 36, color: Color(0xFF94A3B8)),
+                    const SizedBox(height: 8),
+                    Text(
+                      'No stops found matching "$_routeSearchQuery"',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B), fontSize: 13),
+                    ),
+                    const SizedBox(height: 10),
+                    TextButton(
+                      onPressed: () {
+                        _routeSearchCtrl.clear();
+                        setState(() => _routeSearchQuery = '');
+                      },
+                      child: const Text('Clear Search', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             ListView.separated(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              itemCount: _deliveries.length,
+              itemCount: filteredEntries.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (ctx, i) {
-                final d = _deliveries[i];
+                final originalIndex = filteredEntries[i].key;
+                final d = filteredEntries[i].value;
                 final isDelivered = d['status'] == 'delivered';
                 return InkWell(
-                  onTap: () => _openStopDetails(d, i),
+                  onTap: () => _openStopDetails(d, originalIndex),
                   borderRadius: BorderRadius.circular(14),
                   child: Container(
                     padding: const EdgeInsets.all(14),
@@ -2139,7 +2355,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                           ),
                           child: Center(
                             child: Text(
-                              '${i + 1}',
+                              '${originalIndex + 1}',
                               style: TextStyle(
                                 color: isDelivered ? Colors.white : const Color(0xFF334155),
                                 fontWeight: FontWeight.w800,
@@ -2328,6 +2544,19 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                               ),
                             ),
                             IconButton(
+                              icon: const Icon(Icons.picture_as_pdf_rounded, size: 20, color: Color(0xFF059669)),
+                              tooltip: 'Download Statement PDF',
+                              onPressed: () {
+                                ReportDownloadSheet.show(
+                                  context,
+                                  role: 'customer',
+                                  customerId: c['customerId'] ?? c['_id'] ?? c['id'],
+                                  customTitle: '${c['name'] ?? 'Customer'} Statement',
+                                  initialCustomers: _assignedCustomers,
+                                );
+                              },
+                            ),
+                            IconButton(
                               icon: const Icon(Icons.phone_rounded, size: 18, color: Color(0xFF059669)),
                               onPressed: () => _callCustomer(mobile),
                             ),
@@ -2481,8 +2710,46 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Cash & Shift Reconciliation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
-          const Text('Today collection breakdown across morning route', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Cash & Shift Reconciliation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
+                    Text('Today collection breakdown across morning route', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => ReportDownloadSheet.show(
+                  context,
+                  role: 'partner',
+                  initialCustomers: _assignedCustomers,
+                  initialDeliveries: _deliveries,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D5C3A),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text('PDF Report', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(18),
@@ -6148,33 +6415,13 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   void _showProofImageDialog(String proofUrl, String customerName) {
-    showDialog(
+    DeliveryProofHelper.showLightbox(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Proof: $customerName', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                proofUrl.startsWith('http') ? proofUrl : '${_api.baseUrl}$proofUrl',
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Icon(Icons.broken_image_rounded, size: 48, color: Colors.grey),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
+      proofStr: proofUrl,
+      customerName: customerName,
+      address: 'Doorstep Delivery Location',
+      timestamp: 'Verified Morning Shift Drop',
+      partnerName: _profileName,
     );
   }
 
@@ -6577,7 +6824,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     super.dispose();
   }
 
-  /// Open device camera to click real-time doorstep delivery photo proof
+  /// Open device camera to click real-time doorstep delivery photo proof with burned timestamp & location
   Future<void> _openCameraAndCapture() async {
     setState(() => _isCapturing = true);
     try {
@@ -6585,17 +6832,44 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       if (!mounted) return;
       if (photoBase64 != null && photoBase64.isNotEmpty) {
         final cleanBase64 = photoBase64.contains(',') ? photoBase64.split(',')[1] : photoBase64;
-        final bytes = base64Decode(cleanBase64);
+        final rawBytes = base64Decode(cleanBase64);
+
+        final now = DateTime.now();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        final hour = now.hour == 0 ? 12 : (now.hour > 12 ? now.hour - 12 : now.hour);
+        final ampm = now.hour >= 12 ? 'PM' : 'AM';
+        final minute = now.minute.toString().padLeft(2, '0');
+        final second = now.second.toString().padLeft(2, '0');
+        final timestampStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}, $hour:$minute:$second $ampm';
+
+        final custName = widget.delivery['customerName']?.toString() ?? 'Household Customer';
+        final custAddr = widget.delivery['customerAddress']?.toString() ??
+            widget.delivery['deliveryAddress']?.toString() ??
+            widget.delivery['area']?.toString() ??
+            'Doorstep Drop Location';
+        final partnerName = widget.delivery['deliveryBoyName']?.toString() ?? 'Dairy Partner';
+
+        // Burn real-time timestamp & location watermark onto the photo pixels
+        final watermarkedBytes = await DeliveryProofWatermarker.stampWatermark(
+          rawBytes,
+          timestamp: timestampStr,
+          location: custAddr,
+          customerName: custName,
+          partnerName: partnerName,
+        );
+
+        final watermarkedBase64 = 'data:image/png;base64,${base64Encode(watermarkedBytes)}';
+
         setState(() {
-          _capturedPhotoBase64 = photoBase64;
-          _capturedPhotoBytes = bytes;
-          _capturedAt = DateTime.now();
+          _capturedPhotoBase64 = watermarkedBase64;
+          _capturedPhotoBytes = watermarkedBytes;
+          _capturedAt = now;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ Doorstep delivery photo captured successfully!'),
+            content: Text('✓ Doorstep delivery photo captured with live timestamp & location!'),
             backgroundColor: Color(0xFF059669),
-            duration: Duration(seconds: 2),
+            duration: Duration(seconds: 3),
           ),
         );
       } else {
@@ -6637,6 +6911,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       'paymentMethod': _paymentMethod,
       'collectedAmount': collected,
       'proofImage': _capturedPhotoBase64,
+      'proofLocation': widget.delivery['customerAddress'] ?? widget.delivery['deliveryAddress'] ?? widget.delivery['area'] ?? '',
       'actor': 'Mobile Driver',
     });
 
@@ -8249,6 +8524,8 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
                           proofStr: (stop['proofImage'] ?? stop['proofUrl'] ?? '').toString(),
                           customerName: name,
                           address: address,
+                          timestamp: stop['deliveredAt']?.toString() ?? (stop['deliveryDate'] != null ? '${stop['deliveryDate']} • Morning Drop' : null),
+                          partnerName: stop['deliveryBoyName']?.toString() ?? _profileName,
                         ),
                         child: Stack(
                           children: [
@@ -8821,6 +9098,21 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
           'Customer Route Profile',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF059669)),
+            tooltip: 'Download Customer Statement PDF',
+            onPressed: () {
+              ReportDownloadSheet.show(
+                context,
+                role: 'customer',
+                customerId: customerId,
+                customTitle: '$name Statement',
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -8950,7 +9242,69 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+
+            // 2b. Download Customer Statement PDF Card
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () {
+                ReportDownloadSheet.show(
+                  context,
+                  role: 'customer',
+                  customerId: customerId,
+                  customTitle: '$name Statement',
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0D5C3A), Color(0xFF059669)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF059669).withValues(alpha: 0.22),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Download Customer Statement PDF',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
+                          ),
+                          SizedBox(height: 1),
+                          Text(
+                            'Weekly, monthly & entire delivery history statement',
+                            style: TextStyle(color: Color(0xFFD1FAE5), fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
 
             // 3. Subscription & Expiry Date Card
             Container(

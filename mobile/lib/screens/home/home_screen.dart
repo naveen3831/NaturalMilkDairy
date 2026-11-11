@@ -18,6 +18,7 @@ import 'subscription_history_screen.dart';
 import 'account_details_screen.dart';
 import 'delivery_addresses_screen.dart';
 import 'faq_screen.dart';
+import '../../widgets/report_download_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -210,23 +211,41 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _showProofPhotoDialog(String date, String? proofUrl, String? driverName) {
+  void _showProofPhotoDialog(
+    String date,
+    String? proofUrl,
+    String? driverName, {
+    String? address,
+    String? time,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
         child: Scaffold(
-          backgroundColor: AppColors.milkWhite,
+          backgroundColor: const Color(0xFF0B1E14),
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0D5C3A),
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Delivery Photo Proof', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                Text(date, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                const Row(
+                  children: [
+                    Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 16),
+                    SizedBox(width: 6),
+                    Text('Verified Delivery Proof', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ],
+                ),
+                Text(
+                  time ?? date,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFD1FAE5)),
+                ),
               ],
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.close_rounded),
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
                 onPressed: () => Navigator.pop(ctx),
               ),
             ],
@@ -236,70 +255,104 @@ class _HomeScreenState extends State<HomeScreen> {
               Expanded(
                 child: Container(
                   width: double.infinity,
-                  color: AppColors.creamBg,
-                  padding: const EdgeInsets.all(16),
+                  color: Colors.black,
+                  padding: const EdgeInsets.all(8),
                   child: Center(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: (proofUrl != null && proofUrl.isNotEmpty)
-                          ? Image.network(
+                    child: (proofUrl != null && proofUrl.isNotEmpty)
+                        ? InteractiveViewer(
+                            minScale: 0.8,
+                            maxScale: 4.0,
+                            child: Image.network(
                               proofUrl,
                               fit: BoxFit.contain,
                               loadingBuilder: (c, w, p) => p == null
                                   ? w
-                                  : const Center(child: CircularProgressIndicator()),
-                              errorBuilder: (c, e, s) => Image.network(
-                                'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=800&q=80',
-                                fit: BoxFit.contain,
+                                  : const Center(child: CircularProgressIndicator(color: Color(0xFF34D399))),
+                              errorBuilder: (c, e, s) => const Center(
+                                child: Icon(Icons.broken_image, size: 64, color: Colors.white54),
                               ),
-                            )
-                          : Image.network(
-                              'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=800&q=80',
-                              fit: BoxFit.contain,
                             ),
-                    ),
+                          )
+                        : const Center(
+                            child: Text('No photo proof uploaded', style: TextStyle(color: Colors.white)),
+                          ),
                   ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: const BoxDecoration(
-                  color: AppColors.milkWhite,
-                  border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+                  color: Color(0xFF0F172A),
+                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
                 ),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.badgeSuccessBg,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.verified_rounded, size: 18, color: AppColors.badgeSuccessText),
-                          const SizedBox(width: 8),
-                          Text(
-                            driverName != null && driverName.isNotEmpty
-                                ? 'Delivered by $driverName'
-                                : 'Verified Contactless Doorstep Drop',
-                            style: const TextStyle(
-                              color: AppColors.badgeSuccessText,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF059669),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                        ],
-                      ),
+                          child: const Text(
+                            'DOORSTEP VERIFIED',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '🕒 ${time ?? date}',
+                            style: const TextStyle(color: Color(0xFFFDE047), fontSize: 12, fontWeight: FontWeight.w800),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Close'),
-                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            address != null && address.isNotEmpty ? address : 'Registered Doorstep Address',
+                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_pin_rounded, size: 14, color: Color(0xFF94A3B8)),
+                            const SizedBox(width: 6),
+                            Text(
+                              driverName != null && driverName.isNotEmpty ? 'Delivered by $driverName' : 'Dairy Partner Fulfilled',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+                            ),
+                          ],
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -998,7 +1051,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 if (proofImg != null && proofImg.isNotEmpty)
                                   TextButton.icon(
-                                    onPressed: () => _showProofPhotoDialog(dateStr, proofImg, driver),
+                                    onPressed: () => _showProofPhotoDialog(
+                                      dateStr,
+                                      proofImg,
+                                      driver,
+                                      time: '$dateStr • $timeStr',
+                                      address: (item['deliveryAddress'] ?? item['address'])?.toString(),
+                                    ),
                                     icon: const Icon(Icons.photo_camera_rounded, size: 16, color: Color(0xFF0D5C3A)),
                                     label: const Text('View Proof', style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 12)),
                                   ),
@@ -3275,6 +3334,88 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+
+            // Download Statement PDF Banner
+            InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => ReportDownloadSheet.show(
+                context,
+                role: 'customer',
+                customerId: user?.customerId ?? user?.id,
+              ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.picture_as_pdf_rounded,
+                        color: Color(0xFF0D5C3A),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Download Delivery Statement',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF065F46),
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Weekly, Monthly & History PDF report',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF047857),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0D5C3A),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'PDF',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
 
             // SECTION 1: UPCOMING DELIVERIES
@@ -3366,6 +3507,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           delivery['date'] ?? 'Morning Drop',
                           delivery['proofImage'],
                           delivery['driver'],
+                          address: delivery['address'] ?? delivery['deliveryAddress'],
+                          time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
                         ),
                         onTap: () => _showUpcomingDeliveryDetails(delivery),
                       ),
@@ -3469,6 +3612,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           delivery['date'] ?? 'Morning Drop',
                           delivery['proofImage'],
                           delivery['driver'],
+                          address: delivery['address'] ?? delivery['deliveryAddress'],
+                          time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
                         ),
                         onTap: () => _showDeliveriesModal(customerProvider),
                       ),

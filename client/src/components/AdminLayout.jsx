@@ -28,7 +28,9 @@ import {
   MapPin,
   Headphones,
   Share2,
+  Download,
 } from 'lucide-react';
+import ReportDownloadModal from './ReportDownloadModal';
 import { useNotifications } from '../context/NotificationContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
@@ -45,6 +47,7 @@ export default function AdminLayout({
   const { subscribe: wsSubscribe } = useWebSocket();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [pendingHandoversCount, setPendingHandoversCount] = useState(0);
+  const [showAdminReportModal, setShowAdminReportModal] = useState(false);
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
   useEffect(() => {
@@ -701,8 +704,37 @@ export default function AdminLayout({
               </div>
             </div>
 
-            {/* Right: Notification Only */}
+            {/* Right: Notification & Reports */}
             <div className="admin-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setShowAdminReportModal(true)}
+                style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  color: '#065f46',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#dcfce7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#f0fdf4';
+                }}
+                aria-label="Download PDF report"
+              >
+                <Download size={15} color="#0d5c3a" />
+                <span>Reports PDF</span>
+              </button>
+
               {/* Notification Bell Button */}
               <button
                 type="button"
@@ -975,6 +1007,12 @@ export default function AdminLayout({
             </button>
           </nav>
         )}
+
+        <ReportDownloadModal
+          isOpen={showAdminReportModal}
+          onClose={() => setShowAdminReportModal(false)}
+          role="admin"
+        />
       </div>
     </div>
   );

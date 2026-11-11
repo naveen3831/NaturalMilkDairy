@@ -130,10 +130,22 @@ app.use((err, req, res, next) => {
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, '../client/dist/index.html');
   if (require('fs').existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.send('Natural Milk Dairy API is active. Please start client or build dist.');
+    return res.sendFile(indexPath);
   }
+
+  // Attempt dynamic self-healing build if client/dist is missing
+  try {
+    const cp = require('child_process');
+    console.log('⚠️ client/dist/index.html missing! Initiating automatic client build...');
+    cp.execSync('npm --prefix client run build', { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+    if (require('fs').existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+  } catch (buildErr) {
+    console.error('Auto build client dist failed:', buildErr.message);
+  }
+
+  res.send('Natural Milk Dairy API is active. Please start client or build dist.');
 });
 
 const http = require('http');

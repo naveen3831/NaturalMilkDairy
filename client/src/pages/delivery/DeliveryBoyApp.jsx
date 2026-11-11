@@ -68,9 +68,12 @@ import {
   ShieldAlert,
   Package,
   History,
+  Download,
 } from 'lucide-react';
+import ReportDownloadModal from '../../components/ReportDownloadModal';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import { resolveProofUrl } from '../../services/api';
+import { watermarkDeliveryPhoto } from '../../services/photoWatermarker';
 
 const parseCoordinatesFromInput = (input) => {
   if (!input || typeof input !== 'string') return null;
@@ -810,6 +813,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     return getDeliveryRoute()?.page || validTab;
   });
   const [profileDetailView, setProfileDetailView] = useState(() => getDeliveryRoute()?.detail || null);
+  const [showPartnerReportModal, setShowPartnerReportModal] = useState(false);
 
   const setDeliveryPath = (path, replace = false) => {
     if (window.location.pathname === path) return;
@@ -1287,13 +1291,20 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const progressPercent = totalDrops > 0 ? Math.round((completedList.length / totalDrops) * 100) : 0;
 
   const handlePhotoCapture = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
 
     setIsUploadingPhoto(true);
     setPhotoUploadError('');
 
     try {
+      // 1. Watermark photo with realtime timestamp and doorstep location
+      const file = await watermarkDeliveryPhoto(rawFile, {
+        customerName: activeItem?.customerName || 'Valued Customer',
+        address: activeItem?.deliveryAddress || activeItem?.address || activeItem?.area || 'Hyderabad Doorstep',
+        partnerName: boyName || 'Delivery Partner',
+      });
+
       const formData = new FormData();
       formData.append('image', file);
       formData.append('folder', 'doorstep-delivery-proofs');
@@ -2890,9 +2901,32 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* ========================================================= */}
           {navTab === 'deliveries' && (
             <div className="driver-deliveries-page" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="driver-deliveries-page-heading">
-                <h1>Your deliveries</h1>
-                <p>{boyArea} · {pendingList.length} remaining of {totalDrops} stops</p>
+              <div className="driver-deliveries-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div>
+                  <h1 style={{ margin: 0 }}>Your deliveries</h1>
+                  <p style={{ margin: '2px 0 0 0' }}>{boyArea} · {pendingList.length} remaining of {totalDrops} stops</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerReportModal(true)}
+                  style={{
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '7px 12px',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
+                  }}
+                >
+                  <Download size={14} />
+                  <span>Download Report (PDF)</span>
+                </button>
               </div>
 
               {/* DESKTOP BANNER (Hidden on Mobile) */}
@@ -2988,6 +3022,30 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   >
                     <Wallet size={15} />
                     <span>Cash Summary (₹{totalRevenue})</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowPartnerReportModal(true)}
+                    style={{
+                      background: '#0d5c3a',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease',
+                      boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#0a492e')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#0d5c3a')}
+                  >
+                    <Download size={15} />
+                    <span>Download Report (PDF)</span>
                   </button>
                 </div>
               </div>
@@ -4914,27 +4972,50 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       Reconcile shift collections and handover physical cash to admin
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={loadDriverHandovers}
-                    title="Refresh Status"
-                    style={{
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      padding: '6px 10px',
-                      color: '#64748b',
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <RefreshCw size={13} className={isLoadingDriverHandovers ? 'spin' : ''} />
-                    <span>Sync</span>
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowPartnerReportModal(true)}
+                      style={{
+                        background: '#0d5c3a',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '6px 12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
+                      }}
+                    >
+                      <Download size={13} />
+                      <span>Download PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadDriverHandovers}
+                      title="Refresh Status"
+                      style={{
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '6px 10px',
+                        color: '#64748b',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <RefreshCw size={13} className={isLoadingDriverHandovers ? 'spin' : ''} />
+                      <span>Sync</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Cash Metrics & Handover State Calculation */}
@@ -5922,7 +6003,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                               {d.proofImage && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                   <div
-                                    onClick={() => setPreviewProofModal(resolveProofUrl(d.proofImage))}
+                                    onClick={() => setPreviewProofModal(d)}
                                     style={{
                                       width: '48px',
                                       height: '48px',
@@ -6478,7 +6559,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                               {d.proofImage && (
                                 <button
                                   type="button"
-                                  onClick={() => setPreviewProofModal(resolveProofUrl(d.proofImage))}
+                                  onClick={() => setPreviewProofModal(d)}
                                   style={{
                                     border: '1px solid #cbd5e1',
                                     background: '#f8fafc',
@@ -9300,60 +9381,134 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL                             */}
       {/* ============================================================ */}
-      {previewProofModal && (
-        <div className="modal-overlay" onClick={() => setPreviewProofModal(null)}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '480px', padding: '18px', textAlign: 'center' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  📸 Doorstep Delivery Proof
-                </h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {previewProofModal.customerName} • {previewProofModal.customerAddress}
-                </p>
+      {/* ============================================================ */}
+      {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL                             */}
+      {/* ============================================================ */}
+      {previewProofModal && (() => {
+        const proofObj = typeof previewProofModal === 'object' ? previewProofModal : {};
+        const proofImgUrl = resolveProofUrl(
+          proofObj.proofImage ||
+          proofObj.proofUrl ||
+          proofObj.rawItem?.proofImage ||
+          (typeof previewProofModal === 'string' ? previewProofModal : '')
+        );
+        const custName = proofObj.customerName || proofObj.rawItem?.customerName || 'Customer';
+        const address = proofObj.deliveryAddress || proofObj.customerAddress || proofObj.address || proofObj.area || 'Doorstep Delivery Location';
+        const rawTime = proofObj.deliveredAt || proofObj.updatedAt || proofObj.deliveryDate;
+        const formattedTime = rawTime
+          ? new Date(rawTime).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true,
+            })
+          : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) + ' (Realtime Verified)';
+        const driver = proofObj.deliveryBoyName || proofObj.driverName || boyName || 'Delivery Partner';
+
+        return (
+          <div className="modal-overlay" onClick={() => setPreviewProofModal(null)}>
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: '#ffffff', borderRadius: '18px', maxWidth: '520px', width: '92%', padding: '20px', textAlign: 'left', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}
+            >
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                <div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '3px 8px', marginBottom: '6px' }}>
+                    <ShieldCheck size={14} color="#059669" />
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', letterSpacing: '0.3px' }}>
+                      VERIFIED DOORSTEP DROP
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                    {custName}
+                  </h3>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <MapPin size={13} color="#059669" />
+                    <span>{address}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewProofModal(null)}
+                  style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#64748b', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setPreviewProofModal(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-              >
-                ✕
-              </button>
-            </div>
 
-            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
-              <img
-                src={resolveProofUrl(previewProofModal.proofImage || previewProofModal.proofUrl || previewProofModal.rawItem?.proofImage)}
-                alt="Home doorstep proof photo"
-                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
-              />
-            </div>
+              {/* Photo Display */}
+              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #059669', background: '#0b1e14', position: 'relative' }}>
+                <img
+                  src={proofImgUrl}
+                  alt="Verified doorstep proof photo"
+                  style={{ width: '100%', maxHeight: '440px', objectFit: 'contain', display: 'block' }}
+                />
+              </div>
 
-            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
-              <span>Delivered at: {previewProofModal.deliveredAt ? new Date(previewProofModal.deliveredAt).toLocaleTimeString() : 'Today'}</span>
-              <button
-                type="button"
-                onClick={() => setPreviewProofModal(null)}
-                style={{
-                  padding: '6px 14px',
-                  background: '#059669',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Close Preview
-              </button>
+              {/* Timestamp & Location Detail Card */}
+              <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Clock size={13} color="#059669" /> Exact Timestamp:
+                  </span>
+                  <strong style={{ color: '#065f46', fontWeight: 800 }}>{formattedTime}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <UserRound size={13} color="#059669" /> Delivered by:
+                  </span>
+                  <strong style={{ color: '#0f172a' }}>{driver}</strong>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <a
+                  href={proofImgUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={`delivery_proof_${custName.replace(/\s+/g, '_')}.jpg`}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Download size={14} /> Open Full / Save
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewProofModal(null)}
+                  style={{
+                    padding: '8px 18px',
+                    background: '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Delivery Partner Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div className="modal-overlay" onClick={() => setShowLogoutConfirm(false)}>
@@ -12010,6 +12165,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           </div>
         </div>
       )}
+
+      <ReportDownloadModal
+        isOpen={showPartnerReportModal}
+        onClose={() => setShowPartnerReportModal(false)}
+        role="partner"
+        entityId={targetDriverId}
+        initialCustomers={assignedCustomers}
+      />
 
     </div>
   );

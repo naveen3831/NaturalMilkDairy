@@ -61,6 +61,53 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_PHONE", "Phone cannot be null", null)
                     }
                 }
+                "openUrl" -> {
+                    val url = call.argument<String>("url")
+                    if (url != null) {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("URL_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_URL", "URL cannot be null", null)
+                    }
+                }
+                "downloadPdf", "printHtml" -> {
+                    val html = call.argument<String>("html")
+                    val jobName = call.argument<String>("fileName") ?: call.argument<String>("jobName") ?: "Natural_Milk_Dairy_Report"
+                    if (html != null) {
+                        try {
+                            runOnUiThread {
+                                val webView = android.webkit.WebView(this)
+                                webView.webViewClient = object : android.webkit.WebViewClient() {
+                                    override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                                        try {
+                                            val printManager = getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+                                            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                                            val printAttributes = android.print.PrintAttributes.Builder()
+                                                .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
+                                                .build()
+                                            printManager?.print(jobName, printAdapter, printAttributes)
+                                            result.success(true)
+                                        } catch (e: Exception) {
+                                            result.error("PRINT_ERROR", e.message, null)
+                                        }
+                                    }
+                                }
+                                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                            }
+                        } catch (e: Exception) {
+                            result.error("PRINT_ERROR", e.message, null)
+                        }
+                    } else {
+                        result.error("INVALID_HTML", "HTML cannot be null", null)
+                    }
+                }
                 "takePhoto" -> {
                     // Check and request runtime CAMERA permission first
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&

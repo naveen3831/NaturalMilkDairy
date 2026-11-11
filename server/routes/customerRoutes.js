@@ -40,7 +40,7 @@ router.post('/me/addresses', verifyToken, requireCustomer, addCustomerAddress);
 router.put('/me/addresses/:addressId', verifyToken, requireCustomer, updateCustomerAddress);
 router.delete('/me/addresses/:addressId', verifyToken, requireCustomer, deleteCustomerAddress);
 router.put('/me/addresses/:addressId/default', verifyToken, requireCustomer, setDefaultCustomerAddress);
-router.get('/', verifyToken, requireAdmin, getCustomers);
+router.get('/', verifyToken, requireDeliveryStaff, getCustomers);
 router.get('/:id', verifyToken, authorizeCustomerAccess, getCustomerById);
 router.post('/', verifyToken, requireDeliveryStaff, createCustomer);
 router.put('/:id', verifyToken, requireDeliveryStaff, authorizeCustomerAccess, updateCustomer);

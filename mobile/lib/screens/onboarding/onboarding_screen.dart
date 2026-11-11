@@ -136,188 +136,195 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   final Color accentColor = slide['accent'] as Color;
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Slide Visual: Redesigned Logo for Screen 1, Dual-Source Farm & Milk Imagery for Screens 2 & 3
-                        if (slide['type'] == 'logo')
-                          Stack(
-                            alignment: Alignment.center,
-                            clipBehavior: Clip.none,
-                            children: [
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Center(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Slide Visual: Redesigned Logo for Screen 1, Dual-Source Farm & Milk Imagery for Screens 2 & 3
+                            if (slide['type'] == 'logo')
+                              Stack(
+                                alignment: Alignment.center,
+                                clipBehavior: Clip.none,
+                                children: [
+                                  Container(
+                                    width: 140,
+                                    height: 140,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.primaryGreen.withValues(alpha: 0.16),
+                                          blurRadius: 26,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
+                                      border: Border.all(
+                                        color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
+                                        width: 2.5,
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: ClipOval(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(14.0),
+                                          child: Image.asset(
+                                            'assets/images/logo.png',
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (_, _, _) => Image.network(
+                                              slide['networkImage'] as String,
+                                              fit: BoxFit.contain,
+                                              errorBuilder: (_, _, _) => const Icon(
+                                                Icons.water_drop_rounded,
+                                                size: 56,
+                                                color: AppColors.primaryGreen,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    bottom: -8,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryGreen,
+                                        borderRadius: BorderRadius.circular(20),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: AppColors.primaryGreen.withValues(alpha: 0.35),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.verified_rounded, size: 13, color: Colors.white),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            '100% PURE & RAW',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 10,
+                                              letterSpacing: 0.6,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              )
+                            else
                               Container(
-                                width: 160,
-                                height: 160,
+                                constraints: const BoxConstraints(maxWidth: 280, maxHeight: 155),
+                                width: 280,
+                                height: 155,
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
+                                  borderRadius: BorderRadius.circular(20),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppColors.primaryGreen.withValues(alpha: 0.16),
-                                      blurRadius: 26,
-                                      offset: const Offset(0, 8),
+                                      color: accentColor.withValues(alpha: 0.14),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 6),
                                     ),
                                   ],
                                   border: Border.all(
-                                    color: const Color(0xFF0D5C3A).withValues(alpha: 0.25),
-                                    width: 2.5,
+                                    color: const Color(0xFFE2EBE5),
+                                    width: 1.2,
                                   ),
                                 ),
-                                child: Center(
-                                  child: ClipOval(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Image.asset(
-                                        'assets/images/logo.png',
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, _, _) => Image.network(
-                                          slide['networkImage'] as String,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, _, _) => const Icon(
-                                            Icons.water_drop_rounded,
-                                            size: 64,
-                                            color: AppColors.primaryGreen,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: -8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryGreen,
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primaryGreen.withValues(alpha: 0.35),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Stack(
+                                    fit: StackFit.expand,
                                     children: [
-                                      Icon(Icons.verified_rounded, size: 13, color: Colors.white),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        '100% PURE & RAW',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 10,
-                                          letterSpacing: 0.6,
+                                      // Dual-source image loading: Cloudinary hosted URL + local asset fallback
+                                      Image.network(
+                                        slide['networkImage'] as String,
+                                        fit: BoxFit.cover,
+                                        loadingBuilder: (context, child, progress) {
+                                          if (progress == null) return child;
+                                          return Container(
+                                            color: const Color(0xFFF1F5F3),
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: accentColor,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        errorBuilder: (_, _, _) => Image.asset(
+                                          slide['image'] as String,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => Container(
+                                            color: accentColor.withValues(alpha: 0.1),
+                                            child: Center(
+                                              child: Icon(Icons.eco_rounded, size: 54, color: accentColor),
+                                            ),
+                                          ),
                                         ),
                                       ),
+                                      // Floating tag pill
+                                      if (slide['overlayTag'] != null)
+                                        Positioned(
+                                          top: 12,
+                                          left: 12,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(alpha: 0.55),
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                            child: Text(
+                                              slide['overlayTag'] as String,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
                               ),
-                            ],
-                          )
-                        else
-                          Container(
-                            width: 280,
-                            height: 185,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: accentColor.withValues(alpha: 0.14),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                              border: Border.all(
-                                color: const Color(0xFFE2EBE5),
-                                width: 1.2,
+                            const SizedBox(height: 18),
+                            Text(
+                              slide['title'] as String,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.dairyBlue,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.4,
                               ),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  // Dual-source image loading: Cloudinary hosted URL + local asset fallback
-                                  Image.network(
-                                    slide['networkImage'] as String,
-                                    fit: BoxFit.cover,
-                                    loadingBuilder: (context, child, progress) {
-                                      if (progress == null) return child;
-                                      return Container(
-                                        color: const Color(0xFFF1F5F3),
-                                        child: Center(
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: accentColor,
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    errorBuilder: (_, _, _) => Image.asset(
-                                      slide['image'] as String,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => Container(
-                                        color: accentColor.withValues(alpha: 0.1),
-                                        child: Center(
-                                          child: Icon(Icons.eco_rounded, size: 54, color: accentColor),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  // Floating tag pill
-                                  if (slide['overlayTag'] != null)
-                                    Positioned(
-                                      top: 12,
-                                      left: 12,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black.withValues(alpha: 0.55),
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                        child: Text(
-                                          slide['overlayTag'] as String,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                ],
+                            const SizedBox(height: 6),
+                            Text(
+                              slide['desc'] as String,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                height: 1.35,
                               ),
                             ),
-                          ),
-                        const SizedBox(height: 28),
-                        Text(
-                          slide['title'] as String,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: AppColors.dairyBlue,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                          ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          slide['desc'] as String,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -341,7 +348,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 );
               }),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
 
             // Bottom Actions
             Padding(

@@ -8,6 +8,7 @@ import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
+import '../../widgets/report_download_sheet.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -180,66 +181,147 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  void _showProofPhotoDialog(String date, String? proofUrl, String? driverName) {
+  void _showProofPhotoDialog(
+    String date,
+    String? proofUrl,
+    String? driverName, {
+    String? customerName,
+    String? address,
+    String? time,
+  }) {
     showDialog(
       context: context,
       builder: (ctx) => Dialog.fullscreen(
         child: Scaffold(
-          backgroundColor: AppColors.milkWhite,
+          backgroundColor: const Color(0xFF0B1E14),
           appBar: AppBar(
+            backgroundColor: const Color(0xFF0D5C3A),
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
             title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Delivery Proof Verification', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                Text(date, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                const Row(
+                  children: [
+                    Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 16),
+                    SizedBox(width: 6),
+                    Text('Verified Delivery Proof', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ],
+                ),
+                Text(
+                  customerName != null ? '$customerName • ${time ?? date}' : (time ?? date),
+                  style: const TextStyle(fontSize: 11, color: Color(0xFFD1FAE5)),
+                ),
               ],
             ),
             actions: [
-              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+              IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
             ],
           ),
           body: Column(
             children: [
+              // Photo with Interactive Zoom
               Expanded(
                 child: Container(
                   color: Colors.black,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(8),
                   child: Center(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: (proofUrl != null && proofUrl.isNotEmpty)
-                          ? Image.network(
+                    child: (proofUrl != null && proofUrl.isNotEmpty)
+                        ? InteractiveViewer(
+                            minScale: 0.8,
+                            maxScale: 4.0,
+                            child: Image.network(
                               proofUrl,
                               fit: BoxFit.contain,
-                              loadingBuilder: (context, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()),
-                              errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image, size: 64)),
-                            )
-                          : const Center(child: Text('No photo proof uploaded', style: TextStyle(color: Colors.white))),
-                    ),
+                              loadingBuilder: (context, child, progress) => progress == null
+                                  ? child
+                                  : const Center(child: CircularProgressIndicator(color: Color(0xFF34D399))),
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.white54)),
+                            ),
+                          )
+                        : const Center(child: Text('No photo proof uploaded', style: TextStyle(color: Colors.white))),
                   ),
                 ),
               ),
+
+              // Bottom Realtime Timestamp & Location Card
               Container(
-                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: const BoxDecoration(
-                  color: AppColors.milkWhite,
-                  border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+                  color: Color(0xFF0F172A),
+                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
                       children: [
-                        const Text('Fulfilled by Partner', style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700)),
-                        Text(driverName ?? 'Dairy Driver', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.dairyBlue)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF059669),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'DOORSTEP VERIFIED',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.4),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            '🕒 ${time ?? date}',
+                            style: const TextStyle(color: Color(0xFFFDE047), fontSize: 12, fontWeight: FontWeight.w800),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.verified_rounded, size: 16),
-                      label: const Text('Approved'),
-                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+                    const SizedBox(height: 8),
+                    if (address != null && address.isNotEmpty)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              address,
+                              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.person_pin_rounded, size: 14, color: Color(0xFF94A3B8)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Delivered by: ${driverName ?? 'Dairy Driver'}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+                            ),
+                          ],
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.verified_rounded, size: 15, color: Colors.white),
+                          label: const Text('Verified', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -554,7 +636,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               const Text('Doorstep Delivery Photo Proof', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
                               const SizedBox(height: 6),
                               InkWell(
-                                onTap: () => _showProofPhotoDialog(deliveryDate, proofUrl, driverName),
+                                onTap: () => _showProofPhotoDialog(
+                                  deliveryDate,
+                                  proofUrl,
+                                  driverName,
+                                  customerName: d['customerName']?.toString(),
+                                  address: (d['customerAddress'] ?? d['deliveryAddress'] ?? d['area'])?.toString(),
+                                  time: d['deliveredAt']?.toString() ?? deliveryDate,
+                                ),
                                 borderRadius: BorderRadius.circular(10),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
@@ -962,6 +1051,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF0D5C3A), size: 22),
+            tooltip: 'Download PDF Report',
+            onPressed: () => ReportDownloadSheet.show(
+              context,
+              role: 'admin',
+              initialCustomers: _customers,
+              initialDeliveries: _deliveries,
+            ),
+          ),
           Center(child: _buildRealtimeBadge()),
           const SizedBox(width: 12),
         ],
@@ -1512,6 +1611,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             children: [
               _buildQuickActionPill('+ Add Customer', Icons.person_add_rounded, const Color(0xFF059669), const Color(0xFFECFDF5), () => _openAddCustomerModal()),
               const SizedBox(width: 8),
+              _buildQuickActionPill(
+                'Download Reports',
+                Icons.picture_as_pdf_rounded,
+                const Color(0xFF0D5C3A),
+                const Color(0xFFECFDF5),
+                () => ReportDownloadSheet.show(
+                  context,
+                  role: 'admin',
+                  initialCustomers: _customers,
+                  initialDeliveries: _deliveries,
+                ),
+              ),
+              const SizedBox(width: 8),
               _buildQuickActionPill('Deliveries', Icons.local_shipping_rounded, const Color(0xFF2563EB), const Color(0xFFEFF6FF), () => setState(() => _selectedTabIndex = 1)),
               const SizedBox(width: 8),
               _buildQuickActionPill('Partners', Icons.sports_motorsports_rounded, const Color(0xFF059669), const Color(0xFFECFDF5), () => setState(() => _selectedTabIndex = 2)),
@@ -1915,7 +2027,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       if (proofUrl != null && proofUrl.isNotEmpty) ...[
                         const Divider(height: 20),
                         InkWell(
-                          onTap: () => _showProofPhotoDialog(d['deliveryDate'] ?? 'Today', proofUrl, driverName),
+                          onTap: () => _showProofPhotoDialog(
+                            d['deliveryDate'] ?? 'Today',
+                            proofUrl,
+                            driverName,
+                            customerName: d['customerName']?.toString(),
+                            address: (d['customerAddress'] ?? d['deliveryAddress'] ?? d['area'])?.toString(),
+                            time: d['deliveredAt']?.toString() ?? d['deliveryDate']?.toString(),
+                          ),
                           child: const Row(
                             children: [
                               Icon(Icons.photo_camera_rounded, size: 14, color: Color(0xFF059669)),

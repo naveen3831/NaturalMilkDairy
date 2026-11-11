@@ -16,13 +16,17 @@ import {
   ShieldCheck,
   UserCheck,
   Activity,
+  Download,
+  FileText,
 } from 'lucide-react';
+import ReportDownloadModal from '../../components/ReportDownloadModal';
 
 export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpenPaymentModal }) {
   const { dashboardSummary, deliveryBoys, deliveries, fetchDeliveries, auditLogs, fetchDashboard, refreshAll } = useDairy();
 
   const [mobileFilter, setMobileFilter] = useState('all'); // 'all', 'delivered', 'pending'
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -415,6 +419,7 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           >
             {[
               { id: 'deliveries', label: 'Deliveries', icon: Truck, color: '#2563eb', bg: '#eff6ff', act: () => setActiveTab('deliveries') },
+              { id: 'reports', label: 'Download Reports', icon: Download, color: '#0d5c3a', bg: '#ecfdf5', act: () => setShowReportModal(true) },
               { id: 'add-customer', label: 'Add Customer', icon: Plus, color: '#059669', bg: '#ecfdf5', act: () => onOpenAddCustomer && onOpenAddCustomer() },
               { id: 'partners', label: 'Partners', icon: UserCheck, color: '#047857', bg: '#f0fdf4', act: () => setActiveTab('delivery-boys') },
               { id: 'payment', label: 'Record Payment', icon: Wallet, color: '#b45309', bg: '#fffbeb', act: () => onOpenPaymentModal && onOpenPaymentModal() },
@@ -792,6 +797,13 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
             </div>
           </div>
         )}
+
+        <ReportDownloadModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          role="admin"
+          initialCustomers={customers}
+        />
       </div>
     );
   }
@@ -887,6 +899,30 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           >
             <AlertCircle size={15} />
             <span>Pending Credit</span>
+          </button>
+
+          <button
+            onClick={() => setShowReportModal(true)}
+            style={{
+              background: '#0d5c3a',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#0a492e')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#0d5c3a')}
+          >
+            <Download size={15} />
+            <span>Download Report (PDF)</span>
           </button>
         </div>
       </div>
@@ -1404,6 +1440,38 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           </div>
           <span>Product Rates</span>
         </button>
+
+        <button
+          onClick={() => setShowReportModal(true)}
+          style={{
+            background: '#ffffff',
+            border: '1px solid #bbf7d0',
+            borderRadius: '12px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            cursor: 'pointer',
+            color: '#065f46',
+            fontSize: '0.84rem',
+            fontWeight: 700,
+            transition: 'all 0.15s ease',
+            textAlign: 'left',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#f0fdf4';
+            e.currentTarget.style.borderColor = '#86efac';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#ffffff';
+            e.currentTarget.style.borderColor = '#bbf7d0';
+          }}
+        >
+          <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Download size={16} />
+          </div>
+          <span>Download Reports (PDF)</span>
+        </button>
       </div>
 
       {/* 5. Delivery Partner Performance */}
@@ -1637,6 +1705,13 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           ))}
         </div>
       </div>
+
+      <ReportDownloadModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        role="admin"
+        initialCustomers={customers}
+      />
     </div>
   );
 }

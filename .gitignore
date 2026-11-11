@@ -4,8 +4,9 @@ client/node_modules/
 server/node_modules/
 
 # Production Build
-dist/
-client/dist/
+/dist/
+!client/dist/
+!client/dist/**
 build/
 
 # Environment files

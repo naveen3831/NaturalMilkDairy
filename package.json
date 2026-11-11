@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "install:all": "npm --prefix server install && npm --prefix client install",
-    "build": "npm --prefix server install",
+    "build:client": "npm --prefix client run build",
+    "build": "npm --prefix client install && npm --prefix client run build && npm --prefix server install",
     "postinstall": "npm --prefix server install",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
+    "prestart": "node -e \"const fs = require('fs'), path = require('path'), cp = require('child_process'); if (!fs.existsSync(path.join(__dirname, 'client/dist/index.html'))) { console.log('Building client dist for production...'); cp.execSync('npm --prefix client run build', { stdio: 'inherit' }); }\"",
     "start": "node server/index.js"
   },
   "dependencies": {
@@ -20,6 +22,7 @@
     "morgan": "^1.10.0",
     "multer": "^2.4.0",
     "nodemailer": "^10.0.16",
+    "pdfkit": "^0.20.2",
     "ws": "^8.22.0"
   }
 }

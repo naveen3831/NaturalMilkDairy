@@ -35,6 +35,44 @@ class LauncherService {
     }
   }
 
+  /// Open external URL or download link (e.g. PDF statement download or browser link)
+  static Future<bool> openUrl(String url) async {
+    try {
+      final clean = url.trim();
+      if (clean.isEmpty) return false;
+      final bool? res = await _channel.invokeMethod<bool>('openUrl', {'url': clean});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Print or Save HTML Report to PDF natively via Android PrintManager
+  static Future<bool> printHtml(String html, {String jobName = 'Natural_Milk_Dairy_Report'}) async {
+    try {
+      final bool? res = await _channel.invokeMethod<bool>('printHtml', {
+        'html': html,
+        'jobName': jobName,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Download HTML Report directly as a .pdf file saved into device Downloads folder
+  static Future<String?> downloadPdf(String html, {required String fileName}) async {
+    try {
+      final String? filePath = await _channel.invokeMethod<String>('downloadPdf', {
+        'html': html,
+        'fileName': fileName,
+      });
+      return filePath;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Open device camera to click doorstep delivery proof photo.
   /// Automatically asks for CAMERA runtime permission on Android.
   static Future<String?> takePhoto() async {

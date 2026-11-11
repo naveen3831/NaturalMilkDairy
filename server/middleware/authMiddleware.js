@@ -47,6 +47,8 @@ const verifyToken = (req, res, next) => {
       }
     } else if (req.headers['x-access-token']) {
       token = String(req.headers['x-access-token']).trim();
+    } else if (req.query && req.query.token) {
+      token = String(req.query.token).trim();
     }
 
     if (token && token.startsWith('"') && token.endsWith('"')) {
@@ -99,6 +101,8 @@ const optionalToken = (req, res, next) => {
       }
     } else if (req.headers['x-access-token']) {
       token = String(req.headers['x-access-token']).trim();
+    } else if (req.query && req.query.token) {
+      token = String(req.query.token).trim();
     }
 
     if (token && token.startsWith('"') && token.endsWith('"')) {

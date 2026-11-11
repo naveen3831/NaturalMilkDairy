@@ -92,6 +92,33 @@ class ApiService {
 
   String? get token => _cachedToken;
 
+  /// Generate full PDF report URL for customer / partner / admin
+  String getReportPdfUrl({
+    required String role, // 'customer', 'partner', 'admin'
+    String period = 'monthly', // 'weekly', 'monthly', 'all'
+    String? customerId,
+    String? partnerId,
+  }) {
+    final queryParams = <String, String>{
+      'period': period,
+    };
+    if (_cachedToken != null && _cachedToken!.isNotEmpty) {
+      queryParams['token'] = _cachedToken!;
+    }
+    if (customerId != null && customerId.isNotEmpty) {
+      queryParams['customerId'] = customerId;
+    }
+    if (partnerId != null && partnerId.isNotEmpty) {
+      queryParams['partnerId'] = partnerId;
+    }
+
+    final cleanBase = baseUrl.replaceAll(RegExp(r'/+$'), '');
+    final uri = Uri.parse('$cleanBase/api/reports/$role/pdf').replace(
+      queryParameters: queryParams,
+    );
+    return uri.toString();
+  }
+
   Future<void> setToken(String? token) async {
     _cachedToken = token;
     final prefs = await SharedPreferences.getInstance();

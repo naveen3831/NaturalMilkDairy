@@ -67,7 +67,9 @@ import {
   Briefcase,
   Building,
   Globe,
+  Download,
 } from 'lucide-react';
+import ReportDownloadModal from '../../components/ReportDownloadModal';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
   CUSTOMER_HOME_NAV_ITEMS,
@@ -163,6 +165,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [ledgerSummary, setLedgerSummary] = useState(null);
   const [ledgerCustomer, setLedgerCustomer] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [showCustomerReportModal, setShowCustomerReportModal] = useState(false);
   const [ledgerError, setLedgerError] = useState('');
   const [profileDetailView, setProfileDetailView] = useState(() => getCustomerRoute()?.detail || null);
   const [viewingProofPhoto, setViewingProofPhoto] = useState(null);
@@ -3849,6 +3852,51 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </button>
           </div>
 
+          {/* Statement & PDF Download Quick Banner */}
+          <div
+            style={{
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '14px',
+              padding: '10px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#dcfce7', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={15} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46' }}>Delivery & Billing Statement</div>
+                <div style={{ fontSize: '0.7rem', color: '#047857' }}>Weekly, Monthly & Lifetime PDF</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCustomerReportModal(true)}
+              style={{
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '10px',
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 6px rgba(13,92,58,0.2)',
+              }}
+            >
+              <Download size={13} />
+              <span>Download PDF</span>
+            </button>
+          </div>
+
           {/* Section 1: Upcoming Deliveries */}
           {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -4131,7 +4179,32 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <span className="customer-section-kicker">DELIVERY ACTIVITY</span>
             <h2>{title}</h2>
           </div>
-          <span className="customer-history-count">{allCustomerDeliveries.length} total</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setShowCustomerReportModal(true)}
+              style={{
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '8px',
+                padding: '7px 14px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                cursor: 'pointer',
+                transition: 'background 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#0a492e')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#0d5c3a')}
+            >
+              <Download size={14} />
+              <span>Download Statement (PDF)</span>
+            </button>
+            <span className="customer-history-count">{allCustomerDeliveries.length} total</span>
+          </div>
         </div>
 
         {/* Quick metrics bar on Deliveries page */}
@@ -9759,6 +9832,46 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               flexShrink: 0,
             }}
           >
+            {/* Realtime Delivery Meta Box */}
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                marginBottom: '10px',
+                fontSize: '0.78rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>🕒 Delivered At:</span>
+                <strong style={{ color: '#065f46', fontWeight: 800 }}>
+                  {viewingProofPhoto?.delivery?.deliveredAt
+                    ? new Date(viewingProofPhoto.delivery.deliveredAt).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true,
+                      })
+                    : viewingProofPhoto.date || 'Morning Delivery'}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ color: '#64748b' }}>📍 Doorstep:</span>
+                <strong style={{ color: '#0f172a' }}>
+                  {viewingProofPhoto?.delivery?.deliveryAddress || viewingProofPhoto?.delivery?.address || 'Registered Home Address'}
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b' }}>🚚 Partner:</span>
+                <strong style={{ color: '#0f172a' }}>
+                  {viewingProofPhoto?.delivery?.deliveryBoyName || viewingProofPhoto?.delivery?.driverName || 'Dairy Partner'}
+                </strong>
+              </div>
+            </div>
+
             <div
               style={{
                 display: 'flex',
@@ -9805,6 +9918,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         </div>
       )}
+
+      <ReportDownloadModal
+        isOpen={showCustomerReportModal}
+        onClose={() => setShowCustomerReportModal(false)}
+        role="customer"
+        entityId={currentCustomer?.id || currentCustomer?.customerId}
+      />
 
     </div>
   );

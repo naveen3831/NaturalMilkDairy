@@ -451,46 +451,107 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
       )}
 
       {/* Lightbox Modal for Proof Image */}
-      {previewProof && (
-        <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px', borderRadius: '16px', padding: '18px', textAlign: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div style={{ textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                  📸 Doorstep Delivery Proof
-                </h3>
-                <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
-                  {previewProof.customerName} • {previewProof.customerAddress}
-                </p>
+      {previewProof && (() => {
+        const rawTime = previewProof.deliveredAt || previewProof.updatedAt || previewProof.deliveryDate;
+        const formattedTime = rawTime
+          ? new Date(rawTime).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true,
+            })
+          : 'Realtime Verified Drop';
+        const address = previewProof.customerAddress || previewProof.deliveryAddress || previewProof.address || previewProof.area || 'Doorstep Location';
+
+        return (
+          <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
+            <div
+              className="modal-content"
+              onClick={(e) => e.stopPropagation()}
+              style={{ maxWidth: '520px', width: '92%', borderRadius: '18px', padding: '20px', textAlign: 'left', background: '#ffffff', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                <div>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '3px 8px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', letterSpacing: '0.3px' }}>
+                      ✓ VERIFIED DOORSTEP DROP
+                    </span>
+                  </div>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                    {previewProof.customerName || 'Customer'}
+                  </h3>
+                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                    📍 {address}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewProof(null)}
+                  style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#64748b', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setPreviewProof(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.2rem', color: '#94a3b8', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-            <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0', background: '#0f172a' }}>
-              <img
-                src={previewProof.proofImage}
-                alt="Home doorstep proof photo"
-                style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
-              />
-            </div>
-            <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
-              <span>Fulfilled by: <strong>{previewProof.deliveryBoyName || 'Partner'}</strong></span>
-              <button
-                type="button"
-                onClick={() => setPreviewProof(null)}
-                style={{ padding: '6px 14px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 700, cursor: 'pointer' }}
-              >
-                Close Preview
-              </button>
+
+              {/* Photo */}
+              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #059669', background: '#0b1e14' }}>
+                <img
+                  src={previewProof.proofImage}
+                  alt="Home doorstep proof photo"
+                  style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
+                />
+              </div>
+
+              {/* Info Card */}
+              <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#64748b' }}>🕒 Timestamp:</span>
+                  <strong style={{ color: '#065f46', fontWeight: 800 }}>{formattedTime}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#64748b' }}>🚚 Fulfilled by:</span>
+                  <strong style={{ color: '#0f172a' }}>{previewProof.deliveryBoyName || 'Partner'}</strong>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <a
+                  href={previewProof.proofImage}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download="delivery_proof.jpg"
+                  style={{
+                    padding: '8px 14px',
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  Download Photo
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreviewProof(null)}
+                  style={{ padding: '8px 18px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </>
   );
 
