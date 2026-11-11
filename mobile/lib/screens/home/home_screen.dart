@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_colors.dart';
 import 'package:natural_milk_dairy/providers/auth_provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'package:natural_milk_dairy/providers/product_provider.dart';
@@ -19,6 +18,7 @@ import 'account_details_screen.dart';
 import 'delivery_addresses_screen.dart';
 import 'faq_screen.dart';
 import '../../widgets/report_download_sheet.dart';
+import '../../widgets/delivery_proof_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -217,150 +217,19 @@ class _HomeScreenState extends State<HomeScreen> {
     String? driverName, {
     String? address,
     String? time,
+    num? lat,
+    num? lng,
   }) {
-    showDialog(
+    if (proofUrl == null || proofUrl.isEmpty) return;
+    DeliveryProofHelper.showLightbox(
       context: context,
-      builder: (ctx) => Dialog.fullscreen(
-        child: Scaffold(
-          backgroundColor: const Color(0xFF0B1E14),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF0D5C3A),
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 16),
-                    SizedBox(width: 6),
-                    Text('Verified Delivery Proof', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ],
-                ),
-                Text(
-                  time ?? date,
-                  style: const TextStyle(fontSize: 11, color: Color(0xFFD1FAE5)),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white),
-                onPressed: () => Navigator.pop(ctx),
-              ),
-            ],
-          ),
-          body: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  color: Colors.black,
-                  padding: const EdgeInsets.all(8),
-                  child: Center(
-                    child: (proofUrl != null && proofUrl.isNotEmpty)
-                        ? InteractiveViewer(
-                            minScale: 0.8,
-                            maxScale: 4.0,
-                            child: Image.network(
-                              proofUrl,
-                              fit: BoxFit.contain,
-                              loadingBuilder: (c, w, p) => p == null
-                                  ? w
-                                  : const Center(child: CircularProgressIndicator(color: Color(0xFF34D399))),
-                              errorBuilder: (c, e, s) => const Center(
-                                child: Icon(Icons.broken_image, size: 64, color: Colors.white54),
-                              ),
-                            ),
-                          )
-                        : const Center(
-                            child: Text('No photo proof uploaded', style: TextStyle(color: Colors.white)),
-                          ),
-                  ),
-                ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F172A),
-                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF059669),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'DOORSTEP VERIFIED',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '🕒 ${time ?? date}',
-                            style: const TextStyle(color: Color(0xFFFDE047), fontSize: 12, fontWeight: FontWeight.w800),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            address != null && address.isNotEmpty ? address : 'Registered Doorstep Address',
-                            style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.person_pin_rounded, size: 14, color: Color(0xFF94A3B8)),
-                            const SizedBox(width: 6),
-                            Text(
-                              driverName != null && driverName.isNotEmpty ? 'Delivered by $driverName' : 'Dairy Partner Fulfilled',
-                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
-                            ),
-                          ],
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      proofStr: proofUrl,
+      customerName: 'Doorstep Drop',
+      address: address ?? 'Registered Doorstep Address',
+      lat: lat,
+      lng: lng,
+      timestamp: time ?? date,
+      partnerName: driverName,
     );
   }
 
@@ -1057,6 +926,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       driver,
                                       time: '$dateStr • $timeStr',
                                       address: (item['deliveryAddress'] ?? item['address'])?.toString(),
+                                      lat: num.tryParse((item['customerLatitude'] ?? item['latitude'])?.toString() ?? ''),
+                                      lng: num.tryParse((item['customerLongitude'] ?? item['longitude'])?.toString() ?? ''),
                                     ),
                                     icon: const Icon(Icons.photo_camera_rounded, size: 16, color: Color(0xFF0D5C3A)),
                                     label: const Text('View Proof', style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 12)),
@@ -3509,6 +3380,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           delivery['driver'],
                           address: delivery['address'] ?? delivery['deliveryAddress'],
                           time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                          lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                          lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
                         ),
                         onTap: () => _showUpcomingDeliveryDetails(delivery),
                       ),
@@ -3614,6 +3487,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           delivery['driver'],
                           address: delivery['address'] ?? delivery['deliveryAddress'],
                           time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                          lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                          lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
                         ),
                         onTap: () => _showDeliveriesModal(customerProvider),
                       ),

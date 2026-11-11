@@ -56,7 +56,17 @@ class ApiService {
       }
     }
 
-    // 2. Scan all candidate local development backend addresses
+    // 2. If Live Cloud Server is active, check it FIRST for instant connection
+    if (AppConfig.isLiveServerActive) {
+      final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
+      if (isLiveAlive) {
+        _activeBaseUrl = AppConfig.liveBaseUrl;
+        debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
+        return _activeBaseUrl!;
+      }
+    }
+
+    // 3. Scan all candidate local development backend addresses
     for (final url in AppConstants.candidateBaseUrls) {
       final isAlive = await testConnection(url);
       if (isAlive) {
@@ -66,12 +76,14 @@ class ApiService {
       }
     }
 
-    // 3. Scan live cloud production server
-    final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
-    if (isLiveAlive) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
-      debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
-      return _activeBaseUrl!;
+    // 4. Fallback to live server if local candidates were unreachable
+    if (!AppConfig.isLiveServerActive) {
+      final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
+      if (isLiveAlive) {
+        _activeBaseUrl = AppConfig.liveBaseUrl;
+        debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
+        return _activeBaseUrl!;
+      }
     }
 
     _activeBaseUrl = AppConfig.isLiveServerActive ? AppConfig.liveBaseUrl : AppConstants.defaultBaseUrl;
@@ -148,7 +160,7 @@ class ApiService {
     try {
       final response = await http
           .get(url, headers: _getHeaders(requiresAuth: true))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 25));
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService GET error on $url: $e');
@@ -171,7 +183,7 @@ class ApiService {
             headers: _getHeaders(requiresAuth: true),
             body: body != null ? jsonEncode(body) : null,
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 45));
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService POST error on $url: $e');
@@ -194,7 +206,7 @@ class ApiService {
             headers: _getHeaders(requiresAuth: true),
             body: body != null ? jsonEncode(body) : null,
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 25));
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService PUT error on $url: $e');
@@ -213,7 +225,7 @@ class ApiService {
     try {
       final response = await http
           .delete(url, headers: _getHeaders(requiresAuth: true))
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 20));
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       debugPrint('ApiService DELETE error on $url: $e');
@@ -242,7 +254,7 @@ class ApiService {
               'password': password,
             }),
           )
-          .timeout(const Duration(seconds: 10));
+          .timeout(const Duration(seconds: 25));
 
       final data = jsonDecode(response.body) as Map<String, dynamic>;
 
@@ -336,7 +348,7 @@ class ApiService {
 
     final url = Uri.parse('$baseUrl/api/auth/delivery-areas');
     try {
-      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 8));
+      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['success'] == true && data['areas'] is List) {
@@ -358,7 +370,7 @@ class ApiService {
     if (_cachedToken == null) return null;
     final url = Uri.parse('$baseUrl/api/auth/me');
     try {
-      final response = await http.get(url, headers: _getHeaders()).timeout(const Duration(seconds: 8));
+      final response = await http.get(url, headers: _getHeaders()).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['success'] == true && data['user'] is Map<String, dynamic>) {
@@ -375,7 +387,7 @@ class ApiService {
   Future<List<ProductModel>> getProducts({bool retryIfFailed = true}) async {
     final url = Uri.parse('$baseUrl/api/products');
     try {
-      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 8));
+      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         List rawList = [];

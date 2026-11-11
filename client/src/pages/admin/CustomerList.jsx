@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { resolveProofUrl } from '../../services/api';
 import {
   Users,
   Search,
@@ -1182,7 +1183,7 @@ export default function CustomerList({
                               <span>{entry.deliveryBoyName || 'Admin'}</span>
                               {entry.proofImage && (
                                 <a
-                                  href={entry.proofImage}
+                                  href={resolveProofUrl(entry.proofImage)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   style={{

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../core/config/app_config.dart';
 import '../../data/models/product_model.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
@@ -13,232 +12,8 @@ import '../auth/login_screen.dart';
 import '../home/select_location_map_screen.dart';
 import '../../widgets/report_download_sheet.dart';
 import '../../services/delivery_proof_watermarker.dart';
-
-// ============================================================================
-// HELPER: DELIVERY PROOF PHOTO RENDERER & LIGHTBOX
-// ============================================================================
-class DeliveryProofHelper {
-  static Widget buildImageFromSource(String proofStr, {double? width, double? height, BoxFit fit = BoxFit.cover}) {
-    final clean = proofStr.trim();
-    if (clean.isEmpty) {
-      return buildPlaceholder();
-    }
-    if (clean.startsWith('data:image/')) {
-      try {
-        final commaIdx = clean.indexOf(',');
-        final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
-        final bytes = base64Decode(cleanBase64);
-        return Image.memory(
-          bytes,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
-        );
-      } catch (e) {
-        return buildPlaceholder();
-      }
-    } else if (clean.startsWith('http://') || clean.startsWith('https://')) {
-      return Image.network(
-        clean,
-        width: width,
-        height: height,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
-        loadingBuilder: (ctx, child, progress) {
-          if (progress == null) return child;
-          return const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
-        },
-      );
-    } else {
-      // Relative path e.g. /uploads/proof_...
-      final fullUrl = clean.startsWith('/')
-          ? '${AppConfig.activeBaseUrl}$clean'
-          : '${AppConfig.activeBaseUrl}/$clean';
-      return Image.network(
-        fullUrl,
-        width: width,
-        height: height,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) => buildPlaceholder(),
-        loadingBuilder: (ctx, child, progress) {
-          if (progress == null) return child;
-          return const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)));
-        },
-      );
-    }
-  }
-
-  static Widget buildPlaceholder() {
-    return Container(
-      color: const Color(0xFFF1F5F9),
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.photo_camera_rounded, size: 28, color: Color(0xFF94A3B8)),
-            SizedBox(height: 4),
-            Text(
-              'Proof Photo Verified',
-              style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static void showLightbox({
-    required BuildContext context,
-    required String proofStr,
-    required String customerName,
-    required String address,
-    String? timestamp,
-    String? partnerName,
-  }) {
-    showDialog(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F172A),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            customerName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            address,
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 11,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
-                      onPressed: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              // Image Container
-              Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.60,
-                ),
-                color: Colors.black,
-                child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 4.0,
-                  child: buildImageFromSource(proofStr, fit: BoxFit.contain),
-                ),
-              ),
-              // Bottom Timestamp & Location Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0B1E14),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF059669),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'DOORSTEP VERIFIED',
-                            style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w900, letterSpacing: 0.4),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            timestamp != null && timestamp.isNotEmpty ? '🕒 $timestamp' : '🕒 Realtime Timestamp Recorded',
-                            style: const TextStyle(color: Color(0xFFA7F3D0), fontSize: 11.5, fontWeight: FontWeight.w700),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '📍 Location: ${address.isNotEmpty ? address : 'Doorstep Drop Coordinates Verified'}',
-                            style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 11.5, height: 1.2),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (partnerName != null && partnerName.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          const Icon(Icons.delivery_dining_rounded, size: 14, color: Color(0xFF38BDF8)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              'Delivered by: $partnerName',
-                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
+import '../../widgets/delivery_proof_dialog.dart';
+import '../../core/utils/ist_date_time.dart';
 
 class DeliveryPartnerDashboardScreen extends StatefulWidget {
   const DeliveryPartnerDashboardScreen({super.key});
@@ -2141,6 +1916,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 proofStr: proofStr,
                 customerName: d['customerName']?.toString() ?? 'Customer',
                 address: d['customerAddress']?.toString() ?? d['deliveryAddress']?.toString() ?? d['area']?.toString() ?? '',
+                lat: num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? ''),
+                lng: num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? ''),
                 timestamp: d['deliveredAt'] != null ? d['deliveredAt'].toString() : (d['deliveryDate'] != null ? '${d['deliveryDate']} • Morning Drop' : null),
                 partnerName: d['deliveryBoyName']?.toString() ?? _profileName,
               ),
@@ -6835,12 +6612,8 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
         final rawBytes = base64Decode(cleanBase64);
 
         final now = DateTime.now();
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        final hour = now.hour == 0 ? 12 : (now.hour > 12 ? now.hour - 12 : now.hour);
-        final ampm = now.hour >= 12 ? 'PM' : 'AM';
-        final minute = now.minute.toString().padLeft(2, '0');
-        final second = now.second.toString().padLeft(2, '0');
-        final timestampStr = '${now.day.toString().padLeft(2, '0')} ${months[now.month - 1]} ${now.year}, $hour:$minute:$second $ampm';
+        // Indian Standard Time (IST) formatting
+        final timestampStr = IstDateTime.formatFull(now);
 
         final custName = widget.delivery['customerName']?.toString() ?? 'Household Customer';
         final custAddr = widget.delivery['customerAddress']?.toString() ??
@@ -6860,6 +6633,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
 
         final watermarkedBase64 = 'data:image/png;base64,${base64Encode(watermarkedBytes)}';
 
+        if (!mounted) return;
         setState(() {
           _capturedPhotoBase64 = watermarkedBase64;
           _capturedPhotoBytes = watermarkedBytes;
@@ -6873,6 +6647,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
           ),
         );
       } else {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Camera capture cancelled or no photo taken')),
         );
@@ -6912,6 +6687,8 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       'collectedAmount': collected,
       'proofImage': _capturedPhotoBase64,
       'proofLocation': widget.delivery['customerAddress'] ?? widget.delivery['deliveryAddress'] ?? widget.delivery['area'] ?? '',
+      'latitude': widget.delivery['customerLatitude'] ?? widget.delivery['latitude'],
+      'longitude': widget.delivery['customerLongitude'] ?? widget.delivery['longitude'],
       'actor': 'Mobile Driver',
     });
 
@@ -6933,8 +6710,16 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
         ),
       );
     } else {
+      final msg = res['message']?.toString() ?? 'Failed to update delivery';
+      final friendlyMsg = msg.contains('TimeoutException')
+          ? 'Network is slow. Please tap Confirm Delivery again to retry.'
+          : msg;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(res['message'] ?? 'Failed to update delivery')),
+        SnackBar(
+          content: Text(friendlyMsg),
+          backgroundColor: const Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
@@ -8524,8 +8309,10 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
                           proofStr: (stop['proofImage'] ?? stop['proofUrl'] ?? '').toString(),
                           customerName: name,
                           address: address,
+                          lat: num.tryParse((stop['customerLatitude'] ?? stop['latitude'])?.toString() ?? ''),
+                          lng: num.tryParse((stop['customerLongitude'] ?? stop['longitude'])?.toString() ?? ''),
                           timestamp: stop['deliveredAt']?.toString() ?? (stop['deliveryDate'] != null ? '${stop['deliveryDate']} • Morning Drop' : null),
-                          partnerName: stop['deliveryBoyName']?.toString() ?? _profileName,
+                          partnerName: stop['deliveryBoyName']?.toString() ?? stop['driverName']?.toString() ?? context.read<AuthProvider>().user?.name ?? 'Delivery Partner',
                         ),
                         child: Stack(
                           children: [

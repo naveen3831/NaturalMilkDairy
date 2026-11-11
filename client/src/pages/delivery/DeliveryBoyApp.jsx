@@ -74,6 +74,8 @@ import ReportDownloadModal from '../../components/ReportDownloadModal';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import { resolveProofUrl } from '../../services/api';
 import { watermarkDeliveryPhoto } from '../../services/photoWatermarker';
+import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
+import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 
 const parseCoordinatesFromInput = (input) => {
   if (!input || typeof input !== 'string') return null;
@@ -853,6 +855,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState('');
   const [previewProofModal, setPreviewProofModal] = useState(null);
+  const [partnerProofTab, setPartnerProofTab] = useState('photo'); // 'photo' | 'map'
   const fileInputRef = useRef(null);
 
   // Not delivered form
@@ -9382,7 +9385,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL                             */}
       {/* ============================================================ */}
       {/* ============================================================ */}
-      {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL                             */}
+      {/* 6. DOORSTEP PHOTO LIGHTBOX MODAL WITH LEAFLET LOCATION MAP */}
       {/* ============================================================ */}
       {previewProofModal && (() => {
         const proofObj = typeof previewProofModal === 'object' ? previewProofModal : {};
@@ -9395,28 +9398,44 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         const custName = proofObj.customerName || proofObj.rawItem?.customerName || 'Customer';
         const address = proofObj.deliveryAddress || proofObj.customerAddress || proofObj.address || proofObj.area || 'Doorstep Delivery Location';
         const rawTime = proofObj.deliveredAt || proofObj.updatedAt || proofObj.deliveryDate;
-        const formattedTime = rawTime
-          ? new Date(rawTime).toLocaleString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: true,
-            })
-          : new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) + ' (Realtime Verified)';
+        const formattedTime = formatISTDateTime(rawTime);
         const driver = proofObj.deliveryBoyName || proofObj.driverName || boyName || 'Delivery Partner';
+
+        // Extract coordinates for this single customer
+        const custLat = Number(
+          proofObj.customerLatitude ??
+          proofObj.latitude ??
+          proofObj.rawItem?.customerLatitude ??
+          proofObj.rawItem?.latitude ??
+          17.4483
+        );
+        const custLng = Number(
+          proofObj.customerLongitude ??
+          proofObj.longitude ??
+          proofObj.rawItem?.customerLongitude ??
+          proofObj.rawItem?.longitude ??
+          78.3915
+        );
 
         return (
           <div className="modal-overlay" onClick={() => setPreviewProofModal(null)}>
             <div
               className="modal-content"
               onClick={(e) => e.stopPropagation()}
-              style={{ background: '#ffffff', borderRadius: '18px', maxWidth: '520px', width: '92%', padding: '20px', textAlign: 'left', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}
+              style={{
+                background: '#ffffff',
+                borderRadius: '18px',
+                maxWidth: '540px',
+                width: '94%',
+                padding: '20px',
+                textAlign: 'left',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+              }}
             >
               {/* Modal Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '3px 8px', marginBottom: '6px' }}>
                     <ShieldCheck size={14} color="#059669" />
@@ -9424,7 +9443,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       VERIFIED DOORSTEP DROP
                     </span>
                   </div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
                     {custName}
                   </h3>
                   <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -9441,20 +9460,125 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </button>
               </div>
 
-              {/* Photo Display */}
-              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #059669', background: '#0b1e14', position: 'relative' }}>
-                <img
-                  src={proofImgUrl}
-                  alt="Verified doorstep proof photo"
-                  style={{ width: '100%', maxHeight: '440px', objectFit: 'contain', display: 'block' }}
-                />
+              {/* View Switcher Tabs: Photo Proof vs Leaflet Map */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setPartnerProofTab('photo')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: partnerProofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                    background: partnerProofTab === 'photo' ? '#059669' : '#f8fafc',
+                    color: partnerProofTab === 'photo' ? '#ffffff' : '#475569',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Camera size={14} />
+                  <span>Doorstep Photo Proof</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPartnerProofTab('map')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: partnerProofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                    background: partnerProofTab === 'map' ? '#059669' : '#f8fafc',
+                    color: partnerProofTab === 'map' ? '#ffffff' : '#475569',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <MapPin size={14} />
+                  <span>Leaflet Map Location</span>
+                </button>
               </div>
 
-              {/* Timestamp & Location Detail Card */}
+              {/* Viewport: Photo (clicking switches to Map) OR Leaflet Map */}
+              {partnerProofTab === 'photo' ? (
+                <div
+                  onClick={() => setPartnerProofTab('map')}
+                  title="Click image to view doorstep location on Leaflet Map"
+                  style={{
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: '1.5px solid #059669',
+                    background: '#0b1e14',
+                    position: 'relative',
+                    minHeight: '260px',
+                    maxHeight: '440px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <img
+                    src={proofImgUrl}
+                    alt="Verified doorstep proof photo"
+                    onError={(e) => {
+                      const rawP = proofObj.proofImage || proofObj.proofUrl || '';
+                      const cloud = `https://naturalmilkdairy.speshway.site${rawP.startsWith('/') ? rawP : `/${rawP}`}`;
+                      if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
+                    }}
+                    style={{ width: '100%', maxHeight: '440px', objectFit: 'contain', display: 'block' }}
+                  />
+                  {/* Floating click prompt */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '12px',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      backdropFilter: 'blur(4px)',
+                      color: '#ffffff',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      border: '1px solid rgba(52, 211, 153, 0.5)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <MapPin size={12} color="#34d399" />
+                    <span>Tap image to view location on Leaflet Map</span>
+                  </div>
+                </div>
+              ) : (
+                /* Leaflet Map for this location ONLY */
+                <LeafletSingleLocationMap
+                  lat={custLat}
+                  lng={custLng}
+                  title={custName}
+                  address={address}
+                  partnerName={driver}
+                  height="340px"
+                />
+              )}
+
+              {/* Timestamp & Location Detail Card in IST */}
               <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
                   <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <Clock size={13} color="#059669" /> Exact Timestamp:
+                    <Clock size={13} color="#059669" /> Exact Timestamp (IST):
                   </span>
                   <strong style={{ color: '#065f46', fontWeight: 800 }}>{formattedTime}</strong>
                 </div>
@@ -9467,7 +9591,36 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               </div>
 
               {/* Action Buttons */}
-              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setPartnerProofTab(partnerProofTab === 'photo' ? 'map' : 'photo')}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#ecfdf5',
+                    color: '#059669',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1.5px solid #a7f3d0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {partnerProofTab === 'photo' ? (
+                    <>
+                      <MapPin size={14} />
+                      <span>View on Leaflet Map</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={14} />
+                      <span>View Proof Photo</span>
+                    </>
+                  )}
+                </button>
                 <a
                   href={proofImgUrl}
                   target="_blank"
@@ -9484,6 +9637,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
+                    border: '1px solid #cbd5e1',
                   }}
                 >
                   <Download size={14} /> Open Full / Save

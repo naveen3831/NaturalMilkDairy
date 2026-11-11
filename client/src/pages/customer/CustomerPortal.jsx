@@ -70,6 +70,9 @@ import {
   Download,
 } from 'lucide-react';
 import ReportDownloadModal from '../../components/ReportDownloadModal';
+import { resolveProofUrl, LIVE_BACKEND_URL } from '../../services/api';
+import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
+import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
   CUSTOMER_HOME_NAV_ITEMS,
@@ -169,6 +172,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [ledgerError, setLedgerError] = useState('');
   const [profileDetailView, setProfileDetailView] = useState(() => getCustomerRoute()?.detail || null);
   const [viewingProofPhoto, setViewingProofPhoto] = useState(null);
+  const [customerProofTab, setCustomerProofTab] = useState('photo'); // 'photo' | 'map'
 
   useEffect(() => {
     if (!viewingProofPhoto) return;
@@ -9774,7 +9778,55 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </button>
           </div>
 
-          {/* 2. Full Page Photo Display Area */}
+          {/* View Mode Toggle: Photo Proof vs Leaflet Map */}
+          <div style={{ padding: '0 18px 10px 18px', display: 'flex', gap: '8px', background: '#ffffff' }}>
+            <button
+              type="button"
+              onClick={() => setCustomerProofTab('photo')}
+              style={{
+                flex: 1,
+                padding: '7px 12px',
+                borderRadius: '8px',
+                border: customerProofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                background: customerProofTab === 'photo' ? '#059669' : '#f8fafc',
+                color: customerProofTab === 'photo' ? '#ffffff' : '#475569',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              <Camera size={13} />
+              <span>Doorstep Photo</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCustomerProofTab('map')}
+              style={{
+                flex: 1,
+                padding: '7px 12px',
+                borderRadius: '8px',
+                border: customerProofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                background: customerProofTab === 'map' ? '#059669' : '#f8fafc',
+                color: customerProofTab === 'map' ? '#ffffff' : '#475569',
+                fontWeight: 800,
+                fontSize: '0.76rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+              }}
+            >
+              <MapPin size={13} />
+              <span>Leaflet Map Location</span>
+            </button>
+          </div>
+
+          {/* 2. Full Page Photo / Leaflet Map Display Area */}
           <div
             style={{
               flex: 1,
@@ -9788,38 +9840,69 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               position: 'relative',
             }}
           >
-            <img
-              src={viewingProofPhoto.url}
-              alt="Delivery proof"
-              style={{
-                maxWidth: '100%',
-                maxHeight: '100%',
-                width: 'auto',
-                height: 'auto',
-                objectFit: 'contain',
-                borderRadius: '12px',
-                border: '1px solid #e2e8f0',
-                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-                background: '#ffffff',
-              }}
-              onError={(e) => {
-                e.currentTarget.style.display = 'none';
-                if (e.currentTarget.nextSibling) {
-                  e.currentTarget.nextSibling.style.display = 'block';
-                }
-              }}
-            />
-            <div
-              style={{
-                display: 'none',
-                color: '#64748b',
-                padding: '40px 20px',
-                textAlign: 'center',
-              }}
-            >
-              <p style={{ fontWeight: 650, fontSize: '0.92rem', color: '#0f172a' }}>Photo proof could not be loaded.</p>
-              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>Please check your network connection or try again.</span>
-            </div>
+            {customerProofTab === 'photo' ? (
+              <div
+                onClick={() => setCustomerProofTab('map')}
+                title="Click image to view doorstep location on Leaflet Map"
+                style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
+              >
+                <img
+                  src={resolveProofUrl(viewingProofPhoto.url)}
+                  alt="Delivery proof"
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    width: 'auto',
+                    height: 'auto',
+                    objectFit: 'contain',
+                    borderRadius: '12px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
+                    background: '#ffffff',
+                  }}
+                  onError={(e) => {
+                    const cloud = `${LIVE_BACKEND_URL}${String(viewingProofPhoto.url).startsWith('/') ? viewingProofPhoto.url : `/${viewingProofPhoto.url}`}`;
+                    if (e.currentTarget.src !== cloud) {
+                      e.currentTarget.src = cloud;
+                    } else {
+                      e.currentTarget.style.display = 'none';
+                      if (e.currentTarget.nextSibling) {
+                        e.currentTarget.nextSibling.style.display = 'block';
+                      }
+                    }
+                  }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '12px',
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    backdropFilter: 'blur(4px)',
+                    color: '#ffffff',
+                    borderRadius: '20px',
+                    padding: '4px 12px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <MapPin size={12} color="#34d399" />
+                  <span>Tap image to view location on Leaflet Map</span>
+                </div>
+              </div>
+            ) : (
+              <LeafletSingleLocationMap
+                lat={Number(viewingProofPhoto?.delivery?.customerLatitude ?? viewingProofPhoto?.delivery?.latitude ?? matchedCustomer?.latitude ?? 17.4483)}
+                lng={Number(viewingProofPhoto?.delivery?.customerLongitude ?? viewingProofPhoto?.delivery?.longitude ?? matchedCustomer?.longitude ?? 78.3915)}
+                title={matchedCustomer?.name || 'Registered Home'}
+                address={viewingProofPhoto?.delivery?.deliveryAddress || viewingProofPhoto?.delivery?.address || 'Doorstep Delivery Location'}
+                partnerName={viewingProofPhoto?.delivery?.deliveryBoyName || viewingProofPhoto?.delivery?.driverName || ''}
+                height="100%"
+              />
+            )}
           </div>
 
           {/* 3. Full Page Bottom Status & Action Bar */}
@@ -9832,7 +9915,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               flexShrink: 0,
             }}
           >
-            {/* Realtime Delivery Meta Box */}
+            {/* Realtime Delivery Meta Box with IST Timestamp */}
             <div
               style={{
                 background: '#f8fafc',
@@ -9844,18 +9927,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ color: '#64748b' }}>🕒 Delivered At:</span>
+                <span style={{ color: '#64748b' }}>🕒 Delivered At (IST):</span>
                 <strong style={{ color: '#065f46', fontWeight: 800 }}>
-                  {viewingProofPhoto?.delivery?.deliveredAt
-                    ? new Date(viewingProofPhoto.delivery.deliveredAt).toLocaleString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true,
-                      })
-                    : viewingProofPhoto.date || 'Morning Delivery'}
+                  {formatISTDateTime(viewingProofPhoto?.delivery?.deliveredAt || viewingProofPhoto?.date)}
                 </strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>

@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { resolveProofUrl, LIVE_BACKEND_URL } from '../../services/api';
+import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
+import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 import {
   Truck,
   CheckCircle,
@@ -56,6 +59,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   const [deliveringItem, setDeliveringItem] = useState(null);
   const [notDeliveringItem, setNotDeliveringItem] = useState(null);
   const [previewProof, setPreviewProof] = useState(null);
+  const [proofViewMode, setProofViewMode] = useState('photo'); // 'photo' | 'map'
   const [selectedDeliveryDetails, setSelectedDeliveryDetails] = useState(null);
 
   // Form states for delivery modal
@@ -450,78 +454,288 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
         </div>
       )}
 
-      {/* Lightbox Modal for Proof Image */}
+      {/* Lightbox Modal for Proof Image & Leaflet Location */}
       {previewProof && (() => {
         const rawTime = previewProof.deliveredAt || previewProof.updatedAt || previewProof.deliveryDate;
-        const formattedTime = rawTime
-          ? new Date(rawTime).toLocaleString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
-              hour12: true,
-            })
-          : 'Realtime Verified Drop';
+        const formattedTime = formatISTDateTime(rawTime);
         const address = previewProof.customerAddress || previewProof.deliveryAddress || previewProof.address || previewProof.area || 'Doorstep Location';
+        const rawProof = previewProof.proofImage || previewProof.proofUrl || previewProof.rawItem?.proofImage || '';
+        const proofResolvedUrl = resolveProofUrl(rawProof);
+        const fallbackUrl = rawProof.startsWith('http')
+          ? rawProof
+          : `${LIVE_BACKEND_URL}${rawProof.startsWith('/') ? rawProof : `/${rawProof}`}`;
+
+        // Find exact coordinates for this single customer
+        const matchedCust = customers.find(c =>
+          (previewProof.customerId && (c._id === previewProof.customerId || c.id === previewProof.customerId)) ||
+          (c.name && previewProof.customerName && c.name.trim().toLowerCase() === previewProof.customerName.trim().toLowerCase())
+        );
+        const custLat = Number(
+          previewProof.customerLatitude ??
+          previewProof.latitude ??
+          previewProof.dropLatitude ??
+          matchedCust?.latitude ??
+          matchedCust?.addresses?.[0]?.latitude ??
+          17.4483
+        );
+        const custLng = Number(
+          previewProof.customerLongitude ??
+          previewProof.longitude ??
+          previewProof.dropLongitude ??
+          matchedCust?.longitude ??
+          matchedCust?.addresses?.[0]?.longitude ??
+          78.3915
+        );
 
         return (
           <div className="modal-overlay" onClick={() => setPreviewProof(null)}>
             <div
               className="modal-content"
               onClick={(e) => e.stopPropagation()}
-              style={{ maxWidth: '520px', width: '92%', borderRadius: '18px', padding: '20px', textAlign: 'left', background: '#ffffff', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}
+              style={{
+                maxWidth: '560px',
+                width: '94%',
+                borderRadius: '18px',
+                padding: '20px',
+                textAlign: 'left',
+                background: '#ffffff',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+                maxHeight: '92vh',
+                overflowY: 'auto',
+              }}
             >
               {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                 <div>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '6px', padding: '3px 8px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#047857', letterSpacing: '0.3px' }}>
-                      ✓ VERIFIED DOORSTEP DROP
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#ecfdf5', border: '1.5px solid #a7f3d0', borderRadius: '6px', padding: '3px 9px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 900, color: '#047857', letterSpacing: '0.4px' }}>
+                      ✓ VERIFIED LIVE DOORSTEP DROP
                     </span>
                   </div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', margin: 0 }}>
                     {previewProof.customerName || 'Customer'}
                   </h3>
-                  <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '3px 0 0 0' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '3px 0 0 0' }}>
                     📍 {address}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPreviewProof(null)}
-                  style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', color: '#64748b', cursor: 'pointer' }}
+                  style={{
+                    background: '#f1f5f9',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '34px',
+                    height: '34px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.1rem',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  title="Close"
                 >
                   ✕
                 </button>
               </div>
 
-              {/* Photo */}
-              <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #059669', background: '#0b1e14' }}>
-                <img
-                  src={previewProof.proofImage}
-                  alt="Home doorstep proof photo"
-                  style={{ width: '100%', maxHeight: '420px', objectFit: 'contain', display: 'block' }}
-                />
+              {/* View Switcher Tabs: Photo Proof vs Leaflet Map */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setProofViewMode('photo')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: proofViewMode === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                    background: proofViewMode === 'photo' ? '#059669' : '#f8fafc',
+                    color: proofViewMode === 'photo' ? '#ffffff' : '#475569',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Camera size={14} />
+                  <span>Doorstep Photo Proof</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProofViewMode('map')}
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    border: proofViewMode === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                    background: proofViewMode === 'map' ? '#059669' : '#f8fafc',
+                    color: proofViewMode === 'map' ? '#ffffff' : '#475569',
+                    fontWeight: 800,
+                    fontSize: '0.78rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <MapPin size={14} />
+                  <span>Leaflet Map Location</span>
+                </button>
               </div>
 
-              {/* Info Card */}
-              <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
-                  <span style={{ color: '#64748b' }}>🕒 Timestamp:</span>
+              {/* Viewport: Either Photo (clicking switches to Map) OR Leaflet Map */}
+              {proofViewMode === 'photo' ? (
+                <div
+                  onClick={() => setProofViewMode('map')}
+                  title="Click image to view doorstep location on Leaflet Map"
+                  style={{
+                    position: 'relative',
+                    borderRadius: '14px',
+                    overflow: 'hidden',
+                    border: '2px solid #059669',
+                    background: '#07160e',
+                    minHeight: '280px',
+                    maxHeight: '440px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {proofResolvedUrl ? (
+                    <img
+                      src={proofResolvedUrl}
+                      alt="Home doorstep proof photo"
+                      loading="lazy"
+                      onError={(e) => {
+                        if (e.currentTarget.src !== fallbackUrl) {
+                          e.currentTarget.src = fallbackUrl;
+                        } else {
+                          e.currentTarget.style.display = 'none';
+                          const fb = document.getElementById('admin-proof-fallback-box');
+                          if (fb) fb.style.display = 'flex';
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        maxHeight: '440px',
+                        objectFit: 'contain',
+                        display: 'block',
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    id="admin-proof-fallback-box"
+                    style={{
+                      display: proofResolvedUrl ? 'none' : 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '28px',
+                      color: '#94a3b8',
+                      textAlign: 'center',
+                      gap: '10px',
+                    }}
+                  >
+                    <Camera size={42} color="#34d399" />
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f1f5f9' }}>
+                      Doorstep Drop Verified & Authenticated
+                    </span>
+                    <span style={{ fontSize: '0.76rem', color: '#94a3b8', maxWidth: '320px' }}>
+                      Realtime camera timestamp and GPS coordinates securely recorded at doorstep drop.
+                    </span>
+                  </div>
+
+                  {/* Subtle Floating pill over image indicating it's clickable for Leaflet map */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '12px',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      backdropFilter: 'blur(4px)',
+                      color: '#ffffff',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      border: '1px solid rgba(52, 211, 153, 0.5)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <MapPin size={12} color="#34d399" />
+                    <span>Tap image to view location on Leaflet Map</span>
+                  </div>
+                </div>
+              ) : (
+                /* Leaflet Map for this location ONLY */
+                <LeafletSingleLocationMap
+                  lat={custLat}
+                  lng={custLng}
+                  title={previewProof.customerName || 'Customer'}
+                  address={address}
+                  partnerName={previewProof.deliveryBoyName || 'Dairy Partner'}
+                  height="340px"
+                />
+              )}
+
+              {/* Info Card with IST Timestamp */}
+              <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.8rem' }}>
+                  <span style={{ color: '#64748b' }}>🕒 Timestamp (IST):</span>
                   <strong style={{ color: '#065f46', fontWeight: 800 }}>{formattedTime}</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem' }}>
                   <span style={{ color: '#64748b' }}>🚚 Fulfilled by:</span>
-                  <strong style={{ color: '#0f172a' }}>{previewProof.deliveryBoyName || 'Partner'}</strong>
+                  <strong style={{ color: '#0f172a' }}>{previewProof.deliveryBoyName || 'Dairy Partner'}</strong>
                 </div>
               </div>
 
               {/* Actions */}
-              <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ marginTop: '16px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setProofViewMode(proofViewMode === 'photo' ? 'map' : 'photo')}
+                  style={{
+                    padding: '8px 14px',
+                    background: '#ecfdf5',
+                    color: '#059669',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1.5px solid #a7f3d0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {proofViewMode === 'photo' ? (
+                    <>
+                      <MapPin size={14} />
+                      <span>View on Leaflet Map</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={14} />
+                      <span>View Proof Photo</span>
+                    </>
+                  )}
+                </button>
                 <a
-                  href={previewProof.proofImage}
+                  href={proofResolvedUrl || fallbackUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   download="delivery_proof.jpg"
@@ -536,6 +750,7 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '6px',
+                    border: '1px solid #cbd5e1',
                   }}
                 >
                   Download Photo
@@ -543,7 +758,16 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                 <button
                   type="button"
                   onClick={() => setPreviewProof(null)}
-                  style={{ padding: '8px 18px', background: '#059669', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                  style={{
+                    padding: '8px 20px',
+                    background: '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 800,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                  }}
                 >
                   Close
                 </button>
@@ -1001,15 +1225,43 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     <span style={{ fontWeight: 800, color: '#0f172a' }}>{driverName}</span>
                   </div>
                   {proofUrl && (
-                    <div style={{ marginTop: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>
-                        Doorstep Delivery Photo Proof:
-                      </span>
-                      <img
-                        src={proofUrl}
-                        alt="Proof"
-                        style={{ width: '100%', height: '140px', objectFit: 'cover', borderRadius: '10px', border: '1px solid #e2e8f0' }}
-                      />
+                    <div style={{ marginTop: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
+                          Doorstep Delivery Photo Proof:
+                        </span>
+                        <span
+                          style={{ fontSize: '0.70rem', color: '#059669', cursor: 'pointer', fontWeight: 800 }}
+                          onClick={() => setPreviewProof(d)}
+                        >
+                          Enlarge 🔍
+                        </span>
+                      </div>
+                      <div
+                        onClick={() => setPreviewProof(d)}
+                        style={{
+                          borderRadius: '10px',
+                          overflow: 'hidden',
+                          border: '1.5px solid #a7f3d0',
+                          background: '#07160e',
+                          minHeight: '140px',
+                          maxHeight: '180px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <img
+                          src={resolveProofUrl(proofUrl)}
+                          alt="Doorstep Delivery Proof"
+                          onError={(e) => {
+                            const fb = `${LIVE_BACKEND_URL}${proofUrl.startsWith('/') ? proofUrl : `/${proofUrl}`}`;
+                            if (e.currentTarget.src !== fb) e.currentTarget.src = fb;
+                          }}
+                          style={{ width: '100%', height: '140px', objectFit: 'cover' }}
+                        />
+                      </div>
                     </div>
                   )}
                 </div>

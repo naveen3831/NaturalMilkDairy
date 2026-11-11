@@ -17,7 +17,12 @@ class DeliveryProofWatermarker {
     required String partnerName,
   }) async {
     try {
-      final codec = await ui.instantiateImageCodec(imageBytes);
+      // Downscale camera image to optimal delivery proof width (800px)
+      // This reduces payload from 25MB down to ~200KB, preventing HTTP timeouts and upload failures
+      final codec = await ui.instantiateImageCodec(
+        imageBytes,
+        targetWidth: 800,
+      );
       final frame = await codec.getNextFrame();
       final ui.Image image = frame.image;
 

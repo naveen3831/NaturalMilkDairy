@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { resolveProofUrl } from '../../services/api';
 import {
   ArrowLeft,
   Calendar,
@@ -520,7 +521,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                             <span>By: <strong>{entry.deliveryBoyName || 'Admin'}</strong></span>
                             {entry.proofImage && (
                               <a
-                                href={entry.proofImage}
+                                href={resolveProofUrl(entry.proofImage)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="ledger-proof-link"
@@ -632,7 +633,7 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                                 <span>{entry.deliveryBoyName || 'Admin'}</span>
                                 {entry.proofImage && (
                                   <a
-                                    href={entry.proofImage}
+                                    href={resolveProofUrl(entry.proofImage)}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     className="ledger-proof-link"

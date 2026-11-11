@@ -23,12 +23,15 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
 import { resolveProofUrl } from '../services/api';
+import LeafletSingleLocationMap from './LeafletSingleLocationMap';
+import { formatISTDateTime } from '../utils/istDateTime';
 
 // ══════════════════════════════════════════════════════════════════
 // 1. PUBLIC MODAL: DOORSTEP DELIVERIES & PROOF PHOTOS
 // ══════════════════════════════════════════════════════════════════
 export function CustomerDeliveriesPublicModal({ isOpen, onClose, customer, deliveries = [] }) {
   const [selectedProof, setSelectedProof] = useState(null);
+  const [proofTab, setProofTab] = useState('photo'); // 'photo' | 'map'
 
   if (!isOpen) return null;
 
@@ -399,18 +402,112 @@ export function CustomerDeliveriesPublicModal({ isOpen, onClose, customer, deliv
                 <X size={20} />
               </button>
             </div>
-            <div style={{ padding: '12px', background: '#f8fafc', textAlign: 'center' }}>
-              <img
-                src={resolveProofUrl(selectedProof)}
-                alt="Delivery Proof"
+
+            {/* View Switcher Tabs */}
+            <div style={{ padding: '10px 16px 0 16px', display: 'flex', gap: '8px', background: '#ffffff' }}>
+              <button
+                type="button"
+                onClick={() => setProofTab('photo')}
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '65vh',
-                  borderRadius: '10px',
-                  objectFit: 'contain',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  flex: 1,
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: proofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                  background: proofTab === 'photo' ? '#059669' : '#f8fafc',
+                  color: proofTab === 'photo' ? '#ffffff' : '#475569',
+                  fontWeight: 800,
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
                 }}
-              />
+              >
+                <Camera size={13} />
+                <span>Doorstep Photo</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setProofTab('map')}
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: proofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                  background: proofTab === 'map' ? '#059669' : '#f8fafc',
+                  color: proofTab === 'map' ? '#ffffff' : '#475569',
+                  fontWeight: 800,
+                  fontSize: '0.74rem',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                }}
+              >
+                <MapPin size={13} />
+                <span>Leaflet Map Location</span>
+              </button>
+            </div>
+
+            <div style={{ padding: '12px', background: '#f8fafc', textAlign: 'center' }}>
+              {proofTab === 'photo' ? (
+                <div
+                  onClick={() => setProofTab('map')}
+                  title="Click image to view doorstep location on Leaflet Map"
+                  style={{ position: 'relative', cursor: 'pointer', display: 'inline-block', maxWidth: '100%' }}
+                >
+                  <img
+                    src={resolveProofUrl(selectedProof)}
+                    alt="Delivery Proof"
+                    onError={(e) => {
+                      const cloud = `https://naturalmilkdairy.speshway.site${String(selectedProof).startsWith('/') ? selectedProof : `/${selectedProof}`}`;
+                      if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
+                    }}
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '62vh',
+                      borderRadius: '10px',
+                      objectFit: 'contain',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      display: 'block',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '10px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      backdropFilter: 'blur(4px)',
+                      color: '#ffffff',
+                      borderRadius: '20px',
+                      padding: '4px 12px',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      border: '1px solid rgba(52, 211, 153, 0.5)',
+                      pointerEvents: 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <MapPin size={11} color="#34d399" />
+                    <span>Tap image to view on Leaflet Map</span>
+                  </div>
+                </div>
+              ) : (
+                <LeafletSingleLocationMap
+                  lat={Number(customer?.latitude ?? 17.4483)}
+                  lng={Number(customer?.longitude ?? 78.3915)}
+                  title={customer?.name || 'Customer Location'}
+                  address={customer?.address || 'Doorstep Delivery Location'}
+                  height="340px"
+                />
+              )}
             </div>
           </div>
         </div>

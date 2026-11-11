@@ -14,16 +14,18 @@ const isLocalhost =
     window.location.hostname.startsWith('192.168.') ||
     window.location.hostname.startsWith('10.'));
 
+export const LIVE_BACKEND_URL = 'https://naturalmilkdairy.speshway.site';
+
 // Smart Base URL resolver:
 // 1. Explicit VITE_API_URL if provided
-// 2. If running on remote domain (e.g. Vercel), fallback to production Render backend
+// 2. If running on remote domain (e.g. Vercel), fallback to production backend
 // 3. If running on localhost/LAN, default to relative '' so Vite proxy forwards to port 5000
 const resolveBaseUrl = () => {
   const envUrl = (import.meta.env.VITE_API_URL || '').trim();
   if (envUrl) return envUrl.replace(/\/+$/, '');
 
   if (isBrowser && !isLocalhost) {
-    return 'https://naturalmilkdiary.onrender.com';
+    return LIVE_BACKEND_URL;
   }
   return '';
 };
@@ -43,15 +45,39 @@ export function getApiUrl(endpoint = '') {
 }
 
 /**
- * Resolves delivery proof image URLs (relative /uploads, full URLs, or base64)
+ * Resolves delivery proof image URLs (relative /uploads, full URLs, or base64).
+ * Always ensures images hosted on the live server are reachable even during local development.
  */
 export function resolveProofUrl(url = '') {
   if (!url) return '';
   const clean = String(url).trim();
   if (!clean) return '';
-  if (clean.startsWith('data:image/') || /^https?:\/\//i.test(clean)) return clean;
+  if (clean.startsWith('data:image/')) return clean;
+
+  // If already absolute URL
+  if (/^https?:\/\//i.test(clean)) {
+    // If it points to localhost or outdated render host, point to live production server
+    if (clean.includes('localhost:') || clean.includes('127.0.0.1:') || clean.includes('naturalmilkdiary.onrender.com')) {
+      const pathOnly = clean.replace(/^https?:\/\/[^/]+/i, '');
+      return `${LIVE_BACKEND_URL}${pathOnly.startsWith('/') ? pathOnly : `/${pathOnly}`}`;
+    }
+    return clean;
+  }
+
   const cleanPath = clean.startsWith('/') ? clean : `/${clean}`;
-  return API_BASE_URL ? `${API_BASE_URL}${cleanPath}` : cleanPath;
+
+  // Doorstep delivery proof images uploaded from phones exist on the live cloud server (/uploads/proof_...)
+  if (cleanPath.startsWith('/uploads/')) {
+    if (isLocalhost) {
+      return `${LIVE_BACKEND_URL}${cleanPath}`;
+    }
+    if (API_BASE_URL && !API_BASE_URL.includes('localhost') && !API_BASE_URL.includes('127.0.0.1')) {
+      return `${API_BASE_URL}${cleanPath}`;
+    }
+    return `${LIVE_BACKEND_URL}${cleanPath}`;
+  }
+
+  return API_BASE_URL ? `${API_BASE_URL}${cleanPath}` : `${LIVE_BACKEND_URL}${cleanPath}`;
 }
 
 /**

@@ -2,13 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_colors.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
 import '../../widgets/report_download_sheet.dart';
+import '../../widgets/delivery_proof_dialog.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -188,148 +188,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     String? customerName,
     String? address,
     String? time,
+    num? lat,
+    num? lng,
   }) {
-    showDialog(
+    if (proofUrl == null || proofUrl.isEmpty) return;
+    DeliveryProofHelper.showLightbox(
       context: context,
-      builder: (ctx) => Dialog.fullscreen(
-        child: Scaffold(
-          backgroundColor: const Color(0xFF0B1E14),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF0D5C3A),
-            elevation: 0,
-            iconTheme: const IconThemeData(color: Colors.white),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 16),
-                    SizedBox(width: 6),
-                    Text('Verified Delivery Proof', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white)),
-                  ],
-                ),
-                Text(
-                  customerName != null ? '$customerName • ${time ?? date}' : (time ?? date),
-                  style: const TextStyle(fontSize: 11, color: Color(0xFFD1FAE5)),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
-            ],
-          ),
-          body: Column(
-            children: [
-              // Photo with Interactive Zoom
-              Expanded(
-                child: Container(
-                  color: Colors.black,
-                  padding: const EdgeInsets.all(8),
-                  child: Center(
-                    child: (proofUrl != null && proofUrl.isNotEmpty)
-                        ? InteractiveViewer(
-                            minScale: 0.8,
-                            maxScale: 4.0,
-                            child: Image.network(
-                              proofUrl,
-                              fit: BoxFit.contain,
-                              loadingBuilder: (context, child, progress) => progress == null
-                                  ? child
-                                  : const Center(child: CircularProgressIndicator(color: Color(0xFF34D399))),
-                              errorBuilder: (context, error, stackTrace) =>
-                                  const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.white54)),
-                            ),
-                          )
-                        : const Center(child: Text('No photo proof uploaded', style: TextStyle(color: Colors.white))),
-                  ),
-                ),
-              ),
-
-              // Bottom Realtime Timestamp & Location Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F172A),
-                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF059669),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'DOORSTEP VERIFIED',
-                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.4),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            '🕒 ${time ?? date}',
-                            style: const TextStyle(color: Color(0xFFFDE047), fontSize: 12, fontWeight: FontWeight.w800),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (address != null && address.isNotEmpty)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              address,
-                              style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.person_pin_rounded, size: 14, color: Color(0xFF94A3B8)),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Delivered by: ${driverName ?? 'Dairy Driver'}',
-                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
-                            ),
-                          ],
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.verified_rounded, size: 15, color: Colors.white),
-                          label: const Text('Verified', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      proofStr: proofUrl,
+      customerName: customerName ?? 'Customer',
+      address: address ?? 'Doorstep Delivery Location',
+      lat: lat,
+      lng: lng,
+      timestamp: time ?? date,
+      partnerName: driverName,
     );
   }
 
@@ -643,20 +514,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   customerName: d['customerName']?.toString(),
                                   address: (d['customerAddress'] ?? d['deliveryAddress'] ?? d['area'])?.toString(),
                                   time: d['deliveredAt']?.toString() ?? deliveryDate,
+                                  lat: dLat,
+                                  lng: dLng,
                                 ),
                                 borderRadius: BorderRadius.circular(10),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(
+                                  child: DeliveryProofHelper.buildImageFromSource(
                                     proofUrl,
                                     height: 140,
                                     width: double.infinity,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => Container(
-                                      height: 80,
-                                      color: const Color(0xFFF1F5F9),
-                                      child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
-                                    ),
                                   ),
                                 ),
                               ),
@@ -2034,6 +1902,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             customerName: d['customerName']?.toString(),
                             address: (d['customerAddress'] ?? d['deliveryAddress'] ?? d['area'])?.toString(),
                             time: d['deliveredAt']?.toString() ?? d['deliveryDate']?.toString(),
+                            lat: num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? ''),
+                            lng: num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? ''),
                           ),
                           child: const Row(
                             children: [

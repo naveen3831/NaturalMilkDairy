@@ -40,20 +40,22 @@ export async function watermarkDeliveryPhoto(file, { customerName = 'Customer', 
           // 1. Draw base photo
           ctx.drawImage(img, 0, 0, w, h);
 
-          // 2. Format realtime timestamp
+          // 2. Format realtime Indian Standard Time (IST) timestamp
           const now = new Date();
           const dateStr = now.toLocaleDateString('en-IN', {
             day: '2-digit',
             month: 'short',
             year: 'numeric',
+            timeZone: 'Asia/Kolkata',
           });
           const timeStr = now.toLocaleTimeString('en-IN', {
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit',
             hour12: true,
+            timeZone: 'Asia/Kolkata',
           });
-          const fullTimestamp = `${dateStr}, ${timeStr}`;
+          const fullTimestamp = `${dateStr}, ${timeStr} IST`;
 
           // 3. Calculate banner proportions
           const bannerHeight = Math.max(90, Math.round(h * 0.16));

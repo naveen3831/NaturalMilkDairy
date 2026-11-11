@@ -407,12 +407,15 @@ const markDelivered = async (req, res) => {
       try {
         const { uploadUrlOrBase64 } = require('../config/cloudinary');
         const formatted = proofUrl.startsWith('data:') ? proofUrl : `data:image/jpeg;base64,${proofUrl}`;
-        const cloudResult = await uploadUrlOrBase64(formatted, 'natural-milk-dairy/delivery-proofs');
+        // Wrap with a 12-second timeout so backend never blocks the HTTP response to mobile app
+        const cloudUploadPromise = uploadUrlOrBase64(formatted, 'natural-milk-dairy/delivery-proofs');
+        const cloudTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloudinary timeout')), 12000));
+        const cloudResult = await Promise.race([cloudUploadPromise, cloudTimeout]);
         if (cloudResult && cloudResult.secure_url) {
           proofUrl = cloudResult.secure_url;
         }
       } catch (err) {
-        console.error('Failed to upload proof image to Cloudinary:', err);
+        console.error('Failed to upload proof image to Cloudinary (will persist base64/fallback):', err.message);
       }
     }
 
@@ -445,6 +448,21 @@ const markDelivered = async (req, res) => {
     delivery.paymentAmount = activeSubscription ? 0 : delivery.paymentAmount;
     delivery.subscriptionEndDate = activeSubscription ? customer.subscription.endDate : delivery.subscriptionEndDate;
     delivery.proofImage = proofUrl;
+    if (req.body.proofLocation) delivery.customerAddress = req.body.proofLocation;
+    if (req.body.latitude !== undefined && req.body.latitude !== null && !isNaN(Number(req.body.latitude))) {
+      delivery.latitude = Number(req.body.latitude);
+      delivery.customerLatitude = Number(req.body.latitude);
+    } else if (!delivery.latitude && customer?.latitude) {
+      delivery.latitude = Number(customer.latitude);
+      delivery.customerLatitude = Number(customer.latitude);
+    }
+    if (req.body.longitude !== undefined && req.body.longitude !== null && !isNaN(Number(req.body.longitude))) {
+      delivery.longitude = Number(req.body.longitude);
+      delivery.customerLongitude = Number(req.body.longitude);
+    } else if (!delivery.longitude && customer?.longitude) {
+      delivery.longitude = Number(customer.longitude);
+      delivery.customerLongitude = Number(customer.longitude);
+    }
     if (notes) delivery.notes = notes;
     await delivery.save();
 
