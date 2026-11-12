@@ -76,7 +76,9 @@ export default function CustomerBottomNav({
               if (typeof onNavigate === 'function') {
                 onNavigate(id);
               }
-              window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+              window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
             }}
             style={{
               flex: 1,

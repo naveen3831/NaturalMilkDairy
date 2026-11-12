@@ -17,6 +17,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _mobileController = TextEditingController();
   final _addressController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -54,6 +55,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _emailController.dispose();
     _mobileController.dispose();
     _addressController.dispose();
     _passwordController.dispose();
@@ -67,6 +69,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final auth = context.read<AuthProvider>();
     final payload = {
       'name': _nameController.text.trim(),
+      'email': _emailController.text.trim().toLowerCase(),
       'mobile': _mobileController.text.trim(),
       'address': _addressController.text.trim(),
       'area': _selectedArea,
@@ -163,6 +166,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   validator: (v) {
                     if (v == null || v.trim().length < 2) return 'Enter a valid name (min 2 chars).';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Email Address
+                const Text('Email Address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. name@gmail.com',
+                    prefixIcon: Icon(Icons.email_outlined, size: 20, color: AppColors.textMuted),
+                  ),
+                  validator: (v) {
+                    final clean = (v ?? '').trim();
+                    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(clean)) {
+                      return 'Enter a valid email address.';
+                    }
                     return null;
                   },
                 ),

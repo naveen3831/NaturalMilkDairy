@@ -432,4 +432,24 @@ class ApiService {
   Future<Map<String, dynamic>> resetContactInfo() async {
     return await post('/api/contact-info/reset', {});
   }
+
+  /// 9. Upload image (base64 data URI or URL) to Cloudinary via backend
+  Future<String?> uploadBase64Image(
+    String imageDataOrUrl, {
+    String folder = 'natural-milk-dairy',
+  }) async {
+    final clean = imageDataOrUrl.trim();
+    if (clean.isEmpty) return null;
+    if (clean.startsWith('https://res.cloudinary.com/')) {
+      return clean;
+    }
+    final res = await post('/api/upload/base64', {
+      'image': clean,
+      'folder': folder,
+    });
+    if (res['success'] == true && res['url'] != null && res['url'].toString().isNotEmpty) {
+      return res['url'].toString();
+    }
+    return null;
+  }
 }

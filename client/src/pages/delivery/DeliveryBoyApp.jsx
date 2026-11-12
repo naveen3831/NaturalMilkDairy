@@ -160,6 +160,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     markNotDelivered,
     deliveryBoys,
     fetchDeliveryBoys,
+    payments,
+    fetchPayments,
     notifyRealtimeSync,
     locations,
     isOnline,
@@ -645,7 +647,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       setCustomerSuccessBanner(
         isEditing
           ? `Customer ${custFormName} updated successfully.`
-          : `Customer ${custFormName} added to your route! Today's delivery scheduled.`
+          : data.emailSent
+            ? `Customer ${custFormName} added & login credentials emailed to ${custFormEmail.trim().toLowerCase()}!`
+            : `Customer ${custFormName} added to your route! Today's delivery scheduled.`
       );
       setTimeout(() => setCustomerSuccessBanner(''), 5000);
       setShowAddCustomerModal(false);
@@ -850,6 +854,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [curdQty, setCurdQty] = useState(0);
   const [payMode, setPayMode] = useState('credit');
   const [collectedNow, setCollectedNow] = useState(0);
+  const [manualCollectedEdited, setManualCollectedEdited] = useState(false);
+  const [showAddonsPicker, setShowAddonsPicker] = useState(false);
+  const [addonSearch, setAddonSearch] = useState('');
+  const [addonQuantities, setAddonQuantities] = useState({});
+  const [addonPayMode, setAddonPayMode] = useState('cash'); // 'cash' | 'upi' | 'credit'
+  const [addonCollectedNow, setAddonCollectedNow] = useState(0);
+  const [manualAddonCollectedEdited, setManualAddonCollectedEdited] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState('');
   const [homeProofImage, setHomeProofImage] = useState('');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -862,9 +873,52 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [missedReason, setMissedReason] = useState('Customer Not Home');
   const [missedNote, setMissedNote] = useState('');
 
-  // Route & Stops tab controls
+  // Route & Stops tab controls (Location-Wise & Nearest Customer First)
   const [routeFilter, setRouteFilter] = useState('all'); // 'all' | 'pending' | 'delivered' | 'subscriptions'
   const [routeSearch, setRouteSearch] = useState('');
+  const [routeSortMode, setRouteSortMode] = useState('nearest'); // 'nearest' | 'location'
+  const [routeAreaFilter, setRouteAreaFilter] = useState('All');
+  const [partnerGps, setPartnerGps] = useState(null); // { lat, lng } | null
+  const [isLocatingGps, setIsLocatingGps] = useState(false);
+  const [routeGpsNotice, setRouteGpsNotice] = useState('');
+
+  const detectRouteGps = useCallback((silent = false) => {
+    if (!navigator.geolocation) {
+      if (!silent) {
+        setRouteGpsNotice('Browser GPS unavailable — sorted by hub proximity.');
+        setTimeout(() => setRouteGpsNotice(''), 4000);
+      }
+      return;
+    }
+    setIsLocatingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPartnerGps({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+        setIsLocatingGps(false);
+        if (!silent) {
+          setRouteGpsNotice('📍 Live GPS detected — nearest customers shown first!');
+          setTimeout(() => setRouteGpsNotice(''), 3500);
+        }
+      },
+      () => {
+        setIsLocatingGps(false);
+        if (!silent) {
+          setRouteGpsNotice(`Using ${boyArea || 'Madhapur'} hub center for nearest sorting.`);
+          setTimeout(() => setRouteGpsNotice(''), 3500);
+        }
+      },
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 120000 }
+    );
+  }, [boyArea]);
+
+  useEffect(() => {
+    if (navTab === 'route' && !partnerGps) {
+      detectRouteGps(true);
+    }
+  }, [navTab, partnerGps, detectRouteGps]);
 
   // Profile tab interactive states
   const [copiedId, setCopiedId] = useState(false);
@@ -917,16 +971,27 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     }
   }, [navTab, loadDriverHandovers]);
 
-  // WebSocket listener for real-time handover updates
+  // WebSocket listener for real-time handover & collection updates
   useEffect(() => {
     if (!wsSubscribe) return;
-    const unsub1 = wsSubscribe('CASH_HANDOVER_UPDATED', () => loadDriverHandovers());
-    const unsub2 = wsSubscribe('CASH_HANDOVER_SUBMITTED', () => loadDriverHandovers());
+    const refreshCollections = () => {
+      loadDriverHandovers();
+      if (typeof fetchDeliveries === 'function') fetchDeliveries();
+      if (typeof fetchPayments === 'function') fetchPayments();
+    };
+    const unsub1 = wsSubscribe('CASH_HANDOVER_UPDATED', refreshCollections);
+    const unsub2 = wsSubscribe('CASH_HANDOVER_SUBMITTED', refreshCollections);
+    const unsub3 = wsSubscribe('DELIVERY_UPDATED', refreshCollections);
+    const unsub4 = wsSubscribe('PAYMENT_UPDATED', refreshCollections);
+    const unsub5 = wsSubscribe('PAYMENT_RECORDED', refreshCollections);
     return () => {
       if (typeof unsub1 === 'function') unsub1();
       if (typeof unsub2 === 'function') unsub2();
+      if (typeof unsub3 === 'function') unsub3();
+      if (typeof unsub4 === 'function') unsub4();
+      if (typeof unsub5 === 'function') unsub5();
     };
-  }, [wsSubscribe, loadDriverHandovers]);
+  }, [wsSubscribe, loadDriverHandovers, fetchDeliveries, fetchPayments]);
 
   const handleOpenHandoverModal = (availableCashAmt) => {
     const totalHandedOver = driverHandovers
@@ -1201,6 +1266,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
     });
+    const unsubCustCreated = wsSubscribe('CUSTOMER_CREATED', () => {
+      loadAssignedCustomers();
+      fetchDeliveries(selectedDate, 'all', boyId);
+    });
     const unsubLoc = wsSubscribe('LOCATION_UPDATED', (payload) => {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
@@ -1211,6 +1280,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     return () => {
       if (typeof unsub === 'function') unsub();
       if (typeof unsubCust === 'function') unsubCust();
+      if (typeof unsubCustCreated === 'function') unsubCustCreated();
       if (typeof unsubLoc === 'function') unsubLoc();
     };
   }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, loadAssignedCustomers]);
@@ -1279,19 +1349,144 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       return (a.sequenceNumber || 0) - (b.sequenceNumber || 0);
     });
 
-  // Collections calculation
-  const totalCashCollected = completedList
-    .filter((d) => d.paymentMethod === 'cash')
-    .reduce((sum, d) => sum + (d.paymentAmount || d.totalAmount || 0), 0);
+  // Collections calculation (including Add-on cash/UPI payments on prepaid/credit drops)
+  const getDropCashCollected = (d) => {
+    if (!d || d.status !== 'delivered') return 0;
+    if (d.paymentMethod === 'cash') return Number(d.paymentAmount ?? d.totalAmount) || 0;
+    if (d.addonPaymentMethod === 'cash') return Number(d.addonPaidAmount ?? d.paymentAmount) || 0;
+    return 0;
+  };
 
-  const totalUpiCollected = completedList
-    .filter((d) => d.paymentMethod === 'upi')
-    .reduce((sum, d) => sum + (d.paymentAmount || d.totalAmount || 0), 0);
+  const getDropUpiCollected = (d) => {
+    if (!d || d.status !== 'delivered') return 0;
+    if (d.paymentMethod === 'upi') return Number(d.paymentAmount ?? d.totalAmount) || 0;
+    if (d.addonPaymentMethod === 'upi') return Number(d.addonPaidAmount ?? d.paymentAmount) || 0;
+    return 0;
+  };
+
+  const getDropAddonCash = (d) => {
+    if (!d || d.status !== 'delivered') return 0;
+    if (d.addonPaymentMethod === 'cash') return Number(d.addonPaidAmount) || 0;
+    return 0;
+  };
+
+  const getDropAddonUpi = (d) => {
+    if (!d || d.status !== 'delivered') return 0;
+    if (d.addonPaymentMethod === 'upi') return Number(d.addonPaidAmount) || 0;
+    return 0;
+  };
+
+  const todayIstStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+
+  const myCustomerIdSet = new Set(
+    (assignedCustomers || [])
+      .flatMap((c) => [c.customerId, c._id, c.id])
+      .filter(Boolean)
+      .map(String)
+  );
+
+  const todayPayments = (payments || []).filter((p) => {
+    const rawDt = p.paymentDate || p.createdAt;
+    if (!rawDt) return false;
+    const pIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(rawDt));
+    if (pIst !== todayIstStr) return false;
+    const pBoyId = String(p.deliveryBoyId || '');
+    const pColBy = String(p.collectedBy || '').trim().toLowerCase();
+    const pCustId = String(p.customerId || '');
+    return (
+      (boyId && pBoyId === String(boyId)) ||
+      (user?.id && pBoyId === String(user.id)) ||
+      (boyName && pColBy === boyName.trim().toLowerCase()) ||
+      myCustomerIdSet.has(pCustId)
+    );
+  });
+
+  // Non-delivery payments (Extend Subscription / Customer Direct Payments) so they don't double-count with doorstep delivery cash/UPI
+  const todayNonDeliveryPayments = todayPayments.filter((p) => {
+    if (String(p.referenceNumber || '').toUpperCase().includes('DELIVERY-')) return false;
+    const notes = String(p.notes || '');
+    if (notes.startsWith('Doorstep Add-ons:') || notes.startsWith('Doorstep Delivery')) {
+      const custId = String(p.customerId || '');
+      const alreadyInDrop = completedList.some(
+        (d) => String(d.customerId || '') === custId && (Number(d.addonPaidAmount) > 0 || Number(d.paymentAmount) > 0)
+      );
+      if (alreadyInDrop) return false;
+    }
+    return true;
+  });
+
+  const totalDeliveryCashCollected = completedList.reduce((sum, d) => sum + getDropCashCollected(d), 0);
+  const totalDeliveryUpiCollected = completedList.reduce((sum, d) => sum + getDropUpiCollected(d), 0);
+  const totalCustomerCashCollected = todayNonDeliveryPayments
+    .filter((p) => p.paymentMethod === 'cash')
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  const totalCustomerUpiCollected = todayNonDeliveryPayments
+    .filter((p) => p.paymentMethod === 'upi')
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+  const totalCashCollected = totalDeliveryCashCollected + totalCustomerCashCollected;
+  const totalUpiCollected = totalDeliveryUpiCollected + totalCustomerUpiCollected;
+  const totalAddonCashCollected = completedList.reduce((sum, d) => sum + getDropAddonCash(d), 0);
+  const totalAddonUpiCollected = completedList.reduce((sum, d) => sum + getDropAddonUpi(d), 0);
 
   const totalRevenue = totalCashCollected + totalUpiCollected;
+
+  const getCustomerCollections = (cust) => {
+    if (!cust) return { todayCash: 0, todayUpi: 0, todayTotal: 0, todayAddonsPaid: 0, allTimeTotal: 0, allTimeCash: 0, allTimeUpi: 0 };
+    const ids = new Set([cust.customerId, cust._id, cust.id].filter(Boolean).map(String));
+    const custDrops = myDeliveries.filter((d) => ids.has(String(d.customerId || '')) && d.status === 'delivered');
+    const delCash = custDrops.reduce((s, d) => s + getDropCashCollected(d), 0);
+    const delUpi = custDrops.reduce((s, d) => s + getDropUpiCollected(d), 0);
+    const todayAddonsPaid = custDrops.reduce((s, d) => s + getDropAddonCash(d) + getDropAddonUpi(d), 0);
+    const custNonDelToday = todayNonDeliveryPayments.filter((p) => ids.has(String(p.customerId || '')));
+    const nonDelCash = custNonDelToday.filter((p) => p.paymentMethod === 'cash').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const nonDelUpi = custNonDelToday.filter((p) => p.paymentMethod === 'upi').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const custAllPays = (payments || []).filter((p) => ids.has(String(p.customerId || '')));
+    const allTimeCash = custAllPays.filter((p) => p.paymentMethod === 'cash').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const allTimeUpi = custAllPays.filter((p) => p.paymentMethod === 'upi').reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const allTimePays = custAllPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const todayCash = delCash + nonDelCash;
+    const todayUpi = delUpi + nonDelUpi;
+    return {
+      todayCash,
+      todayUpi,
+      todayTotal: todayCash + todayUpi,
+      todayAddonsPaid,
+      allTimeCash: Math.max(allTimeCash, todayCash),
+      allTimeUpi: Math.max(allTimeUpi, todayUpi),
+      allTimeTotal: Math.max(allTimePays, todayCash + todayUpi),
+    };
+  };
   const totalDrops = myDeliveries.length;
   const completedCount = completedList.length;
   const progressPercent = totalDrops > 0 ? Math.round((completedList.length / totalDrops) * 100) : 0;
+
+  const selectedAddonItems = (products || [])
+    .map((p) => {
+      const pid = p._id || p.id;
+      const qty = Number(addonQuantities[pid]) || 0;
+      const price = Number(p.numericPrice ?? p.price) || 0;
+      return qty > 0
+        ? { productId: pid, name: p.name, quantity: qty, unit: p.unit || 'pack', price }
+        : null;
+    })
+    .filter(Boolean);
+
+  const addonsSubtotal = selectedAddonItems.reduce((sum, a) => sum + (a.price * a.quantity), 0);
+  const deliverBaseTotal =
+    (Number(milkQty) || 0) * (activeItem?.milkPrice || 60) +
+    ((Number(curdQty) || 0) / 500) * (activeItem?.curdPrice || 30);
+  const deliverGrandTotal = deliverBaseTotal + addonsSubtotal;
+
+  useEffect(() => {
+    if (actionType !== 'delivered' || !activeItem) return;
+    if (!manualCollectedEdited) {
+      setCollectedNow(deliverGrandTotal);
+    }
+    if (!manualAddonCollectedEdited) {
+      setAddonCollectedNow(addonsSubtotal);
+    }
+  }, [actionType, activeItem, deliverGrandTotal, addonsSubtotal, manualCollectedEdited, manualAddonCollectedEdited]);
 
   const handlePhotoCapture = async (e) => {
     const rawFile = e.target.files?.[0];
@@ -1336,15 +1531,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       alert('⚠️ You are currently OFFLINE.\n\nPlease toggle to "Online (On Duty)" in the top navigation bar to start marking deliveries.');
       return;
     }
+    if (!products || products.length === 0) {
+      fetchProducts?.();
+    }
     setActiveItem(item);
     setActionType('delivered');
     setMilkQty(item.plannedMilk || 1);
     setCurdQty(item.plannedCurd || 0);
-    setPayMode(item.paymentMethod || 'credit');
+    setPayMode(item.subscriptionEndDate ? 'advance' : (item.paymentMethod || 'credit'));
     const amt =
       (item.plannedMilk || 1) * (item.milkPrice || 60) +
       ((item.plannedCurd || 0) / 500) * (item.curdPrice || 30);
     setCollectedNow(amt);
+    setManualCollectedEdited(false);
+    setShowAddonsPicker(false);
+    setAddonSearch('');
+    setAddonQuantities({});
+    setAddonPayMode('cash');
+    setAddonCollectedNow(0);
+    setManualAddonCollectedEdited(false);
     setDeliveryNote('');
     setHomeProofImage(item.proofImage || '');
     setPhotoUploadError('');
@@ -1369,11 +1574,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     }
     if (!activeItem) return;
 
+    const isPrepaid = Boolean(activeItem.subscriptionEndDate) || payMode === 'advance';
+    const effPayMode = isPrepaid ? 'advance' : payMode;
+    const effAddonMethod = (effPayMode === 'cash' || effPayMode === 'upi') ? effPayMode : addonPayMode;
+    const paidAmt = (effPayMode === 'cash' || effPayMode === 'upi')
+      ? Number(collectedNow)
+      : ((addonsSubtotal > 0 && (effAddonMethod === 'cash' || effAddonMethod === 'upi')) ? Number(addonCollectedNow) : 0);
+
     const result = await markDelivered(activeItem.id, {
       actualMilk: Number(milkQty),
       actualCurd: Number(curdQty),
-      paymentMethod: payMode,
-      collectedAmount: payMode === 'cash' || payMode === 'upi' ? Number(collectedNow) : 0,
+      paymentMethod: effPayMode,
+      collectedAmount: (effPayMode === 'cash' || effPayMode === 'upi') ? Number(collectedNow) : 0,
+      ...(selectedAddonItems.length > 0 ? {
+        addons: selectedAddonItems,
+        addonPaymentMethod: effAddonMethod,
+        ...(effAddonMethod === 'cash' || effAddonMethod === 'upi' ? {
+          addonCollectedAmount: (effPayMode === 'cash' || effPayMode === 'upi') ? addonsSubtotal : Number(addonCollectedNow),
+        } : {}),
+      } : {}),
       notes: deliveryNote,
       actor: boyName,
       proofImage: homeProofImage || '',
@@ -1384,17 +1603,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     }
 
     // Notify Admin of completed delivery
+    const addonNote = selectedAddonItems.length > 0
+      ? ` + Add-ons (${selectedAddonItems.map((a) => `${a.name} x${a.quantity}`).join(', ')})`
+      : '';
     sendNotification({
       recipientRole: 'admin',
       title: '✅ Delivery Completed',
-      message: `${boyName} completed drop for ${activeItem.customerName} (${milkQty}L Milk) with doorstep photo proof verified. Collected ₹${collectedNow} (${payMode.toUpperCase()}).`,
+      message: `${boyName} completed drop for ${activeItem.customerName} (${milkQty}L Milk${addonNote}) with doorstep photo proof verified. Collected ₹${paidAmt}.`,
       type: 'delivery_completed',
       data: {
         customerId: activeItem.customerId,
         customerName: activeItem.customerName,
         driverName: boyName,
-        amount: collectedNow,
-        method: payMode,
+        amount: paidAmt,
+        addonsTotal: addonsSubtotal,
+        addons: selectedAddonItems,
+        method: effPayMode,
         proofImage: homeProofImage,
       },
     });
@@ -1403,6 +1627,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setActionType(null);
     setHomeProofImage('');
     setPhotoUploadError('');
+    setAddonQuantities({});
+    setShowAddonsPicker(false);
   };
 
   const handleConfirmMissed = async () => {
@@ -2909,27 +3135,50 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   <h1 style={{ margin: 0 }}>Your deliveries</h1>
                   <p style={{ margin: '2px 0 0 0' }}>{boyArea} · {pendingList.length} remaining of {totalDrops} stops</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowPartnerReportModal(true)}
-                  style={{
-                    background: '#0d5c3a',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    padding: '7px 12px',
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
-                  }}
-                >
-                  <Download size={14} />
-                  <span>Download Report (PDF)</span>
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={openAddCustomer}
+                    style={{
+                      background: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '7px 12px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(5,150,105,0.22)',
+                    }}
+                  >
+                    <UserPlus size={14} />
+                    <span>Add Customer</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPartnerReportModal(true)}
+                    style={{
+                      background: '#0d5c3a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      padding: '7px 12px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
+                    }}
+                  >
+                    <Download size={14} />
+                    <span>Download Report (PDF)</span>
+                  </button>
+                </div>
               </div>
 
               {/* DESKTOP BANNER (Hidden on Mobile) */}
@@ -2980,7 +3229,30 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={openAddCustomer}
+                    style={{
+                      background: 'linear-gradient(135deg, #059669, #047857)',
+                      color: '#ffffff',
+                      fontWeight: 700,
+                      fontSize: '0.82rem',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 4px rgba(5,150,105,0.2)',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <UserPlus size={15} />
+                    <span>Add Customer</span>
+                  </button>
+
                   <button
                     onClick={() => setNavTab('route')}
                     style={{
@@ -3670,6 +3942,71 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* TAB 2: ROUTE & STOPS (REDESIGNED WEB & MOBILE)            */}
           {/* ========================================================= */}
           {navTab === 'route' && (() => {
+            // Area Hub Coordinates Lookup (live Service Locations + defaults)
+            const fallbackAreaCoords = {
+              madhapur: [17.4483, 78.3915],
+              'hitec city': [17.4435, 78.3772],
+              kondapur: [17.4600, 78.3568],
+              gachibowli: [17.4401, 78.3489],
+              'jubilee hills': [17.4326, 78.4071],
+              'banjara hills': [17.4156, 78.4347],
+              'financial district': [17.4193, 78.3422],
+              kukatpally: [17.4948, 78.3996],
+              manikonda: [17.4021, 78.3820],
+            };
+            (locations || []).forEach((loc) => {
+              const nameKey = (loc.name || '').trim().toLowerCase();
+              const latNum = Number(loc.latitude);
+              const lngNum = Number(loc.longitude);
+              if (nameKey && latNum && lngNum) {
+                fallbackAreaCoords[nameKey] = [latNum, lngNum];
+              }
+            });
+
+            const titleCaseArea = (str) =>
+              String(str || '')
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ');
+
+            const getRefCoords = () => {
+              if (partnerGps && partnerGps.lat && partnerGps.lng) {
+                return [partnerGps.lat, partnerGps.lng];
+              }
+              const boyAreaKey = (boyArea || '').trim().toLowerCase();
+              if (fallbackAreaCoords[boyAreaKey]) return fallbackAreaCoords[boyAreaKey];
+              const partialKey = Object.keys(fallbackAreaCoords).find(
+                (k) => boyAreaKey.includes(k) || k.includes(boyAreaKey)
+              );
+              return partialKey ? fallbackAreaCoords[partialKey] : [17.4483, 78.3915];
+            };
+
+            const [refLat, refLng] = getRefCoords();
+
+            const haversineKm = (lat1, lng1, lat2, lng2) => {
+              const R = 6371.0;
+              const dLat = ((lat2 - lat1) * Math.PI) / 180;
+              const dLng = ((lng2 - lng1) * Math.PI) / 180;
+              const a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos((lat1 * Math.PI) / 180) *
+                  Math.cos((lat2 * Math.PI) / 180) *
+                  Math.sin(dLng / 2) *
+                  Math.sin(dLng / 2);
+              return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            };
+
+            const formatDist = (km) => {
+              if (km === null || km === undefined || !Number.isFinite(km)) return 'Location';
+              if (km < 1.0) {
+                const m = Math.round(km * 1000);
+                return `${m < 10 ? 10 : m} m`;
+              }
+              return `${km.toFixed(1)} km`;
+            };
+
             // Rich Route Statistics
             const totalPlannedMilk = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedMilk) || 0), 0);
             const totalPlannedCurd = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedCurd) || 0), 0);
@@ -3677,33 +4014,370 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             const totalCashDue = myDeliveries
               .filter((d) => d.status === 'pending' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid')
               .reduce((sum, d) => sum + (Number(d.totalAmount) || 0), 0);
-            const nextPending = myDeliveries.find((d) => d.status === 'pending');
 
-            // Filter & Search stops
-            const filteredStops = myDeliveries.filter((d) => {
+            // Enrich & compute distance for every stop
+            const enrichedAll = myDeliveries.map((item, rawIdx) => {
+              const customerInfo = (assignedCustomers || []).find(
+                (c) =>
+                  c.customerId === item.customerId ||
+                  c.mobile === item.customerPhone ||
+                  c._id === item.customerId ||
+                  c.id === item.customerId
+              );
+              let areaRaw = (item.customerArea || item.area || customerInfo?.area || '').trim();
+              if (!areaRaw || /^all /i.test(areaRaw)) {
+                const addrLower = (item.customerAddress || customerInfo?.address || '').toLowerCase();
+                const matchedAreaKey = Object.keys(fallbackAreaCoords).find((k) => addrLower.includes(k));
+                areaRaw = matchedAreaKey || (!/^all /i.test(boyArea || '') ? boyArea : 'Madhapur') || 'Madhapur';
+              }
+              const areaName = titleCaseArea(areaRaw);
+              const rawLat = Number(item.latitude || item.customerLatitude || customerInfo?.latitude || customerInfo?.addresses?.[0]?.latitude);
+              const rawLng = Number(item.longitude || item.customerLongitude || customerInfo?.longitude || customerInfo?.addresses?.[0]?.longitude);
+              const hubCoords = fallbackAreaCoords[areaName.toLowerCase()];
+              const stopLat = (!Number.isNaN(rawLat) && rawLat !== 0) ? rawLat : (hubCoords?.[0] || null);
+              const stopLng = (!Number.isNaN(rawLng) && rawLng !== 0) ? rawLng : (hubCoords?.[1] || null);
+              const distanceKm = (stopLat !== null && stopLng !== null)
+                ? haversineKm(refLat, refLng, stopLat, stopLng)
+                : Number.POSITIVE_INFINITY;
+
+              return {
+                item,
+                rawIdx,
+                customerInfo,
+                areaName,
+                stopLat,
+                stopLng,
+                distanceKm,
+                distLabel: formatDist(distanceKm),
+              };
+            });
+
+            // Sort strictly nearest customer first (tie-break: pending first, then name)
+            enrichedAll.sort((a, b) => {
+              if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+              const sa = a.item.status === 'pending' ? 0 : 1;
+              const sb = b.item.status === 'pending' ? 0 : 1;
+              if (sa !== sb) return sa - sb;
+              return (a.item.customerName || '').localeCompare(b.item.customerName || '');
+            });
+
+            // Location metadata ordered nearest location first!
+            const areaMetaMap = {};
+            enrichedAll.forEach((e) => {
+              if (!areaMetaMap[e.areaName]) {
+                areaMetaMap[e.areaName] = {
+                  name: e.areaName,
+                  count: 0,
+                  pendingCount: 0,
+                  minDist: e.distanceKm,
+                  minPendingDist: Number.POSITIVE_INFINITY,
+                };
+              }
+              const meta = areaMetaMap[e.areaName];
+              meta.count += 1;
+              if (e.distanceKm < meta.minDist) meta.minDist = e.distanceKm;
+              if (e.item.status === 'pending') {
+                meta.pendingCount += 1;
+                if (e.distanceKm < meta.minPendingDist) meta.minPendingDist = e.distanceKm;
+              }
+            });
+            const sortedLocations = Object.values(areaMetaMap).sort((a, b) => {
+              const da = Number.isFinite(a.minPendingDist) ? a.minPendingDist : a.minDist;
+              const db = Number.isFinite(b.minPendingDist) ? b.minPendingDist : b.minDist;
+              return da - db;
+            });
+
+            const activeAreaFilter = (routeAreaFilter === 'All' || areaMetaMap[routeAreaFilter]) ? routeAreaFilter : 'All';
+            const nearestPendingEntry = enrichedAll.find((e) => e.item.status === 'pending') || null;
+            const nextPending = nearestPendingEntry?.item || null;
+
+            // Filter & Search stops (preserving nearest-first ordering)
+            const filteredEntries = enrichedAll.filter((e) => {
+              const d = e.item;
               if (routeFilter === 'pending' && d.status !== 'pending') return false;
               if (routeFilter === 'delivered' && d.status !== 'delivered') return false;
               if (routeFilter === 'subscriptions' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid') return false;
+              if (activeAreaFilter !== 'All' && e.areaName.toLowerCase() !== activeAreaFilter.toLowerCase()) return false;
               if (routeSearch.trim()) {
                 const q = routeSearch.toLowerCase();
-                const matchName = d.customerName?.toLowerCase().includes(q);
-                const matchAddr = d.customerAddress?.toLowerCase().includes(q);
-                const matchPhone = d.customerPhone?.toLowerCase().includes(q);
-                const matchId = d.customerId?.toLowerCase().includes(q);
-                return matchName || matchAddr || matchPhone || matchId;
+                return (
+                  d.customerName?.toLowerCase().includes(q) ||
+                  d.customerAddress?.toLowerCase().includes(q) ||
+                  e.areaName.toLowerCase().includes(q) ||
+                  d.customerPhone?.toLowerCase().includes(q) ||
+                  d.customerId?.toLowerCase().includes(q)
+                );
               }
               return true;
             });
 
-            // Map navigation link for next pending stop or route territory
-            const nextLat = nextPending?.latitude || nextPending?.customerLatitude;
-            const nextLng = nextPending?.longitude || nextPending?.customerLongitude;
+            // Group stops by Location (ordered nearest location first!) for Location-Wise mode
+            const groupedLocationEntries = sortedLocations
+              .map((locMeta) => ({
+                ...locMeta,
+                stops: filteredEntries.filter((e) => e.areaName === locMeta.name),
+              }))
+              .filter((grp) => grp.stops.length > 0);
+
+            // Map navigation link for nearest pending stop
+            const nextLat = nearestPendingEntry?.stopLat;
+            const nextLng = nearestPendingEntry?.stopLng;
             const googleNavUrl = (nextLat && nextLng)
               ? `https://www.google.com/maps/dir/?api=1&destination=${nextLat},${nextLng}`
               : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(nextPending?.customerAddress || boyArea || 'Madhapur')}`;
 
+            const renderRouteStopCard = (entry, rankIdx) => {
+              const { item, rawIdx, customerInfo, areaName, stopLat, stopLng, distLabel } = entry;
+              const isDone = item.status === 'delivered';
+              const isMissed = item.status === 'not_delivered';
+              const isPending = item.status === 'pending';
+              const isNearestPending = Boolean(nearestPendingEntry && nearestPendingEntry.item === item);
+              const isSubscription = Boolean(item.subscriptionEndDate) ||
+                customerInfo?.subscription?.status === 'active' ||
+                item.paymentMethod === 'prepaid';
+              const customerPhone = item.customerPhone || customerInfo?.mobile || '';
+              const doorstepAddress = item.customerAddress || customerInfo?.address || `${areaName} Doorstep Delivery`;
+              const mapAddress = `${doorstepAddress}, ${areaName}`;
+              const mapUrl = (stopLat && stopLng)
+                ? `https://www.google.com/maps/dir/?api=1&destination=${stopLat},${stopLng}`
+                : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
+
+              return (
+                <div
+                  key={item.id || item._id || rawIdx}
+                  className="driver-customer-card"
+                  onClick={() => setSelectedRouteStop({ ...item, originalIndex: rankIdx, customerInfo })}
+                  style={{
+                    background: '#ffffff',
+                    border: isNearestPending ? '1.5px solid #059669' : '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: isMobile ? '12px 13px' : '14px 16px',
+                    boxShadow: isNearestPending ? '0 3px 10px rgba(5,150,105,0.1)' : '0 1px 3px rgba(0,0,0,0.02)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                    <div style={{ position: 'relative', flexShrink: 0 }}>
+                      <div
+                        style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '50%',
+                          background: isDone
+                            ? 'linear-gradient(135deg, #059669, #10b981)'
+                            : isMissed
+                            ? 'linear-gradient(135deg, #dc2626, #ef4444)'
+                            : isNearestPending
+                            ? 'linear-gradient(135deg, #065f46, #059669)'
+                            : 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                          color: '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '0.95rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {(item.customerName || 'C').charAt(0).toUpperCase()}
+                      </div>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          bottom: '-3px',
+                          right: '-4px',
+                          background: '#0f172a',
+                          color: '#ffffff',
+                          fontSize: '0.62rem',
+                          fontWeight: 800,
+                          padding: '1px 5px',
+                          borderRadius: '999px',
+                          border: '1.5px solid #ffffff',
+                        }}
+                      >
+                        #{rankIdx + 1}
+                      </span>
+                    </div>
+
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.94rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.customerName}
+                        </span>
+                        {isNearestPending && (
+                          <span
+                            style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 900,
+                              padding: '1px 6px',
+                              borderRadius: '5px',
+                              background: '#dcfce7',
+                              color: '#047857',
+                              border: '1px solid #86efac',
+                            }}
+                          >
+                            NEAREST
+                          </span>
+                        )}
+                        {isSubscription && (
+                          <span
+                            style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 800,
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: '#fffbeb',
+                              color: '#b45309',
+                              border: '1px solid #fde68a',
+                            }}
+                          >
+                            Prepaid
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 800,
+                            color: '#1d4ed8',
+                            background: '#eff6ff',
+                            padding: '1px 6px',
+                            borderRadius: '5px',
+                            border: '1px solid #bfdbfe',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '3px',
+                          }}
+                        >
+                          <Navigation size={10} />
+                          <span>{distLabel}</span>
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            color: '#475569',
+                            background: '#f1f5f9',
+                            padding: '1px 6px',
+                            borderRadius: '5px',
+                          }}
+                        >
+                          {areaName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            color: '#059669',
+                            background: '#ecfdf5',
+                            padding: '1px 6px',
+                            borderRadius: '5px',
+                            border: '1px solid #d1fae5',
+                          }}
+                        >
+                          🥛 {item.actualMilk || item.plannedMilk || 1}L
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', fontSize: '0.73rem', color: '#64748b' }}>
+                        <MapPin size={11} color="#94a3b8" style={{ flexShrink: 0 }} />
+                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {doorstepAddress}{customerPhone ? ` · ${customerPhone}` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <a
+                      href={mapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      title="Navigate to customer"
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        borderRadius: '8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1d4ed8',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      <Navigation size={14} />
+                    </a>
+                    {isPending ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDeliverModal(item);
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: '#059669',
+                          color: '#ffffff',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Check size={13} />
+                        <span>Deliver</span>
+                      </button>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '3px 8px',
+                          borderRadius: '999px',
+                          background: isDone ? '#dcfce7' : '#fee2e2',
+                          color: isDone ? '#166534' : '#991b1b',
+                        }}
+                      >
+                        {isDone ? '✓ Done' : '✕ Skipped'}
+                      </span>
+                    )}
+                    {!isMobile && <ChevronRight size={18} color="#94a3b8" />}
+                  </div>
+                </div>
+              );
+            };
+
             return (
               <div className="driver-route-page" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '16px' }}>
+                {routeGpsNotice && (
+                  <div
+                    style={{
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
+                      borderRadius: '10px',
+                      padding: '8px 12px',
+                      fontSize: '0.78rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {routeGpsNotice}
+                  </div>
+                )}
+
                 {/* 1. Header Banner */}
                 <div
                   className="driver-route-header-banner"
@@ -3731,28 +4405,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           borderRadius: '999px',
                           fontSize: '0.72rem',
                           fontWeight: 800,
-                          background: '#ecfdf5',
-                          color: '#065f46',
-                          border: '1px solid #a7f3d0',
+                          background: partnerGps ? '#ecfdf5' : '#eff6ff',
+                          color: partnerGps ? '#065f46' : '#1d4ed8',
+                          border: `1px solid ${partnerGps ? '#a7f3d0' : '#bfdbfe'}`,
                         }}
                       >
-                        <MapPin size={11} /> {boyArea || 'Madhapur'} Route
-                      </span>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '999px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          background: '#eff6ff',
-                          color: '#1d4ed8',
-                          border: '1px solid #bfdbfe',
-                        }}
-                      >
-                        <Clock size={11} /> 05:00 – 07:30 AM
+                        <Navigation size={11} /> {partnerGps ? 'Live GPS Nearest Sort' : `${boyArea || 'Madhapur'} Hub Sort`}
                       </span>
                       <span
                         style={{
@@ -3773,14 +4431,37 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </div>
 
                     <h1 className="driver-route-header-title" style={{ fontSize: isMobile ? '1.12rem' : '1.28rem', fontWeight: 800, color: '#0f172a', margin: '2px 0 0 0' }}>
-                      Today’s Route
+                      Location-Wise Nearest Route
                     </h1>
-                    <p className="driver-route-header-desc" style={{ color: '#64748b', fontSize: '0.84rem', margin: '3px 0 0 0', lineHeight: 1.45 }}>
-                      {myDeliveries.length} planned stops in {boyArea || 'your assigned area'}.
+                    <p className="driver-route-header-desc" style={{ color: '#64748b', fontSize: '0.82rem', margin: '3px 0 0 0', lineHeight: 1.45 }}>
+                      {sortedLocations.length} locations • {myDeliveries.length} drops sorted closest customer first.
                     </p>
                   </div>
 
-                  <div className="driver-route-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div className="driver-route-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => detectRouteGps(false)}
+                      disabled={isLocatingGps}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '5px',
+                        padding: isMobile ? '9px 11px' : '9px 12px',
+                        borderRadius: '10px',
+                        border: `1px solid ${partnerGps ? '#86efac' : '#bfdbfe'}`,
+                        background: partnerGps ? '#ecfdf5' : '#eff6ff',
+                        color: partnerGps ? '#065f46' : '#1d4ed8',
+                        fontSize: '0.78rem',
+                        fontWeight: 800,
+                        cursor: isLocatingGps ? 'wait' : 'pointer',
+                      }}
+                    >
+                      <MapPin size={14} />
+                      <span>{isLocatingGps ? 'Locating...' : (partnerGps ? 'Refresh GPS' : 'Use Live GPS')}</span>
+                    </button>
+
                     <a
                       href={googleNavUrl}
                       target="_blank"
@@ -3791,20 +4472,19 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '6px',
-                        padding: isMobile ? '10px 14px' : '9px 14px',
+                        padding: isMobile ? '9px 12px' : '9px 14px',
                         borderRadius: '10px',
                         background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                         color: '#ffffff',
-                        fontSize: '0.84rem',
+                        fontSize: '0.8rem',
                         fontWeight: 800,
                         textDecoration: 'none',
                         boxShadow: '0 2px 8px rgba(5, 150, 105, 0.22)',
-                        cursor: 'pointer',
                         flex: isMobile ? '1' : 'initial',
                       }}
                     >
-                      <Navigation size={15} />
-                      <span>Start GPS Navigation</span>
+                      <Navigation size={14} />
+                      <span>Navigate Nearest</span>
                     </a>
 
                     <button
@@ -3816,15 +4496,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '6px',
-                        padding: isMobile ? '10px 12px' : '9px 12px',
+                        padding: isMobile ? '9px 10px' : '9px 12px',
                         borderRadius: '10px',
                         border: '1px solid #cbd5e1',
                         background: '#ffffff',
                         color: '#475569',
-                        fontSize: '0.82rem',
+                        fontSize: '0.8rem',
                         fontWeight: 700,
                         cursor: 'pointer',
-                        flexShrink: 0,
                       }}
                     >
                       <RefreshCw size={14} className={isRefreshing ? 'spin-animation' : ''} />
@@ -3833,7 +4512,88 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 </div>
 
-                {/* 2. Route Metrics Overview (2x2 Grid on Mobile, 4-in-a-row on Desktop) */}
+                {/* Nearest Next Pending Stop Hero Card */}
+                {nearestPendingEntry && !routeSearch.trim() && (
+                  <div
+                    style={{
+                      background: 'linear-gradient(135deg, #064e3b 0%, #059669 100%)',
+                      borderRadius: '14px',
+                      padding: isMobile ? '12px 14px' : '16px 18px',
+                      color: '#ffffff',
+                      display: 'flex',
+                      flexDirection: isMobile ? 'column' : 'row',
+                      justifyContent: 'space-between',
+                      alignItems: isMobile ? 'stretch' : 'center',
+                      gap: '12px',
+                      boxShadow: '0 4px 12px rgba(5, 150, 105, 0.22)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 900 }}>
+                          🧭 NEAREST NEXT • {nearestPendingEntry.distLabel.toUpperCase()} AWAY
+                        </span>
+                        <span style={{ background: '#ffffff', color: '#065f46', padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800 }}>
+                          📍 {nearestPendingEntry.areaName}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 900 }}>
+                        {nearestPendingEntry.item.customerName} · {nearestPendingEntry.item.plannedMilk || 1}L Milk
+                      </div>
+                      <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: '2px' }}>
+                        {nearestPendingEntry.item.customerAddress || `${nearestPendingEntry.areaName} Doorstep`}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                      <a
+                        href={googleNavUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          flex: isMobile ? 1 : 'initial',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '5px',
+                          padding: '8px 12px',
+                          borderRadius: '9px',
+                          border: '1px solid rgba(255,255,255,0.55)',
+                          color: '#ffffff',
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <Navigation size={13} />
+                        <span>Navigate</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => openDeliverModal(nearestPendingEntry.item)}
+                        style={{
+                          flex: isMobile ? 1 : 'initial',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '5px',
+                          padding: '8px 14px',
+                          borderRadius: '9px',
+                          border: 'none',
+                          background: '#ffffff',
+                          color: '#065f46',
+                          fontSize: '0.76rem',
+                          fontWeight: 900,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <Check size={14} />
+                        <span>Deliver Now</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Route Metrics Overview */}
                 <div
                   className="driver-route-kpi-grid"
                   style={{
@@ -3842,274 +4602,230 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     gap: isMobile ? '8px' : '12px',
                   }}
                 >
-                  {/* Stops Card */}
-                  <div
-                    className="driver-route-kpi-card driver-route-metric-stops"
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: isMobile ? '12px' : '14px',
-                      padding: isMobile ? '10px 12px' : '14px 16px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
-                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Total stops</span>
-                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <MapPin size={isMobile ? 13 : 16} />
-                      </div>
+                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Locations / Stops</span>
+                      <MapPin size={15} color="#059669" />
                     </div>
-                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
-                      {myDeliveries.length}
-                    </div>
-                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {boyArea || 'Madhapur'} sequence
-                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{myDeliveries.length}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{sortedLocations.length} active locations</div>
                   </div>
 
-                  {/* Pending Drops */}
-                  <div
-                    className="driver-route-kpi-card driver-route-metric-remaining"
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: isMobile ? '12px' : '14px',
-                      padding: isMobile ? '10px 12px' : '14px 16px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
-                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Remaining</span>
-                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#fffbeb', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Clock size={isMobile ? 13 : 16} />
-                      </div>
+                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Remaining</span>
+                      <Clock size={15} color="#d97706" />
                     </div>
-                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: pendingList.length > 0 ? '#d97706' : '#059669', lineHeight: 1.1 }}>
-                      {pendingList.length}
-                    </div>
-                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {completedList.length} done ({progressPercent}%)
-                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: pendingList.length > 0 ? '#d97706' : '#059669' }}>{pendingList.length}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>{completedList.length} done ({progressPercent}%)</div>
                   </div>
 
-                  {/* Milk Volume */}
-                  <div
-                    className="driver-route-kpi-card driver-route-metric-load"
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: isMobile ? '12px' : '14px',
-                      padding: isMobile ? '10px 12px' : '14px 16px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
-                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Milk load</span>
-                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Truck size={isMobile ? 13 : 16} />
-                      </div>
+                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Milk load</span>
+                      <Truck size={15} color="#2563eb" />
                     </div>
-                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
-                      {totalPlannedMilk} L
-                    </div>
-                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {totalPlannedCurd > 0 ? `+ ${totalPlannedCurd}g Curd` : 'Fresh Cow Milk'}
-                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{totalPlannedMilk} L</div>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{totalPlannedCurd > 0 ? `+ ${totalPlannedCurd}g Curd` : 'Fresh Cow Milk'}</div>
                   </div>
 
-                  {/* Prepaid & Collections */}
-                  <div
-                    className="driver-route-kpi-card driver-route-metric-collections"
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: isMobile ? '12px' : '14px',
-                      padding: isMobile ? '10px 12px' : '14px 16px',
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMobile ? '3px' : '8px' }}>
-                      <span style={{ fontSize: isMobile ? '0.68rem' : '0.75rem', fontWeight: 800, color: '#64748b' }}>Collections</span>
-                      <div style={{ width: isMobile ? '26px' : '32px', height: isMobile ? '26px' : '32px', borderRadius: '7px', background: '#f5f3ff', color: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Wallet size={isMobile ? 13 : 16} />
-                      </div>
+                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Collections</span>
+                      <Wallet size={15} color="#7c3aed" />
                     </div>
-                    <div className="driver-route-kpi-val" style={{ fontSize: isMobile ? '1.25rem' : '1.4rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1 }}>
-                      ₹{totalCashDue}
-                    </div>
-                    <div className="driver-route-kpi-sub" style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 700, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {subscriptionsList.length} Prepaid Sub{subscriptionsList.length !== 1 ? 's' : ''}
-                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>₹{totalCashDue}</div>
+                    <div style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 700 }}>{subscriptionsList.length} Prepaid Subs</div>
                   </div>
                 </div>
 
-                {/* 3. Route Progress Bar */}
-                <div
-                  className="driver-route-progress-card"
-                  style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: isMobile ? '12px' : '14px',
-                    padding: isMobile ? '10px 12px' : '12px 16px',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <div style={{ fontSize: isMobile ? '0.78rem' : '0.82rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <CheckCircle2 size={isMobile ? 14 : 16} color="#059669" />
-                      <span>Route progress</span>
-                    </div>
-                    <span style={{ fontSize: isMobile ? '0.76rem' : '0.8rem', fontWeight: 800, color: '#059669' }}>
-                      {progressPercent}% Complete
-                    </span>
-                  </div>
-                  <div style={{ height: '6px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${progressPercent}%`,
-                        background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                        borderRadius: '999px',
-                        transition: 'width 0.4s ease',
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '5px', fontSize: '0.72rem', color: '#64748b' }}>
-                    <span>{completedList.length} drops finished</span>
-                    <span>{nextPending ? `Next: #${myDeliveries.indexOf(nextPending) + 1} ${nextPending.customerName}` : 'All drops completed! 🎉'}</span>
-                  </div>
-                </div>
-
-                {/* 4. Filter Tabs & Search Controls */}
+                {/* 3. Mode Toggle (Nearest First vs Location Wise) + Location Chips + Search */}
                 <div
                   className="driver-route-filter-bar"
                   style={{
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
                     borderRadius: isMobile ? '12px' : '14px',
-                    padding: isMobile ? '8px 10px' : '10px 14px',
+                    padding: isMobile ? '10px' : '12px 14px',
                     display: 'flex',
-                    flexDirection: isMobile ? 'column' : 'row',
-                    alignItems: isMobile ? 'stretch' : 'center',
-                    justifyContent: 'space-between',
-                    gap: isMobile ? '8px' : '10px',
+                    flexDirection: 'column',
+                    gap: '10px',
                     boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
                   }}
                 >
-                  {/* Category Pills (Horizontal Scroll on Mobile) */}
-                  <div
-                    className="driver-route-filter-scroll"
-                    style={{
-                      display: 'flex',
-                      gap: '6px',
-                      overflowX: 'auto',
-                      paddingBottom: '2px',
-                      scrollbarWidth: 'none',
-                      WebkitOverflowScrolling: 'touch',
-                      width: isMobile ? '100%' : 'auto',
-                    }}
-                  >
-                    {[
-                      { id: 'pending', label: `Pending (${pendingList.length})` },
-                      { id: 'delivered', label: `Completed (${completedList.length})` },
-                      { id: 'subscriptions', label: `Prepaid (${subscriptionsList.length})` },
-                      { id: 'all', label: `All Stops (${myDeliveries.length})` },
-                    ].map((btn) => {
-                      const isSel = routeFilter === btn.id;
-                      return (
-                        <button
-                          key={btn.id}
-                          type="button"
-                          onClick={() => setRouteFilter(btn.id)}
-                          style={{
-                            padding: isMobile ? '5px 11px' : '6px 12px',
-                            borderRadius: '8px',
-                            fontSize: isMobile ? '0.74rem' : '0.78rem',
-                            fontWeight: isSel ? 800 : 600,
-                            border: '1px solid',
-                            borderColor: isSel ? '#059669' : '#cbd5e1',
-                            background: isSel ? '#ecfdf5' : '#ffffff',
-                            color: isSel ? '#065f46' : '#475569',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap',
-                            transition: 'all 0.15s ease',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {btn.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Search Bar */}
-                  <div
-                    className="driver-route-search-wrap"
-                    style={{
-                      position: 'relative',
-                      minWidth: isMobile ? '100%' : '180px',
-                      flex: isMobile ? 'initial' : '1',
-                      maxWidth: isMobile ? '100%' : '300px',
-                      width: isMobile ? '100%' : 'auto',
-                    }}
-                  >
-                    <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
-                    <input
-                      type="text"
-                      placeholder="Search stop, flat, street, phone..."
-                      value={routeSearch}
-                      onChange={(e) => setRouteSearch(e.target.value)}
+                  {/* Sort Mode Switcher */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setRouteSortMode('nearest')}
                       style={{
-                        width: '100%',
-                        padding: '6px 10px 6px 30px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        background: '#f8fafc',
-                        fontSize: '0.82rem',
-                        color: '#0f172a',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* 5. Route Stops Sequence List */}
-                {filteredStops.length === 0 ? (
-                  <div
-                    style={{
-                      background: '#ffffff',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '48px 24px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '52px',
-                        height: '52px',
-                        borderRadius: '50%',
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        color: '#94a3b8',
+                        padding: '8px 10px',
+                        borderRadius: '9px',
+                        border: `1.5px solid ${routeSortMode === 'nearest' ? '#059669' : '#cbd5e1'}`,
+                        background: routeSortMode === 'nearest' ? '#059669' : '#ffffff',
+                        color: routeSortMode === 'nearest' ? '#ffffff' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.78rem',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        margin: '0 auto 12px auto',
+                        gap: '6px',
+                        cursor: 'pointer',
                       }}
                     >
-                      <MapPin size={24} />
+                      <Navigation size={14} />
+                      <span>Nearest First</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRouteSortMode('location')}
+                      style={{
+                        padding: '8px 10px',
+                        borderRadius: '9px',
+                        border: `1.5px solid ${routeSortMode === 'location' ? '#059669' : '#cbd5e1'}`,
+                        background: routeSortMode === 'location' ? '#059669' : '#ffffff',
+                        color: routeSortMode === 'location' ? '#ffffff' : '#475569',
+                        fontWeight: 800,
+                        fontSize: '0.78rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <MapPin size={14} />
+                      <span>Location Wise</span>
+                    </button>
+                  </div>
+
+                  {/* Location Filter Chips Ordered Nearest Location First */}
+                  {sortedLocations.length > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '6px',
+                        overflowX: 'auto',
+                        scrollbarWidth: 'none',
+                        paddingBottom: '2px',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setRouteAreaFilter('All')}
+                        style={{
+                          padding: '5px 11px',
+                          borderRadius: '999px',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          border: `1px solid ${activeAreaFilter === 'All' ? '#059669' : '#cbd5e1'}`,
+                          background: activeAreaFilter === 'All' ? '#ecfdf5' : '#f8fafc',
+                          color: activeAreaFilter === 'All' ? '#065f46' : '#475569',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        All Locations ({enrichedAll.length})
+                      </button>
+                      {sortedLocations.map((loc) => {
+                        const dKm = Number.isFinite(loc.minPendingDist) ? loc.minPendingDist : loc.minDist;
+                        const isSel = activeAreaFilter.toLowerCase() === loc.name.toLowerCase();
+                        return (
+                          <button
+                            key={loc.name}
+                            type="button"
+                            onClick={() => setRouteAreaFilter(loc.name)}
+                            style={{
+                              padding: '5px 11px',
+                              borderRadius: '999px',
+                              fontSize: '0.74rem',
+                              fontWeight: 800,
+                              border: `1px solid ${isSel ? '#059669' : '#cbd5e1'}`,
+                              background: isSel ? '#ecfdf5' : '#ffffff',
+                              color: isSel ? '#065f46' : '#475569',
+                              whiteSpace: 'nowrap',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                            }}
+                          >
+                            📍 {loc.name} · {formatDist(dKm)} ({loc.count})
+                          </button>
+                        );
+                      })}
                     </div>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+                  )}
+
+                  {/* Status Pills + Search */}
+                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+                      {[
+                        { id: 'pending', label: `Pending (${pendingList.length})` },
+                        { id: 'delivered', label: `Completed (${completedList.length})` },
+                        { id: 'subscriptions', label: `Prepaid (${subscriptionsList.length})` },
+                        { id: 'all', label: `All Stops (${myDeliveries.length})` },
+                      ].map((btn) => {
+                        const isSel = routeFilter === btn.id;
+                        return (
+                          <button
+                            key={btn.id}
+                            type="button"
+                            onClick={() => setRouteFilter(btn.id)}
+                            style={{
+                              padding: '5px 11px',
+                              borderRadius: '8px',
+                              fontSize: '0.74rem',
+                              fontWeight: isSel ? 800 : 600,
+                              border: `1px solid ${isSel ? '#059669' : '#cbd5e1'}`,
+                              background: isSel ? '#ecfdf5' : '#ffffff',
+                              color: isSel ? '#065f46' : '#475569',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {btn.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ position: 'relative', flex: isMobile ? 'initial' : '1', maxWidth: isMobile ? '100%' : '300px' }}>
+                      <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
+                      <input
+                        type="text"
+                        placeholder="Search stop, location, address, phone..."
+                        value={routeSearch}
+                        onChange={(e) => setRouteSearch(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px 6px 30px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: '#f8fafc',
+                          fontSize: '0.82rem',
+                          color: '#0f172a',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Route Stops List (Nearest First OR Location Wise Grouped) */}
+                {filteredEntries.length === 0 ? (
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '44px 20px', textAlign: 'center' }}>
+                    <MapPin size={28} color="#94a3b8" style={{ marginBottom: '8px' }} />
+                    <h3 style={{ fontSize: '1.02rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
                       No Matching Stops Found
                     </h3>
-                    <p style={{ color: '#64748b', fontSize: '0.82rem', maxWidth: '340px', margin: '0 auto 14px auto' }}>
-                      {routeSearch.trim() ? `No route stops match "${routeSearch}".` : 'No stops in this filter category.'}
+                    <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 14px 0' }}>
+                      {routeSearch.trim() ? `No route stops match "${routeSearch}".` : 'No stops in this location or status filter.'}
                     </p>
                     <button
                       type="button"
-                      onClick={() => { setRouteFilter('all'); setRouteSearch(''); }}
+                      onClick={() => { setRouteFilter('all'); setRouteAreaFilter('All'); setRouteSearch(''); }}
                       style={{
                         padding: '7px 14px',
                         borderRadius: '8px',
@@ -4121,215 +4837,52 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         cursor: 'pointer',
                       }}
                     >
-                      Reset Filter
+                      Reset Filters
                     </button>
                   </div>
-                ) : (
-                  <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {filteredStops.map((item) => {
-                      const originalIndex = myDeliveries.indexOf(item);
-                      const isDone = item.status === 'delivered';
-                      const isMissed = item.status === 'not_delivered';
-                      const isPending = item.status === 'pending';
-
-                      // Enrich with assignedCustomers record
-                      const customerInfo = (assignedCustomers || []).find(
-                        (c) => c.customerId === item.customerId ||
-                               c.mobile === item.customerPhone ||
-                               c._id === item.customerId ||
-                               c.id === item.customerId
-                      );
-
-                      const isSubscription = Boolean(item.subscriptionEndDate) ||
-                        customerInfo?.subscription?.status === 'active' ||
-                        item.paymentMethod === 'prepaid';
-
-                      const subDateText = item.subscriptionEndDate
-                        ? new Date(item.subscriptionEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : customerInfo?.subscription?.endDate
-                        ? new Date(customerInfo.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                        : '';
-
-                      const customerPhone = item.customerPhone || customerInfo?.mobile || '';
-                      const doorstepAddress = item.customerAddress || customerInfo?.address || 'Doorstep Delivery';
-                      const landmark = item.landmark || customerInfo?.landmark || '';
-                      const specialNotes = item.deliveryNotes || customerInfo?.deliveryNotes || customerInfo?.notes || '';
-                      const stopLat = item.latitude || item.customerLatitude || customerInfo?.latitude;
-                      const stopLng = item.longitude || item.customerLongitude || customerInfo?.longitude;
-                      const mapAddress = `${doorstepAddress}, ${item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}`;
-                      const mapUrl = (stopLat && stopLng)
-                        ? `https://www.google.com/maps/dir/?api=1&destination=${stopLat},${stopLng}`
-                        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapAddress)}`;
-
+                ) : routeSortMode === 'location' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {groupedLocationEntries.map((group) => {
+                      const closestLabel = group.stops[0]?.distLabel || 'Location';
+                      const pendingLeft = group.stops.filter((s) => s.item.status === 'pending').length;
                       return (
-                        <div
-                          key={item.id || item._id}
-                          className="driver-customer-card"
-                          onClick={() => setSelectedRouteStop({ ...item, originalIndex, customerInfo })}
-                          style={{
-                            background: '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '14px',
-                            padding: '14px 16px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '12px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                            {/* Avatar with Sequence Badge */}
-                            <div style={{ position: 'relative', flexShrink: 0 }}>
-                              <div
-                                style={{
-                                  width: '42px',
-                                  height: '42px',
-                                  borderRadius: '50%',
-                                  background: isDone
-                                    ? 'linear-gradient(135deg, #059669, #10b981)'
-                                    : isMissed
-                                    ? 'linear-gradient(135deg, #dc2626, #ef4444)'
-                                    : 'linear-gradient(135deg, #2563eb, #3b82f6)',
-                                  color: '#ffffff',
-                                  fontWeight: 800,
-                                  fontSize: '1rem',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-                                }}
-                              >
-                                {(item.customerName || 'C').charAt(0).toUpperCase()}
-                              </div>
-                              <span
-                                style={{
-                                  position: 'absolute',
-                                  bottom: '-3px',
-                                  right: '-4px',
-                                  background: '#0f172a',
-                                  color: '#ffffff',
-                                  fontSize: '0.62rem',
-                                  fontWeight: 800,
-                                  padding: '1px 5px',
-                                  borderRadius: '999px',
-                                  border: '1.5px solid #ffffff',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                                }}
-                              >
-                                #{originalIndex + 1}
+                        <div key={group.name} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div
+                            style={{
+                              background: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              borderRadius: '10px',
+                              padding: '9px 13px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '6px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 900, fontSize: '0.88rem', color: '#065f46' }}>
+                                <MapPin size={15} color="#059669" />
+                                {group.name}
+                              </span>
+                              <span style={{ background: '#ffffff', color: '#1d4ed8', fontSize: '0.7rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px' }}>
+                                Nearest: {closestLabel}
                               </span>
                             </div>
-
-                            {/* Name, ID, Area & Plan Pill */}
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {item.customerName}
-                                </span>
-                                {(item.customerId || customerInfo?.customerId) && (
-                                  <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                                    {item.customerId || customerInfo?.customerId}
-                                  </span>
-                                )}
-                                {isSubscription && (
-                                  <span
-                                    style={{
-                                      fontSize: '0.65rem',
-                                      fontWeight: 800,
-                                      padding: '1px 6px',
-                                      borderRadius: '4px',
-                                      background: '#fffbeb',
-                                      color: '#b45309',
-                                      border: '1px solid #fde68a',
-                                    }}
-                                  >
-                                    Prepaid
-                                  </span>
-                                )}
-                              </div>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                  <MapPin size={11} color="#94a3b8" />
-                                  <span>{doorstepAddress}</span>
-                                </span>
-                                {customerPhone && (
-                                  <>
-                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>•</span>
-                                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
-                                      {customerPhone}
-                                    </span>
-                                  </>
-                                )}
-                                <span
-                                  style={{
-                                    fontSize: '0.7rem',
-                                    fontWeight: 700,
-                                    color: '#059669',
-                                    background: '#ecfdf5',
-                                    padding: '2px 7px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #d1fae5',
-                                  }}
-                                >
-                                  🥛 {item.actualMilk || item.plannedMilk || 1}L Milk
-                                </span>
-                              </div>
-                            </div>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#047857' }}>
+                              {pendingLeft}/{group.stops.length} left
+                            </span>
                           </div>
-
-                          {/* Right: Quick Action / Status Pill + Chevron */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                            {isPending ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openDeliverModal(item);
-                                }}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  padding: '5px 11px',
-                                  borderRadius: '8px',
-                                  border: 'none',
-                                  background: '#059669',
-                                  color: '#ffffff',
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  cursor: 'pointer',
-                                  boxShadow: '0 1px 3px rgba(5,150,105,0.25)',
-                                }}
-                              >
-                                <Check size={13} />
-                                <span>Deliver</span>
-                              </button>
-                            ) : (
-                              <span
-                                style={{
-                                  fontSize: '0.72rem',
-                                  fontWeight: 700,
-                                  padding: '3px 9px',
-                                  borderRadius: '999px',
-                                  background: isDone ? '#dcfce7' : '#fee2e2',
-                                  color: isDone ? '#166534' : '#991b1b',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '3px',
-                                }}
-                              >
-                                {isDone ? '✓ Delivered' : '✕ Skipped'}
-                              </span>
-                            )}
-                            <ChevronRight size={18} color="#94a3b8" />
+                          <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {group.stops.map((entry, idx) => renderRouteStopCard(entry, idx))}
                           </div>
                         </div>
                       );
                     })}
+                  </div>
+                ) : (
+                  <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {filteredEntries.map((entry, idx) => renderRouteStopCard(entry, idx))}
                   </div>
                 )}
               </div>
@@ -5077,6 +5630,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           >
                             {remainingCashInHand > 0 ? 'To deposit at counter' : '✓ All cash handed over'}
                           </div>
+                          {totalAddonCashCollected > 0 && (
+                            <div
+                              style={{
+                                marginTop: '5px',
+                                display: 'inline-block',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                color: '#92400e',
+                                background: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                borderRadius: '6px',
+                                padding: '2px 6px',
+                              }}
+                            >
+                              Includes +₹{totalAddonCashCollected.toLocaleString()} Add-ons Cash
+                            </div>
+                          )}
                         </div>
 
                         {/* UPI Direct Card */}
@@ -5097,6 +5667,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '3px' }}>
                             Direct in Dairy account
                           </div>
+                          {totalAddonUpiCollected > 0 && (
+                            <div
+                              style={{
+                                marginTop: '5px',
+                                display: 'inline-block',
+                                fontSize: '0.66rem',
+                                fontWeight: 800,
+                                color: '#1d4ed8',
+                                background: '#eff6ff',
+                                border: '1px solid #bfdbfe',
+                                borderRadius: '6px',
+                                padding: '2px 6px',
+                              }}
+                            >
+                              Includes +₹{totalAddonUpiCollected.toLocaleString()} Add-ons UPI
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -5126,6 +5713,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           </div>
                           <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', marginTop: '2px', lineHeight: 1.1 }}>
                             ₹{totalRevenue.toLocaleString()}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857', marginTop: '3px' }}>
+                            Cash ₹{totalCashCollected.toLocaleString()} • UPI ₹{totalUpiCollected.toLocaleString()}
+                            {totalCustomerCashCollected + totalCustomerUpiCollected > 0
+                              ? ` (+₹${(totalCustomerCashCollected + totalCustomerUpiCollected).toLocaleString()} Sub/Customer)`
+                              : ''}
                           </div>
                         </div>
                         <div
@@ -5300,6 +5893,163 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   );
                 })()}
               </div>
+
+              {/* Today's Cash & Add-on Collections Breakdown */}
+              {(() => {
+                const paidDropItems = completedList
+                  .map((d) => {
+                    const cashAmt = getDropCashCollected(d);
+                    const upiAmt = getDropUpiCollected(d);
+                    const addonCashAmt = getDropAddonCash(d);
+                    const addonUpiAmt = getDropAddonUpi(d);
+                    return { d, cashAmt, upiAmt, addonCashAmt, addonUpiAmt, totalCollected: cashAmt + upiAmt };
+                  })
+                  .filter((item) => item.totalCollected > 0 || (Array.isArray(item.d.addons) && item.d.addons.length > 0));
+
+                return (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '16px',
+                      padding: '18px 16px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a' }}>
+                          Today&apos;s Cash &amp; Add-on Collections
+                        </h4>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
+                          Updates live as deliveries &amp; doorstep add-ons are collected
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          background: '#ecfdf5',
+                          color: '#047857',
+                          fontSize: '0.72rem',
+                          fontWeight: 800,
+                          padding: '3px 9px',
+                          borderRadius: '999px',
+                        }}
+                      >
+                        {paidDropItems.length + todayNonDeliveryPayments.length} entry(s)
+                      </span>
+                    </div>
+
+                    {paidDropItems.length === 0 && todayNonDeliveryPayments.length === 0 ? (
+                      <div
+                        style={{
+                          padding: '18px 12px',
+                          textAlign: 'center',
+                          color: '#94a3b8',
+                          fontSize: '0.8rem',
+                          background: '#f8fafc',
+                          borderRadius: '10px',
+                          border: '1px dashed #e2e8f0',
+                        }}
+                      >
+                        No cash or UPI collections recorded yet on today&apos;s route.
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {todayNonDeliveryPayments.map((p, idx) => {
+                          const pMethod = String(p.paymentMethod || 'cash').toLowerCase();
+                          return (
+                            <div
+                              key={p.id || p._id || `pay-${idx}`}
+                              style={{
+                                padding: '11px 12px',
+                                background: '#f0fdf4',
+                                border: '1px solid #bbf7d0',
+                                borderRadius: '10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px',
+                              }}
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                                    {p.customerName || 'Customer'}
+                                  </strong>
+                                  <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: pMethod === 'cash' ? '#dcfce7' : '#eff6ff', color: pMethod === 'cash' ? '#047857' : '#1d4ed8' }}>
+                                    {pMethod.toUpperCase()} ₹{Number(p.amount) || 0}
+                                  </span>
+                                </div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 650, color: '#065f46', marginTop: '3px' }}>
+                                  {p.notes || 'Customer / Subscription Payment'}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#059669' }}>
+                                  ₹{Number(p.amount) || 0}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', color: '#64748b', textTransform: 'uppercase' }}>
+                                  {pMethod}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {paidDropItems.map(({ d, cashAmt, upiAmt, addonCashAmt, addonUpiAmt, totalCollected }, idx) => {
+                          const addonsList = Array.isArray(d.addons) ? d.addons : [];
+                          return (
+                            <div
+                              key={d.id || d._id || idx}
+                              style={{
+                                padding: '11px 12px',
+                                background: '#f8fafc',
+                                border: addonCashAmt > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0',
+                                borderRadius: '10px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '10px',
+                              }}
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                                    {d.customerName || 'Customer'}
+                                  </strong>
+                                  {cashAmt > 0 && (
+                                    <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: '#dcfce7', color: '#047857' }}>
+                                      CASH ₹{cashAmt}
+                                    </span>
+                                  )}
+                                  {upiAmt > 0 && (
+                                    <span style={{ fontSize: '0.66rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: '#eff6ff', color: '#1d4ed8' }}>
+                                      UPI ₹{upiAmt}
+                                    </span>
+                                  )}
+                                </div>
+                                {addonsList.length > 0 && (
+                                  <div style={{ fontSize: '0.73rem', fontWeight: 700, color: '#92400e', marginTop: '3px' }}>
+                                    + Add-ons: {addonsList.map((a) => `${a.name} × ${a.quantity}`).join(', ')} (₹{Number(d.addonsTotal || 0)}
+                                    {addonCashAmt > 0 ? ` · Cash ₹${addonCashAmt}` : addonUpiAmt > 0 ? ` · UPI ₹${addonUpiAmt}` : ' · Credit'})
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                <div style={{ fontSize: '0.96rem', fontWeight: 900, color: totalCollected > 0 ? '#059669' : '#64748b' }}>
+                                  ₹{totalCollected}
+                                </div>
+                                <div style={{ fontSize: '0.66rem', color: '#64748b', textTransform: 'uppercase' }}>
+                                  {d.paymentMethod || 'advance'}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Recent Handovers History */}
               <div
@@ -5832,8 +6582,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       if (profileDelFilter === 'pending' && d.status !== 'pending') return false;
                       if (profileDelFilter === 'delivered' && d.status !== 'delivered') return false;
                       if (profileDelFilter === 'not_delivered' && d.status !== 'not_delivered') return false;
-                      if (profileDelFilter === 'cash' && d.paymentMethod !== 'cash') return false;
-                      if (profileDelFilter === 'upi' && d.paymentMethod !== 'upi') return false;
+                      if (profileDelFilter === 'cash' && d.paymentMethod !== 'cash' && d.addonPaymentMethod !== 'cash') return false;
+                      if (profileDelFilter === 'upi' && d.paymentMethod !== 'upi' && d.addonPaymentMethod !== 'upi') return false;
 
                       if (profileDelSearch.trim()) {
                         const q = profileDelSearch.toLowerCase();
@@ -5991,8 +6741,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                   </div>
                                   <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
                                     ₹{d.totalAmount || 60} • <span style={{ textTransform: 'uppercase', color: '#64748b' }}>{d.paymentMethod || 'credit'}</span>
+                                    {d.addonPaymentMethod && d.addonPaidAmount > 0 ? ` (+₹${d.addonPaidAmount} ${d.addonPaymentMethod.toUpperCase()} Add-ons)` : ''}
                                   </span>
                                 </div>
+                                {Array.isArray(d.addons) && d.addons.length > 0 && (
+                                  <div style={{ marginTop: '6px', fontSize: '0.73rem', fontWeight: 700, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '4px 8px', borderRadius: '7px' }}>
+                                    + Add-ons: {d.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')} · ₹{Number(d.addonsTotal || 0)}
+                                  </div>
+                                )}
 
                                 {(d.notes || d.doorstepDropNote) && (
                                   <div style={{ fontSize: '0.74rem', color: '#475569', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -8903,7 +9659,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           <div
             className="modal-content driver-modal-sheet"
             onClick={(e) => e.stopPropagation()}
-            style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '440px', padding: '22px' }}
+            style={{ background: '#ffffff', borderRadius: '16px', maxWidth: '480px', width: '94%', padding: '20px', maxHeight: '90vh', overflowY: 'auto' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <div>
@@ -8980,63 +9736,378 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               </div>
 
-              {/* Total Calculation */}
+              {/* Extra Doorstep Add-ons Button & Product Picker */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Extra Doorstep Add-ons</div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: selectedAddonItems.length > 0 ? '#059669' : '#64748b' }}>
+                      {selectedAddonItems.length === 0
+                        ? 'Select extra products from catalog'
+                        : `${selectedAddonItems.length} item(s) added · ₹${addonsSubtotal}`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!showAddonsPicker && (!products || products.length === 0)) fetchProducts?.();
+                      setShowAddonsPicker((prev) => !prev);
+                    }}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '7px 12px',
+                      borderRadius: '9px',
+                      border: 'none',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Plus size={14} />
+                    <span>{showAddonsPicker ? 'Hide Add-ons' : (selectedAddonItems.length > 0 ? `Add-ons (${selectedAddonItems.length})` : 'Add-ons')}</span>
+                  </button>
+                </div>
+
+                {/* Selected Add-on Chips */}
+                {selectedAddonItems.length > 0 && (
+                  <div
+                    style={{
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '10px',
+                      padding: '8px 10px',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '5px',
+                    }}
+                  >
+                    {selectedAddonItems.map((addon) => (
+                      <div key={addon.productId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                        <span style={{ fontWeight: 700, color: '#065f46' }}>
+                          {addon.name} × {addon.quantity} ({addon.unit})
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <strong style={{ color: '#047857' }}>₹{addon.price * addon.quantity}</strong>
+                          <button
+                            type="button"
+                            onClick={() => setAddonQuantities((prev) => {
+                              const next = { ...prev };
+                              delete next[addon.productId];
+                              return next;
+                            })}
+                            style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800, padding: 0 }}
+                            title="Remove"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Searchable Full Catalog Add-on Picker */}
+                {showAddonsPicker && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '12px',
+                      padding: '10px',
+                    }}
+                  >
+                    <div style={{ position: 'relative', marginBottom: '8px' }}>
+                      <Search size={13} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
+                      <input
+                        type="text"
+                        placeholder="Search all available products..."
+                        value={addonSearch}
+                        onChange={(e) => setAddonSearch(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '6px 10px 6px 28px',
+                          borderRadius: '8px',
+                          border: '1px solid #e2e8f0',
+                          background: '#ffffff',
+                          fontSize: '0.78rem',
+                          boxSizing: 'border-box',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div style={{ maxHeight: '190px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {(products || [])
+                        .filter((p) => {
+                          if (!addonSearch.trim()) return true;
+                          const q = addonSearch.toLowerCase();
+                          return p.name?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q);
+                        })
+                        .map((prod) => {
+                          const pid = prod._id || prod.id;
+                          const qty = Number(addonQuantities[pid]) || 0;
+                          const price = Number(prod.numericPrice ?? prod.price) || 0;
+                          const pName = (prod.name || '').toLowerCase();
+                          const pUnit = (prod.unit || '').toLowerCase();
+                          const isFixedHalfOrPack =
+                            pName.includes('half') ||
+                            pName.includes('500') ||
+                            pUnit.includes('500') ||
+                            pUnit.includes('ml') ||
+                            pUnit.includes('pack');
+                          const isMilk = (prod.category?.toLowerCase() === 'milk' || pName.includes('milk')) && !isFixedHalfOrPack;
+                          const step = isMilk ? 0.5 : 1;
+
+                          return (
+                            <div
+                              key={pid}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: qty > 0 ? '#f0fdf4' : '#ffffff',
+                                border: `1px solid ${qty > 0 ? '#86efac' : '#e2e8f0'}`,
+                                borderRadius: '9px',
+                                padding: '7px 10px',
+                                gap: '8px',
+                              }}
+                            >
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {prod.name}
+                                </div>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
+                                  ₹{price} / {prod.unit || 'pack'}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                <button
+                                  type="button"
+                                  disabled={qty <= 0}
+                                  onClick={() => setAddonQuantities((prev) => {
+                                    const nextQty = Math.max(0, (Number(prev[pid]) || 0) - step);
+                                    const copy = { ...prev };
+                                    if (nextQty <= 0) delete copy[pid];
+                                    else copy[pid] = nextQty;
+                                    return copy;
+                                  })}
+                                  style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    fontWeight: 800,
+                                    cursor: qty > 0 ? 'pointer' : 'not-allowed',
+                                    opacity: qty > 0 ? 1 : 0.45,
+                                  }}
+                                >
+                                  −
+                                </button>
+                                <span style={{ minWidth: '22px', textAlign: 'center', fontSize: '0.8rem', fontWeight: 800 }}>
+                                  {qty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setAddonQuantities((prev) => ({ ...prev, [pid]: (Number(prev[pid]) || 0) + step }))}
+                                  style={{
+                                    width: '26px',
+                                    height: '26px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: '#059669',
+                                    color: '#ffffff',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Total Calculation Card */}
               <div
                 style={{
                   background: '#f0fdf4',
-                  padding: '12px 14px',
+                  padding: '10px 14px',
                   borderRadius: '10px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
                   border: '1px solid #bbf7d0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
                 }}
               >
-                <span style={{ fontWeight: 700, color: '#065f46', fontSize: '0.88rem' }}>
-                  {activeItem?.subscriptionEndDate ? 'Subscription payment:' : 'Order Total:'}
-                </span>
-                <span style={{ fontSize: activeItem?.subscriptionEndDate ? '0.92rem' : '1.35rem', fontWeight: 800, color: '#059669', textAlign: 'right' }}>
-                  {activeItem?.subscriptionEndDate
-                    ? `₹${Number(activeItem.subscriptionPaymentAmount || 0).toLocaleString('en-IN')} paid by ${activeItem.subscriptionPaymentMethod?.toUpperCase() || 'RAZORPAY'}${activeItem.subscriptionPaymentId ? ` · ref ${activeItem.subscriptionPaymentId.slice(-8)}` : ''}`
-                    : `₹${Number(milkQty) * 60 + (Number(curdQty) / 500) * 30}`}
-                </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#334155', fontWeight: 600 }}>
+                  <span>Base Milk & Curd:</span>
+                  <span>{activeItem?.subscriptionEndDate ? 'Prepaid Subscription' : `₹${deliverBaseTotal}`}</span>
+                </div>
+                {addonsSubtotal > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#047857', fontWeight: 700 }}>
+                    <span>Add-ons ({selectedAddonItems.length} item{selectedAddonItems.length > 1 ? 's' : ''}):</span>
+                    <span>₹{addonsSubtotal}</span>
+                  </div>
+                )}
+                <div style={{ borderTop: '1px solid #bbf7d0', paddingTop: '5px', marginTop: '2px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, color: '#065f46', fontSize: '0.86rem' }}>
+                    {activeItem?.subscriptionEndDate ? (addonsSubtotal > 0 ? 'Extra Due (Add-ons):' : 'Subscription Covered:') : 'Grand Total:'}
+                  </span>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#059669' }}>
+                    ₹{activeItem?.subscriptionEndDate ? addonsSubtotal : deliverGrandTotal}
+                  </span>
+                </div>
               </div>
 
               {/* Payment Mode Selection */}
               {activeItem?.subscriptionEndDate ? (
-                <p style={{ margin: 0, fontSize: '0.8rem', color: '#047857', fontWeight: 700 }}>
-                  This delivery is covered by the prepaid subscription through {new Date(activeItem.subscriptionEndDate).toLocaleDateString('en-IN')}. Do not collect payment.
+                <p style={{ margin: 0, fontSize: '0.76rem', color: '#047857', fontWeight: 700 }}>
+                  Base milk/curd covered by prepaid subscription through {new Date(activeItem.subscriptionEndDate).toLocaleDateString('en-IN')}.
                 </p>
-              ) : <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
-                  Payment Method:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-                  {[
-                    { id: 'credit', label: '○ Credit' },
-                    { id: 'cash', label: '💵 Cash' },
-                    { id: 'upi', label: '📱 UPI' },
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setPayMode(m.id)}
-                      style={{
-                        padding: '10px 6px',
-                        borderRadius: '8px',
-                        fontWeight: 700,
-                        fontSize: '0.86rem',
-                        border: payMode === m.id ? '2px solid #059669' : '1px solid #e2e8f0',
-                        background: payMode === m.id ? '#059669' : '#ffffff',
-                        color: payMode === m.id ? '#ffffff' : '#475569',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
+              ) : (
+                <div>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                    Payment Method:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    {[
+                      { id: 'credit', label: '○ Credit' },
+                      { id: 'cash', label: '💵 Cash' },
+                      { id: 'upi', label: '📱 UPI' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setPayMode(m.id)}
+                        style={{
+                          padding: '9px 6px',
+                          borderRadius: '8px',
+                          fontWeight: 700,
+                          fontSize: '0.84rem',
+                          border: payMode === m.id ? '2px solid #059669' : '1px solid #e2e8f0',
+                          background: payMode === m.id ? '#059669' : '#ffffff',
+                          color: payMode === m.id ? '#ffffff' : '#475569',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(payMode === 'cash' || payMode === 'upi') && (
+                    <div style={{ marginTop: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>
+                          Cash / Amount Collected (₹):
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setManualCollectedEdited(false); setCollectedNow(deliverGrandTotal); }}
+                          style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                        >
+                          Full ₹{deliverGrandTotal}
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={collectedNow}
+                        onChange={(e) => {
+                          setManualCollectedEdited(true);
+                          setCollectedNow(e.target.value);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.9rem',
+                          fontWeight: 800,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>}
+              )}
+
+              {/* Add-ons Separate Cash / UPI / Credit Settlement on Prepaid or Credit plans */}
+              {addonsSubtotal > 0 && (Boolean(activeItem?.subscriptionEndDate) || payMode === 'credit' || payMode === 'advance') && (
+                <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '10px 12px' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#92400e', marginBottom: '6px' }}>
+                    Add-ons Payment Settlement (₹{addonsSubtotal})
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                    {[
+                      { id: 'credit', label: 'Credit Bill' },
+                      { id: 'cash', label: '💵 Cash' },
+                      { id: 'upi', label: '📱 UPI' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setAddonPayMode(opt.id)}
+                        style={{
+                          padding: '7px 4px',
+                          borderRadius: '7px',
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          border: addonPayMode === opt.id ? '1.5px solid #d97706' : '1px solid #fcd34d',
+                          background: addonPayMode === opt.id ? '#d97706' : '#ffffff',
+                          color: addonPayMode === opt.id ? '#ffffff' : '#92400e',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  {(addonPayMode === 'cash' || addonPayMode === 'upi') && (
+                    <div style={{ marginTop: '8px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#78350f' }}>
+                          Cash / Amount Given for Add-ons (₹):
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setManualAddonCollectedEdited(false); setAddonCollectedNow(addonsSubtotal); }}
+                          style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}
+                        >
+                          Full ₹{addonsSubtotal}
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        value={addonCollectedNow}
+                        onChange={(e) => {
+                          setManualAddonCollectedEdited(true);
+                          setAddonCollectedNow(e.target.value);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #fcd34d',
+                          background: '#ffffff',
+                          fontSize: '0.86rem',
+                          fontWeight: 800,
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Note */}
               <input
@@ -10367,12 +11438,33 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
                         </strong>
                       </div>
-                      <div>
-                        <span style={{ color: '#64748b' }}>Status: </span>
-                        <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
-                          {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
-                        </strong>
-                      </div>
+                      {(() => {
+                        const cols = getCustomerCollections(selectedCustomer);
+                        return (
+                          <>
+                            <div>
+                              <span style={{ color: '#64748b' }}>Status: </span>
+                              <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
+                                {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
+                              </strong>
+                            </div>
+                            <div style={{ gridColumn: 'span 2', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#065f46' }}>💵 Collected Today</span>
+                                <strong style={{ fontSize: '0.88rem', color: '#059669' }}>
+                                  ₹{cols.todayTotal} {cols.todayTotal > 0 ? `(Cash ₹${cols.todayCash} • UPI ₹${cols.todayUpi})` : ''}
+                                </strong>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 650, color: '#475569' }}>Total Collected (All Time)</span>
+                                <strong style={{ fontSize: '0.82rem', color: '#0f172a' }}>
+                                  ₹{cols.allTimeTotal} {cols.allTimeTotal > 0 ? `(Cash ₹${cols.allTimeCash} • UPI ₹${cols.allTimeUpi})` : ''}
+                                </strong>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                       {startD && (
                         <div>
                           <span style={{ color: '#64748b' }}>Started On: </span>
@@ -11277,36 +12369,66 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
 
                 {/* 2. Subscription & Payment Box */}
-                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
-                    <Wallet size={15} color="#059669" />
-                    <span>Subscription & Payment</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Payment Type: </span>
-                      <strong style={{ color: isSubscription ? '#059669' : '#d97706' }}>
-                        {isSubscription ? 'Prepaid Plan' : 'Cash on Delivery'}
-                      </strong>
+                {(() => {
+                  const stopCash = getDropCashCollected(item);
+                  const stopUpi = getDropUpiCollected(item);
+                  const stopCollected = stopCash + stopUpi;
+                  const custCols = getCustomerCollections(customerInfo || { customerId: item.customerId });
+                  const effectiveTodayPaid = Math.max(stopCollected, custCols.todayTotal);
+                  const effectiveTodayCash = Math.max(stopCash, custCols.todayCash);
+                  const effectiveTodayUpi = Math.max(stopUpi, custCols.todayUpi);
+                  const stopAddons = Array.isArray(item.addons) ? item.addons : [];
+                  return (
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
+                        <Wallet size={15} color="#059669" />
+                        <span>Subscription & Payment</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                        <div>
+                          <span style={{ color: '#64748b' }}>Payment Type: </span>
+                          <strong style={{ color: isSubscription ? '#059669' : '#d97706', textTransform: 'uppercase' }}>
+                            {item.paymentMethod || (isSubscription ? 'advance' : 'credit')}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b' }}>Order Total: </span>
+                          <strong style={{ color: '#0f172a' }}>
+                            {Number(item.totalAmount) > 0 ? `₹${item.totalAmount}` : (isSubscription ? (subDateText ? `Valid to ${subDateText}` : 'Prepaid Active') : '₹0')}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b' }}>Collected Amount: </span>
+                          <strong style={{ color: effectiveTodayPaid > 0 ? '#059669' : '#64748b' }}>
+                            {effectiveTodayPaid > 0
+                              ? `₹${effectiveTodayPaid} (${effectiveTodayCash > 0 ? `Cash ₹${effectiveTodayCash}` : ''}${effectiveTodayCash > 0 && effectiveTodayUpi > 0 ? ' · ' : ''}${effectiveTodayUpi > 0 ? `UPI ₹${effectiveTodayUpi}` : ''})`
+                              : (isSubscription ? 'Prepaid ₹0' : '₹0 Pending')}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b' }}>Drop Status: </span>
+                          <strong style={{ color: isDone ? '#059669' : isMissed ? '#dc2626' : '#d97706' }}>
+                            {isDone ? 'Completed' : isMissed ? 'Skipped' : 'Pending Drop'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b' }}>Route Area: </span>
+                          <strong style={{ color: '#0f172a' }}>{item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}</strong>
+                        </div>
+                        <div>
+                          <span style={{ color: '#64748b' }}>All-Time Paid: </span>
+                          <strong style={{ color: '#0f172a' }}>₹{custCols.allTimeTotal}</strong>
+                        </div>
+                      </div>
+                      {(stopAddons.length > 0 || Number(item.addonsTotal || 0) > 0) && (
+                        <div style={{ marginTop: '8px', padding: '7px 10px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #fde68a', fontSize: '0.75rem', fontWeight: 700, color: '#92400e' }}>
+                          + Add-ons: {stopAddons.map((a) => `${a.name} × ${a.quantity}`).join(', ')} (₹{Number(item.addonsTotal || 0)}
+                          {Number(item.addonPaidAmount || 0) > 0 ? ` · Paid ₹${item.addonPaidAmount} ${String(item.addonPaymentMethod || '').toUpperCase()}` : ` · ${String(item.addonPaymentMethod || 'credit').toUpperCase()}`})
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Amount: </span>
-                      <strong style={{ color: '#0f172a' }}>
-                        {isSubscription ? (subDateText ? `Valid to ${subDateText}` : 'Prepaid Active') : `₹${item.totalAmount}`}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Drop Status: </span>
-                      <strong style={{ color: isDone ? '#059669' : isMissed ? '#dc2626' : '#d97706' }}>
-                        {isDone ? 'Completed' : isMissed ? 'Skipped' : 'Pending Drop'}
-                      </strong>
-                    </div>
-                    <div>
-                      <span style={{ color: '#64748b' }}>Route Area: </span>
-                      <strong style={{ color: '#0f172a' }}>{item.customerArea || customerInfo?.area || boyArea || 'Madhapur'}</strong>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* 3. Address & Drop Instructions */}
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>

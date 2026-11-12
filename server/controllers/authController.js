@@ -5,6 +5,9 @@ const DeliveryLocation = require('../models/DeliveryLocation');
 const { generateToken } = require('../middleware/authMiddleware');
 const { recordAudit } = require('../services/auditService');
 const { hashPassword, verifyPassword } = require('../security/password');
+const { sendCustomerCredentialsEmail } = require('../services/emailService');
+
+const escapeRegex = (text) => String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
 const verifyStoredPassword = async (password, records) => {
   let valid = false;
@@ -52,7 +55,6 @@ const login = async (req, res) => {
       });
     }
 
-    const escapeRegex = (text) => text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
     const emailRegex = new RegExp(`^${escapeRegex(cleanId)}$`, 'i');
 
     // 1. Check if Admin
@@ -303,6 +305,7 @@ const register = async (req, res) => {
     }
     const {
       name,
+      email,
       mobile,
       password,
       role = 'customer',
@@ -316,6 +319,10 @@ const register = async (req, res) => {
 
     if (typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 80) {
       return res.status(400).json({ success: false, message: 'Name must be between 2 and 80 characters.' });
+    }
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (!cleanEmail || cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
     }
     if (typeof mobile !== 'string' || !/^(?:\+?91[- ]?)?[6-9]\d{9}$/.test(mobile.trim())) {
       return res.status(400).json({ success: false, message: 'Enter a valid 10-digit mobile number.' });
@@ -342,10 +349,16 @@ const register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A customer with this mobile number already exists. Please log in.' });
     }
 
+    const emailLookup = { $regex: new RegExp(`^${escapeRegex(cleanEmail)}$`, 'i') };
+    const existingEmailUser = await User.findOne({ email: emailLookup });
+    const existingEmailCustomer = await Customer.findOne({ email: emailLookup });
+    if (existingEmailUser || existingEmailCustomer) {
+      return res.status(400).json({ success: false, message: 'An account with this email address already exists. Please log in.' });
+    }
+
     const rawArea = (typeof area === 'string' && area.trim()) ? area.trim() : 'Madhapur';
-    const escapedArea = rawArea.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
     const validLocation = await DeliveryLocation.findOne({
-      name: { $regex: new RegExp(`^${escapedArea}$`, 'i') },
+      name: { $regex: new RegExp(`^${escapeRegex(rawArea)}$`, 'i') },
       isActive: true,
     });
 
@@ -365,6 +378,7 @@ const register = async (req, res) => {
     const newCustomer = await Customer.create({
         customerId,
         name: cleanName,
+        email: cleanEmail,
         mobile: cleanMobile,
         whatsapp: cleanMobile,
         address: cleanAddress,
@@ -394,6 +408,7 @@ const register = async (req, res) => {
     try {
       await User.create({
         name: cleanName,
+        email: cleanEmail,
         mobile: cleanMobile,
         password: await hashPassword(password),
         role: 'customer',
@@ -408,9 +423,22 @@ const register = async (req, res) => {
 
     await recordAudit('Customer Registered', cleanName, `New customer registered online (${customerId})`, 'auth');
 
+    let emailSent = false;
+    try {
+      const emailTimeout = new Promise((resolve) => setTimeout(() => resolve({ success: false, timeout: true }), 6000));
+      const emailRes = await Promise.race([
+        sendCustomerCredentialsEmail(newCustomer, password, { createdByRole: 'self' }),
+        emailTimeout,
+      ]);
+      emailSent = emailRes?.success || false;
+    } catch (emailErr) {
+      console.error('Customer self-registration email note:', emailErr.message);
+    }
+
     const userPayload = {
       id: newCustomer._id.toString(),
       name: newCustomer.name,
+      email: newCustomer.email,
       mobile: newCustomer.mobile,
       role: 'customer',
       status: 'inactive',
@@ -422,6 +450,7 @@ const register = async (req, res) => {
       success: true,
       user: userPayload,
       token: generateToken(userPayload),
+      emailSent,
     });
   } catch (err) {
     console.error('Registration failed:', err);
@@ -499,6 +528,9 @@ const getMe = async (req, res) => {
       }).lean();
 
       if (boyMatch) {
+        safeUser.boyId = boyMatch._id.toString();
+        safeUser.todayCashCollected = boyMatch.todayCashCollected || 0;
+        safeUser.todayUpiCollected = boyMatch.todayUpiCollected || 0;
         const userTime = Math.max(
           safeUser.lastOnlineAt ? new Date(safeUser.lastOnlineAt).getTime() : 0,
           safeUser.lastOfflineAt ? new Date(safeUser.lastOfflineAt).getTime() : 0

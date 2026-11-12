@@ -276,17 +276,23 @@ const createCustomer = async (req, res) => {
       : (deliveryBoyId || '');
 
     // Validate that the requested delivery area is an active serviceable location
-    const targetArea = (area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur')).trim();
+    const rawArea = String(area || (isDriver ? (req.user?.assignedArea || '') : '')).trim();
+    const isGenericRoute = !rawArea || /^(all|all areas|all routes|all dairy routes)$/i.test(rawArea);
+    const targetArea = isGenericRoute ? 'Madhapur' : rawArea;
+
     const validLocation = await DeliveryLocation.findOne({
-      name: { $regex: new RegExp(`^${targetArea}$`, 'i') },
+      name: { $regex: new RegExp(`^${escapeRegex(targetArea)}$`, 'i') },
       isActive: true,
     });
 
     if (!validLocation) {
-      return res.status(400).json({
-        success: false,
-        message: `Delivery location "${targetArea}" is not currently in our serviceable zones. Please select an active location configured by admin.`,
-      });
+      const anyActiveLocations = await DeliveryLocation.countDocuments({ isActive: true });
+      if (anyActiveLocations > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Delivery location "${targetArea}" is not currently in our serviceable zones. Please select an active location configured by admin.`,
+        });
+      }
     }
 
     // If created by a delivery driver, ensure they only create accounts in their assigned territory
@@ -295,14 +301,18 @@ const createCustomer = async (req, res) => {
         $or: [
           ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
           ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+          ...(req.user.name ? [{ name: new RegExp(`^${escapeRegex(req.user.name.trim())}$`, 'i') }] : []),
         ],
       }).lean();
+      if (driverRecord) {
+        finalDeliveryBoyId = driverRecord._id.toString();
+        boyName = driverRecord.name || boyName;
+      }
       const driverAssignedArea = (driverRecord?.assignedArea || req.user.assignedArea || '').trim();
-      if (
-        driverAssignedArea &&
-        driverAssignedArea.toLowerCase() !== 'all dairy routes' &&
-        driverAssignedArea.toLowerCase() !== validLocation.name.toLowerCase()
-      ) {
+      const hasAllRouteAccess = !driverAssignedArea ||
+        /^(all|all areas|all routes|all dairy routes)$/i.test(driverAssignedArea);
+      const effectiveLocName = validLocation ? validLocation.name : targetArea;
+      if (!hasAllRouteAccess && driverAssignedArea.toLowerCase() !== effectiveLocName.toLowerCase()) {
         return res.status(403).json({
           success: false,
           message: `As a delivery partner assigned to "${driverAssignedArea}", you can only create accounts within your assigned location.`,
@@ -313,15 +323,23 @@ const createCustomer = async (req, res) => {
     if (isDriver && !finalDeliveryBoyId) {
       finalDeliveryBoyId = req.user.id || req.user.boyId || '';
       boyName = req.user.name || 'Delivery Partner';
-    } else if (finalDeliveryBoyId) {
+    } else if (!isDriver && finalDeliveryBoyId) {
       const boy = await DeliveryBoy.findOne(
         finalDeliveryBoyId.length === 24 ? { _id: finalDeliveryBoyId } : { mobile: finalDeliveryBoyId }
       ).lean();
       if (boy) boyName = boy.name;
     }
 
-    const customerCount = await Customer.countDocuments();
-    const customerId = `CUST-${customerCount + 101}`;
+    const existingCustIds = await Customer.find({}, { customerId: 1 }).lean();
+    let maxNum = 100;
+    for (const c of existingCustIds) {
+      const m = /^CUST-(\d+)$/i.exec(c.customerId || '');
+      if (m) {
+        const num = parseInt(m[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    }
+    const customerId = `CUST-${Math.max(maxNum + 1, existingCustIds.length + 101)}`;
 
     const rawGoogleMapsUrl = String(googleMapsUrl || locationUrl || mapLocation || '').trim();
     const extractedCoords = parseCoordinatesFromInput(rawGoogleMapsUrl);
@@ -330,11 +348,11 @@ const createCustomer = async (req, res) => {
     const parsedLng = Number(longitude);
     const finalLat = (!isNaN(parsedLat) && parsedLat !== 0)
       ? parsedLat
-      : (extractedCoords ? extractedCoords.latitude : (validLocation.latitude || 17.4483));
+      : (extractedCoords ? extractedCoords.latitude : (validLocation?.latitude || 17.4483));
     const finalLng = (!isNaN(parsedLng) && parsedLng !== 0)
       ? parsedLng
-      : (extractedCoords ? extractedCoords.longitude : (validLocation.longitude || 78.3915));
-    const customerArea = area || (isDriver ? (req.user?.assignedArea || 'Madhapur') : 'Madhapur');
+      : (extractedCoords ? extractedCoords.longitude : (validLocation?.longitude || 78.3915));
+    const customerArea = validLocation ? validLocation.name : targetArea;
 
     const deliveryPlanInput = deliveryPlan && typeof deliveryPlan === 'object' ? deliveryPlan : {};
     const rawExtra = extraProducts || deliveryPlanInput.extraProducts || products || [];
@@ -443,17 +461,6 @@ const createCustomer = async (req, res) => {
       'customer'
     );
 
-    let emailSent = false;
-    if (cleanEmail) {
-      const { sendCustomerCredentialsEmail } = require('../services/emailService');
-      try {
-        const emailRes = await sendCustomerCredentialsEmail(newCustomer, customerPassword);
-        emailSent = emailRes?.success || false;
-      } catch (e) {
-        console.error('Customer credentials email note:', e.message);
-      }
-    }
-
     // Instant notification for delivery partner
     if (finalDeliveryBoyId || isDriver) {
       try {
@@ -499,9 +506,28 @@ const createCustomer = async (req, res) => {
     }
 
     await ensureDeliveriesForDate(formatDate());
-    broadcast('CUSTOMER_UPDATED', { customerId: newCustomer.customerId });
+    broadcast('CUSTOMER_CREATED', { customerId: newCustomer.customerId, id: newCustomer._id.toString(), name: cleanName });
+    broadcast('CUSTOMER_UPDATED', { customerId: newCustomer.customerId, id: newCustomer._id.toString() });
     broadcast('DELIVERY_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
+
+    let emailSent = false;
+    if (cleanEmail) {
+      const { sendCustomerCredentialsEmail } = require('../services/emailService');
+      try {
+        const emailTimeout = new Promise((resolve) => setTimeout(() => resolve({ success: false, timeout: true }), 6000));
+        const emailRes = await Promise.race([
+          sendCustomerCredentialsEmail(newCustomer, customerPassword, {
+            createdByRole: isDriver ? 'delivery_boy' : 'admin',
+            createdByName: actor || req.user?.name || '',
+          }),
+          emailTimeout,
+        ]);
+        emailSent = emailRes?.success || false;
+      } catch (e) {
+        console.error('Customer credentials email note:', e.message);
+      }
+    }
 
     const customerResponse = newCustomer.toObject();
     delete customerResponse.password;
@@ -1089,6 +1115,10 @@ const getCustomerLedger = async (req, res) => {
     const ledgerEntries = [];
 
     customerDeliveries.forEach((del) => {
+      const addonList = Array.isArray(del.addons) ? del.addons : [];
+      const addonText = addonList.length > 0
+        ? ` + Add-ons: ${addonList.map((a) => `${a.name} x${a.quantity}`).join(', ')}`
+        : '';
       ledgerEntries.push({
         id: del._id.toString(),
         type: 'delivery',
@@ -1096,7 +1126,11 @@ const getCustomerLedger = async (req, res) => {
         time: del.deliveredAt,
         milk: `${del.actualMilk || del.plannedMilk} L`,
         curd: del.actualCurd || del.plannedCurd ? `${del.actualCurd || del.plannedCurd} g` : '0',
-        rateDetails: `Milk @₹${del.milkPrice || 60}/L${del.actualCurd ? `, Curd @₹${del.curdPrice || 30}` : ''}`,
+        addons: addonList,
+        addonsTotal: Number(del.addonsTotal) || 0,
+        addonPaymentMethod: del.addonPaymentMethod || '',
+        addonPaidAmount: Number(del.addonPaidAmount) || 0,
+        rateDetails: `Milk @₹${del.milkPrice || 60}/L${del.actualCurd ? `, Curd @₹${del.curdPrice || 30}` : ''}${addonText}`,
         amount: del.status === 'not_delivered' ? 0 : del.totalAmount,
         status: del.status,
         paymentMethod: del.paymentMethod,
@@ -1135,8 +1169,10 @@ const getCustomerLedger = async (req, res) => {
     ledgerEntries.forEach((entry) => {
       if (entry.type === 'delivery') {
         if (entry.status === 'delivered') {
-          if (entry.paymentMethod === 'credit') {
-            runningBalance += entry.amount;
+          if (entry.paymentMethod === 'advance') {
+            runningBalance += Number(entry.addonsTotal) || 0;
+          } else {
+            runningBalance += Number(entry.amount) || 0;
           }
         }
       } else if (entry.type === 'payment') {
@@ -2456,14 +2492,18 @@ const extendSubscription = async (req, res) => {
       // Update Delivery Partner collection totals
       if (req.user?.role === 'delivery_boy') {
         const boyQuery = [
-          ...(req.user.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
-          { mobile: req.user.mobile },
+          ...(req.user.boyId && /^[a-f\d]{24}$/i.test(String(req.user.boyId)) ? [{ _id: req.user.boyId }] : []),
+          ...(req.user.id && /^[a-f\d]{24}$/i.test(String(req.user.id)) ? [{ _id: req.user.id }] : []),
+          ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+          ...(req.user.name ? [{ name: new RegExp(`^${req.user.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }] : []),
         ];
-        const boy = await DeliveryBoy.findOne({ $or: boyQuery });
-        if (boy) {
-          if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + numCollected;
-          if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + numCollected;
-          await boy.save();
+        if (boyQuery.length > 0) {
+          const boy = await DeliveryBoy.findOne({ $or: boyQuery });
+          if (boy) {
+            if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + numCollected;
+            if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + numCollected;
+            await boy.save();
+          }
         }
       }
     }
@@ -2500,6 +2540,12 @@ const extendSubscription = async (req, res) => {
 
     broadcast('CUSTOMER_UPDATED', { id: customer._id.toString(), customerId: customer.customerId });
     broadcast('SUBSCRIPTION_UPDATED', { customerId: customer.customerId });
+    if (numCollected > 0 && ['cash', 'upi'].includes(method)) {
+      broadcast('PAYMENT_RECORDED', { customerId: customer.customerId, amount: numCollected, method });
+      broadcast('PAYMENT_UPDATED', { customerId: customer.customerId, amount: numCollected, method });
+      broadcast('DELIVERY_BOY_UPDATED', { id: req.user?.boyId || req.user?.id || '', name: req.user?.name || actorName });
+      broadcast('NOTIFICATION_UPDATED', {});
+    }
     broadcast('DELIVERY_UPDATED', {});
     broadcast('PAYMENT_UPDATED', {});
 

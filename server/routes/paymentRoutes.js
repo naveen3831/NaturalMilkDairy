@@ -11,7 +11,7 @@ const {
 
 const { verifyToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
-router.get('/', verifyToken, requireAdmin, getAllPayments);
+router.get('/', verifyToken, requireDeliveryStaff, getAllPayments);
 router.post('/', verifyToken, requireDeliveryStaff, recordPayment);
 
 // Driver Cash Handover to Admin

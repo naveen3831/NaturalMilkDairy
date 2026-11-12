@@ -1,14 +1,22 @@
 package com.naturalmilk.dairy.natural_milk_dairy
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Base64
 import androidx.core.content.FileProvider
@@ -22,8 +30,11 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.naturalmilk.dairy/app_launcher"
     private val REQUEST_IMAGE_CAPTURE = 2024
     private val REQUEST_CAMERA_PERMISSION = 2025
+    private val REQUEST_LOCATION_PERMISSION = 2026
     private var pendingCameraResult: MethodChannel.Result? = null
+    private var pendingLocationResult: MethodChannel.Result? = null
     private var currentPhotoPath: String? = null
+    private var activePrintWebView: android.webkit.WebView? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -84,22 +95,46 @@ class MainActivity : FlutterActivity() {
                         try {
                             runOnUiThread {
                                 val webView = android.webkit.WebView(this)
+                                activePrintWebView = webView
+                                webView.settings.apply {
+                                    javaScriptEnabled = false
+                                    defaultTextEncodingName = "UTF-8"
+                                    loadWithOverviewMode = true
+                                    useWideViewPort = true
+                                }
+                                val width = resources.displayMetrics.widthPixels.coerceAtLeast(1080)
+                                val height = resources.displayMetrics.heightPixels.coerceAtLeast(1920)
+                                webView.measure(
+                                    android.view.View.MeasureSpec.makeMeasureSpec(width, android.view.View.MeasureSpec.EXACTLY),
+                                    android.view.View.MeasureSpec.makeMeasureSpec(height, android.view.View.MeasureSpec.AT_MOST)
+                                )
+                                webView.layout(0, 0, width, height)
+
+                                var printStarted = false
                                 webView.webViewClient = object : android.webkit.WebViewClient() {
                                     override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                                        try {
-                                            val printManager = getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
-                                            val printAdapter = webView.createPrintDocumentAdapter(jobName)
-                                            val printAttributes = android.print.PrintAttributes.Builder()
-                                                .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
-                                                .build()
-                                            printManager?.print(jobName, printAdapter, printAttributes)
-                                            result.success(true)
-                                        } catch (e: Exception) {
-                                            result.error("PRINT_ERROR", e.message, null)
-                                        }
+                                        if (printStarted) return
+                                        printStarted = true
+                                        Handler(Looper.getMainLooper()).postDelayed({
+                                            try {
+                                                val printManager = getSystemService(android.content.Context.PRINT_SERVICE) as? android.print.PrintManager
+                                                if (printManager == null) {
+                                                    result.success(false)
+                                                    return@postDelayed
+                                                }
+                                                val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                                                val printAttributes = android.print.PrintAttributes.Builder()
+                                                    .setMediaSize(android.print.PrintAttributes.MediaSize.ISO_A4)
+                                                    .build()
+                                                printManager.print(jobName, printAdapter, printAttributes)
+                                                result.success(true)
+                                            } catch (e: Exception) {
+                                                result.error("PRINT_ERROR", e.message, null)
+                                            }
+                                        }, 250L)
                                     }
                                 }
-                                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                                webView.loadDataWithBaseURL("https://localhost/", html, "text/html", "UTF-8", null)
                             }
                         } catch (e: Exception) {
                             result.error("PRINT_ERROR", e.message, null)
@@ -118,8 +153,126 @@ class MainActivity : FlutterActivity() {
                         launchCamera(result)
                     }
                 }
+                "getCurrentLocation" -> {
+                    val requestPerm = call.argument<Boolean>("requestPermission") ?: true
+                    val hasFine = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    val hasCoarse = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    if (!hasFine && !hasCoarse) {
+                        if (requestPerm && pendingLocationResult == null) {
+                            pendingLocationResult = result
+                            requestPermissions(
+                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                                REQUEST_LOCATION_PERMISSION
+                            )
+                        } else {
+                            result.success(null)
+                        }
+                    } else {
+                        fetchDeviceLocation(result)
+                    }
+                }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun fetchDeviceLocation(result: MethodChannel.Result) {
+        try {
+            val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            if (lm == null) {
+                result.success(null)
+                return
+            }
+            val providers = listOf(
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
+                LocationManager.PASSIVE_PROVIDER
+            )
+            var best: Location? = null
+            for (p in providers) {
+                try {
+                    val loc = lm.getLastKnownLocation(p)
+                    if (loc != null && (best == null || loc.time > best.time)) {
+                        best = loc
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // If we have a recent fix (< 5 minutes old), return immediately
+            if (best != null && (System.currentTimeMillis() - best.time) < 5 * 60 * 1000L) {
+                result.success(mapOf(
+                    "latitude" to best.latitude,
+                    "longitude" to best.longitude,
+                    "accuracy" to best.accuracy.toDouble()
+                ))
+                return
+            }
+
+            val activeProvider = when {
+                lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                else -> null
+            }
+
+            if (activeProvider == null) {
+                if (best != null) {
+                    result.success(mapOf(
+                        "latitude" to best.latitude,
+                        "longitude" to best.longitude,
+                        "accuracy" to best.accuracy.toDouble()
+                    ))
+                } else {
+                    result.success(null)
+                }
+                return
+            }
+
+            var replied = false
+            val handler = Handler(Looper.getMainLooper())
+            var listener: LocationListener? = null
+
+            val timeoutRunnable = Runnable {
+                if (!replied) {
+                    replied = true
+                    listener?.let {
+                        try { lm.removeUpdates(it) } catch (_: Exception) {}
+                    }
+                    if (best != null) {
+                        result.success(mapOf(
+                            "latitude" to best.latitude,
+                            "longitude" to best.longitude,
+                            "accuracy" to best.accuracy.toDouble()
+                        ))
+                    } else {
+                        result.success(null)
+                    }
+                }
+            }
+
+            listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) {
+                    if (!replied) {
+                        replied = true
+                        handler.removeCallbacks(timeoutRunnable)
+                        try { lm.removeUpdates(this) } catch (_: Exception) {}
+                        result.success(mapOf(
+                            "latitude" to location.latitude,
+                            "longitude" to location.longitude,
+                            "accuracy" to location.accuracy.toDouble()
+                        ))
+                    }
+                }
+                override fun onProviderEnabled(provider: String) {}
+                override fun onProviderDisabled(provider: String) {}
+                @Deprecated("Deprecated in Java")
+                override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            }
+
+            lm.requestLocationUpdates(activeProvider, 0L, 0f, listener, Looper.getMainLooper())
+            handler.postDelayed(timeoutRunnable, 3500L)
+        } catch (e: Exception) {
+            result.success(null)
         }
     }
 
@@ -179,6 +332,15 @@ class MainActivity : FlutterActivity() {
                     "Camera permission was denied. Please grant camera permission to take delivery proof.",
                     null
                 )
+            }
+        } else if (requestCode == REQUEST_LOCATION_PERMISSION) {
+            val res = pendingLocationResult
+            pendingLocationResult = null
+            val granted = grantResults.any { it == PackageManager.PERMISSION_GRANTED }
+            if (granted && res != null) {
+                fetchDeviceLocation(res)
+            } else {
+                res?.success(null)
             }
         }
     }

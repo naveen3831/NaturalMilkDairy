@@ -27,7 +27,11 @@ export default function LoginPage({ setActiveTab }) {
     setIsLoading(false);
 
     if (res.success && res.user) {
-      if (res.user.role === 'customer' && localStorage.getItem('nmd_pending_subscription')) {
+      if (
+        res.user.role === 'customer' &&
+        localStorage.getItem('nmd_pending_subscription') &&
+        !localStorage.getItem('nmd_post_login_customer_page')
+      ) {
         localStorage.setItem('nmd_current_tab', 'products');
         setActiveTab('products');
       } else if (res.user.role === 'delivery_boy') {
@@ -38,10 +42,20 @@ export default function LoginPage({ setActiveTab }) {
         localStorage.setItem('nmd_current_tab', 'dashboard');
         setActiveTab('dashboard');
       } else {
+        const postLoginCustomerPage = localStorage.getItem('nmd_post_login_customer_page');
+        if (postLoginCustomerPage) {
+          localStorage.removeItem('nmd_post_login_customer_page');
+        }
         if (window.innerWidth <= 768) {
-          localStorage.setItem('nmd_customer_page', 'profile');
+          const targetPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(postLoginCustomerPage)
+            ? postLoginCustomerPage
+            : 'profile';
+          localStorage.setItem('nmd_customer_page', targetPage);
           localStorage.setItem('nmd_current_tab', 'customer-portal');
           setActiveTab('customer-portal');
+        } else if (postLoginCustomerPage === 'deliveries') {
+          localStorage.setItem('nmd_current_tab', 'my-deliveries');
+          setActiveTab('my-deliveries');
         } else {
           localStorage.setItem('nmd_current_tab', 'home');
           setActiveTab('home');

@@ -4,6 +4,15 @@ import 'package:intl/intl.dart';
 /// Generates clean, publication-grade executive statements and reports
 /// with day-by-day itemized delivery history and payments for Android native printing and direct PDF rendering.
 class HtmlReportService {
+  static String _esc(dynamic value) {
+    return (value?.toString() ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+  }
+
   static String formatCurrency(num amount) {
     final formatter = NumberFormat.currency(
       locale: 'en_IN',
@@ -21,14 +30,15 @@ class HtmlReportService {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         color: #0f172a;
         margin: 0;
-        padding: 0;
+        padding: 12px;
         background: #ffffff;
         font-size: 11px;
         line-height: 1.4;
       }
+      @media print { body { padding: 0; } }
       .brand-bar { height: 8px; background: #0d5c3a; }
       .brand-subbar { height: 3px; background: #f59e0b; margin-bottom: 14px; }
-      .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+      .header-container { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
       .dairy-title { font-size: 18px; font-weight: 900; color: #0d5c3a; letter-spacing: -0.3px; margin: 0; }
       .dairy-tagline { font-size: 9.5px; color: #475569; margin: 2px 0 0 0; }
       .dairy-contacts { font-size: 8.5px; color: #64748b; margin-top: 2px; }
@@ -42,9 +52,9 @@ class HtmlReportService {
       }
       .report-title { font-size: 13px; font-weight: 800; color: #065f46; text-transform: uppercase; margin: 0; }
       .report-period { font-size: 9.5px; color: #047857; margin-top: 2px; }
-      .kpi-grid { display: flex; gap: 8px; margin-bottom: 16px; }
+      .kpi-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
       .kpi-card {
-        flex: 1;
+        flex: 1 1 120px;
         padding: 8px 10px;
         border-radius: 8px;
         border: 1px solid #e2e8f0;
@@ -54,6 +64,7 @@ class HtmlReportService {
       .kpi-value { font-size: 14px; font-weight: 900; margin: 2px 0; }
       .kpi-sub { font-size: 8px; color: #64748b; }
       .section-heading { font-size: 11px; font-weight: 800; color: #0f172a; margin: 14px 0 6px 0; text-transform: uppercase; letter-spacing: 0.3px; }
+      .table-wrap { width: 100%; overflow-x: auto; }
       table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
       th {
         background: #0d5c3a;
@@ -69,6 +80,7 @@ class HtmlReportService {
         border-bottom: 1px solid #e2e8f0;
         font-size: 8.5px;
         color: #334155;
+        word-break: break-word;
       }
       tr:nth-child(even) td { background: #f8fafc; }
       .text-right { text-align: right; }
@@ -84,6 +96,8 @@ class HtmlReportService {
         padding-top: 8px;
         border-top: 1px solid #e2e8f0;
         display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
         justify-content: space-between;
         font-size: 7.5px;
         color: #94a3b8;
@@ -311,11 +325,11 @@ class HtmlReportService {
   }) {
     final nowStr = DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now());
 
-    final name = customer['name']?.toString() ?? 'Customer';
-    final custCode = customer['customerId']?.toString() ?? customer['id']?.toString() ?? '';
-    final mobile = customer['mobile']?.toString() ?? '';
-    final area = customer['area']?.toString() ?? 'Hyderabad';
-    final address = customer['address']?.toString() ?? 'Doorstep Address';
+    final name = _esc(customer['name']?.toString() ?? 'Customer');
+    final custCode = _esc(customer['customerId']?.toString() ?? customer['id']?.toString() ?? '');
+    final mobile = _esc(customer['mobile']?.toString() ?? '');
+    final area = _esc(customer['area']?.toString() ?? 'Hyderabad');
+    final address = _esc(customer['address']?.toString() ?? 'Doorstep Address');
     final balance = num.tryParse(customer['currentBalance']?.toString() ?? '0') ?? 0;
 
     final completedDeliveries = deliveries.where((d) => d['status'] == 'delivered').toList();

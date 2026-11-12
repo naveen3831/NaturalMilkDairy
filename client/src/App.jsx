@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { useAuth } from './context/AuthContext';
 import { useDairy } from './context/DairyContext';
 
@@ -111,7 +111,6 @@ export default function App() {
         'delivery-boy-app',
         'customer-portal',
         'my-subscription',
-        'my-deliveries',
         'my-address',
         'pause-delivery',
       ];
@@ -246,6 +245,13 @@ export default function App() {
     }
   }, [activeTab]);
 
+  const scrollPageToTop = () => {
+    if (typeof window === 'undefined') return;
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  };
+
   // Handle explicit logout event: always immediately reset activeTab to 'home' and URL to '/'
   useEffect(() => {
     const handleLogout = () => {
@@ -253,7 +259,7 @@ export default function App() {
       if (window.location.pathname !== '/') {
         window.history.replaceState({ nmdPage: 'home' }, '', '/');
       }
-      window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+      scrollPageToTop();
     };
     window.addEventListener('nmd_auth_logout', handleLogout);
     return () => window.removeEventListener('nmd_auth_logout', handleLogout);
@@ -287,7 +293,6 @@ export default function App() {
           'delivery-boy-app',
           'customer-portal',
           'my-subscription',
-          'my-deliveries',
           'my-address',
           'pause-delivery',
         ];
@@ -358,9 +363,15 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncTabFromLocation);
   }, [user, isMobile]);
 
-  // Whenever activeTab changes, automatically scroll to the starting top of the page
-  useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  // Whenever activeTab changes, immediately scroll to the starting top of the page
+  useLayoutEffect(() => {
+    scrollPageToTop();
+    const rafId = window.requestAnimationFrame(scrollPageToTop);
+    const timerId = window.setTimeout(scrollPageToTop, 60);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
   }, [activeTab]);
 
   const navigateToTab = (tab, optionsOrProductId = null) => {
@@ -382,7 +393,6 @@ export default function App() {
         'delivery-boy-app',
         'customer-portal',
         'my-subscription',
-        'my-deliveries',
         'my-address',
         'pause-delivery',
       ];
@@ -420,10 +430,9 @@ export default function App() {
     if (window.location.pathname + window.location.search !== routePath) {
       window.history.pushState({ nmdPage: targetTab }, '', routePath);
     }
-    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-    setTimeout(() => {
-      window.scrollTo(0, 0);
-    }, 40);
+    scrollPageToTop();
+    window.requestAnimationFrame(scrollPageToTop);
+    setTimeout(scrollPageToTop, 50);
   };
 
   // Strict Unauthenticated Protection:
@@ -435,7 +444,6 @@ export default function App() {
         'delivery-boy-app',
         'customer-portal',
         'my-subscription',
-        'my-deliveries',
         'my-address',
         'pause-delivery',
       ];

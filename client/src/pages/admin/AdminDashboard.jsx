@@ -366,8 +366,8 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
               <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f766e', lineHeight: 1.1 }}>
                 ₹{Number(summary.paymentsCollected || 0).toLocaleString()}
               </div>
-              <div style={{ fontSize: '0.68rem', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                Cash & UPI received today
+              <div style={{ fontSize: '0.68rem', color: '#0f766e', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Cash ₹{Number(summary.todayCashCollected || 0).toLocaleString()} • UPI ₹{Number(summary.todayUpiCollected || 0).toLocaleString()}
               </div>
             </div>
 
@@ -1155,10 +1155,10 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
             </div>
           </div>
           <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f766e', marginTop: '6px', lineHeight: 1.1 }}>
-            ₹{summary.paymentsCollected.toLocaleString()}
+            ₹{(summary.paymentsCollected || 0).toLocaleString()}
           </div>
-          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '8px' }}>
-            Cash & UPI received today
+          <div style={{ fontSize: '0.75rem', color: '#0f766e', fontWeight: 700, marginTop: '8px' }}>
+            Cash ₹{(summary.todayCashCollected || 0).toLocaleString()} • UPI ₹{(summary.todayUpiCollected || 0).toLocaleString()}
           </div>
         </div>
 

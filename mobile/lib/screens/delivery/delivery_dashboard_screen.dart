@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/product_model.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
@@ -14,6 +16,59 @@ import '../../widgets/report_download_sheet.dart';
 import '../../services/delivery_proof_watermarker.dart';
 import '../../widgets/delivery_proof_dialog.dart';
 import '../../core/utils/ist_date_time.dart';
+
+String _todayIstCacheKey() {
+  final nowIst = IstDateTime.toIst(DateTime.now());
+  return 'nmd_addon_drops_${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+}
+
+Future<void> _saveLocalAddonCache(String deliveryId, Map<String, dynamic> patch) async {
+  if (deliveryId.isEmpty) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _todayIstCacheKey();
+    final raw = prefs.getString(key);
+    final Map<String, dynamic> map = raw != null && raw.isNotEmpty
+        ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+        : <String, dynamic>{};
+    final existing = map[deliveryId] is Map ? Map<String, dynamic>.from(map[deliveryId] as Map) : <String, dynamic>{};
+    map[deliveryId] = {...existing, ...patch};
+    await prefs.setString(key, jsonEncode(map));
+  } catch (_) {}
+}
+
+Future<void> _applyLocalAddonCache(List<Map<String, dynamic>> list) async {
+  if (list.isEmpty) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_todayIstCacheKey());
+    if (raw == null || raw.isEmpty) return;
+    final map = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    for (final d in list) {
+      final dId = (d['_id'] ?? d['id'] ?? '').toString();
+      if (dId.isEmpty || map[dId] is! Map) continue;
+      final cached = Map<String, dynamic>.from(map[dId] as Map);
+      final serverAddonsTotal = num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0;
+      final serverAddonPaid = num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0;
+      final serverPayAmt = num.tryParse((d['paymentAmount'] ?? '0').toString()) ?? 0;
+      if (serverAddonsTotal <= 0 && (cached['addons'] is List && (cached['addons'] as List).isNotEmpty)) {
+        d['addons'] = cached['addons'];
+        d['addonsTotal'] = cached['addonsTotal'];
+        d['totalAmount'] = cached['totalAmount'] ?? d['totalAmount'];
+      }
+      if (serverAddonPaid <= 0 && (num.tryParse((cached['addonPaidAmount'] ?? '0').toString()) ?? 0) > 0) {
+        d['addonPaymentMethod'] = cached['addonPaymentMethod'];
+        d['addonPaidAmount'] = cached['addonPaidAmount'];
+      }
+      if (serverPayAmt <= 0 && (num.tryParse((cached['paymentAmount'] ?? '0').toString()) ?? 0) > 0) {
+        d['paymentAmount'] = cached['paymentAmount'];
+        if ((cached['paymentMethod'] ?? '').toString().isNotEmpty) {
+          d['paymentMethod'] = cached['paymentMethod'];
+        }
+      }
+    }
+  } catch (_) {}
+}
 
 class DeliveryPartnerDashboardScreen extends StatefulWidget {
   const DeliveryPartnerDashboardScreen({super.key});
@@ -57,13 +112,39 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   String? _activeProfileSubScreen; // null, 'edit', 'personal', 'contact', 'territory', 'vehicle', 'support', 'deliveries_details', 'subscriptions_history'
   bool _isNotificationScreenOpen = false;
   List<Map<String, dynamic>> _notifications = [];
+  List<Map<String, dynamic>> _payments = [];
+  List<Map<String, dynamic>> _allDeliveries = [];
+  List<Map<String, dynamic>> _handovers = [];
+  double _serverBoyCash = 0.0;
+  double _serverBoyUpi = 0.0;
+  String _cashPeriod = 'today'; // 'today' | 'all'
+  String _cashFilter = 'all'; // 'all' | 'cash' | 'upi' | 'addons'
+  bool _isSubmittingHandover = false;
   int _unreadNotifCount = 2;
   String _notifFilter = 'all'; // 'all', 'unread', 'deliveries', 'system'
   final List<Map<String, dynamic>> _sentSupportMessages = [];
 
-  // Route Stops Search State
+  // Route Stops Search, Location & Nearest Sorting States
   String _routeSearchQuery = '';
   final TextEditingController _routeSearchCtrl = TextEditingController();
+  String _routeSelectedArea = 'All';
+  String _routeSortMode = 'nearest'; // 'nearest' | 'location'
+  String _routeStatusFilter = 'all'; // 'all' | 'pending' | 'delivered'
+  double? _partnerLat;
+  double? _partnerLng;
+  bool _hasLiveGps = false;
+  bool _isLocatingPartner = false;
+  final Map<String, List<double>> _areaCenterCoords = {
+    'madhapur': [17.4483, 78.3915],
+    'hitec city': [17.4435, 78.3772],
+    'kondapur': [17.4600, 78.3568],
+    'gachibowli': [17.4401, 78.3489],
+    'jubilee hills': [17.4326, 78.4071],
+    'banjara hills': [17.4156, 78.4347],
+    'financial district': [17.4193, 78.3422],
+    'kukatpally': [17.4948, 78.3996],
+    'manikonda': [17.4021, 78.3820],
+  };
 
   // Deliveries Details Sub-Screen States
   String _delSubFilter = 'all'; // 'all', 'pending', 'delivered', 'not_delivered', 'cash', 'upi'
@@ -77,6 +158,119 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   final TextEditingController _subHistSearchCtrl = TextEditingController();
   List<Map<String, dynamic>> _extraSubscriptions = [];
   bool _isLoadingSubscriptions = false;
+
+  Future<void> _loadServiceLocations() async {
+    try {
+      final res = await _api.get('/api/locations');
+      if (res['success'] == true && res['locations'] is List && mounted) {
+        for (final item in (res['locations'] as List)) {
+          if (item is Map) {
+            final name = (item['name'] ?? '').toString().trim().toLowerCase();
+            final lat = num.tryParse(item['latitude']?.toString() ?? '')?.toDouble();
+            final lng = num.tryParse(item['longitude']?.toString() ?? '')?.toDouble();
+            if (name.isNotEmpty && lat != null && lng != null && lat != 0 && lng != 0) {
+              _areaCenterCoords[name] = [lat, lng];
+            }
+          }
+        }
+        setState(() {});
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _detectPartnerLocation({bool requestPermission = true, bool silent = false}) async {
+    if (_isLocatingPartner) return;
+    if (mounted) setState(() => _isLocatingPartner = true);
+    try {
+      final loc = await LauncherService.getCurrentLocation(requestPermission: requestPermission);
+      if (loc != null && mounted) {
+        setState(() {
+          _partnerLat = loc['latitude'];
+          _partnerLng = loc['longitude'];
+          _hasLiveGps = true;
+        });
+        if (!silent) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('📍 Live GPS detected! Route sorted nearest customer first.'),
+              backgroundColor: Color(0xFF059669),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else if (!silent && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Using $_profileArea hub center to sort nearest stops (enable GPS for live location).'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isLocatingPartner = false);
+    }
+  }
+
+  List<double> _getReferenceCoords(String boyArea) {
+    if (_hasLiveGps && _partnerLat != null && _partnerLng != null) {
+      return [_partnerLat!, _partnerLng!];
+    }
+    final key = boyArea.trim().toLowerCase();
+    if (_areaCenterCoords.containsKey(key)) return _areaCenterCoords[key]!;
+    for (final entry in _areaCenterCoords.entries) {
+      if (key.contains(entry.key) || entry.key.contains(key)) return entry.value;
+    }
+    return [17.4483, 78.3915];
+  }
+
+  double _haversineKm(double lat1, double lng1, double lat2, double lng2) {
+    const double r = 6371.0;
+    final double dLat = (lat2 - lat1) * math.pi / 180.0;
+    final double dLng = (lng2 - lng1) * math.pi / 180.0;
+    final double a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180.0) *
+            math.cos(lat2 * math.pi / 180.0) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return r * c;
+  }
+
+  String _formatDistanceLabel(double? distKm) {
+    if (distKm == null || distKm.isInfinite || distKm.isNaN) return 'Location';
+    if (distKm < 1.0) {
+      final meters = (distKm * 1000).round();
+      return '${meters < 10 ? 10 : meters} m';
+    }
+    return '${distKm.toStringAsFixed(1)} km';
+  }
+
+  String _resolveStopArea(Map<String, dynamic> d, Map<String, dynamic>? cust, String boyArea) {
+    final rawArea = (d['customerArea'] ?? d['area'] ?? cust?['area'] ?? '').toString().trim();
+    if (rawArea.isNotEmpty && !rawArea.toLowerCase().contains('all ')) {
+      return _titleCaseArea(rawArea);
+    }
+    final addr = (d['customerAddress'] ?? cust?['address'] ?? '').toString().toLowerCase();
+    for (final known in _areaCenterCoords.keys) {
+      if (addr.contains(known)) {
+        return _titleCaseArea(known);
+      }
+    }
+    final cleanBoy = boyArea.trim();
+    if (cleanBoy.isNotEmpty && !cleanBoy.toLowerCase().contains('all ')) {
+      return _titleCaseArea(cleanBoy);
+    }
+    return 'Madhapur';
+  }
+
+  String _titleCaseArea(String area) {
+    return area
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
+  }
 
   Future<void> _fetchSubscriptions() async {
     if (_isLoadingSubscriptions) return;
@@ -102,11 +296,16 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   void initState() {
     super.initState();
     _loadData();
+    _loadServiceLocations();
+    _detectPartnerLocation(requestPermission: false, silent: true);
     _loadNotifications(silent: true);
     _initRealtime();
   }
 
   void _initRealtime() {
+    if (!_realtime.isConnected && !_realtime.isConnecting) {
+      _realtime.connect();
+    }
     _wsSub = _realtime.eventStream.listen((event) {
       final type = event['type']?.toString();
       if (type == 'NOTIFICATION_DELETED') {
@@ -133,7 +332,14 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       } else if (type == 'DRIVER_DUTY_UPDATED' ||
           type == 'DELIVERY_BOY_UPDATED' ||
           type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_CREATED' ||
+          type == 'PAYMENT_UPDATED' ||
+          type == 'PAYMENT_RECORDED' ||
+          type == 'CASH_HANDOVER_UPDATED' ||
+          type == 'CASH_HANDOVER_SUBMITTED' ||
+          type == 'CUSTOMER_CREATED' ||
           type == 'CUSTOMER_UPDATED' ||
+          type == 'CUSTOMER_DELETED' ||
           type == 'LOCATION_UPDATED' ||
           type == 'ORDER_UPDATED' ||
           type == 'NOTIFICATION_UPDATED' ||
@@ -297,12 +503,20 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
     try {
       final results = await Future.wait([
-        _api.get('/api/deliveries?range=today'),
-        _api.get('/api/deliveries/assigned-customers'),
+        _api.get('/api/deliveries?range=today').catchError((_) => <String, dynamic>{}),
+        _api.get('/api/deliveries/assigned-customers').catchError((_) => <String, dynamic>{}),
+        _api.get('/api/deliveries?range=all').catchError((_) => <String, dynamic>{}),
+        _api.get('/api/payments').catchError((_) => <String, dynamic>{}),
+        _api.get('/api/payments/handovers').catchError((_) => <String, dynamic>{}),
+        _api.get('/api/delivery-boys').catchError((_) => <String, dynamic>{}),
       ]);
 
       final delRes = results[0];
       final custRes = results[1];
+      final allDelRes = results[2];
+      final payRes = results[3];
+      final handoverRes = results[4];
+      final boysRes = results[5];
 
       try {
         final meRes = await _api.get('/api/auth/me');
@@ -310,15 +524,29 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           final meUser = Map<String, dynamic>.from(meRes['user'] as Map);
           if (mounted) {
             await context.read<AuthProvider>().updateUserFromMap(meUser);
-            if (meUser['isOnline'] is bool) {
-              setState(() => _isOnDuty = meUser['isOnline'] as bool);
-            }
-            if (meUser['vehicleNumber'] != null && meUser['vehicleNumber'].toString().trim().isNotEmpty) {
-              setState(() => _vehiclePlate = meUser['vehicleNumber'].toString().trim());
-            }
+            setState(() {
+              if (meUser['isOnline'] is bool) _isOnDuty = meUser['isOnline'] as bool;
+              if (meUser['vehicleNumber'] != null && meUser['vehicleNumber'].toString().trim().isNotEmpty) {
+                _vehiclePlate = meUser['vehicleNumber'].toString().trim();
+              }
+              final meCash = (num.tryParse((meUser['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble();
+              final meUpi = (num.tryParse((meUser['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble();
+              if (meCash > 0 || _serverBoyCash == 0) _serverBoyCash = meCash;
+              if (meUpi > 0 || _serverBoyUpi == 0) _serverBoyUpi = meUpi;
+            });
           }
         }
       } catch (_) {}
+
+      final List<Map<String, dynamic>> parsedTodayDeliveries = delRes['success'] == true && delRes['deliveries'] is List
+          ? (delRes['deliveries'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : List<Map<String, dynamic>>.from(_deliveries);
+      final List<Map<String, dynamic>> parsedAllDeliveries = allDelRes['success'] == true && allDelRes['deliveries'] is List
+          ? (allDelRes['deliveries'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : (_allDeliveries.isNotEmpty ? List<Map<String, dynamic>>.from(_allDeliveries) : List<Map<String, dynamic>>.from(parsedTodayDeliveries));
+
+      await _applyLocalAddonCache(parsedTodayDeliveries);
+      await _applyLocalAddonCache(parsedAllDeliveries);
 
       if (mounted) {
         final authUser = context.read<AuthProvider>().user;
@@ -338,9 +566,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           }
 
           if (delRes['success'] == true && delRes['deliveries'] is List) {
-            _deliveries = (delRes['deliveries'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
+            _deliveries = parsedTodayDeliveries;
           }
 
           if (custRes['success'] == true && custRes['customers'] is List) {
@@ -348,13 +574,97 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 .map((e) => Map<String, dynamic>.from(e as Map))
                 .toList();
           }
+
+          if (allDelRes['success'] == true && allDelRes['deliveries'] is List) {
+            _allDeliveries = parsedAllDeliveries;
+          } else if (_allDeliveries.isEmpty && _deliveries.isNotEmpty) {
+            _allDeliveries = List<Map<String, dynamic>>.from(_deliveries);
+          }
+
+          if (payRes['success'] == true && payRes['payments'] is List) {
+            _payments = (payRes['payments'] as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          }
+
+          if (handoverRes['success'] == true && handoverRes['handovers'] is List) {
+            _handovers = (handoverRes['handovers'] as List)
+                .map((e) => Map<String, dynamic>.from(e as Map))
+                .toList();
+          }
+
+          if (boysRes['success'] == true && boysRes['deliveryBoys'] is List) {
+            final boysList = (boysRes['deliveryBoys'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList();
+            final cleanProfMob = _cleanPhone(_profilePhone);
+            final profNameLower = _profileName.trim().toLowerCase();
+            final matched = boysList.firstWhere(
+              (b) {
+                final bId = (b['id'] ?? b['_id'] ?? '').toString();
+                final bMob = _cleanPhone(b['mobile']?.toString());
+                final bName = (b['name'] ?? '').toString().trim().toLowerCase();
+                return (authUser != null && bId == authUser.id) ||
+                    (cleanProfMob.isNotEmpty && bMob == cleanProfMob) ||
+                    (profNameLower.isNotEmpty && bName == profNameLower);
+              },
+              orElse: () => <String, dynamic>{},
+            );
+            if (matched.isNotEmpty) {
+              _serverBoyCash = (num.tryParse((matched['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble();
+              _serverBoyUpi = (num.tryParse((matched['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble();
+            }
+          }
         });
+
+        // Fallback when /api/payments is unavailable on older backend deployments:
+        // collect Customer & Subscription Cash/UPI entries directly from assigned customer ledgers
+        if (payRes['success'] != true && _assignedCustomers.isNotEmpty) {
+          _loadPaymentsFromCustomerLedgers();
+        }
       }
     } catch (e) {
       debugPrint('Error loading delivery partner data: $e');
     } finally {
       if (mounted && !silent) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadPaymentsFromCustomerLedgers() async {
+    try {
+      final subset = _assignedCustomers.take(25).toList();
+      final collected = <Map<String, dynamic>>[];
+      await Future.wait(
+        subset.map((c) async {
+          final cId = (c['id'] ?? c['_id'] ?? c['customerId'] ?? '').toString();
+          if (cId.isEmpty) return;
+          try {
+            final res = await _api.get('/api/customers/$cId/ledger');
+            if (res['success'] == true && res['ledger'] is List) {
+              for (final raw in (res['ledger'] as List)) {
+                if (raw is Map && raw['type'] == 'payment') {
+                  final entry = Map<String, dynamic>.from(raw);
+                  collected.add({
+                    'id': entry['id'] ?? '${cId}_${entry['date']}_${entry['paidAmount']}',
+                    'customerId': c['customerId'] ?? cId,
+                    'customerName': c['name'] ?? 'Customer',
+                    'amount': entry['paidAmount'] ?? entry['amount'] ?? 0,
+                    'paymentMethod': (entry['paymentMethod'] ?? 'cash').toString().toLowerCase(),
+                    'paymentDate': entry['rawDate'] ?? entry['date'] ?? DateTime.now().toIso8601String(),
+                    'notes': entry['notes'] ?? 'Customer Payment',
+                    'referenceNumber': entry['referenceNumber'] ?? '',
+                  });
+                }
+              }
+            }
+          } catch (_) {}
+        }),
+      );
+      if (mounted && collected.isNotEmpty) {
+        setState(() => _payments = collected);
+      }
+    } catch (_) {}
   }
 
   // Statistics
@@ -368,16 +678,95 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     return ((_completedCount / _totalCount) * 100).round();
   }
 
+  double _cashCollectedFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final m = (d['paymentMethod'] ?? '').toString().toLowerCase();
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (m == 'cash') {
+      return (num.tryParse((d['paymentAmount'] ?? d['totalAmount'])?.toString() ?? '0') ?? 0).toDouble();
+    }
+    if (am == 'cash') {
+      return (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'])?.toString() ?? '0') ?? 0).toDouble();
+    }
+    return 0.0;
+  }
+
+  double _upiCollectedFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final m = (d['paymentMethod'] ?? '').toString().toLowerCase();
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (m == 'upi') {
+      return (num.tryParse((d['paymentAmount'] ?? d['totalAmount'])?.toString() ?? '0') ?? 0).toDouble();
+    }
+    if (am == 'upi') {
+      return (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'])?.toString() ?? '0') ?? 0).toDouble();
+    }
+    return 0.0;
+  }
+
+  double _addonCashFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (am == 'cash') {
+      return (num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble();
+    }
+    return 0.0;
+  }
+
+  double _addonUpiFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (am == 'upi') {
+      return (num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble();
+    }
+    return 0.0;
+  }
+
+  List<Map<String, dynamic>> get _todayNonDeliveryPayments {
+    final nowIst = IstDateTime.toIst(DateTime.now());
+    final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+    return _payments.where((p) {
+      final ref = (p['referenceNumber'] ?? '').toString().toUpperCase();
+      if (ref.contains('DELIVERY-')) return false;
+      final notes = (p['notes'] ?? '').toString();
+      if (notes.startsWith('Doorstep Add-ons:') || notes.startsWith('Doorstep Delivery')) {
+        final custId = (p['customerId'] ?? '').toString();
+        final alreadyInDrop = _deliveries.any((d) =>
+            d['status'] == 'delivered' &&
+            (d['customerId'] ?? '').toString() == custId &&
+            ((num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0) > 0 ||
+                (num.tryParse((d['paymentAmount'] ?? '0').toString()) ?? 0) > 0));
+        if (alreadyInDrop) return false;
+      }
+      final rawDt = (p['paymentDate'] ?? p['createdAt'] ?? '').toString();
+      if (rawDt.isEmpty) return false;
+      final dt = DateTime.tryParse(rawDt);
+      if (dt == null) return false;
+      final istDt = IstDateTime.toIst(dt);
+      final pStr = '${istDt.year}-${istDt.month.toString().padLeft(2, '0')}-${istDt.day.toString().padLeft(2, '0')}';
+      return pStr == todayStr;
+    }).toList();
+  }
+
+  double get _todayCustomerCash => _todayNonDeliveryPayments
+      .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'cash')
+      .fold(0.0, (sum, p) => sum + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
+
+  double get _todayCustomerUpi => _todayNonDeliveryPayments
+      .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'upi')
+      .fold(0.0, (sum, p) => sum + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
+
+  double get _todayDeliveryCash => _deliveries.fold(0.0, (sum, d) => sum + _cashCollectedFor(d));
+  double get _todayDeliveryUpi => _deliveries.fold(0.0, (sum, d) => sum + _upiCollectedFor(d));
+
   double get _todayCash {
-    return _deliveries
-        .where((d) => d['status'] == 'delivered' && d['paymentMethod'] == 'cash')
-        .fold(0.0, (sum, d) => sum + (num.tryParse(d['paymentAmount']?.toString() ?? '0') ?? 0).toDouble());
+    final computed = _todayDeliveryCash + _todayCustomerCash;
+    return computed > _serverBoyCash ? computed : _serverBoyCash;
   }
 
   double get _todayUpi {
-    return _deliveries
-        .where((d) => d['status'] == 'delivered' && d['paymentMethod'] == 'upi')
-        .fold(0.0, (sum, d) => sum + (num.tryParse(d['paymentAmount']?.toString() ?? '0') ?? 0).toDouble());
+    final computed = _todayDeliveryUpi + _todayCustomerUpi;
+    return computed > _serverBoyUpi ? computed : _serverBoyUpi;
   }
 
   List<Map<String, dynamic>> get _filteredDeliveries {
@@ -431,6 +820,298 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     }
   }
 
+  void _showPostDeliveryAddonSheet(Map<String, dynamic> d) {
+    final custName = (d['customerName'] ?? 'Customer').toString();
+    final deliveryId = (d['_id'] ?? d['id'] ?? '').toString();
+    final custId = (d['customerId'] ?? '').toString();
+    final searchCtrl = TextEditingController();
+    final cashAmtCtrl = TextEditingController(text: '0');
+    List<ProductModel> catalog = ProductModel.defaultCatalog;
+    final Map<String, double> qtys = {};
+    String searchQ = '';
+    String payMethod = 'cash';
+    bool manualCashEdited = false;
+    bool isLoadingCatalog = true;
+    bool isSaving = false;
+    bool startedFetch = false;
+
+    double unitPrice(ProductModel p) =>
+        p.numericPrice > 0 ? p.numericPrice : (double.tryParse(p.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+
+    double calcSubtotal() {
+      double s = 0;
+      for (final p in catalog) {
+        final q = qtys[p.id] ?? 0;
+        if (q > 0) s += q * unitPrice(p);
+      }
+      return s;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) {
+          if (!startedFetch) {
+            startedFetch = true;
+            _api.getProducts().then((list) {
+              if (modalCtx.mounted) {
+                setModalState(() {
+                  if (list.isNotEmpty) catalog = list;
+                  isLoadingCatalog = false;
+                });
+              }
+            }).catchError((_) {
+              if (modalCtx.mounted) setModalState(() => isLoadingCatalog = false);
+            });
+          }
+
+          final filtered = catalog.where((p) {
+            if (searchQ.isEmpty) return true;
+            return p.name.toLowerCase().contains(searchQ) || p.category.toLowerCase().contains(searchQ);
+          }).toList();
+          final subtotal = calcSubtotal();
+
+          return Container(
+            height: MediaQuery.of(modalCtx).size.height * 0.82,
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 16,
+              top: 16,
+              left: 16,
+              right: 16,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Add Extra Add-ons • $custName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)), overflow: TextOverflow.ellipsis),
+                          const Text('Add items & collect Cash/UPI in real time', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(modalCtx).pop()),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: searchCtrl,
+                  onChanged: (v) => setModalState(() => searchQ = v.trim().toLowerCase()),
+                  decoration: InputDecoration(
+                    hintText: 'Search milk, curd, paneer, ghee...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF059669)),
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: isLoadingCatalog
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669)))
+                      : ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (_, idx) {
+                            final p = filtered[idx];
+                            final q = qtys[p.id] ?? 0;
+                            final uPrice = unitPrice(p);
+                            final pName = p.name.toLowerCase();
+                            final pUnit = p.unit.toLowerCase();
+                            final isFixedPack = pName.contains('half') || pName.contains('500') || pUnit.contains('500') || pUnit.contains('ml') || pUnit.contains('pack');
+                            final isMilk = (p.category.toLowerCase() == 'milk' || pName.contains('milk')) && !isFixedPack;
+                            final step = isMilk ? 0.5 : 1.0;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: q > 0 ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: q > 0 ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                                        Text('₹${uPrice.toStringAsFixed(0)} / ${p.unit}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
+                                      ],
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: q > 0
+                                        ? () => setModalState(() {
+                                              final nq = (q - step).clamp(0.0, 99.0);
+                                              if (nq <= 0) {
+                                                qtys.remove(p.id);
+                                              } else {
+                                                qtys[p.id] = nq;
+                                              }
+                                              if (!manualCashEdited) cashAmtCtrl.text = calcSubtotal().toStringAsFixed(0);
+                                            })
+                                        : null,
+                                    icon: const Icon(Icons.remove_circle_outline),
+                                  ),
+                                  Text(q > 0 ? (q == q.truncateToDouble() ? '${q.toInt()}' : '$q') : '0', style: const TextStyle(fontWeight: FontWeight.w900)),
+                                  IconButton(
+                                    onPressed: () => setModalState(() {
+                                      qtys[p.id] = q + step;
+                                      if (!manualCashEdited) cashAmtCtrl.text = calcSubtotal().toStringAsFixed(0);
+                                    }),
+                                    icon: const Icon(Icons.add_circle_rounded, color: Color(0xFF059669)),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                const Divider(),
+                DropdownButtonFormField<String>(
+                  initialValue: payMethod,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Add-ons Settlement', border: OutlineInputBorder(), isDense: true),
+                  items: const [
+                    DropdownMenuItem(value: 'cash', child: Text('💵 Cash Given for Add-ons', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'upi', child: Text('📱 UPI Paid for Add-ons', overflow: TextOverflow.ellipsis)),
+                    DropdownMenuItem(value: 'credit', child: Text('📝 Add to Customer Credit Ledger', overflow: TextOverflow.ellipsis)),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) setModalState(() => payMethod = v);
+                  },
+                ),
+                if (payMethod == 'cash' || payMethod == 'upi') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: cashAmtCtrl,
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => manualCashEdited = true,
+                    decoration: InputDecoration(
+                      labelText: 'Cash / Amount Collected (₹)',
+                      prefixText: '₹ ',
+                      suffix: InkWell(
+                        onTap: () => setModalState(() {
+                          manualCashEdited = false;
+                          cashAmtCtrl.text = subtotal.toStringAsFixed(0);
+                        }),
+                        child: Text('Full ₹${subtotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                      ),
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: (isSaving || subtotal <= 0)
+                        ? null
+                        : () async {
+                            setModalState(() => isSaving = true);
+                            final newItems = <Map<String, dynamic>>[];
+                            for (final p in catalog) {
+                              final q = qtys[p.id] ?? 0;
+                              if (q > 0) {
+                                newItems.add({
+                                  'productId': p.id,
+                                  'name': p.name,
+                                  'quantity': q,
+                                  'unit': p.unit,
+                                  'price': unitPrice(p),
+                                });
+                              }
+                            }
+                            final paidNow = (payMethod == 'cash' || payMethod == 'upi')
+                                ? (num.tryParse(cashAmtCtrl.text.trim()) ?? subtotal).toDouble()
+                                : 0.0;
+
+                            try {
+                              if (paidNow > 0 && custId.isNotEmpty) {
+                                await _api.post('/api/payments', {
+                                  'customerId': custId,
+                                  'amount': paidNow,
+                                  'paymentMethod': payMethod,
+                                  'deliveryBoyId': d['deliveryBoyId']?.toString() ?? '',
+                                  'notes': 'Doorstep Add-ons: ${newItems.map((a) => '${a['name']} x${a['quantity']}').join(', ')}',
+                                });
+                              }
+                              final existingAddons = d['addons'] is List ? List<Map<String, dynamic>>.from((d['addons'] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e))) : <Map<String, dynamic>>[];
+                              final mergedAddons = [...existingAddons, ...newItems];
+                              final prevAddonsTot = (num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0).toDouble();
+                              final prevAddonPaid = (num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble();
+                              final prevPayAmt = (num.tryParse((d['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+                              final prevTotal = (num.tryParse((d['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+
+                              d['addons'] = mergedAddons;
+                              d['addonsTotal'] = prevAddonsTot + subtotal;
+                              d['totalAmount'] = prevTotal + subtotal;
+                              if (paidNow > 0) {
+                                d['addonPaymentMethod'] = payMethod;
+                                d['addonPaidAmount'] = prevAddonPaid + paidNow;
+                                d['paymentAmount'] = prevPayAmt + paidNow;
+                              } else if ((d['addonPaymentMethod'] ?? '').toString().isEmpty) {
+                                d['addonPaymentMethod'] = payMethod;
+                              }
+
+                              await _saveLocalAddonCache(deliveryId, {
+                                'addons': d['addons'],
+                                'addonsTotal': d['addonsTotal'],
+                                'totalAmount': d['totalAmount'],
+                                'paymentMethod': d['paymentMethod'],
+                                'paymentAmount': d['paymentAmount'],
+                                'addonPaymentMethod': d['addonPaymentMethod'],
+                                'addonPaidAmount': d['addonPaidAmount'],
+                              });
+
+                              if (modalCtx.mounted) Navigator.of(modalCtx).pop();
+                              if (mounted) setState(() {});
+                              _loadData(silent: true);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('✓ Added ₹${subtotal.toStringAsFixed(0)} add-on${paidNow > 0 ? ' (₹${paidNow.toStringAsFixed(0)} ${payMethod.toUpperCase()} recorded)' : ''} for $custName!'),
+                                    backgroundColor: const Color(0xFF059669),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to save add-on: $e'), backgroundColor: const Color(0xFFDC2626)));
+                              }
+                            } finally {
+                              if (modalCtx.mounted) setModalState(() => isSaving = false);
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : Text('Save Add-ons (₹${subtotal.toStringAsFixed(0)})', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showMarkDeliveredDialog(Map<String, dynamic> delivery) {
     if (!_isOnDuty) {
       _showOfflineBlockedDialog();
@@ -441,7 +1122,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         builder: (ctx) => _FullScreenMarkDeliveredPage(
           delivery: delivery,
           api: _api,
-          onSuccess: () => _loadData(silent: true),
+          onSuccess: () {
+            if (mounted) setState(() {});
+            _loadData(silent: true);
+          },
         ),
       ),
     );
@@ -1071,7 +1755,12 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     final color = isSelected ? const Color(0xFF059669) : const Color(0xFF64748B);
 
     return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
+      onTap: () {
+        setState(() => _selectedTabIndex = index);
+        if (index == 1 && !_hasLiveGps && !_isLocatingPartner) {
+          _detectPartnerLocation(requestPermission: true, silent: true);
+        }
+      },
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1162,74 +1851,74 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. PAGE TITLE & SUBTITLE WITH PDF REPORT ACTION
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          // 1. PAGE TITLE & SUBTITLE WITH QUICK ACTIONS (ADD CUSTOMER & REPORT PDF)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Your deliveries',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '$boyArea · $_pendingCount remaining of $_totalCount stops',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+              const Text(
+                'Your deliveries',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.3,
                 ),
               ),
-              const SizedBox(width: 8),
-              InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: () => ReportDownloadSheet.show(
-                  context,
-                  role: 'partner',
-                  initialCustomers: _assignedCustomers,
-                  initialDeliveries: _deliveries,
+              const SizedBox(height: 3),
+              Text(
+                '$boyArea · $_pendingCount remaining of $_totalCount stops',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w500,
                 ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D5C3A),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0D5C3A).withValues(alpha: 0.2),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _showAddCustomerModal,
+                      icon: const Icon(Icons.person_add_alt_1_rounded, size: 17, color: Colors.white),
+                      label: const Text(
+                        'Add Customer',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
                       ),
-                    ],
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+                      ),
+                    ),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 15),
-                      SizedBox(width: 5),
-                      Text(
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => ReportDownloadSheet.show(
+                        context,
+                        role: 'partner',
+                        initialCustomers: _assignedCustomers,
+                        initialDeliveries: _deliveries,
+                      ),
+                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 17, color: Color(0xFF0D5C3A)),
+                      label: const Text(
                         'Report PDF',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A)),
                       ),
-                    ],
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: const Color(0xFFECFDF5),
+                        side: const BorderSide(color: Color(0xFFA7F3D0), width: 1.2),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
@@ -1469,6 +2158,18 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   const Text('No drops match this view', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   const SizedBox(height: 4),
                   const Text('Route fulfillments are fully up to date.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                  const SizedBox(height: 14),
+                  ElevatedButton.icon(
+                    onPressed: _showAddCustomerModal,
+                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 16, color: Colors.white),
+                    label: const Text('Add Customer to Route', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
                 ],
               ),
             )
@@ -1664,8 +2365,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             ),
           ),
 
-          // Product Tag: 🥛 1L Milk
-          Row(
+          // Product Tags: 🥛 1L Milk + Add-ons
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -1686,8 +2389,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   ],
                 ),
               ),
-              if (curdQty > 0) ...[
-                const SizedBox(width: 8),
+              if (curdQty > 0)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
@@ -1707,7 +2409,19 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                     ],
                   ),
                 ),
-              ],
+              if (d['addons'] is List && (d['addons'] as List).isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: Text(
+                    '+ ${(d['addons'] as List).length} Add-on(s) · ₹${d['addonsTotal'] ?? 0}${(d['addonPaidAmount'] is num && (d['addonPaidAmount'] as num) > 0) ? " (Paid ₹${d['addonPaidAmount']})" : ""}',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: Color(0xFF92400E)),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -1809,7 +2523,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
               // Delivered
               Expanded(
-                flex: isDelivered ? 4 : 3,
+                flex: isDelivered ? 3 : 3,
                 child: ElevatedButton.icon(
                   onPressed: isDelivered ? null : () => _showMarkDeliveredDialog(d),
                   icon: Icon(isDelivered ? Icons.verified_rounded : Icons.check_rounded, size: 16, color: Colors.white),
@@ -1825,6 +2539,24 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   ),
                 ),
               ),
+
+              if (isDelivered) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  flex: 3,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showPostDeliveryAddonSheet(d),
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 14, color: Color(0xFFB45309)),
+                    label: const Text('+ Add-on', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFFB45309))),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: const Color(0xFFFFFBEB),
+                      side: const BorderSide(color: Color(0xFFFDE68A)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+                    ),
+                  ),
+                ),
+              ],
 
               // Skip (Removed completely for delivered users)
               if (!isDelivered) ...[
@@ -1981,55 +2713,687 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   // =========================================================
-  // TAB 1: ROUTE & STOPS
+  // TAB 1: ROUTE & STOPS (LOCATION-WISE & NEAREST FIRST)
   // =========================================================
+  Map<String, dynamic>? _findMatchingCustomer(Map<String, dynamic> d) {
+    final custId = d['customerId']?.toString() ?? '';
+    final phone = _cleanPhone(d['customerPhone']?.toString());
+    for (final c in _assignedCustomers) {
+      final cid = c['customerId']?.toString() ?? '';
+      final oid = (c['_id'] ?? c['id'] ?? '').toString();
+      final cmob = _cleanPhone(c['mobile']?.toString());
+      if ((custId.isNotEmpty && (cid == custId || oid == custId)) ||
+          (phone.isNotEmpty && cmob == phone)) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildRouteStopCard(Map<String, dynamic> entry, int rankIndex, {bool isNearestPending = false}) {
+    final originalIndex = entry['originalIndex'] as int;
+    final d = entry['delivery'] as Map<String, dynamic>;
+    final areaName = entry['area'] as String;
+    final distKm = entry['distanceKm'] as double;
+    final distLabel = _formatDistanceLabel(distKm);
+    final lat = entry['lat'] as num?;
+    final lng = entry['lng'] as num?;
+    final isDelivered = d['status'] == 'delivered';
+    final isNotDelivered = d['status'] == 'not_delivered';
+    final address = (d['customerAddress'] ?? '$areaName Doorstep').toString();
+
+    return InkWell(
+      onTap: () => _openStopDetails(d, originalIndex),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isNearestPending
+                ? const Color(0xFF059669)
+                : (isDelivered ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0)),
+            width: isNearestPending ? 1.5 : 1.0,
+          ),
+          boxShadow: isNearestPending
+              ? [BoxShadow(color: const Color(0xFF059669).withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 2))]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: isDelivered
+                    ? const Color(0xFF059669)
+                    : (isNearestPending ? const Color(0xFF065F46) : const Color(0xFFF1F5F9)),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Center(
+                child: Text(
+                  '${rankIndex + 1}',
+                  style: TextStyle(
+                    color: (isDelivered || isNearestPending) ? Colors.white : const Color(0xFF334155),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          d['customerName'] ?? 'Customer',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isNearestPending) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF86EFAC)),
+                          ),
+                          child: const Text(
+                            'NEAREST',
+                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: Color(0xFF047857)),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFF6FF),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFFBFDBFE)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.near_me_rounded, size: 10, color: Color(0xFF1D4ED8)),
+                            const SizedBox(width: 3),
+                            Text(
+                              distLabel,
+                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Text(
+                          areaName,
+                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                        ),
+                      ),
+                      if (isDelivered)
+                        const Text('✓ Done', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)))
+                      else if (isNotDelivered)
+                        const Text('✕ Not Done', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFFDC2626))),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    address,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${d['plannedMilk'] ?? 1}L',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF059669)),
+                ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: const Icon(Icons.navigation_rounded, size: 19, color: Color(0xFF1D4ED8)),
+                  tooltip: 'Navigate',
+                  onPressed: () => _openMap(address, lat, lng),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRouteTab(String boyArea) {
-    // Filter route deliveries in realtime by name, address, mobile, or customer/stop ID
-    final filteredEntries = _deliveries.asMap().entries.where((entry) {
-      if (_routeSearchQuery.isEmpty) return true;
-      final idx = entry.key + 1;
+    final refCoords = _getReferenceCoords(boyArea);
+    final refLat = refCoords[0];
+    final refLng = refCoords[1];
+
+    // 1. Enrich every delivery stop with resolved area, lat/lng & distance from partner
+    final List<Map<String, dynamic>> enrichedAll = _deliveries.asMap().entries.map((entry) {
+      final idx = entry.key;
       final d = entry.value;
-      final name = (d['customerName'] ?? '').toString().toLowerCase();
-      final addr = (d['customerAddress'] ?? '').toString().toLowerCase();
-      final phone = (d['customerPhone'] ?? '').toString().toLowerCase();
-      final custId = (d['customerId'] ?? d['id'] ?? '').toString().toLowerCase();
-      final stopSeq = idx.toString();
-      return name.contains(_routeSearchQuery) ||
-          addr.contains(_routeSearchQuery) ||
-          phone.contains(_routeSearchQuery) ||
-          custId.contains(_routeSearchQuery) ||
-          stopSeq == _routeSearchQuery;
+      final cust = _findMatchingCustomer(d);
+      final areaName = _resolveStopArea(d, cust, boyArea);
+
+      num? rawLat = num.tryParse((d['latitude'] ?? d['customerLatitude'])?.toString() ?? '');
+      num? rawLng = num.tryParse((d['longitude'] ?? d['customerLongitude'])?.toString() ?? '');
+      if (rawLat == null || rawLat == 0) {
+        rawLat = num.tryParse(cust?['latitude']?.toString() ?? '');
+      }
+      if (rawLng == null || rawLng == 0) {
+        rawLng = num.tryParse(cust?['longitude']?.toString() ?? '');
+      }
+      if ((rawLat == null || rawLat == 0) && cust?['addresses'] is List && (cust!['addresses'] as List).isNotEmpty) {
+        final addr0 = (cust['addresses'] as List).first;
+        if (addr0 is Map) {
+          rawLat = num.tryParse(addr0['latitude']?.toString() ?? '');
+          rawLng = num.tryParse(addr0['longitude']?.toString() ?? '');
+        }
+      }
+
+      final areaCoords = _areaCenterCoords[areaName.toLowerCase()];
+      final double? calcLat = (rawLat != null && rawLat != 0) ? rawLat.toDouble() : areaCoords?[0];
+      final double? calcLng = (rawLng != null && rawLng != 0) ? rawLng.toDouble() : areaCoords?[1];
+      final double distanceKm = (calcLat != null && calcLng != null)
+          ? _haversineKm(refLat, refLng, calcLat, calcLng)
+          : double.infinity;
+
+      return {
+        'originalIndex': idx,
+        'delivery': d,
+        'customer': cust,
+        'area': areaName,
+        'lat': calcLat,
+        'lng': calcLng,
+        'distanceKm': distanceKm,
+      };
     }).toList();
+
+    // Sort all stops strictly nearest first (tie-breaker: pending first, then name)
+    enrichedAll.sort((a, b) {
+      final da = a['distanceKm'] as double;
+      final db = b['distanceKm'] as double;
+      final cmp = da.compareTo(db);
+      if (cmp != 0) return cmp;
+      final sa = (a['delivery']['status'] == 'pending') ? 0 : 1;
+      final sb = (b['delivery']['status'] == 'pending') ? 0 : 1;
+      if (sa != sb) return sa.compareTo(sb);
+      final na = (a['delivery']['customerName'] ?? '').toString().toLowerCase();
+      final nb = (b['delivery']['customerName'] ?? '').toString().toLowerCase();
+      return na.compareTo(nb);
+    });
+
+    // 2. Build location metadata sorted nearest-location-first
+    final Map<String, Map<String, dynamic>> areaMetaMap = {};
+    for (final item in enrichedAll) {
+      final area = item['area'] as String;
+      final dist = item['distanceKm'] as double;
+      final isPend = item['delivery']['status'] == 'pending';
+      if (!areaMetaMap.containsKey(area)) {
+        areaMetaMap[area] = {
+          'name': area,
+          'minDist': dist,
+          'minPendingDist': isPend ? dist : double.infinity,
+          'count': 0,
+          'pendingCount': 0,
+        };
+      }
+      final m = areaMetaMap[area]!;
+      m['count'] = (m['count'] as int) + 1;
+      if (isPend) {
+        m['pendingCount'] = (m['pendingCount'] as int) + 1;
+        if (dist < (m['minPendingDist'] as double)) {
+          m['minPendingDist'] = dist;
+        }
+      }
+      if (dist < (m['minDist'] as double)) {
+        m['minDist'] = dist;
+      }
+    }
+    final sortedLocations = areaMetaMap.values.toList()
+      ..sort((a, b) {
+        final da = (a['minPendingDist'] as double).isFinite ? a['minPendingDist'] as double : a['minDist'] as double;
+        final db = (b['minPendingDist'] as double).isFinite ? b['minPendingDist'] as double : b['minDist'] as double;
+        return da.compareTo(db);
+      });
+
+    // Reset area filter if area no longer present
+    final activeAreaFilter = (_routeSelectedArea == 'All' || areaMetaMap.containsKey(_routeSelectedArea))
+        ? _routeSelectedArea
+        : 'All';
+
+    // Closest pending stop overall for hero highlight
+    final nearestPendingEntry = enrichedAll.cast<Map<String, dynamic>?>().firstWhere(
+      (e) => e?['delivery']?['status'] == 'pending',
+      orElse: () => null,
+    );
+
+    // 3. Apply status, area, and search filters while keeping nearest-first sort
+    final filteredEntries = enrichedAll.where((item) {
+      final d = item['delivery'] as Map<String, dynamic>;
+      final area = item['area'] as String;
+      final idx = (item['originalIndex'] as int) + 1;
+
+      if (_routeStatusFilter == 'pending' && d['status'] != 'pending') return false;
+      if (_routeStatusFilter == 'delivered' && d['status'] != 'delivered') return false;
+      if (activeAreaFilter != 'All' && area.toLowerCase() != activeAreaFilter.toLowerCase()) return false;
+
+      if (_routeSearchQuery.isNotEmpty) {
+        final name = (d['customerName'] ?? '').toString().toLowerCase();
+        final addr = (d['customerAddress'] ?? '').toString().toLowerCase();
+        final phone = (d['customerPhone'] ?? '').toString().toLowerCase();
+        final custId = (d['customerId'] ?? d['id'] ?? '').toString().toLowerCase();
+        return name.contains(_routeSearchQuery) ||
+            addr.contains(_routeSearchQuery) ||
+            area.toLowerCase().contains(_routeSearchQuery) ||
+            phone.contains(_routeSearchQuery) ||
+            custId.contains(_routeSearchQuery) ||
+            idx.toString() == _routeSearchQuery;
+      }
+      return true;
+    }).toList();
+
+    // Group filtered entries by location (ordered nearest location first!) for Location-Wise mode
+    final Map<String, List<Map<String, dynamic>>> groupedByLocation = {};
+    for (final locMeta in sortedLocations) {
+      groupedByLocation[locMeta['name'] as String] = [];
+    }
+    for (final item in filteredEntries) {
+      final area = item['area'] as String;
+      groupedByLocation.putIfAbsent(area, () => []).add(item);
+    }
+    final nonEmptyLocationGroups = groupedByLocation.entries.where((e) => e.value.isNotEmpty).toList();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row + GPS Detection Trigger
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Route & Stops Sequence', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
-                  Text('Territory: $boyArea • ${_deliveries.length} ordered drops', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFBBF7D0)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Route & Nearest Stops',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${sortedLocations.length} locations • ${_deliveries.length} drops (nearest first)',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  ],
                 ),
-                child: const Text('MORNING SHIFT', style: TextStyle(color: Color(0xFF065F46), fontWeight: FontWeight.w800, fontSize: 10)),
+              ),
+              const SizedBox(width: 8),
+              InkWell(
+                onTap: _isLocatingPartner ? null : () => _detectPartnerLocation(requestPermission: true, silent: false),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _hasLiveGps ? const Color(0xFFECFDF5) : const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _hasLiveGps ? const Color(0xFF86EFAC) : const Color(0xFFBFDBFE),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_isLocatingPartner)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669)),
+                        )
+                      else
+                        Icon(
+                          _hasLiveGps ? Icons.my_location_rounded : Icons.location_searching_rounded,
+                          size: 14,
+                          color: _hasLiveGps ? const Color(0xFF059669) : const Color(0xFF1D4ED8),
+                        ),
+                      const SizedBox(width: 5),
+                      Text(
+                        _hasLiveGps ? 'Live GPS' : 'Use GPS',
+                        style: TextStyle(
+                          color: _hasLiveGps ? const Color(0xFF065F46) : const Color(0xFF1D4ED8),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
 
-          // Route Search Bar
+          // Nearest Next Stop Hero Card (First Nearest Customer)
+          if (nearestPendingEntry != null && _routeSearchQuery.isEmpty) ...[
+            Builder(
+              builder: (context) {
+                final nd = nearestPendingEntry['delivery'] as Map<String, dynamic>;
+                final nArea = nearestPendingEntry['area'] as String;
+                final nDist = _formatDistanceLabel(nearestPendingEntry['distanceKm'] as double);
+                final nAddr = (nd['customerAddress'] ?? '$nArea Doorstep').toString();
+                final nLat = nearestPendingEntry['lat'] as num?;
+                final nLng = nearestPendingEntry['lng'] as num?;
+                final origIdx = nearestPendingEntry['originalIndex'] as int;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF064E3B), Color(0xFF059669)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF059669).withValues(alpha: 0.24),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.near_me_rounded, size: 12, color: Colors.white),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'NEAREST NEXT • $nDist AWAY',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.3),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '📍 $nArea',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Color(0xFF065F46), fontSize: 10.5, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => _openStopDetails(nd, origIdx),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    nd['customerName'] ?? 'Customer',
+                                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    nAddr,
+                                    style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 12),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '${nd['plannedMilk'] ?? 1}L',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w900),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _openMap(nAddr, nLat, nLng),
+                              icon: const Icon(Icons.navigation_rounded, size: 15, color: Colors.white),
+                              label: const Text('Navigate', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showMarkDeliveredDialog(nd),
+                              icon: const Icon(Icons.check_circle_rounded, size: 15, color: Color(0xFF065F46)),
+                              label: const Text('Deliver Now', style: TextStyle(color: Color(0xFF065F46), fontSize: 12, fontWeight: FontWeight.w800)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
+
+          // View Mode & Status Toggle Bar
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _routeSortMode = 'nearest'),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: _routeSortMode == 'nearest' ? const Color(0xFF059669) : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _routeSortMode == 'nearest' ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.near_me_rounded,
+                          size: 15,
+                          color: _routeSortMode == 'nearest' ? Colors.white : const Color(0xFF475569),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Nearest First',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _routeSortMode == 'nearest' ? Colors.white : const Color(0xFF475569),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: InkWell(
+                  onTap: () => setState(() => _routeSortMode = 'location'),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: _routeSortMode == 'location' ? const Color(0xFF059669) : Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _routeSortMode == 'location' ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.location_city_rounded,
+                          size: 15,
+                          color: _routeSortMode == 'location' ? Colors.white : const Color(0xFF475569),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Location Wise',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: _routeSortMode == 'location' ? Colors.white : const Color(0xFF475569),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Location-Wise Filter Chips (Ordered Nearest Location First!)
+          if (sortedLocations.isNotEmpty) ...[
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                      label: Text('All Locations (${enrichedAll.length})'),
+                      selected: activeAreaFilter == 'All',
+                      onSelected: (_) => setState(() => _routeSelectedArea = 'All'),
+                      selectedColor: const Color(0xFFECFDF5),
+                      backgroundColor: Colors.white,
+                      labelStyle: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: activeAreaFilter == 'All' ? const Color(0xFF065F46) : const Color(0xFF475569),
+                      ),
+                      side: BorderSide(
+                        color: activeAreaFilter == 'All' ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                      ),
+                    ),
+                  ),
+                  ...sortedLocations.map((loc) {
+                    final locName = loc['name'] as String;
+                    final locCount = loc['count'] as int;
+                    final minD = (loc['minPendingDist'] as double).isFinite
+                        ? loc['minPendingDist'] as double
+                        : loc['minDist'] as double;
+                    final isSel = activeAreaFilter.toLowerCase() == locName.toLowerCase();
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        label: Text('📍 $locName · ${_formatDistanceLabel(minD)} ($locCount)'),
+                        selected: isSel,
+                        onSelected: (_) => setState(() => _routeSelectedArea = locName),
+                        selectedColor: const Color(0xFFECFDF5),
+                        backgroundColor: Colors.white,
+                        labelStyle: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: isSel ? const Color(0xFF065F46) : const Color(0xFF475569),
+                        ),
+                        side: BorderSide(
+                          color: isSel ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // Route Search Bar + Status Chips
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -2047,7 +3411,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               controller: _routeSearchCtrl,
               onChanged: (val) => setState(() => _routeSearchQuery = val.trim().toLowerCase()),
               decoration: InputDecoration(
-                hintText: 'Search stops by name, address, phone or #...',
+                hintText: 'Search stops by name, location, address or phone...',
                 hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
                 prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF059669), size: 20),
                 suffixIcon: _routeSearchQuery.isNotEmpty
@@ -2064,7 +3428,47 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+
+          // Status quick filter row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final st in [
+                  {'id': 'all', 'label': 'All (${enrichedAll.length})'},
+                  {'id': 'pending', 'label': 'Pending (${enrichedAll.where((e) => e['delivery']['status'] == 'pending').length})'},
+                  {'id': 'delivered', 'label': 'Delivered (${enrichedAll.where((e) => e['delivery']['status'] == 'delivered').length})'},
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      onTap: () => setState(() => _routeStatusFilter = st['id']!),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _routeStatusFilter == st['id'] ? const Color(0xFF0F172A) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _routeStatusFilter == st['id'] ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                        child: Text(
+                          st['label']!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _routeStatusFilter == st['id'] ? Colors.white : const Color(0xFF64748B),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
 
           if (_deliveries.isEmpty)
             Container(
@@ -2086,20 +3490,104 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                     const Icon(Icons.search_off_rounded, size: 36, color: Color(0xFF94A3B8)),
                     const SizedBox(height: 8),
                     Text(
-                      'No stops found matching "$_routeSearchQuery"',
+                      _routeSearchQuery.isNotEmpty
+                          ? 'No stops found matching "$_routeSearchQuery"'
+                          : 'No stops match this location/status filter',
+                      textAlign: TextAlign.center,
                       style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B), fontSize: 13),
                     ),
                     const SizedBox(height: 10),
                     TextButton(
                       onPressed: () {
                         _routeSearchCtrl.clear();
-                        setState(() => _routeSearchQuery = '');
+                        setState(() {
+                          _routeSearchQuery = '';
+                          _routeSelectedArea = 'All';
+                          _routeStatusFilter = 'all';
+                        });
                       },
-                      child: const Text('Clear Search', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800)),
+                      child: const Text('Reset Filters', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800)),
                     ),
                   ],
                 ),
               ),
+            )
+          else if (_routeSortMode == 'location')
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: nonEmptyLocationGroups.map((group) {
+                final locName = group.key;
+                final stops = group.value;
+                final closestDist = _formatDistanceLabel(stops.first['distanceKm'] as double);
+                final pendingInGroup = stops.where((s) => s['delivery']['status'] == 'pending').length;
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Location Header (Nearest Location First!)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFF059669)),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      locName,
+                                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, color: Color(0xFF065F46)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      'Nearest: $closestDist',
+                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF1D4ED8)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              '$pendingInGroup/${stops.length} left',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF047857)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: stops.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (ctx, idx) {
+                          final item = stops[idx];
+                          final isNearestPending = nearestPendingEntry != null &&
+                              identical(item['delivery'], nearestPendingEntry['delivery']);
+                          return _buildRouteStopCard(item, idx, isNearestPending: isNearestPending);
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             )
           else
             ListView.separated(
@@ -2108,75 +3596,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               itemCount: filteredEntries.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (ctx, i) {
-                final originalIndex = filteredEntries[i].key;
-                final d = filteredEntries[i].value;
-                final isDelivered = d['status'] == 'delivered';
-                return InkWell(
-                  onTap: () => _openStopDetails(d, originalIndex),
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: isDelivered ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          decoration: BoxDecoration(
-                            color: isDelivered ? const Color(0xFF059669) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '${originalIndex + 1}',
-                              style: TextStyle(
-                                color: isDelivered ? Colors.white : const Color(0xFF334155),
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                d['customerName'] ?? 'Customer',
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                d['customerAddress'] ?? 'Madhapur Doorstep',
-                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '${d['plannedMilk'] ?? 1}L',
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF059669)),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.navigation_rounded, size: 18, color: Color(0xFF1D4ED8)),
-                          onPressed: () => _openMap(
-                            d['customerAddress'] ?? '',
-                            d['latitude'] as num? ?? d['customerLatitude'] as num?,
-                            d['longitude'] as num? ?? d['customerLongitude'] as num?,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
+                final item = filteredEntries[i];
+                final isNearestPending = nearestPendingEntry != null &&
+                    identical(item['delivery'], nearestPendingEntry['delivery']);
+                return _buildRouteStopCard(item, i, isNearestPending: isNearestPending);
               },
             ),
         ],
@@ -2428,7 +3851,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           api: _api,
           defaultArea: _profileArea,
           partnerName: _profileName,
-          onSuccess: () => _loadData(silent: true),
+          onSuccess: () {
+            _loadData(silent: true);
+            _loadNotifications(silent: true);
+          },
         ),
       ),
     );
@@ -2465,6 +3891,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         builder: (ctx) => _FullScreenCustomerDetailsPage(
           customer: customer,
           api: _api,
+          deliveries: _deliveries,
+          payments: _payments,
           onCustomerUpdated: () => _loadData(silent: true),
           onCall: (phone) => _callCustomer(phone),
           onMap: (addr) => _openMap(
@@ -2482,117 +3910,760 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   // TAB 3: CASH RECONCILIATION
   // =========================================================
   Widget _buildCashTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+    final bool isToday = _cashPeriod == 'today';
+    final List<Map<String, dynamic>> periodDrops = (isToday
+            ? _deliveries
+            : (_allDeliveries.isNotEmpty ? _allDeliveries : _deliveries))
+        .where((d) => d['status'] == 'delivered')
+        .toList();
+
+    final List<Map<String, dynamic>> periodNonDelPayments = isToday
+        ? _todayNonDeliveryPayments
+        : _payments
+            .where((p) => !(p['referenceNumber'] ?? '').toString().toUpperCase().contains('DELIVERY-'))
+            .toList();
+
+    final double delCash = periodDrops.fold(0.0, (s, d) => s + _cashCollectedFor(d));
+    final double delUpi = periodDrops.fold(0.0, (s, d) => s + _upiCollectedFor(d));
+    final double addonCash = periodDrops.fold(0.0, (s, d) => s + _addonCashFor(d));
+    final double addonUpi = periodDrops.fold(0.0, (s, d) => s + _addonUpiFor(d));
+    final double baseCash = (delCash - addonCash) > 0 ? (delCash - addonCash) : 0.0;
+    final double baseUpi = (delUpi - addonUpi) > 0 ? (delUpi - addonUpi) : 0.0;
+
+    final double custCash = periodNonDelPayments
+        .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'cash')
+        .fold(0.0, (s, p) => s + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
+    final double custUpi = periodNonDelPayments
+        .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'upi')
+        .fold(0.0, (s, p) => s + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
+
+    final double totalCash = isToday ? _todayCash : (delCash + custCash);
+    final double totalUpi = isToday ? _todayUpi : (delUpi + custUpi);
+    final double grandTotal = totalCash + totalUpi;
+
+    final nowIst = IstDateTime.toIst(DateTime.now());
+    final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+    final List<Map<String, dynamic>> todayHandovers = _handovers.where((h) {
+      final rawDt = (h['handoverDate'] ?? h['createdAt'] ?? '').toString();
+      final dt = DateTime.tryParse(rawDt);
+      if (dt == null) return false;
+      final istDt = IstDateTime.toIst(dt);
+      final hStr = '${istDt.year}-${istDt.month.toString().padLeft(2, '0')}-${istDt.day.toString().padLeft(2, '0')}';
+      return hStr == todayStr;
+    }).toList();
+
+    final double handedOverToday = todayHandovers
+        .where((h) => h['status'] == 'pending' || h['status'] == 'accepted')
+        .fold(0.0, (s, h) => s + (num.tryParse((h['amount'] ?? '0').toString()) ?? 0).toDouble());
+    final double remainingCashInHand = (_todayCash - handedOverToday) > 0 ? (_todayCash - handedOverToday) : 0.0;
+    Map<String, dynamic>? pendingHandover;
+    for (final h in todayHandovers) {
+      if (h['status'] == 'pending') {
+        pendingHandover = h;
+        break;
+      }
+    }
+
+    final List<Map<String, dynamic>> filteredNonDel = periodNonDelPayments.where((p) {
+      final pm = (p['paymentMethod'] ?? '').toString().toLowerCase();
+      if (_cashFilter == 'cash') return pm == 'cash';
+      if (_cashFilter == 'upi') return pm == 'upi';
+      if (_cashFilter == 'addons') return false;
+      return true;
+    }).toList();
+
+    final List<Map<String, dynamic>> filteredDrops = periodDrops.where((d) {
+      final cashAmt = _cashCollectedFor(d);
+      final upiAmt = _upiCollectedFor(d);
+      final hasAddons = (d['addons'] is List && (d['addons'] as List).isNotEmpty) ||
+          (num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0) > 0;
+      if (_cashFilter == 'cash') return cashAmt > 0;
+      if (_cashFilter == 'upi') return upiAmt > 0;
+      if (_cashFilter == 'addons') return hasAddons;
+      return true;
+    }).toList();
+
+    return RefreshIndicator(
+      onRefresh: () => _loadData(),
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Cash & Collections', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
+                      Text('All Cash, UPI, Add-ons & Customer payments', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () => ReportDownloadSheet.show(
+                    context,
+                    role: 'partner',
+                    initialCustomers: _assignedCustomers,
+                    initialDeliveries: periodDrops.isNotEmpty ? periodDrops : _deliveries,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D5C3A),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                        SizedBox(width: 4),
+                        Text('PDF Report', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Period Switcher: Today vs All Time
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _cashPeriod = 'today'),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isToday ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: isToday ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)] : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'Today Collections',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: isToday ? const Color(0xFF059669) : const Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _cashPeriod = 'all'),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: !isToday ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: !isToday ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)] : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          'All History',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: !isToday ? const Color(0xFF059669) : const Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Hero Summary Card: Total + Cash + UPI + Cash In Hand
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF065F46), Color(0xFF059669)]),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isToday ? 'TOTAL COLLECTED TODAY (CASH + UPI)' : 'ALL-TIME COLLECTED (CASH + UPI)',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('₹${grandTotal.toInt()}', style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900)),
+                      if (addonCash + addonUpi > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '+₹${(addonCash + addonUpi).toInt()} Add-ons',
+                            style: const TextStyle(color: Color(0xFFFEF3C7), fontSize: 11, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      if (custCash + custUpi > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '+₹${(custCash + custUpi).toInt()} Customer Pays',
+                            style: const TextStyle(color: Color(0xFFD1FAE5), fontSize: 11, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 22, color: Colors.white24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('CASH COLLECTED', style: TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                            Text('₹${totalCash.toInt()}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('UPI COLLECTED', style: TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                            Text('₹${totalUpi.toInt()}', style: const TextStyle(color: Color(0xFFBAE6FD), fontSize: 16, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text('CASH IN HAND', style: TextStyle(color: Colors.white70, fontSize: 9.5, fontWeight: FontWeight.w700)),
+                            Text(
+                              '₹${remainingCashInHand.toInt()}',
+                              style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 16, fontWeight: FontWeight.w900),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 2x2 Complete Breakdown Grid (Doorstep, Add-ons, UPI, Customer/Sub)
+            Row(
+              children: [
+                Expanded(
+                  child: _buildCashSourceTile(
+                    title: 'Doorstep Cash',
+                    amount: '₹${baseCash.toInt()}',
+                    subtitle: baseUpi > 0 ? '+ ₹${baseUpi.toInt()} Doorstep UPI' : 'Base Milk & Curd',
+                    accentColor: const Color(0xFF059669),
+                    bgColor: const Color(0xFFECFDF5),
+                    borderColor: const Color(0xFFBBF7D0),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildCashSourceTile(
+                    title: 'Add-ons Collected',
+                    amount: '₹${(addonCash + addonUpi).toInt()}',
+                    subtitle: 'Cash ₹${addonCash.toInt()} • UPI ₹${addonUpi.toInt()}',
+                    accentColor: const Color(0xFFB45309),
+                    bgColor: const Color(0xFFFFFBEB),
+                    borderColor: const Color(0xFFFDE68A),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildCashSourceTile(
+                    title: 'UPI Direct Total',
+                    amount: '₹${totalUpi.toInt()}',
+                    subtitle: 'Doorstep + Add-ons + Cust',
+                    accentColor: const Color(0xFF2563EB),
+                    bgColor: const Color(0xFFEFF6FF),
+                    borderColor: const Color(0xFFBFDBFE),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildCashSourceTile(
+                    title: 'Customer / Sub Pays',
+                    amount: '₹${(custCash + custUpi).toInt()}',
+                    subtitle: 'Cash ₹${custCash.toInt()} • UPI ₹${custUpi.toInt()}',
+                    accentColor: const Color(0xFF7C3AED),
+                    bgColor: const Color(0xFFF5F3FF),
+                    borderColor: const Color(0xFFDDD6FE),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Cash Handover to Admin Section
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Text('Cash Handover to Admin', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
+                      ),
+                      if (pendingHandover != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: const Color(0xFFFFF7ED), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFDBA74))),
+                          child: Text('Pending ₹${pendingHandover['amount'] ?? 0}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFFC2410C))),
+                        )
+                      else if (handedOverToday > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFBBF7D0))),
+                          child: Text('Handed ₹${handedOverToday.toInt()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (pendingHandover != null)
+                    Text(
+                      'Your handover of ₹${pendingHandover['amount'] ?? 0} is awaiting admin verification.',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF9A3412), fontWeight: FontWeight.w600),
+                    )
+                  else if (remainingCashInHand > 0)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showSubmitHandoverSheet(remainingCashInHand),
+                        icon: const Icon(Icons.account_balance_wallet_rounded, size: 17, color: Colors.white),
+                        label: Text(
+                          'Handover Cash to Admin (₹${remainingCashInHand.toInt()})',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    )
+                  else
+                    const Text(
+                      '✓ No pending cash in hand to deposit right now.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w700),
+                    ),
+                  if (_handovers.isNotEmpty) ...[
+                    const Divider(height: 18, color: Color(0xFFF1F5F9)),
+                    ..._handovers.take(3).map((h) {
+                      final st = (h['status'] ?? 'pending').toString().toLowerCase();
+                      final stColor = st == 'accepted'
+                          ? const Color(0xFF059669)
+                          : st == 'rejected'
+                              ? const Color(0xFFDC2626)
+                              : const Color(0xFFD97706);
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '₹${h['amount'] ?? 0} • ${(h['handoverMethod'] ?? 'counter').toString().replaceAll('_', ' ').toUpperCase()}',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              st.toUpperCase(),
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: stColor),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Filter Pills for Transactions
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final f in [
+                    {'id': 'all', 'label': 'All (${filteredDrops.length + filteredNonDel.length})'},
+                    {'id': 'cash', 'label': '💵 Cash'},
+                    {'id': 'upi', 'label': '📱 UPI'},
+                    {'id': 'addons', 'label': '🛒 Add-ons'},
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () => setState(() => _cashFilter = f['id']!),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: _cashFilter == f['id'] ? const Color(0xFF0D5C3A) : Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: _cashFilter == f['id'] ? const Color(0xFF0D5C3A) : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Text(
+                            f['label']!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _cashFilter == f['id'] ? Colors.white : const Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            if (filteredNonDel.isNotEmpty) ...[
+              const Text('Customer & Subscription Collections', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
+              const SizedBox(height: 10),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredNonDel.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (ctx, i) {
+                  final p = filteredNonDel[i];
+                  final pAmt = (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toInt();
+                  final pMethod = (p['paymentMethod'] ?? 'cash').toString().toUpperCase();
+                  final isCashPay = pMethod == 'CASH';
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(p['customerName'] ?? 'Customer', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A))),
+                              Text(
+                                '$pMethod • ${(p['notes'] ?? 'Customer Payment').toString()}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF065F46), fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '₹$pAmt Collected',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 13.5,
+                            color: isCashPay ? const Color(0xFF059669) : const Color(0xFF2563EB),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+            ],
+            Text(
+              isToday ? 'Today Paid Drops & Add-ons' : 'All Paid Drops & Add-ons',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 10),
+            if (filteredDrops.isEmpty && filteredNonDel.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Text(
+                  'No matching collections recorded for this filter.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredDrops.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (ctx, i) {
+                  final d = filteredDrops[i];
+                  final cashAmt = _cashCollectedFor(d);
+                  final upiAmt = _upiCollectedFor(d);
+                  final paidAmt = cashAmt + upiAmt;
+                  final addonCashAmt = _addonCashFor(d);
+                  final addonsList = d['addons'] is List ? (d['addons'] as List) : const [];
+                  final addonsTotal = (num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0).toDouble();
+                  final baseMethod = (d['paymentMethod'] ?? 'advance').toString().toUpperCase();
+                  final addonMethod = (d['addonPaymentMethod'] ?? '').toString().toUpperCase();
+                  final delDateStr = (d['deliveryDate'] ?? '').toString();
+
+                  final methodLabel = addonMethod.isNotEmpty && addonMethod != baseMethod
+                      ? '${!isToday && delDateStr.isNotEmpty ? '$delDateStr • ' : ''}Method: $baseMethod · Add-ons $addonMethod'
+                      : '${!isToday && delDateStr.isNotEmpty ? '$delDateStr • ' : ''}Method: $baseMethod';
+
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: addonCashAmt > 0 ? const Color(0xFFFDE68A) : const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(d['customerName'] ?? 'Customer', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A))),
+                                  Text(methodLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              paidAmt > 0 ? '₹${paidAmt.toInt()} ${cashAmt > 0 ? 'CASH' : 'UPI'}' : (baseMethod == 'ADVANCE' ? 'Prepaid ₹0' : 'Credit Due'),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 13.5,
+                                color: cashAmt > 0
+                                    ? const Color(0xFF059669)
+                                    : upiAmt > 0
+                                        ? const Color(0xFF2563EB)
+                                        : const Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (addonsList.isNotEmpty || addonsTotal > 0) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFDE68A)),
+                            ),
+                            child: Text(
+                              '+ ${addonsList.isNotEmpty ? addonsList.map((a) => '${a['name']} × ${a['quantity']}').join(', ') : 'Add-ons'} · ₹${addonsTotal.toInt()}${addonCashAmt > 0 ? ' (Cash ₹${addonCashAmt.toInt()})' : (addonMethod == 'UPI' ? ' (UPI ₹${(num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toInt()})' : '')}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCashSourceTile({
+    required String title,
+    required String amount,
+    required String subtitle,
+    required Color accentColor,
+    required Color bgColor,
+    required Color borderColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Text(title, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accentColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 4),
+          Text(amount, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: accentColor)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)), maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
+  }
+
+  void _showSubmitHandoverSheet(double availableCash) {
+    final amtCtrl = TextEditingController(text: availableCash.toInt().toString());
+    final notesCtrl = TextEditingController();
+    String method = 'dairy_counter';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 20,
+            top: 20,
+            left: 20,
+            right: 20,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Cash & Shift Reconciliation', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
-                    Text('Today collection breakdown across morning route', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                  ],
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Handover Cash to Admin', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(modalCtx).pop()),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: amtCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Amount to Handover (₹)',
+                  prefixText: '₹ ',
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
-              const SizedBox(width: 8),
-              InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: () => ReportDownloadSheet.show(
-                  context,
-                  role: 'partner',
-                  initialCustomers: _assignedCustomers,
-                  initialDeliveries: _deliveries,
-                ),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D5C3A),
-                    borderRadius: BorderRadius.circular(10),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: method,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Handover Method', border: OutlineInputBorder(), isDense: true),
+                items: const [
+                  DropdownMenuItem(value: 'dairy_counter', child: Text('💵 Dairy Counter')),
+                  DropdownMenuItem(value: 'bank_deposit', child: Text('🏦 Bank Safe')),
+                  DropdownMenuItem(value: 'upi', child: Text('📱 UPI to Admin')),
+                ],
+                onChanged: (v) {
+                  if (v != null) setModalState(() => method = v);
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: notesCtrl,
+                decoration: const InputDecoration(labelText: 'Notes (Optional)', border: OutlineInputBorder(), isDense: true),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSubmittingHandover
+                      ? null
+                      : () async {
+                          final amt = num.tryParse(amtCtrl.text.trim()) ?? 0;
+                          if (amt <= 0) return;
+                          setModalState(() => _isSubmittingHandover = true);
+                          setState(() => _isSubmittingHandover = true);
+                          try {
+                            final authUser = context.read<AuthProvider>().user;
+                            final res = await _api.post('/api/payments/handover', {
+                              'deliveryBoyId': authUser?.id ?? '',
+                              'deliveryBoyName': _profileName.isNotEmpty ? _profileName : (authUser?.name ?? 'Delivery Partner'),
+                              'deliveryBoyMobile': _profilePhone.isNotEmpty ? _profilePhone : (authUser?.mobile ?? ''),
+                              'assignedArea': _profileArea,
+                              'amount': amt,
+                              'physicalCashCollected': _todayCash.toInt(),
+                              'upiCollected': _todayUpi.toInt(),
+                              'handoverMethod': method,
+                              'notes': notesCtrl.text.trim(),
+                            });
+                            if (!mounted) return;
+                            if (res['success'] == true) {
+                              if (modalCtx.mounted) Navigator.of(modalCtx).pop();
+                              await _loadData(silent: true);
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('✓ Cash handover of ₹$amt submitted!'), backgroundColor: const Color(0xFF059669)),
+                                );
+                              }
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(res['message']?.toString() ?? 'Failed to submit handover'), backgroundColor: const Color(0xFFDC2626)),
+                                );
+                              }
+                            }
+                          } finally {
+                            if (mounted) setState(() => _isSubmittingHandover = false);
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.download_rounded, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
-                      Text('PDF Report', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800)),
-                    ],
-                  ),
+                  child: _isSubmittingHandover
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Submit Handover Request', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF065F46), Color(0xFF059669)]),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('TOTAL CASH COLLECTED', style: TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text('₹${_todayCash.toInt()}', style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-                const Divider(height: 24, color: Colors.white24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('UPI COLLECTED', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700)),
-                        Text('₹${_todayUpi.toInt()}', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('HANDOVER STATUS', style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w700)),
-                        const Text('Pending Deposit', style: TextStyle(color: Color(0xFFFDE68A), fontSize: 13, fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text('Today Paid Drops', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-          const SizedBox(height: 10),
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _deliveries.where((d) => d['status'] == 'delivered').length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (ctx, i) {
-              final d = _deliveries.where((d) => d['status'] == 'delivered').toList()[i];
-              return Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(d['customerName'] ?? 'Customer', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
-                        Text('Method: ${(d['paymentMethod'] ?? 'advance').toString().toUpperCase()}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
-                      ],
-                    ),
-                    Text('₹${d['paymentAmount'] ?? 60}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF059669))),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -4307,13 +6378,21 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     int upiCount = 0;
     for (final d in _deliveries) {
       final method = (d['paymentMethod'] ?? '').toString().toLowerCase();
-      final amt = num.tryParse(d['paymentAmount']?.toString() ?? '0') ?? 0;
+      final addonMethod = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+      final amt = (num.tryParse(d['paymentAmount']?.toString() ?? '0') ?? 0).toDouble();
+      final addonAmt = (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'])?.toString() ?? '0') ?? 0).toDouble();
       if (method == 'cash') {
         cashCount++;
         if (d['status'] == 'delivered') cashCollected += amt;
+      } else if (addonMethod == 'cash') {
+        cashCount++;
+        if (d['status'] == 'delivered') cashCollected += addonAmt;
       } else if (method == 'upi') {
         upiCount++;
         if (d['status'] == 'delivered') upiCollected += amt;
+      } else if (addonMethod == 'upi') {
+        upiCount++;
+        if (d['status'] == 'delivered') upiCollected += addonAmt;
       }
     }
 
@@ -4325,9 +6404,13 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     } else if (_delSubFilter == 'not_delivered') {
       list = list.where((d) => d['status'] == 'not_delivered').toList();
     } else if (_delSubFilter == 'cash') {
-      list = list.where((d) => (d['paymentMethod'] ?? '').toString().toLowerCase() == 'cash').toList();
+      list = list.where((d) =>
+          (d['paymentMethod'] ?? '').toString().toLowerCase() == 'cash' ||
+          (d['addonPaymentMethod'] ?? '').toString().toLowerCase() == 'cash').toList();
     } else if (_delSubFilter == 'upi') {
-      list = list.where((d) => (d['paymentMethod'] ?? '').toString().toLowerCase() == 'upi').toList();
+      list = list.where((d) =>
+          (d['paymentMethod'] ?? '').toString().toLowerCase() == 'upi' ||
+          (d['addonPaymentMethod'] ?? '').toString().toLowerCase() == 'upi').toList();
     }
 
     if (_delSubSearch.trim().isNotEmpty) {
@@ -6575,8 +8658,21 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
   late final TextEditingController _milkController;
   late final TextEditingController _curdController;
   late final TextEditingController _collectedController;
+  late final TextEditingController _addonCollectedController;
+  final TextEditingController _addonSearchController = TextEditingController();
   late String _paymentMethod;
+  String _addonPaymentMethod = 'cash'; // 'cash' | 'upi' | 'credit'
   bool _isSubmitting = false;
+  bool _manualCollectedEdited = false;
+  bool _manualAddonCollectedEdited = false;
+
+  // Add-ons Catalog States
+  bool _showAddonsPicker = false;
+  bool _isLoadingProducts = false;
+  String _addonSearchQuery = '';
+  List<ProductModel> _availableProducts = [];
+  final Map<String, double> _addonQuantities = {};
+  StreamSubscription? _wsProductSub;
 
   // Real-time Camera Doorstep Photo Proof
   String? _capturedPhotoBase64;
@@ -6589,15 +8685,126 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     super.initState();
     _milkController = TextEditingController(text: (widget.delivery['plannedMilk'] ?? 1).toString());
     _curdController = TextEditingController(text: (widget.delivery['plannedCurd'] ?? 0).toString());
-    _collectedController = TextEditingController(text: (widget.delivery['totalAmount'] ?? 60).toString());
-    _paymentMethod = widget.delivery['paymentMethod'] ?? 'advance';
+
+    final rawPayMethod = (widget.delivery['paymentMethod'] ?? 'advance').toString().toLowerCase();
+    if (rawPayMethod == 'prepaid' || widget.delivery['subscriptionEndDate'] != null) {
+      _paymentMethod = 'advance';
+    } else if (['advance', 'cash', 'upi', 'credit'].contains(rawPayMethod)) {
+      _paymentMethod = rawPayMethod;
+    } else {
+      _paymentMethod = 'credit';
+    }
+
+    _collectedController = TextEditingController(text: _computeGrandTotal().toStringAsFixed(0));
+    _addonCollectedController = TextEditingController(text: '0');
+
+    _milkController.addListener(_onQtyOrAddonChanged);
+    _curdController.addListener(_onQtyOrAddonChanged);
+
+    _loadProducts();
+    _initProductRealtime();
+  }
+
+  void _initProductRealtime() {
+    try {
+      _wsProductSub = RealtimeService().eventStream.listen((event) {
+        final type = event['type']?.toString();
+        if (type == 'PRODUCT_UPDATED' ||
+            type == 'PRICE_UPDATED' ||
+            type == 'STOCK_UPDATED' ||
+            type == 'INVENTORY_UPDATED') {
+          _loadProducts(silent: true);
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _loadProducts({bool silent = false}) async {
+    if (!silent) setState(() => _isLoadingProducts = true);
+    try {
+      final list = await widget.api.getProducts();
+      if (mounted) {
+        setState(() {
+          _availableProducts = list.isNotEmpty ? list : ProductModel.defaultCatalog;
+          _isLoadingProducts = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (_availableProducts.isEmpty) _availableProducts = ProductModel.defaultCatalog;
+          _isLoadingProducts = false;
+        });
+      }
+    }
+  }
+
+  double get _milkPrice => (num.tryParse(widget.delivery['milkPrice']?.toString() ?? '60') ?? 60).toDouble();
+  double get _curdPrice => (num.tryParse(widget.delivery['curdPrice']?.toString() ?? '30') ?? 30).toDouble();
+  bool get _isPrepaidSubscription => widget.delivery['subscriptionEndDate'] != null || _paymentMethod == 'advance';
+
+  double _unitPriceOf(ProductModel prod) {
+    return prod.numericPrice > 0
+        ? prod.numericPrice
+        : (double.tryParse(prod.price.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 60.0);
+  }
+
+  double _computeBaseAmount() {
+    final milk = double.tryParse(_milkController.text.trim()) ?? 0.0;
+    final curd = double.tryParse(_curdController.text.trim()) ?? 0.0;
+    return (milk * _milkPrice) + ((curd / 500.0) * _curdPrice);
+  }
+
+  double _computeAddonsTotal() {
+    double sum = 0.0;
+    for (final prod in _availableProducts) {
+      final qty = _addonQuantities[prod.id] ?? 0.0;
+      if (qty > 0) sum += qty * _unitPriceOf(prod);
+    }
+    return sum;
+  }
+
+  double _computeGrandTotal() => _computeBaseAmount() + _computeAddonsTotal();
+
+  List<Map<String, dynamic>> _buildAddonsPayload() {
+    final items = <Map<String, dynamic>>[];
+    for (final prod in _availableProducts) {
+      final qty = _addonQuantities[prod.id] ?? 0.0;
+      if (qty > 0) {
+        items.add({
+          'productId': prod.id,
+          'name': prod.name,
+          'quantity': qty,
+          'unit': prod.unit,
+          'price': _unitPriceOf(prod),
+        });
+      }
+    }
+    return items;
+  }
+
+  void _onQtyOrAddonChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (!_manualCollectedEdited) {
+        _collectedController.text = _computeGrandTotal().toStringAsFixed(0);
+      }
+      if (!_manualAddonCollectedEdited) {
+        _addonCollectedController.text = _computeAddonsTotal().toStringAsFixed(0);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _wsProductSub?.cancel();
+    _milkController.removeListener(_onQtyOrAddonChanged);
+    _curdController.removeListener(_onQtyOrAddonChanged);
     _milkController.dispose();
     _curdController.dispose();
     _collectedController.dispose();
+    _addonCollectedController.dispose();
+    _addonSearchController.dispose();
     super.dispose();
   }
 
@@ -6678,35 +8885,129 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     final deliveryId = widget.delivery['_id'] ?? widget.delivery['id'];
     final milk = num.tryParse(_milkController.text) ?? 1;
     final curd = num.tryParse(_curdController.text) ?? 0;
-    final collected = num.tryParse(_collectedController.text) ?? 0;
+    final collected = num.tryParse(_collectedController.text) ?? _computeGrandTotal();
+    final addonsPayload = _buildAddonsPayload();
+    final addonsTotal = _computeAddonsTotal();
+    final addonCollected = num.tryParse(_addonCollectedController.text) ?? addonsTotal;
+
+    // Store proof photo directly in Cloudinary first so MongoDB saves only the Cloudinary URL
+    String proofPayload = _capturedPhotoBase64!;
+    try {
+      final uploadedUrl = await widget.api.uploadBase64Image(
+        _capturedPhotoBase64!,
+        folder: 'natural-milk-dairy/delivery-proofs',
+      );
+      if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+        proofPayload = uploadedUrl;
+      }
+    } catch (_) {}
 
     final res = await widget.api.post('/api/deliveries/$deliveryId/delivered', {
       'actualMilk': milk,
       'actualCurd': curd,
       'paymentMethod': _paymentMethod,
-      'collectedAmount': collected,
-      'proofImage': _capturedPhotoBase64,
+      'collectedAmount': (_paymentMethod == 'cash' || _paymentMethod == 'upi') ? collected : 0,
+      if (addonsPayload.isNotEmpty) 'addons': addonsPayload,
+      if (addonsPayload.isNotEmpty) 'addonPaymentMethod': (_paymentMethod == 'cash' || _paymentMethod == 'upi') ? _paymentMethod : _addonPaymentMethod,
+      if (addonsPayload.isNotEmpty && ((_paymentMethod == 'cash' || _paymentMethod == 'upi') || _addonPaymentMethod == 'cash' || _addonPaymentMethod == 'upi'))
+        'addonCollectedAmount': (_paymentMethod == 'cash' || _paymentMethod == 'upi') ? addonsTotal : addonCollected,
+      'proofImage': proofPayload,
       'proofLocation': widget.delivery['customerAddress'] ?? widget.delivery['deliveryAddress'] ?? widget.delivery['area'] ?? '',
       'latitude': widget.delivery['customerLatitude'] ?? widget.delivery['latitude'],
       'longitude': widget.delivery['customerLongitude'] ?? widget.delivery['longitude'],
-      'actor': 'Mobile Driver',
+      'actor': widget.delivery['deliveryBoyName']?.toString() ?? 'Mobile Driver',
     });
 
     if (!mounted) return;
     setState(() => _isSubmitting = false);
 
     if (res['success'] == true) {
-      widget.delivery['proofImage'] = _capturedPhotoBase64;
+      final rawServerDelivery = res['delivery'];
+      final serverDelivery = rawServerDelivery is Map ? Map<String, dynamic>.from(rawServerDelivery) : null;
+      final effectiveCollectedAmt = (_paymentMethod == 'cash' || _paymentMethod == 'upi')
+          ? collected.toDouble()
+          : (addonsPayload.isNotEmpty && (_addonPaymentMethod == 'cash' || _addonPaymentMethod == 'upi')
+              ? addonCollected.toDouble()
+              : 0.0);
+      final effectivePayMethod = (_paymentMethod == 'cash' || _paymentMethod == 'upi')
+          ? _paymentMethod
+          : _addonPaymentMethod;
+
+      // Check if server persisted the payment / addon amounts (older un-deployed server builds ignore addons/addonCollectedAmount)
+      final serverSavedPay = (num.tryParse((serverDelivery?['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+      final serverSavedAddonPay = (num.tryParse((serverDelivery?['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble();
+      final bool serverPersistedPayment =
+          (serverSavedPay >= effectiveCollectedAmt && effectiveCollectedAmt > 0) ||
+          (serverSavedAddonPay >= effectiveCollectedAmt && effectiveCollectedAmt > 0);
+
+      if (effectiveCollectedAmt > 0 &&
+          (effectivePayMethod == 'cash' || effectivePayMethod == 'upi') &&
+          !serverPersistedPayment &&
+          widget.delivery['customerId'] != null) {
+        try {
+          await widget.api.post('/api/payments', {
+            'customerId': widget.delivery['customerId'].toString(),
+            'amount': effectiveCollectedAmt,
+            'paymentMethod': effectivePayMethod,
+            'deliveryBoyId': widget.delivery['deliveryBoyId']?.toString() ?? '',
+            'notes': addonsPayload.isNotEmpty
+                ? 'Doorstep Add-ons: ${addonsPayload.map((a) => '${a['name']} x${a['quantity']}').join(', ')}'
+                : 'Doorstep Delivery Collection',
+          });
+        } catch (_) {}
+      }
+
+      final optimisticPaidAmt = effectiveCollectedAmt;
+      final optimisticAddonMethod = addonsPayload.isNotEmpty
+          ? ((_paymentMethod == 'cash' || _paymentMethod == 'upi') ? _paymentMethod : _addonPaymentMethod)
+          : '';
+      final optimisticAddonPaid = (_paymentMethod == 'cash' || _paymentMethod == 'upi')
+          ? addonsTotal
+          : ((_addonPaymentMethod == 'cash' || _addonPaymentMethod == 'upi') ? addonCollected : 0);
+
+      final persistedProof = serverDelivery?['proofImage']?.toString().trim();
+      widget.delivery['proofImage'] = (persistedProof != null && persistedProof.isNotEmpty)
+          ? persistedProof
+          : proofPayload;
       widget.delivery['status'] = 'delivered';
       widget.delivery['actualMilk'] = milk;
       widget.delivery['actualCurd'] = curd;
+      widget.delivery['addons'] = addonsPayload;
+      widget.delivery['addonsTotal'] = addonsTotal;
+      widget.delivery['totalAmount'] = serverDelivery?['totalAmount'] ?? _computeGrandTotal();
+      widget.delivery['paymentMethod'] = serverDelivery?['paymentMethod'] ?? _paymentMethod;
+      widget.delivery['paymentAmount'] = (serverDelivery?['paymentAmount'] != null && serverSavedPay > 0)
+          ? serverDelivery!['paymentAmount']
+          : optimisticPaidAmt;
+      widget.delivery['addonPaymentMethod'] = (serverDelivery?['addonPaymentMethod'] ?? '').toString().isNotEmpty
+          ? serverDelivery!['addonPaymentMethod']
+          : optimisticAddonMethod;
+      widget.delivery['addonPaidAmount'] = (serverDelivery?['addonPaidAmount'] != null && serverSavedAddonPay > 0)
+          ? serverDelivery!['addonPaidAmount']
+          : optimisticAddonPaid;
       widget.delivery['deliveredAt'] = DateTime.now().toIso8601String();
+
+      await _saveLocalAddonCache(deliveryId.toString(), {
+        if (addonsPayload.isNotEmpty) 'addons': addonsPayload,
+        if (addonsTotal > 0) 'addonsTotal': addonsTotal,
+        'totalAmount': widget.delivery['totalAmount'],
+        'paymentMethod': widget.delivery['paymentMethod'],
+        'paymentAmount': widget.delivery['paymentAmount'],
+        'addonPaymentMethod': widget.delivery['addonPaymentMethod'],
+        'addonPaidAmount': widget.delivery['addonPaidAmount'],
+      });
+
+      if (!mounted) return;
       widget.onSuccess();
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Delivery marked completed with photo proof!'),
-          backgroundColor: Color(0xFF059669),
+        SnackBar(
+          content: Text(
+            addonsPayload.isNotEmpty
+                ? '✓ Delivery + ${addonsPayload.length} add-on item(s) completed!'
+                : '✓ Delivery marked completed with photo proof!',
+          ),
+          backgroundColor: const Color(0xFF059669),
         ),
       );
     } else {
@@ -6729,6 +9030,15 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
     final customerName = widget.delivery['customerName'] ?? 'Customer';
     final customerAddress = widget.delivery['customerAddress'] ?? 'Doorstep Delivery';
     final customerPhone = widget.delivery['customerPhone'] ?? '';
+    final baseAmount = _computeBaseAmount();
+    final addonsTotal = _computeAddonsTotal();
+    final grandTotal = baseAmount + addonsTotal;
+    final selectedAddons = _buildAddonsPayload();
+    final filteredCatalog = _availableProducts.where((p) {
+      if (_addonSearchQuery.isEmpty) return true;
+      return p.name.toLowerCase().contains(_addonSearchQuery) ||
+          p.category.toLowerCase().contains(_addonSearchQuery);
+    }).toList();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -6796,7 +9106,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 22),
             const Text('Delivered Quantities', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
             const SizedBox(height: 12),
             Row(
@@ -6832,28 +9142,402 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
+
+            // ADD-ONS BUTTON & PRODUCT PICKER SECTION
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Extra Doorstep Add-ons', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
+                      Text(
+                        selectedAddons.isEmpty ? 'Add extra items from live catalog' : '${selectedAddons.length} item(s) • ₹${addonsTotal.toStringAsFixed(0)}',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: selectedAddons.isEmpty ? const Color(0xFF64748B) : const Color(0xFF059669)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() => _showAddonsPicker = !_showAddonsPicker);
+                    if (_showAddonsPicker && _availableProducts.isEmpty) {
+                      _loadProducts();
+                    }
+                  },
+                  icon: Icon(_showAddonsPicker ? Icons.expand_less_rounded : Icons.add_shopping_cart_rounded, size: 16, color: Colors.white),
+                  label: Text(
+                    _showAddonsPicker ? 'Hide Add-ons' : (selectedAddons.isEmpty ? '+ Add-ons' : '+ Add-ons (${selectedAddons.length})'),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+
+            if (selectedAddons.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Column(
+                  children: [
+                    ...selectedAddons.map((a) {
+                      final pId = a['productId'].toString();
+                      final qty = (a['quantity'] as num).toDouble();
+                      final price = (a['price'] as num).toDouble();
+                      final lineTot = qty * price;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${a['name']} × ${qty == qty.truncateToDouble() ? qty.toInt() : qty}',
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF065F46)),
+                              ),
+                            ),
+                            Text(
+                              '₹${lineTot.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF047857)),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () {
+                                _addonQuantities.remove(pId);
+                                _onQtyOrAddonChanged();
+                              },
+                              child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFDC2626)),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ],
+
+            if (_showAddonsPicker) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _addonSearchController,
+                      onChanged: (v) => setState(() => _addonSearchQuery = v.trim().toLowerCase()),
+                      decoration: InputDecoration(
+                        hintText: 'Search all available products...',
+                        hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF059669)),
+                        filled: true,
+                        fillColor: Colors.white,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(9), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (_isLoadingProducts)
+                      const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2)))
+                    else if (filteredCatalog.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: Center(child: Text('No matching products found', style: TextStyle(fontSize: 12, color: Color(0xFF64748B)))),
+                      )
+                    else
+                      ...filteredCatalog.map((prod) {
+                        final qty = _addonQuantities[prod.id] ?? 0.0;
+                        final uPrice = _unitPriceOf(prod);
+                        final pName = prod.name.toLowerCase();
+                        final pUnit = prod.unit.toLowerCase();
+                        final isFixedHalfOrPack = pName.contains('half') ||
+                            pName.contains('500') ||
+                            pUnit.contains('500') ||
+                            pUnit.contains('ml') ||
+                            pUnit.contains('pack');
+                        final isMilk = (prod.category.toLowerCase() == 'milk' || pName.contains('milk')) && !isFixedHalfOrPack;
+                        final step = isMilk ? 0.5 : 1.0;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: qty > 0 ? const Color(0xFFF0FDF4) : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: qty > 0 ? const Color(0xFF86EFAC) : const Color(0xFFE2E8F0)),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      prod.name,
+                                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0F172A)),
+                                    ),
+                                    Text(
+                                      '₹${uPrice.toStringAsFixed(0)} / ${prod.unit}',
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5, color: Color(0xFF059669)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  InkWell(
+                                    onTap: qty > 0
+                                        ? () {
+                                            final next = (qty - step).clamp(0.0, 99.0);
+                                            if (next <= 0) {
+                                              _addonQuantities.remove(prod.id);
+                                            } else {
+                                              _addonQuantities[prod.id] = next;
+                                            }
+                                            _onQtyOrAddonChanged();
+                                          }
+                                        : null,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: qty > 0 ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
+                                        borderRadius: BorderRadius.circular(7),
+                                      ),
+                                      child: Icon(Icons.remove, size: 15, color: qty > 0 ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1)),
+                                    ),
+                                  ),
+                                  Container(
+                                    constraints: const BoxConstraints(minWidth: 34),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      qty > 0 ? (qty == qty.truncateToDouble() ? '${qty.toInt()}' : '$qty') : '0',
+                                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () {
+                                      _addonQuantities[prod.id] = qty + step;
+                                      _onQtyOrAddonChanged();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF059669),
+                                        borderRadius: BorderRadius.circular(7),
+                                      ),
+                                      child: const Icon(Icons.add, size: 15, color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+
+            // LIVE AMOUNT BREAKDOWN CARD
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Base Milk & Curd', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                      Text(
+                        _isPrepaidSubscription ? 'Prepaid Subscription' : '₹${baseAmount.toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                      ),
+                    ],
+                  ),
+                  if (addonsTotal > 0) ...[
+                    const SizedBox(height: 5),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Add-ons (${selectedAddons.length} items)', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF047857))),
+                        Text('₹${addonsTotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF047857))),
+                      ],
+                    ),
+                  ],
+                  const Divider(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _isPrepaidSubscription ? 'Extra Due (Add-ons)' : 'Grand Total',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      ),
+                      Text(
+                        '₹${(_isPrepaidSubscription ? addonsTotal : grandTotal).toStringAsFixed(0)}',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF059669)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 18),
             const Text('Payment Settlement', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               initialValue: _paymentMethod,
+              isExpanded: true,
               decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
               items: const [
-                DropdownMenuItem(value: 'advance', child: Text('Prepaid / Advance Subscription')),
-                DropdownMenuItem(value: 'cash', child: Text('Cash on Delivery')),
-                DropdownMenuItem(value: 'upi', child: Text('UPI on Delivery')),
-                DropdownMenuItem(value: 'credit', child: Text('Monthly Credit Ledger')),
+                DropdownMenuItem(value: 'advance', child: Text('Prepaid / Advance Subscription', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'cash', child: Text('Cash on Delivery', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'upi', child: Text('UPI on Delivery', overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'credit', child: Text('Monthly Credit Ledger', overflow: TextOverflow.ellipsis)),
               ],
-              onChanged: (v) => setState(() => _paymentMethod = v ?? _paymentMethod),
+              onChanged: (v) {
+                if (v == null) return;
+                setState(() {
+                  _paymentMethod = v;
+                  if (!_manualCollectedEdited) {
+                    _collectedController.text = _computeGrandTotal().toStringAsFixed(0);
+                  }
+                });
+              },
             ),
+
             if (_paymentMethod == 'cash' || _paymentMethod == 'upi') ...[
-              const SizedBox(height: 16),
-              const Text('Amount Collected (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF334155))),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Flexible(
+                    child: Text('Total Cash / Amount Collected (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF334155))),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: () => setState(() {
+                      _manualCollectedEdited = false;
+                      _collectedController.text = grandTotal.toStringAsFixed(0);
+                    }),
+                    child: Text('Full: ₹${grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                  ),
+                ],
+              ),
               const SizedBox(height: 6),
               TextFormField(
                 controller: _collectedController,
+                onChanged: (_) => _manualCollectedEdited = true,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true, prefixText: '₹ '),
+              ),
+            ],
+
+            // SEPARATE ADD-ONS PAYMENT SETTLEMENT WHEN DELIVERY IS ON PREPAID OR MONTHLY CREDIT
+            if (addonsTotal > 0 && (_paymentMethod == 'advance' || _paymentMethod == 'credit')) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFBEB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFDE68A)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Add-ons Payment Settlement',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF92400E)),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _addonPaymentMethod,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'credit', child: Text('Add to Customer Credit Ledger', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'cash', child: Text('💵 Cash Given for Add-ons', overflow: TextOverflow.ellipsis)),
+                        DropdownMenuItem(value: 'upi', child: Text('📱 UPI Paid for Add-ons', overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() {
+                          _addonPaymentMethod = v;
+                          if (!_manualAddonCollectedEdited) {
+                            _addonCollectedController.text = addonsTotal.toStringAsFixed(0);
+                          }
+                        });
+                      },
+                    ),
+                    if (_addonPaymentMethod == 'cash' || _addonPaymentMethod == 'upi') ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Flexible(
+                            child: Text('Cash / Amount Given for Add-ons (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF78350F))),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => setState(() {
+                              _manualAddonCollectedEdited = false;
+                              _addonCollectedController.text = addonsTotal.toStringAsFixed(0);
+                            }),
+                            child: Text('Full: ₹${addonsTotal.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _addonCollectedController,
+                        onChanged: (_) => _manualAddonCollectedEdited = true,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.white,
+                          prefixText: '₹ ',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 24),
@@ -7109,13 +9793,53 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
   @override
   void initState() {
     super.initState();
-    final defArea = widget.defaultArea.trim();
-    if (defArea.isNotEmpty && !_serviceLocations.contains(defArea)) {
-      _serviceLocations.insert(0, defArea);
-    }
-    _selectedArea = defArea.isNotEmpty ? defArea : 'Madhapur';
+    _syncDefaultAreaSelection();
+    _loadServiceLocations();
     _loadProducts();
     _initProductRealtime();
+  }
+
+  void _syncDefaultAreaSelection() {
+    final defArea = widget.defaultArea.trim();
+    final isGenericRoute = defArea.isEmpty ||
+        defArea.toLowerCase().contains('all dairy') ||
+        defArea.toLowerCase() == 'all areas' ||
+        defArea.toLowerCase() == 'all';
+    if (isGenericRoute) {
+      _selectedArea = _serviceLocations.first;
+      return;
+    }
+    final existingIdx = _serviceLocations.indexWhere((loc) => loc.toLowerCase() == defArea.toLowerCase());
+    if (existingIdx != -1) {
+      _selectedArea = _serviceLocations[existingIdx];
+    } else {
+      _serviceLocations.insert(0, defArea);
+      _selectedArea = defArea;
+    }
+  }
+
+  Future<void> _loadServiceLocations() async {
+    try {
+      final liveAreas = await widget.api.getDeliveryAreas();
+      final filtered = liveAreas
+          .map((a) => a.trim())
+          .where((a) => a.isNotEmpty && !a.toLowerCase().contains('all dairy') && a.toLowerCase() != 'all areas')
+          .toList();
+      if (filtered.isNotEmpty && mounted) {
+        setState(() {
+          for (final area in filtered) {
+            if (!_serviceLocations.any((existing) => existing.toLowerCase() == area.toLowerCase())) {
+              _serviceLocations.add(area);
+            }
+          }
+          final matched = _serviceLocations.firstWhere(
+            (loc) => loc.toLowerCase() == _selectedArea.toLowerCase(),
+            orElse: () => _serviceLocations.first,
+          );
+          _selectedArea = matched;
+        });
+      }
+    } catch (_) {}
   }
 
   void _initProductRealtime() {
@@ -7127,6 +9851,8 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
             type == 'STOCK_UPDATED' ||
             type == 'INVENTORY_UPDATED') {
           _loadProducts(silent: true);
+        } else if (type == 'LOCATION_UPDATED') {
+          _loadServiceLocations();
         }
       });
     } catch (_) {}
@@ -7263,10 +9989,13 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
         final area = result['area']?.toString();
         final addressSnippet = result['address']?.toString();
         if (area != null && area.isNotEmpty) {
-          if (!_serviceLocations.contains(area)) {
+          final existingIdx = _serviceLocations.indexWhere((loc) => loc.toLowerCase() == area.toLowerCase());
+          if (existingIdx != -1) {
+            _selectedArea = _serviceLocations[existingIdx];
+          } else {
             _serviceLocations.add(area);
+            _selectedArea = area;
           }
-          _selectedArea = area;
         }
         if (addressSnippet != null && addressSnippet.isNotEmpty && _addressCtrl.text.isEmpty) {
           _addressCtrl.text = addressSnippet;
@@ -7298,31 +10027,45 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
     final mobile = _mobileCtrl.text.trim();
     final address = _addressCtrl.text.trim();
 
-    if (name.isEmpty) {
+    if (name.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter customer full name.')),
+        const SnackBar(content: Text('Please enter customer full name (at least 2 characters).')),
       );
       return;
     }
 
     final cleanPhone = mobile.replaceAll(RegExp(r'\D'), '');
-    if (cleanPhone.length < 10) {
+    final phone10 = cleanPhone.length >= 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
+    if (phone10.length != 10 || !RegExp(r'^[6-9]\d{9}$').hasMatch(phone10)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid 10-digit mobile number.')),
+        const SnackBar(content: Text('Please enter a valid 10-digit Indian mobile number starting with 6–9.')),
       );
       return;
     }
 
-    if (address.isEmpty) {
+    if (address.length < 4) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter delivery address.')),
+        const SnackBar(content: Text('Please enter complete delivery address (at least 4 characters).')),
       );
       return;
+    }
+
+    // Auto-generate fallback password if user leaves password blank; validate if provided
+    String finalPassword = _passwordCtrl.text.trim();
+    if (finalPassword.isNotEmpty && finalPassword.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 8 characters (or leave blank to auto-generate).')),
+      );
+      return;
+    }
+    if (finalPassword.isEmpty) {
+      final last4 = phone10.substring(phone10.length - 4);
+      finalPassword = 'Nmd@${last4}123';
     }
 
     final extraProducts = <Map<String, dynamic>>[];
-    double totalMilk = double.tryParse(_milkQtyCtrl.text.trim()) ?? 1.0;
-    double totalCurd = double.tryParse(_curdQtyCtrl.text.trim()) ?? 0.0;
+    double calculatedMilkQty = 0.0;
+    double calculatedCurdQty = 0.0;
     String milkType = 'Pure A2 Cow Milk';
 
     for (final prod in _products) {
@@ -7341,26 +10084,32 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
         final cat = prod.category.toLowerCase();
         final nameLower = prod.name.toLowerCase();
         if (cat == 'milk' || nameLower.contains('milk')) {
+          calculatedMilkQty += qty;
           milkType = prod.name;
+        } else if (cat == 'curd' || nameLower.contains('curd')) {
+          calculatedCurdQty += qty * 500;
         }
       }
     }
 
-    // Auto-generate fallback password if user leaves password blank
-    String finalPassword = _passwordCtrl.text.trim();
-    if (finalPassword.isEmpty) {
-      final last4 = cleanPhone.length >= 4 ? cleanPhone.substring(cleanPhone.length - 4) : '1234';
-      finalPassword = 'Nmd@${last4}123';
-    }
+    final double manualMilk = double.tryParse(_milkQtyCtrl.text.trim()) ?? 1.0;
+    final double manualCurd = double.tryParse(_curdQtyCtrl.text.trim()) ?? 0.0;
+    final double totalMilk = manualMilk != 1.0 ? manualMilk : (calculatedMilkQty > 0 ? calculatedMilkQty : manualMilk);
+    final double totalCurd = manualCurd > 0 ? manualCurd : calculatedCurdQty;
 
     setState(() => _isSubmitting = true);
 
+    final authUser = context.read<AuthProvider>().user;
+    final partnerId = authUser?.id ?? '';
+    final whatsappRaw = _whatsappCtrl.text.trim().replaceAll(RegExp(r'\D'), '');
+    final whatsappFinal = whatsappRaw.length >= 10 ? whatsappRaw.substring(whatsappRaw.length - 10) : phone10;
+
     final payload = {
       'name': name,
-      'mobile': cleanPhone.length == 10 ? cleanPhone : cleanPhone.substring(cleanPhone.length - 10),
+      'mobile': phone10,
       'email': _emailCtrl.text.trim(),
       'password': finalPassword,
-      'whatsapp': _whatsappCtrl.text.trim().isNotEmpty ? _whatsappCtrl.text.trim() : cleanPhone,
+      'whatsapp': whatsappFinal,
       'address': address,
       'area': _selectedArea,
       'landmark': _landmarkCtrl.text.trim(),
@@ -7374,6 +10123,7 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
       'curdUnit': 'g',
       'milkType': milkType,
       'frequency': _frequency,
+      if (partnerId.isNotEmpty) 'deliveryBoyId': partnerId,
       'paymentType': _paymentType,
       'paymentCycle': _paymentCycle,
       'notes': _notesCtrl.text.trim(),
@@ -7387,6 +10137,7 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
         'planName': 'Daily Farm Pure Milk Plan',
         'extraProducts': extraProducts,
         'frequency': _frequency,
+        if (partnerId.isNotEmpty) 'deliveryBoyId': partnerId,
         'deliveryBoyName': widget.partnerName,
       },
       'paymentInfo': {
@@ -7402,12 +10153,17 @@ class _FullScreenAddCustomerPageState extends State<_FullScreenAddCustomerPage> 
     setState(() => _isSubmitting = false);
 
     if (res['success'] == true) {
+      final messenger = ScaffoldMessenger.of(context);
       widget.onSuccess();
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          backgroundColor: Color(0xFF059669),
-          content: Text('✓ Customer added & credentials sent successfully!'),
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF059669),
+          content: Text(
+            res['emailSent'] == true
+                ? '✓ Customer $name added to route & credentials emailed!'
+                : '✓ Customer $name added & synced to route in real-time!',
+          ),
         ),
       );
     } else {
@@ -8232,23 +10988,68 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
             const SizedBox(height: 24),
             const Text('Delivery Order Plan', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  _buildStopDetailRow('Scheduled Milk Qty', '${milk}L Fresh Milk'),
-                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                  _buildStopDetailRow('Scheduled Curd Qty', curd > 0 ? '${curd}g Curd' : 'None'),
-                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                  _buildStopDetailRow('Billing Type', payment.toString().toUpperCase()),
-                ],
-              ),
-            ),
+            Builder(builder: (context) {
+              final baseMethod = (stop['paymentMethod'] ?? 'advance').toString().toLowerCase();
+              final addonMethod = (stop['addonPaymentMethod'] ?? '').toString().toLowerCase();
+              final totalAmt = (num.tryParse((stop['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+              final payAmt = (num.tryParse((stop['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+              final addonPaidAmt = (num.tryParse((stop['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble();
+              final addonsTotal = (num.tryParse((stop['addonsTotal'] ?? '0').toString()) ?? 0).toDouble();
+              final addonsList = stop['addons'] is List ? (stop['addons'] as List) : const [];
+
+              double collectedAmt = 0;
+              String collectedMethod = '';
+              if (isDone) {
+                if (baseMethod == 'cash' || baseMethod == 'upi') {
+                  collectedAmt = payAmt > 0 ? payAmt : totalAmt;
+                  collectedMethod = baseMethod.toUpperCase();
+                } else if (addonMethod == 'cash' || addonMethod == 'upi') {
+                  collectedAmt = addonPaidAmt > 0 ? addonPaidAmt : payAmt;
+                  collectedMethod = addonMethod.toUpperCase();
+                } else if (payAmt > 0) {
+                  collectedAmt = payAmt;
+                  collectedMethod = baseMethod.toUpperCase();
+                }
+              }
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    _buildStopDetailRow('Scheduled Milk Qty', '${milk}L Fresh Milk'),
+                    const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                    _buildStopDetailRow('Scheduled Curd Qty', curd > 0 ? '${curd}g Curd' : 'None'),
+                    const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                    _buildStopDetailRow('Billing Type', payment.toString().toUpperCase()),
+                    if (addonsList.isNotEmpty || addonsTotal > 0) ...[
+                      const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                      _buildStopDetailRow(
+                        'Doorstep Add-ons',
+                        '${addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')} (₹${addonsTotal.toInt()})',
+                      ),
+                    ],
+                    const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                    _buildStopDetailRow(
+                      'Order Total',
+                      totalAmt > 0 ? '₹${totalAmt.toInt()}' : (baseMethod == 'advance' ? 'Prepaid Plan' : '₹0'),
+                    ),
+                    const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                    _buildStopDetailRow(
+                      'Collected Amount',
+                      collectedAmt > 0
+                          ? '₹${collectedAmt.toInt()} (${collectedMethod.isNotEmpty ? collectedMethod : 'PAID'})'
+                          : (isDone && baseMethod == 'advance' ? 'Prepaid ₹0' : '₹0 Pending'),
+                      valueColor: collectedAmt > 0 ? const Color(0xFF059669) : const Color(0xFF64748B),
+                    ),
+                  ],
+                ),
+              );
+            }),
 
             // When delivered, display verified photo proof
             if (isDone) ...[
@@ -8412,12 +11213,20 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildStopDetailRow(String label, String value) {
+  Widget _buildStopDetailRow(String label, String value, {Color valueColor = const Color(0xFF0F172A)}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-        Text(value, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w800)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 13, color: valueColor, fontWeight: FontWeight.w800),
+          ),
+        ),
       ],
     );
   }
@@ -8429,6 +11238,8 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
 class _FullScreenCustomerDetailsPage extends StatefulWidget {
   final Map<String, dynamic> customer;
   final ApiService api;
+  final List<Map<String, dynamic>> deliveries;
+  final List<Map<String, dynamic>> payments;
   final VoidCallback onCustomerUpdated;
   final void Function(String phone) onCall;
   final void Function(String address) onMap;
@@ -8436,6 +11247,8 @@ class _FullScreenCustomerDetailsPage extends StatefulWidget {
   const _FullScreenCustomerDetailsPage({
     required this.customer,
     required this.api,
+    this.deliveries = const [],
+    this.payments = const [],
     required this.onCustomerUpdated,
     required this.onCall,
     required this.onMap,
@@ -8448,11 +11261,40 @@ class _FullScreenCustomerDetailsPage extends StatefulWidget {
 class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetailsPage> {
   late Map<String, dynamic> _cust;
   bool _isSubmittingExtension = false;
+  num _ledgerTotalPaid = 0;
+  List<Map<String, dynamic>> _ledgerPayments = [];
+  bool _isLoadingLedger = false;
 
   @override
   void initState() {
     super.initState();
     _cust = Map<String, dynamic>.from(widget.customer);
+    _loadCustomerLedger();
+  }
+
+  Future<void> _loadCustomerLedger() async {
+    final custId = (_cust['id'] ?? _cust['_id'] ?? _cust['customerId'] ?? '').toString();
+    if (custId.isEmpty) return;
+    if (mounted) setState(() => _isLoadingLedger = true);
+    try {
+      final res = await widget.api.get('/api/customers/$custId/ledger');
+      if (mounted && res['success'] == true) {
+        final summary = res['summary'] is Map ? Map<String, dynamic>.from(res['summary'] as Map) : <String, dynamic>{};
+        final entries = res['ledger'] is List
+            ? (res['ledger'] as List)
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .where((e) => e['type'] == 'payment')
+                .toList()
+            : <Map<String, dynamic>>[];
+        setState(() {
+          _ledgerTotalPaid = num.tryParse((summary['totalPaid'] ?? '0').toString()) ?? 0;
+          _ledgerPayments = entries;
+        });
+      }
+    } catch (_) {} finally {
+      if (mounted) setState(() => _isLoadingLedger = false);
+    }
   }
 
   String _formatDate(DateTime? dt) {
@@ -8746,6 +11588,7 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                                       _cust['status'] = 'active';
                                     });
 
+                                    await _loadCustomerLedger();
                                     widget.onCustomerUpdated();
                                     if (modalCtx.mounted) Navigator.of(modalCtx).pop();
 
@@ -9313,6 +12156,112 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                   ),
                   const SizedBox(height: 12),
                   _buildCustomerRow('Billing Type', (_cust['paymentInfo'] is Map && _cust['paymentInfo']['paymentType'] == 'prepaid') ? 'PREPAID SUBSCRIPTION' : 'MONTHLY ADVANCE / CREDIT'),
+                  const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                  Builder(builder: (context) {
+                    final custIds = <String>{
+                      if (_cust['customerId'] != null) _cust['customerId'].toString(),
+                      if (_cust['_id'] != null) _cust['_id'].toString(),
+                      if (_cust['id'] != null) _cust['id'].toString(),
+                    };
+                    final todayDrops = widget.deliveries.where((d) => custIds.contains((d['customerId'] ?? '').toString()) && d['status'] == 'delivered').toList();
+                    double todayCash = 0;
+                    double todayUpi = 0;
+                    for (final d in todayDrops) {
+                      final m = (d['paymentMethod'] ?? '').toString().toLowerCase();
+                      final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+                      if (m == 'cash') {
+                        todayCash += (num.tryParse((d['paymentAmount'] ?? d['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+                      } else if (am == 'cash') {
+                        todayCash += (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+                      }
+                      if (m == 'upi') {
+                        todayUpi += (num.tryParse((d['paymentAmount'] ?? d['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+                      } else if (am == 'upi') {
+                        todayUpi += (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+                      }
+                    }
+
+                    final nowIst = IstDateTime.toIst(DateTime.now());
+                    final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+                    final custPays = widget.payments.where((p) => custIds.contains((p['customerId'] ?? '').toString())).toList();
+                    for (final p in custPays) {
+                      final ref = (p['referenceNumber'] ?? '').toString().toUpperCase();
+                      if (ref.contains('DELIVERY-')) continue;
+                      final dt = DateTime.tryParse((p['paymentDate'] ?? p['createdAt'] ?? '').toString());
+                      if (dt == null) continue;
+                      final istDt = IstDateTime.toIst(dt);
+                      final pStr = '${istDt.year}-${istDt.month.toString().padLeft(2, '0')}-${istDt.day.toString().padLeft(2, '0')}';
+                      if (pStr == todayStr) {
+                        final pm = (p['paymentMethod'] ?? '').toString().toLowerCase();
+                        final amt = (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble();
+                        if (pm == 'cash') todayCash += amt;
+                        if (pm == 'upi') todayUpi += amt;
+                      }
+                    }
+
+                    final todayTotal = todayCash + todayUpi;
+                    final paySum = custPays.fold<double>(0.0, (s, p) => s + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
+                    final allTimePaid = [paySum, _ledgerTotalPaid.toDouble(), todayTotal].reduce((a, b) => a > b ? a : b);
+
+                    return Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFBBF7D0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Collected Today', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF065F46))),
+                              Text(
+                                todayTotal > 0
+                                    ? '₹${todayTotal.toInt()} (${todayCash > 0 ? 'Cash ₹${todayCash.toInt()}' : ''}${todayCash > 0 && todayUpi > 0 ? ' · ' : ''}${todayUpi > 0 ? 'UPI ₹${todayUpi.toInt()}' : ''})'
+                                    : '₹0',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF059669)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Total Collected (All Time)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+                              _isLoadingLedger
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669)))
+                                  : Text('₹${allTimePaid.toInt()}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                            ],
+                          ),
+                          if (_ledgerPayments.isNotEmpty) ...[
+                            const Divider(height: 14, color: Color(0xFFA7F3D0)),
+                            ..._ledgerPayments.take(3).map((lp) => Padding(
+                              padding: const EdgeInsets.only(bottom: 3),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '${lp['date'] ?? ''} • ${(lp['paymentMethod'] ?? 'CASH').toString().toUpperCase()}',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF065F46)),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Text(
+                                    '₹${lp['paidAmount'] ?? lp['amount'] ?? 0}',
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF047857)),
+                                  ),
+                                ],
+                              ),
+                            )),
+                          ],
+                        ],
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),

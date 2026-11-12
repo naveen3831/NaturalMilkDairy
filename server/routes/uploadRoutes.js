@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { uploadToCloudinary, uploadUrlOrBase64, cloudinary } = require('../config/cloudinary');
+const { uploadToCloudinary, ensureCloudinaryUrl, cloudinary } = require('../config/cloudinary');
 const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
 
 // Configure multer with memory storage (no temp files on disk)
@@ -81,16 +81,12 @@ router.post('/base64', verifyToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Image base64 string or URL is required' });
     }
 
-    const result = await uploadUrlOrBase64(image, folder);
+    const secureUrl = await ensureCloudinaryUrl(image, { folder, required: true });
 
     return res.status(201).json({
       success: true,
       message: 'Image successfully stored in Cloudinary',
-      url: result.secure_url,
-      publicId: result.public_id,
-      format: result.format,
-      width: result.width,
-      height: result.height,
+      url: secureUrl,
     });
   } catch (err) {
     console.error('Cloudinary base64 upload error:', err);

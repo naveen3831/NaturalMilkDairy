@@ -97,9 +97,9 @@ export default function EditProductPage({ productId, onBack, onSaved, onDeleted 
       setIsUploading(false);
       if (res && res.success && res.url) {
         setImage(res.url);
-        setUploadStatus(res.warning ? 'Saved locally' : 'Uploaded to Cloudinary');
+        setUploadStatus('Uploaded to Cloudinary');
       } else {
-        setUploadStatus('Upload failed. Used default preset.');
+        setUploadStatus(res?.message || 'Cloudinary upload failed. Please retry.');
       }
     } catch (err) {
       setIsUploading(false);

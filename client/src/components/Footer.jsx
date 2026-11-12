@@ -26,7 +26,9 @@ export default function Footer({ setActiveTab }) {
   const youtubeUrl = socials.youtube || 'https://youtube.com';
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   };
 
   const handleNavClick = (tab, reset = false) => {
@@ -144,7 +146,7 @@ export default function Footer({ setActiveTab }) {
                 >
                   <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor">
                     <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z" />
-                    <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="#080d1a" />
+                    <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="#ffffff" />
                   </svg>
                 </a>
               </div>
@@ -390,7 +392,7 @@ export default function Footer({ setActiveTab }) {
           >
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
               <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z" />
-              <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="#080d1a" />
+              <polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02" fill="#ffffff" />
             </svg>
           </a>
         </div>

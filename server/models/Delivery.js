@@ -23,6 +23,16 @@ const deliverySchema = new mongoose.Schema({
     unit: { type: String, default: 'pack' },
     price: { type: Number, default: 0 },
   }],
+  addons: [{
+    productId: { type: String, default: '' },
+    name: { type: String, required: true },
+    quantity: { type: Number, default: 1 },
+    unit: { type: String, default: 'pack' },
+    price: { type: Number, default: 0 },
+  }],
+  addonsTotal: { type: Number, default: 0 },
+  addonPaymentMethod: { type: String, enum: ['credit', 'cash', 'upi', 'advance', ''], default: '' },
+  addonPaidAmount: { type: Number, default: 0 },
   milkPrice: { type: Number, default: 60 },
   curdPrice: { type: Number, default: 60 }, // per unit or per kg
   totalAmount: { type: Number, default: 0 },

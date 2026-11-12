@@ -5,6 +5,15 @@
  * Includes day-by-day itemized delivery logs and payment audit records.
  */
 
+function escapeHtml(val) {
+  return String(val ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function formatCurrency(amount) {
   const num = Number(amount) || 0;
   return 'Rs. ' + Math.round(num).toLocaleString('en-IN');
@@ -34,14 +43,18 @@ function getCssStyles() {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       color: #0f172a;
       margin: 0;
-      padding: 0;
+      padding: 12px;
       background: #ffffff;
       font-size: 11px;
       line-height: 1.4;
     }
+    @media print {
+      body { padding: 0; }
+      .kpi-grid { display: flex !important; flex-wrap: nowrap !important; }
+    }
     .brand-bar { height: 8px; background: #0d5c3a; }
     .brand-subbar { height: 3px; background: #f59e0b; margin-bottom: 14px; }
-    .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .header-container { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
     .dairy-title { font-size: 18px; font-weight: 900; color: #0d5c3a; letter-spacing: -0.3px; margin: 0; }
     .dairy-tagline { font-size: 9.5px; color: #475569; margin: 2px 0 0 0; }
     .dairy-contacts { font-size: 8.5px; color: #64748b; margin-top: 2px; }
@@ -55,9 +68,9 @@ function getCssStyles() {
     }
     .report-title { font-size: 13px; font-weight: 800; color: #065f46; text-transform: uppercase; margin: 0; }
     .report-period { font-size: 9.5px; color: #047857; margin-top: 2px; }
-    .kpi-grid { display: flex; gap: 8px; margin-bottom: 16px; }
+    .kpi-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
     .kpi-card {
-      flex: 1;
+      flex: 1 1 120px;
       padding: 8px 10px;
       border-radius: 8px;
       border: 1px solid #e2e8f0;
@@ -67,7 +80,10 @@ function getCssStyles() {
     .kpi-value { font-size: 14px; font-weight: 900; margin: 2px 0; }
     .kpi-sub { font-size: 8px; color: #64748b; }
     .section-heading { font-size: 11px; font-weight: 800; color: #0f172a; margin: 14px 0 6px 0; text-transform: uppercase; letter-spacing: 0.3px; }
+    .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 14px; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    .table-wrap table { margin-bottom: 0; min-width: 520px; }
+    @media print { .table-wrap { overflow: visible; } .table-wrap table { min-width: 100%; } }
     th {
       background: #0d5c3a;
       color: #ffffff;
@@ -82,6 +98,7 @@ function getCssStyles() {
       border-bottom: 1px solid #e2e8f0;
       font-size: 8.5px;
       color: #334155;
+      word-break: break-word;
     }
     tr:nth-child(even) td { background: #f8fafc; }
     .text-right { text-align: right; }
@@ -97,6 +114,8 @@ function getCssStyles() {
       padding-top: 8px;
       border-top: 1px solid #e2e8f0;
       display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
       justify-content: space-between;
       font-size: 7.5px;
       color: #94a3b8;
@@ -214,6 +233,7 @@ export function generateAllCustomersHtml({ customers = [], deliveries = [], paym
     <html>
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Natural Milk Dairy - All Customers Consolidated Statement</title>
       <style>${getCssStyles()}</style>
     </head>
@@ -262,6 +282,7 @@ export function generateAllCustomersHtml({ customers = [], deliveries = [], paym
       </div>
 
       <div class="section-heading">Itemized Customer Balances & Route Fulfillment</div>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -278,9 +299,11 @@ export function generateAllCustomersHtml({ customers = [], deliveries = [], paym
           ${rowsHtml || '<tr><td colspan="7" class="text-center" style="padding:14px;color:#64748b;">No customer accounts found for this period.</td></tr>'}
         </tbody>
       </table>
+      </div>
 
       <!-- Day by Day Delivery History -->
       <div class="section-heading">Day-by-Day Delivery Route Fulfillment History</div>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -296,6 +319,7 @@ export function generateAllCustomersHtml({ customers = [], deliveries = [], paym
           ${dailyRowsHtml || '<tr><td colspan="6" class="text-center" style="padding:10px;color:#64748b;">No delivery logs available for this period.</td></tr>'}
         </tbody>
       </table>
+      </div>
 
       <div class="footer-note">
         <span>Natural Milk Dairy Enterprise Operations • Automated Daily Billing Report</span>
@@ -320,11 +344,11 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
     minute: '2-digit',
   });
 
-  const name = customer.name || 'Customer';
-  const custCode = customer.customerId || customer.id || '';
-  const mobile = customer.mobile || '';
-  const area = customer.area || 'Hyderabad';
-  const address = customer.address || 'Doorstep Address';
+  const name = escapeHtml(customer.name || 'Customer');
+  const custCode = escapeHtml(customer.customerId || customer.id || '');
+  const mobile = escapeHtml(customer.mobile || '');
+  const area = escapeHtml(customer.area || 'Hyderabad');
+  const address = escapeHtml(customer.address || 'Doorstep Address');
   const balance = Number(customer.currentBalance) || 0;
 
   const completed = deliveries.filter((d) => d.status === 'delivered');
@@ -400,6 +424,7 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
     <html>
     <head>
       <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Natural Milk Dairy - Statement for ${name}</title>
       <style>${getCssStyles()}</style>
     </head>
@@ -463,6 +488,7 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
 
       <!-- Day by Day Delivery History -->
       <div class="section-heading">Day-by-Day Doorstep Delivery History (${sortedDeliveries.length} Records)</div>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -479,8 +505,10 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
           ${deliveryRows || '<tr><td colspan="7" class="text-center" style="padding:10px;color:#64748b;">No delivery records found for this period.</td></tr>'}
         </tbody>
       </table>
+      </div>
 
       <div class="section-heading">Payments & Adjustments Received</div>
+      <div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -495,6 +523,7 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
           ${paymentRows}
         </tbody>
       </table>
+      </div>
 
       <div class="footer-note">
         <span>Natural Milk Dairy Official Customer Statement • 100% Pure Organic Milk</span>

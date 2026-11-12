@@ -1220,6 +1220,16 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     <span style={{ color: '#64748b' }}>Billed Amount</span>
                     <span style={{ fontWeight: 800, color: '#7e22ce' }}>₹{d.totalAmount || 0} ({(d.paymentMethod || 'credit').toUpperCase()})</span>
                   </div>
+                  {Array.isArray(d.addons) && d.addons.length > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', background: '#fffbeb', padding: '6px 8px', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                      <span style={{ color: '#92400e', fontWeight: 700 }}>
+                        Add-ons: {d.addons.map((a) => `${a.name} ×${a.quantity}`).join(', ')}
+                      </span>
+                      <span style={{ fontWeight: 800, color: '#b45309' }}>
+                        ₹{d.addonsTotal || 0}{d.addonPaidAmount > 0 ? ` (Paid ₹${d.addonPaidAmount} ${(d.addonPaymentMethod || '').toUpperCase()})` : ''}
+                      </span>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
                     <span style={{ color: '#64748b' }}>Assigned Partner</span>
                     <span style={{ fontWeight: 800, color: '#0f172a' }}>{driverName}</span>
@@ -1637,6 +1647,22 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 500, alignSelf: 'center' }}>
                       ({item.paymentMethod?.toUpperCase()})
                     </span>
+                    {Array.isArray(item.addons) && item.addons.length > 0 && (
+                      <span
+                        style={{
+                          fontSize: '0.74rem',
+                          fontWeight: 800,
+                          background: '#fffbeb',
+                          color: '#b45309',
+                          border: '1px solid #fde68a',
+                          borderRadius: '6px',
+                          padding: '1px 7px',
+                        }}
+                      >
+                        + Add-ons: {item.addons.map((a) => `${a.name} ×${a.quantity}`).join(', ')} (₹{item.addonsTotal || 0}
+                        {item.addonPaidAmount > 0 ? ` · Paid ₹${item.addonPaidAmount} ${(item.addonPaymentMethod || '').toUpperCase()}` : ''})
+                      </span>
+                    )}
                   </div>
                   {item.subscriptionEndDate && (
                     <div style={{ fontSize: '0.76rem', color: '#047857', fontWeight: 700, marginBottom: '4px' }}>

@@ -484,12 +484,39 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                                 {entry.notes ? ` • ${entry.notes}` : ''}
                               </span>
                             ) : (
-                              <span>
-                                {entry.milk ? `${entry.milk} Milk` : 'Milk'}
-                                {entry.curd && entry.curd !== '0' && entry.curd !== '0 Kg' && entry.curd !== '0.00 Kg'
-                                  ? ` + ${entry.curd} Curd`
-                                  : ''}
-                              </span>
+                              <div>
+                                <span>
+                                  {entry.milk ? `${entry.milk} Milk` : 'Milk'}
+                                  {entry.curd && entry.curd !== '0' && entry.curd !== '0 Kg' && entry.curd !== '0.00 Kg'
+                                    ? ` + ${entry.curd} Curd`
+                                    : ''}
+                                </span>
+                                {((Array.isArray(entry.addons) && entry.addons.length > 0) || Number(entry.addonsTotal || 0) > 0) && (
+                                  <div
+                                    style={{
+                                      marginTop: '4px',
+                                      display: 'inline-block',
+                                      fontSize: '0.72rem',
+                                      fontWeight: 700,
+                                      color: '#92400e',
+                                      background: '#fffbeb',
+                                      border: '1px solid #fde68a',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                    }}
+                                  >
+                                    +{' '}
+                                    {Array.isArray(entry.addons) && entry.addons.length > 0
+                                      ? entry.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')
+                                      : 'Add-ons'}{' '}
+                                    (₹{Number(entry.addonsTotal || 0)}
+                                    {Number(entry.addonPaidAmount || 0) > 0
+                                      ? ` · Paid ₹${Number(entry.addonPaidAmount)}`
+                                      : ''}
+                                    )
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
 
@@ -622,6 +649,31 @@ export default function LedgerView({ customerId, onBack, onOpenPaymentModal, onS
                               <div style={{ fontWeight: 600, color: '#334155' }}>
                                 {entry.paymentMethod || '-'}
                               </div>
+                              {((Array.isArray(entry.addons) && entry.addons.length > 0) || Number(entry.addonsTotal || 0) > 0) && (
+                                <div
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    color: '#92400e',
+                                    background: '#fffbeb',
+                                    border: '1px solid #fde68a',
+                                    borderRadius: '6px',
+                                    padding: '2px 7px',
+                                    marginTop: '3px',
+                                    display: 'inline-block',
+                                    fontWeight: 650,
+                                  }}
+                                >
+                                  +{' '}
+                                  {Array.isArray(entry.addons) && entry.addons.length > 0
+                                    ? entry.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')
+                                    : 'Add-ons'}{' '}
+                                  (₹{Number(entry.addonsTotal || 0)}
+                                  {Number(entry.addonPaidAmount || 0) > 0
+                                    ? ` · Paid ₹${Number(entry.addonPaidAmount)}`
+                                    : ''}
+                                  )
+                                </div>
+                              )}
                               {entry.notes && (
                                 <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>
                                   {entry.notes}

@@ -120,7 +120,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
       window.dispatchEvent(new CustomEvent('nmd_reset_products_page'));
     }
     setActiveTab(tab);
-    window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
     setTimeout(() => {
       window.scrollTo(0, 0);
     }, 40);
@@ -649,7 +651,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
           className="public-mobile-bottom-nav"
           ariaLabel="Main navigation"
           items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage={activeTab === 'landing' ? 'home' : activeTab}
+          activePage={activeTab === 'my-deliveries' ? 'deliveries' : activeTab === 'landing' ? 'home' : activeTab}
           onNavigate={(page) => {
             if (page === 'profile') {
               if (user?.role === 'customer') {
@@ -672,7 +674,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 openUserPortal('deliveries');
                 return;
               }
-              navigatePage('login');
+              navigatePage('my-deliveries');
               return;
             }
             navigatePage(page);

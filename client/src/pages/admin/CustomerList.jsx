@@ -1172,6 +1172,11 @@ export default function CustomerList({
                             <div style={{ fontWeight: 600, color: '#334155' }}>
                               {entry.paymentMethod || '-'}
                             </div>
+                            {((Array.isArray(entry.addons) && entry.addons.length > 0) || Number(entry.addonsTotal || 0) > 0) && (
+                              <div style={{ fontSize: '0.70rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '5px', padding: '2px 6px', marginTop: '3px', display: 'inline-block', fontWeight: 700 }}>
+                                + {Array.isArray(entry.addons) && entry.addons.length > 0 ? entry.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ') : 'Add-ons'} (₹{Number(entry.addonsTotal || 0)}{Number(entry.addonPaidAmount || 0) > 0 ? ` · Paid ₹${Number(entry.addonPaidAmount)}` : ''})
+                              </div>
+                            )}
                             {entry.notes && (
                               <div style={{ fontSize: '0.70rem', color: '#64748b', marginTop: '2px' }}>
                                 {entry.notes}
@@ -1287,7 +1292,14 @@ export default function CustomerList({
                           {isPay ? (
                             <span>{entry.paymentMethod || 'Payment'} {entry.notes ? `• ${entry.notes}` : ''}</span>
                           ) : (
-                            <span>{entry.milk || 'Milk'} {entry.curd && entry.curd !== '0' ? `+ ${entry.curd}` : ''}</span>
+                            <div>
+                              <span>{entry.milk || 'Milk'} {entry.curd && entry.curd !== '0' ? `+ ${entry.curd}` : ''}</span>
+                              {((Array.isArray(entry.addons) && entry.addons.length > 0) || Number(entry.addonsTotal || 0) > 0) && (
+                                <div style={{ marginTop: '3px', fontSize: '0.70rem', fontWeight: 700, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '2px 6px', borderRadius: '5px', display: 'inline-block' }}>
+                                  + {Array.isArray(entry.addons) && entry.addons.length > 0 ? entry.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ') : 'Add-ons'} (₹{Number(entry.addonsTotal || 0)}{Number(entry.addonPaidAmount || 0) > 0 ? ` · Paid ₹${Number(entry.addonPaidAmount)}` : ''})
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div

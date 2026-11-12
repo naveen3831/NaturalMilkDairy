@@ -35,12 +35,34 @@ const getDashboardSummary = async (req, res) => {
       .filter((d) => d.paymentMethod === 'credit')
       .reduce((sum, d) => sum + (d.totalAmount || 0), 0);
 
-    const todayPayments = payments
-      .filter((p) => {
-        const pDate = p.paymentDate instanceof Date ? p.paymentDate.toISOString().split('T')[0] : String(p.paymentDate).split('T')[0];
-        return pDate === today;
-      })
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+    const todayPaymentList = payments.filter((p) => {
+      if (!p.paymentDate) return false;
+      return formatDate(new Date(p.paymentDate)) === today;
+    });
+    const todayPayments = todayPaymentList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const todayCashFromPayments = todayPaymentList
+      .filter((p) => p.paymentMethod === 'cash')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const todayUpiFromPayments = todayPaymentList
+      .filter((p) => p.paymentMethod === 'upi')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const todayDeliveryCash = deliveredItems.reduce((sum, d) => {
+      if (d.paymentMethod === 'cash') return sum + (Number(d.paymentAmount ?? d.totalAmount) || 0);
+      if (d.addonPaymentMethod === 'cash') return sum + (Number(d.addonPaidAmount ?? d.paymentAmount) || 0);
+      return sum;
+    }, 0);
+    const todayDeliveryUpi = deliveredItems.reduce((sum, d) => {
+      if (d.paymentMethod === 'upi') return sum + (Number(d.paymentAmount ?? d.totalAmount) || 0);
+      if (d.addonPaymentMethod === 'upi') return sum + (Number(d.addonPaidAmount ?? d.paymentAmount) || 0);
+      return sum;
+    }, 0);
+    const todayAddonsCash = deliveredItems.reduce((sum, d) => (d.addonPaymentMethod === 'cash' ? sum + (Number(d.addonPaidAmount) || 0) : sum), 0);
+    const todayAddonsUpi = deliveredItems.reduce((sum, d) => (d.addonPaymentMethod === 'upi' ? sum + (Number(d.addonPaidAmount) || 0) : sum), 0);
+
+    const todayCashCollected = Math.max(todayCashFromPayments, todayDeliveryCash);
+    const todayUpiCollected = Math.max(todayUpiFromPayments, todayDeliveryUpi);
+    const effectivePaymentsCollected = Math.max(todayPayments, todayCashCollected + todayUpiCollected);
 
     const allCustomers = await Customer.find({}).select('currentBalance').lean();
     const totalOutstanding = allCustomers.reduce((sum, c) => sum + (c.currentBalance > 0 ? c.currentBalance : 0), 0);
@@ -61,7 +83,11 @@ const getDashboardSummary = async (req, res) => {
         notDelivered,
         todaySales,
         creditAdded,
-        paymentsCollected: todayPayments,
+        paymentsCollected: effectivePaymentsCollected,
+        todayCashCollected,
+        todayUpiCollected,
+        todayAddonsCash,
+        todayAddonsUpi,
         totalOutstanding,
         totalAdvance,
         todayMilkLitres: todayMilkLitres.toFixed(1),
@@ -224,7 +250,7 @@ const getDateRange = (period = 'all') => {
 const downloadCustomerPdf = async (req, res) => {
   try {
     let lookupId = req.query.customerId || req.query.id;
-    if (!lookupId && req.user && ['customer', 'user'].includes(req.user.role)) {
+    if ((!lookupId || lookupId === 'me') && req.user && ['customer', 'user'].includes(req.user.role)) {
       lookupId = req.user.customerId || req.user.id || req.user.mobile;
     }
 

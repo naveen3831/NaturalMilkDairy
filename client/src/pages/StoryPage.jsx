@@ -663,7 +663,9 @@ export default function StoryPage({ setActiveTab }) {
                 type="button"
                 onClick={() => {
                   setActiveTab('contact');
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                  document.documentElement.scrollTop = 0;
+                  document.body.scrollTop = 0;
                 }}
                 className="dairy-btn-hover"
                 style={{

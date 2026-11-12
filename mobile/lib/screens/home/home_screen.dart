@@ -6,6 +6,7 @@ import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'package:natural_milk_dairy/providers/product_provider.dart';
 import '../../data/services/api_service.dart';
 import '../../data/services/realtime_service.dart';
+import '../../core/utils/ist_date_time.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../../data/models/product_model.dart';
 import 'widgets/product_card.dart';
@@ -2023,16 +2024,17 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Search Bar matching Image 2
+            // Search Bar matching clean web pill design
             Container(
               height: 44,
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F2),
-                borderRadius: BorderRadius.circular(25),
+                borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 20),
                   const SizedBox(width: 8),
@@ -2044,11 +2046,28 @@ class _HomeScreenState extends State<HomeScreen> {
                           _productSearchQuery = val;
                         });
                       },
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0C2340)),
+                      cursorColor: const Color(0xFF0D5C3A),
+                      textAlignVertical: TextAlignVertical.center,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        color: Color(0xFF0C2340),
+                        fontWeight: FontWeight.w500,
+                      ),
                       decoration: const InputDecoration(
                         hintText: 'Search products...',
-                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        hintStyle: TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        filled: false,
+                        fillColor: Colors.transparent,
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                       ),
@@ -2060,7 +2079,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         _searchController.clear();
                         setState(() => _productSearchQuery = '');
                       },
-                      child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF94A3B8)),
+                      borderRadius: BorderRadius.circular(12),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.close_rounded, size: 18, color: Color(0xFF94A3B8)),
+                      ),
                     ),
                 ],
               ),
@@ -2944,6 +2967,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _toIstDateKey(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(trimmed)) return trimmed;
+    final parsed = DateTime.tryParse(trimmed);
+    if (parsed != null) {
+      final ist = IstDateTime.toIst(parsed);
+      final mm = ist.month.toString().padLeft(2, '0');
+      final dd = ist.day.toString().padLeft(2, '0');
+      return '${ist.year}-$mm-$dd';
+    }
+    final match = RegExp(r'^(\d{4}-\d{2}-\d{2})').firstMatch(trimmed);
+    return match?.group(1) ?? '';
+  }
+
   Map<String, String> _parseDateParts(String raw) {
     if (raw.isEmpty) return {'day': 'Wed', 'dayNum': '28', 'monthYear': 'Oct 2026'};
     try {
@@ -2960,6 +2998,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDeliveryFilterTabPill(String tabKey, String label, int count) {
     final bool isSelected = _deliveryFilterTab == tabKey;
+    final Color badgeBg = isSelected
+        ? Colors.white.withValues(alpha: 0.25)
+        : (tabKey == 'today'
+            ? const Color(0xFFE0F2FE)
+            : (tabKey == 'upcoming'
+                ? const Color(0xFFFEF3C7)
+                : (tabKey == 'history' ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9))));
+    final Color badgeColor = isSelected
+        ? Colors.white
+        : (tabKey == 'today'
+            ? const Color(0xFF0369A1)
+            : (tabKey == 'upcoming'
+                ? const Color(0xFFB45309)
+                : (tabKey == 'history' ? const Color(0xFF15803D) : const Color(0xFF475569))));
 
     return InkWell(
       onTap: () => setState(() => _deliveryFilterTab = tabKey),
@@ -3000,11 +3052,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.25)
-                    : (tabKey == 'upcoming'
-                        ? const Color(0xFFFEF3C7)
-                        : (tabKey == 'history' ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9))),
+                color: badgeBg,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -3012,11 +3060,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
-                  color: isSelected
-                      ? Colors.white
-                      : (tabKey == 'upcoming'
-                          ? const Color(0xFFB45309)
-                          : (tabKey == 'history' ? const Color(0xFF15803D) : const Color(0xFF475569))),
+                  color: badgeColor,
                 ),
               ),
             ),
@@ -3038,25 +3082,60 @@ class _HomeScreenState extends State<HomeScreen> {
             final String rawDate = item['date']?.toString() ?? '2026-10-28';
             final bool isDelivered = item['status'] == 'delivered' || item['isDelivered'] == true;
             final dateParts = _parseDateParts(rawDate);
+            final rawAddons = item['addons'] is List
+                ? (item['addons'] as List)
+                : (item['rawItem'] is Map && item['rawItem']['addons'] is List
+                    ? (item['rawItem']['addons'] as List)
+                    : const []);
+            final addonsSummary = rawAddons.isNotEmpty
+                ? rawAddons.map((a) => '${a['name']} ×${a['quantity']}').join(', ')
+                : null;
+            final addonsTot = item['addonsTotal'] ??
+                (item['rawItem'] is Map ? item['rawItem']['addonsTotal'] : null) ??
+                0;
             return {
               'id': item['id'] ?? item['_id'],
               'date': rawDate,
+              'dateKey': _toIstDateKey(rawDate),
               'day': dateParts['day'] ?? 'Wed',
               'dayNum': dateParts['dayNum'] ?? '28',
               'monthYear': dateParts['monthYear'] ?? 'Oct 2026',
               'timeSlot': isDelivered ? (_formatDeliveryTime(item['time']?.toString() ?? '6:15 AM')) : '5:00 AM - 6:30 AM',
               'milkQty': '${item['milkQuantity'] ?? item['actualMilk'] ?? 1} L',
               'curdQty': '${item['curdQuantity'] ?? item['actualCurd'] ?? 0} g',
+              'addonsText': addonsSummary,
+              'addonsTotal': addonsTot,
+              'amount': item['amount'] ?? item['totalAmount'],
               'isDelivered': isDelivered,
-              'paymentStatus': isDelivered ? 'Paid' : 'Advance',
+              'paymentStatus': isDelivered ? (item['paymentStatus']?.toString() ?? 'Paid') : 'Advance',
               'proofImage': item['proofImage']?.toString(),
               'driver': item['deliveryBoyName']?.toString() ?? 'Naveen Kumar',
             };
           }).toList()
         : <Map<String, dynamic>>[];
 
-    final upcomingDeliveries = allDeliveries.where((d) => d['isDelivered'] != true).toList();
-    final historyDeliveries = allDeliveries.where((d) => d['isDelivered'] == true).toList();
+    final nowIst = IstDateTime.toIst(DateTime.now());
+    final todayKey = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+
+    final totalDeliveredCount = allDeliveries.where((d) => d['isDelivered'] == true).length;
+    final totalPendingCount = allDeliveries.where((d) => d['isDelivered'] != true).length;
+
+    final todayDeliveries = allDeliveries
+        .where((d) => (d['dateKey']?.toString() ?? '') == todayKey)
+        .toList();
+
+    final historyDeliveries = allDeliveries.where((d) {
+      final key = d['dateKey']?.toString() ?? '';
+      if (key == todayKey) return false;
+      return (key.isNotEmpty && key.compareTo(todayKey) < 0) || d['isDelivered'] == true;
+    }).toList()
+      ..sort((a, b) => (b['dateKey']?.toString() ?? '').compareTo(a['dateKey']?.toString() ?? ''));
+
+    final upcomingDeliveries = allDeliveries.where((d) {
+      final key = d['dateKey']?.toString() ?? '';
+      return key.compareTo(todayKey) > 0 && d['isDelivered'] != true;
+    }).toList()
+      ..sort((a, b) => (a['dateKey']?.toString() ?? '').compareTo(b['dateKey']?.toString() ?? ''));
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -3160,7 +3239,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.check_circle_outline_rounded,
                     iconBg: const Color(0xFFDCFCE7),
                     iconColor: const Color(0xFF16A34A),
-                    value: historyDeliveries.length.toString(),
+                    value: totalDeliveredCount.toString(),
                     label: 'Delivered',
                   ),
                 ),
@@ -3174,7 +3253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.access_time_rounded,
                     iconBg: const Color(0xFFFEF3C7),
                     iconColor: const Color(0xFFD97706),
-                    value: upcomingDeliveries.length.toString(),
+                    value: totalPendingCount.toString(),
                     label: 'Pending Drops',
                   ),
                 ),
@@ -3192,16 +3271,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 3 Filter Pills: All, Upcoming, Delivery History
+            // Filter Pills: All, Today, Delivery History, Upcoming
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
                   _buildDeliveryFilterTabPill('all', 'All', allDeliveries.length),
                   const SizedBox(width: 8),
-                  _buildDeliveryFilterTabPill('upcoming', 'Upcoming', upcomingDeliveries.length),
+                  _buildDeliveryFilterTabPill('today', 'Today', todayDeliveries.length),
                   const SizedBox(width: 8),
                   _buildDeliveryFilterTabPill('history', 'Delivery History', historyDeliveries.length),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill('upcoming', 'Upcoming', upcomingDeliveries.length),
                 ],
               ),
             ),
@@ -3214,6 +3295,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 role: 'customer',
                 customerId: user?.customerId ?? user?.id,
+                initialCustomers: customerProvider.customerData != null
+                    ? [customerProvider.customerData!]
+                    : null,
+                initialDeliveries: customerProvider.deliveries,
               ),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -3243,7 +3328,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Download Delivery Statement',
+                            'Delivery & Billing Statement',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w800,
@@ -3252,7 +3337,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                           SizedBox(height: 2),
                           Text(
-                            'Weekly, Monthly & History PDF report',
+                            'View Report, Weekly, Monthly & History PDF',
                             style: TextStyle(
                               fontSize: 11,
                               color: Color(0xFF047857),
@@ -3270,10 +3355,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.download_rounded, color: Colors.white, size: 14),
+                          Icon(Icons.article_outlined, color: Colors.white, size: 14),
                           SizedBox(width: 4),
                           Text(
-                            'PDF',
+                            'Report / PDF',
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 11,
@@ -3289,7 +3374,226 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // SECTION 1: UPCOMING DELIVERIES
+            // SECTION 1: TODAY'S DELIVERIES (First)
+            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'today') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            "Today's Deliveries",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBAE6FD)),
+                          ),
+                          child: Text(
+                            '${todayDeliveries.length} Today',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0369A1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    "Today's Slot",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF059669),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (todayDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No delivery scheduled for today.',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...todayDeliveries.map((delivery) {
+                  final deliveredToday = delivery['isDelivered'] == true;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildUpcomingDeliveryCard(
+                      day: delivery['day'] ?? 'Wed',
+                      date: delivery['dayNum'] ?? '28',
+                      monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                      timeSlot: delivery['timeSlot'] ?? (deliveredToday ? 'Delivered 6:15 AM' : '5:00 AM - 6:30 AM'),
+                      milkQty: delivery['milkQty'] ?? '1 L',
+                      curdQty: delivery['curdQty'] ?? '0 g',
+                      addonsText: delivery['addonsText']?.toString(),
+                      addonsTotal: num.tryParse(delivery['addonsTotal']?.toString() ?? '0'),
+                      isDelivered: deliveredToday,
+                      paymentStatus: delivery['paymentStatus'] ?? (deliveredToday ? 'Paid' : 'Advance'),
+                      proofImage: delivery['proofImage'],
+                      driverName: delivery['driver'],
+                      onProofTap: () => _showProofPhotoDialog(
+                        delivery['date'] ?? 'Morning Drop',
+                        delivery['proofImage'],
+                        delivery['driver'],
+                        address: delivery['address'] ?? delivery['deliveryAddress'],
+                        time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                        lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                        lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
+                      ),
+                      onTap: () => deliveredToday
+                          ? _showDeliveriesModal(customerProvider)
+                          : _showUpcomingDeliveryDetails(delivery),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 10),
+            ],
+
+            // SECTION 2: DELIVERY HISTORY (Second - Past Verified Drops)
+            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'history') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Flexible(
+                          child: Text(
+                            'Delivery History',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0C2340),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Text(
+                            '${historyDeliveries.length} Drops',
+                            style: const TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF15803D),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
+                      SizedBox(width: 3),
+                      Text(
+                        'Verified',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF059669),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (historyDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No past deliveries in your history yet.',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...historyDeliveries.map((delivery) {
+                  final isDeliveredItem = delivery['isDelivered'] == true;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildUpcomingDeliveryCard(
+                      day: delivery['day'] ?? 'Wed',
+                      date: delivery['dayNum'] ?? '28',
+                      monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                      timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
+                      milkQty: delivery['milkQty'] ?? '1 L',
+                      curdQty: delivery['curdQty'] ?? '0 g',
+                      addonsText: delivery['addonsText']?.toString(),
+                      addonsTotal: num.tryParse(delivery['addonsTotal']?.toString() ?? '0'),
+                      isDelivered: isDeliveredItem,
+                      paymentStatus: delivery['paymentStatus'] ?? (isDeliveredItem ? 'Paid' : 'Advance'),
+                      proofImage: delivery['proofImage'],
+                      driverName: delivery['driver'],
+                      onProofTap: () => _showProofPhotoDialog(
+                        delivery['date'] ?? 'Morning Drop',
+                        delivery['proofImage'],
+                        delivery['driver'],
+                        address: delivery['address'] ?? delivery['deliveryAddress'],
+                        time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                        lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                        lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
+                      ),
+                      onTap: () => _showDeliveriesModal(customerProvider),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 10),
+            ],
+
+            // SECTION 3: UPCOMING DELIVERIES (Third - Future Scheduled Drops)
             if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'upcoming') ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3386,113 +3690,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: () => _showUpcomingDeliveryDetails(delivery),
                       ),
                     )),
-              const SizedBox(height: 10),
-            ],
-
-            // SECTION 2: DELIVERY HISTORY (Past Verified Drops)
-            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'history') ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Flexible(
-                          child: Text(
-                            'Delivery History',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0C2340),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Text(
-                            '${historyDeliveries.length} Drops',
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF15803D),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
-                      SizedBox(width: 3),
-                      Text(
-                        'Verified',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              if (historyDeliveries.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE2EBE5)),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'No completed deliveries in your history yet.',
-                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                    ),
-                  ),
-                )
-              else
-                ...historyDeliveries.map((delivery) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _buildUpcomingDeliveryCard(
-                        day: delivery['day'] ?? 'Wed',
-                        date: delivery['dayNum'] ?? '28',
-                        monthYear: delivery['monthYear'] ?? 'Oct 2026',
-                        timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
-                        milkQty: delivery['milkQty'] ?? '1 L',
-                        curdQty: delivery['curdQty'] ?? '0 g',
-                        isDelivered: true,
-                        paymentStatus: delivery['paymentStatus'] ?? 'Paid',
-                        proofImage: delivery['proofImage'],
-                        driverName: delivery['driver'],
-                        onProofTap: () => _showProofPhotoDialog(
-                          delivery['date'] ?? 'Morning Drop',
-                          delivery['proofImage'],
-                          delivery['driver'],
-                          address: delivery['address'] ?? delivery['deliveryAddress'],
-                          time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
-                          lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
-                          lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
-                        ),
-                        onTap: () => _showDeliveriesModal(customerProvider),
-                      ),
-                    )),
               const SizedBox(height: 30),
             ],
           ],
@@ -3574,6 +3771,8 @@ class _HomeScreenState extends State<HomeScreen> {
     required String timeSlot,
     required String milkQty,
     required String curdQty,
+    String? addonsText,
+    num? addonsTotal,
     required bool isDelivered,
     required String paymentStatus,
     String? proofImage,
@@ -3707,6 +3906,19 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
+                      if (addonsText != null && addonsText.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFBEB),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: Text(
+                            '+ $addonsText${(addonsTotal != null && addonsTotal > 0) ? " (₹$addonsTotal)" : ""}',
+                            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF92400E)),
+                          ),
+                        ),
                     ],
                   ),
                 ],

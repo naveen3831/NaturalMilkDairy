@@ -90,4 +90,28 @@ class LauncherService {
       rethrow;
     }
   }
+
+  /// Fetch device GPS location (latitude & longitude) natively on Android.
+  /// Returns null gracefully if permission is denied or location unavailable.
+  static Future<Map<String, double>?> getCurrentLocation({bool requestPermission = true}) async {
+    try {
+      final res = await _channel.invokeMethod<dynamic>('getCurrentLocation', {
+        'requestPermission': requestPermission,
+      });
+      if (res is Map) {
+        final lat = (res['latitude'] as num?)?.toDouble();
+        final lng = (res['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          return {
+            'latitude': lat,
+            'longitude': lng,
+            if (res['accuracy'] is num) 'accuracy': (res['accuracy'] as num).toDouble(),
+          };
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 }

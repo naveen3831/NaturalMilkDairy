@@ -59,11 +59,21 @@ const recordPayment = async (req, res) => {
       createdAt: new Date(),
     });
 
-    // Update driver daily collections
+    // Update driver daily collections (match _id, mobile, or name)
+    const boyOrConditions = [];
     const collectorBoyId = isDriver ? (req.user.boyId || req.user.id) : deliveryBoyId;
     if (collectorBoyId) {
-      const boyQuery = collectorBoyId.length === 24 ? { _id: collectorBoyId } : { mobile: collectorBoyId };
-      const boy = await DeliveryBoy.findOne(boyQuery);
+      if (String(collectorBoyId).length === 24 && /^[a-f\d]{24}$/i.test(String(collectorBoyId))) {
+        boyOrConditions.push({ _id: collectorBoyId });
+      }
+      boyOrConditions.push({ mobile: collectorBoyId });
+    }
+    if (isDriver && req.user.mobile) boyOrConditions.push({ mobile: req.user.mobile });
+    if (isDriver && req.user.name) {
+      boyOrConditions.push({ name: new RegExp(`^${req.user.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+    }
+    if (boyOrConditions.length > 0) {
+      const boy = await DeliveryBoy.findOne({ $or: boyOrConditions });
       if (boy) {
         if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paymentAmount;
         if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paymentAmount;
@@ -78,7 +88,9 @@ const recordPayment = async (req, res) => {
       'payment'
     );
 
-    broadcast('PAYMENT_RECORDED', { customerId: customer.customerId, amount: paymentAmount });
+    broadcast('PAYMENT_RECORDED', { customerId: customer.customerId, amount: paymentAmount, method });
+    broadcast('PAYMENT_UPDATED', { customerId: customer.customerId, amount: paymentAmount, method });
+    broadcast('DELIVERY_BOY_UPDATED', { id: collectorBoyId || '', name: isDriver ? req.user.name : (collectedBy || '') });
     broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId });
     broadcast('NOTIFICATION_UPDATED', {});
 
@@ -100,12 +112,62 @@ const getAllPayments = async (req, res) => {
   try {
     const { customerId, method } = req.query;
     const filter = {};
+    const andFilters = [];
 
     if (customerId) {
       filter.customerId = customerId;
     }
     if (method && method !== 'all') {
       filter.paymentMethod = method;
+    }
+
+    // Delivery partners see only payments collected by them or belonging to their assigned customers
+    if (req.user?.role === 'delivery_boy') {
+      const partnerIds = new Set([req.user.id, req.user.boyId, req.user.mobile].filter(Boolean).map(String));
+      const partnerNames = new Set(req.user.name ? [req.user.name.trim()] : []);
+      let partnerArea = (req.user.assignedArea || req.user.area || '').trim();
+
+      const boyOr = [
+        ...(req.user.id && /^[a-f\d]{24}$/i.test(String(req.user.id)) ? [{ _id: req.user.id }] : []),
+        ...(req.user.mobile ? [{ mobile: req.user.mobile }] : []),
+        ...(req.user.name ? [{ name: new RegExp(`^${req.user.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }] : []),
+      ];
+      if (boyOr.length) {
+        const boy = await DeliveryBoy.findOne({ $or: boyOr }).lean();
+        if (boy) {
+          partnerIds.add(boy._id.toString());
+          if (boy.mobile) partnerIds.add(String(boy.mobile));
+          if (boy.name) partnerNames.add(boy.name.trim());
+          if (boy.assignedArea && !partnerArea) partnerArea = boy.assignedArea.trim();
+        }
+      }
+
+      const assignedCusts = await Customer.find({
+        $or: [
+          { 'deliveryPlan.deliveryBoyId': { $in: [...partnerIds] } },
+          { 'deliveryPlan.deliveryBoyName': { $in: [...partnerNames].map((n) => new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) } },
+          { createdByDriverId: { $in: [...partnerIds] } },
+          ...(partnerArea ? [{ area: new RegExp(`^${partnerArea.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }] : []),
+        ],
+      }).select('customerId _id').lean();
+
+      const custIds = [];
+      for (const c of assignedCusts) {
+        if (c.customerId) custIds.push(c.customerId);
+        if (c._id) custIds.push(c._id.toString());
+      }
+
+      andFilters.push({
+        $or: [
+          { deliveryBoyId: { $in: [...partnerIds] } },
+          ...[...partnerNames].map((n) => ({ collectedBy: new RegExp(`^${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') })),
+          ...(custIds.length ? [{ customerId: { $in: custIds } }] : []),
+        ],
+      });
+    }
+
+    if (andFilters.length > 0) {
+      filter.$and = andFilters;
     }
 
     const list = await Payment.find(filter).sort({ paymentDate: -1 }).lean();

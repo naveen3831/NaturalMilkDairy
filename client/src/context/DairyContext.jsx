@@ -12,6 +12,7 @@ export const DairyProvider = ({ children }) => {
   const [deliverySummary, setDeliverySummary] = useState({ total: 0, delivered: 0, pending: 0, notDelivered: 0 });
   const [products, setProducts] = useState([]);
   const [deliveryBoys, setDeliveryBoys] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [locations, setLocations] = useState([]);
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [pendingCredit, setPendingCredit] = useState({ totalOutstanding: 0, customers: [] });
@@ -193,6 +194,21 @@ export const DairyProvider = ({ children }) => {
     }
   }, [getAuthHeaders]);
 
+  // Fetch Payments
+  const fetchPayments = useCallback(async () => {
+    try {
+      const res = await fetch('/api/payments', {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.payments)) {
+        setPayments(data.payments);
+      }
+    } catch (err) {
+      console.warn('Payments fetch error:', err);
+    }
+  }, [getAuthHeaders]);
+
   // Fetch Service Locations
   const fetchLocations = useCallback(async () => {
     try {
@@ -286,11 +302,12 @@ export const DairyProvider = ({ children }) => {
     fetchCustomers();
     fetchProducts();
     fetchDeliveryBoys();
+    fetchPayments();
     fetchLocations();
     fetchPendingCredit();
     fetchAuditLogs();
     fetchContactInfo();
-  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo]);
+  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPayments, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo]);
 
   useEffect(() => {
     refreshAll();
@@ -336,6 +353,8 @@ export const DairyProvider = ({ children }) => {
       fetchDeliveries();
       fetchDashboard();
       fetchPendingCredit();
+      fetchDeliveryBoys();
+      fetchPayments();
     });
 
     const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', () => {
@@ -344,11 +363,16 @@ export const DairyProvider = ({ children }) => {
       fetchPendingCredit();
     });
 
-    const unsubPayment = wsSubscribe('PAYMENT_RECORDED', () => {
+    const syncPaymentUpdate = () => {
+      fetchDeliveries();
       fetchPendingCredit();
       fetchDashboard();
       fetchCustomers();
-    });
+      fetchDeliveryBoys();
+      fetchPayments();
+    };
+    const unsubPayment = wsSubscribe('PAYMENT_RECORDED', syncPaymentUpdate);
+    const unsubPaymentUpdated = wsSubscribe('PAYMENT_UPDATED', syncPaymentUpdate);
 
     const unsubProduct = wsSubscribe('PRODUCT_UPDATED', () => {
       fetchProducts();
@@ -421,13 +445,14 @@ export const DairyProvider = ({ children }) => {
       unsubDelivery();
       unsubCustomer();
       unsubPayment();
+      unsubPaymentUpdated();
       unsubProduct();
       unsubDriver();
       unsubDuty();
       unsubLocation();
       unsubContactInfo();
     };
-  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchLocations, fetchContactInfo]);
+  }, [wsSubscribe, fetchDeliveries, fetchDashboard, fetchPendingCredit, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPayments, fetchLocations, fetchContactInfo]);
 
   // Mark Delivery as Delivered
   const markDelivered = async (id, payload) => {
@@ -1074,6 +1099,7 @@ export const DairyProvider = ({ children }) => {
         deliverySummary,
         products,
         deliveryBoys,
+        payments,
         dashboardSummary,
         pendingCredit,
         auditLogs,
@@ -1091,6 +1117,7 @@ export const DairyProvider = ({ children }) => {
         fetchCustomers,
         fetchProducts,
         fetchDeliveryBoys,
+        fetchPayments,
         fetchPendingCredit,
         fetchAuditLogs,
         markDelivered,

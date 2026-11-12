@@ -3620,6 +3620,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       deliveryDate: entry.date,
       actualMilk: Number.parseFloat(entry.milk) || 0,
       actualCurd: Number.parseFloat(entry.curd) || 0,
+      addons: entry.addons || entry.rawItem?.addons || [],
+      addonsTotal: Number(entry.addonsTotal || entry.rawItem?.addonsTotal) || 0,
+      addonPaymentMethod: entry.addonPaymentMethod || entry.rawItem?.addonPaymentMethod || '',
+      addonPaidAmount: Number(entry.addonPaidAmount || entry.rawItem?.addonPaidAmount) || 0,
       totalAmount: entry.amount,
       status: entry.status,
       paymentStatus: entry.paymentStatus,
@@ -3644,6 +3648,18 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     return { dayOfWeek: 'Mon', dayNum: '26', monthYear: 'Oct 2026' };
   };
 
+  const toIstDateKey = (rawDate) => {
+    if (!rawDate) return '';
+    const str = String(rawDate).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const d = new Date(str);
+    if (isNaN(d.getTime())) {
+      const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : '';
+    }
+    return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  };
+
   const renderDeliveryHistory = (title = 'Recent deliveries', limit = Infinity) => {
     const defaultSampleDeliveries = [
       { id: 'del-1', deliveryDate: '2026-10-28', actualMilk: 1, actualCurd: 500, status: 'pending', paymentStatus: 'advance' },
@@ -3653,12 +3669,194 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       { id: 'del-5', deliveryDate: '2026-10-24', actualMilk: 1, actualCurd: 500, status: 'delivered', paymentStatus: 'paid' },
     ];
     const sourceDeliveries = allCustomerDeliveries.length > 0 ? allCustomerDeliveries : defaultSampleDeliveries;
-    const visibleDeliveries = sourceDeliveries.slice(0, limit);
+    const todayIstKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    const todayDeliveries = sourceDeliveries.filter(
+      (d) => toIstDateKey(d.deliveryDate || d.date) === todayIstKey
+    );
+    const historyDeliveries = sourceDeliveries
+      .filter((d) => {
+        const key = toIstDateKey(d.deliveryDate || d.date);
+        if (key === todayIstKey) return false;
+        return (key && key < todayIstKey) || d.status === 'delivered';
+      })
+      .sort((a, b) =>
+        toIstDateKey(b.deliveryDate || b.date).localeCompare(toIstDateKey(a.deliveryDate || a.date))
+      );
+    const upcomingDeliveries = sourceDeliveries
+      .filter((d) => {
+        const key = toIstDateKey(d.deliveryDate || d.date);
+        return key > todayIstKey && d.status !== 'delivered';
+      })
+      .sort((a, b) =>
+        toIstDateKey(a.deliveryDate || a.date).localeCompare(toIstDateKey(b.deliveryDate || b.date))
+      );
+
     const deliveredCount = sourceDeliveries.filter((d) => d.status === 'delivered').length;
     const pendingCount = sourceDeliveries.filter((d) => d.status !== 'delivered').length;
+    const visibleDeliveries = sourceDeliveries.slice(0, limit);
+
+    const renderMobileDeliveryCard = (delivery, idx, keyPrefix) => {
+      const isDelivered = delivery.status === 'delivered';
+      const isPaid = isDelivered || delivery.paymentStatus === 'paid';
+      const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+      const milkVal = delivery.actualMilk ?? delivery.milkQuantity ?? 1;
+      const curdVal = delivery.actualCurd ?? delivery.curdQuantity ?? 0;
+      const addonsList = Array.isArray(delivery.addons) ? delivery.addons : [];
+      const addonsLabel = addonsList.length > 0
+        ? addonsList.map((a) => `${a.name} ×${a.quantity}`).join(', ')
+        : '';
+
+      return (
+        <div
+          key={delivery.id || `${keyPrefix}-${idx}`}
+          onClick={() => {
+            if (isDelivered) {
+              setViewingProofPhoto({
+                url: delivery.proofImage || '/dairy_hero.jpg',
+                date: formatDeliveryDate(delivery.deliveryDate || delivery.date),
+                delivery,
+              });
+            } else {
+              setSelectedUpcomingDelivery(delivery);
+            }
+          }}
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: isDelivered ? '1px solid #d1fae5' : '1px solid #e2ebe5',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            cursor: 'pointer',
+          }}
+        >
+          {/* Left Date Chip */}
+          <div
+            style={{
+              width: '54px',
+              height: '60px',
+              borderRadius: '12px',
+              background: isDelivered ? '#f0fdf4' : '#f3f7f4',
+              border: isDelivered ? '1px solid #bbf7d0' : '1px solid #e2ebe5',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              textAlign: 'center',
+              padding: '2px',
+            }}
+          >
+            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
+              {dateParts.dayOfWeek}
+            </span>
+            <span style={{ fontSize: '1.12rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
+              {dateParts.dayNum}
+            </span>
+            <span style={{ fontSize: '0.56rem', fontWeight: 700, color: '#6b7280' }}>
+              {dateParts.monthYear}
+            </span>
+          </div>
+
+          {/* Middle Details */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: isDelivered ? '#059669' : '#4b5563', fontWeight: 700, marginBottom: '2px' }}>
+              {isDelivered ? <CheckCircle2 size={13} color="#059669" /> : <Clock3 size={13} color="#0d5c3a" />}
+              <span>{isDelivered ? 'Delivered at 6:15 AM' : '5:00 AM – 6:30 AM'}</span>
+            </div>
+
+            <div style={{ fontSize: '0.83rem', fontWeight: 800, color: '#0c2340', marginBottom: '5px' }}>
+              Milk {milkVal}L {curdVal > 0 ? `• Curd ${curdVal}g` : '• Curd 0g'}
+            </div>
+
+            {addonsLabel && (
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', padding: '2px 7px', display: 'inline-block', marginBottom: '5px' }}>
+                + {addonsLabel}{Number(delivery.addonsTotal) > 0 ? ` (₹${delivery.addonsTotal})` : ''}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.67rem',
+                  fontWeight: 800,
+                  background: isDelivered ? '#dcfce7' : '#fef3c7',
+                  color: isDelivered ? '#15803d' : '#b45309',
+                  border: isDelivered ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                }}
+              >
+                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: isDelivered ? '#15803d' : '#d97706' }} />
+                {isDelivered ? 'Delivered' : 'Pending'}
+              </span>
+
+              <span
+                style={{
+                  display: 'inline-block',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.67rem',
+                  fontWeight: 700,
+                  background: '#f1f5f9',
+                  color: '#475569',
+                }}
+              >
+                Payment: {isPaid ? 'Paid' : 'Advance'}
+              </span>
+
+              {isDelivered && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setViewingProofPhoto({
+                      url: delivery.proofImage || '/dairy_hero.jpg',
+                      date: formatDeliveryDate(delivery.deliveryDate || delivery.date),
+                      delivery,
+                    });
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    fontSize: '0.67rem',
+                    fontWeight: 800,
+                    color: '#0d5c3a',
+                    background: '#e2f1ea',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '2px 7px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Camera size={11} /> Proof
+                </button>
+              )}
+            </div>
+          </div>
+
+          <ChevronRight size={18} color="#9ca3af" />
+        </div>
+      );
+    };
 
     // Mobile View matching Image 3
     if (isMobile) {
+      const mobileFilterTabs = [
+        { id: 'all', label: 'All', count: sourceDeliveries.length, bg: '#f1f5f9', color: '#475569' },
+        { id: 'today', label: 'Today', count: todayDeliveries.length, bg: '#e0f2fe', color: '#0369a1' },
+        { id: 'history', label: 'Delivery History', count: historyDeliveries.length, bg: '#dcfce7', color: '#15803d' },
+        { id: 'upcoming', label: 'Upcoming', count: upcomingDeliveries.length, bg: '#fef3c7', color: '#b45309' },
+      ];
+
       return (
         <section className="customer-dashboard-card customer-history-card-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'transparent', border: 'none', padding: 0, boxShadow: 'none' }}>
           {/* Hero Banner: Farm pasture, cows grazing, milk bottle and glass on wooden table */}
@@ -3709,46 +3907,42 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               gap: '10px',
             }}
           >
-            {/* 9 Total Drops */}
             <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Truck size={20} />
               </div>
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.1 }}>
-                  {sourceDeliveries.length ? Math.max(sourceDeliveries.length, 9) : 9}
+                  {sourceDeliveries.length}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
               </div>
             </div>
 
-            {/* 3 Delivered */}
             <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <CheckCircle2 size={20} />
               </div>
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d', lineHeight: 1.1 }}>
-                  {deliveredCount || 3}
+                  {deliveredCount}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>Delivered</div>
               </div>
             </div>
 
-            {/* 6 Pending Drops */}
             <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Clock3 size={20} />
               </div>
               <div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>
-                  {pendingCount || 6}
+                  {pendingCount}
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>Pending Drops</div>
               </div>
             </div>
 
-            {/* 100% Cold-Chain 4°C */}
             <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
               <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <Snowflake size={20} />
@@ -3760,100 +3954,46 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           </div>
 
-          {/* 3 Filter Pills Bar: All, Upcoming, Delivery History */}
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', marginTop: '2px' }}>
-            <button
-              type="button"
-              onClick={() => setDeliveryFilterTab('all')}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '20px',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                border: deliveryFilterTab === 'all' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-                background: deliveryFilterTab === 'all' ? '#0d5c3a' : '#ffffff',
-                color: deliveryFilterTab === 'all' ? '#ffffff' : '#64748b',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: deliveryFilterTab === 'all' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
-              }}
-            >
-              All
-              <span style={{
-                fontSize: '0.7rem',
-                background: deliveryFilterTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
-                color: deliveryFilterTab === 'all' ? '#ffffff' : '#475569',
-                padding: '1px 6px',
-                borderRadius: '10px',
-                fontWeight: 900,
-              }}>
-                {sourceDeliveries.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDeliveryFilterTab('upcoming')}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '20px',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                border: deliveryFilterTab === 'upcoming' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-                background: deliveryFilterTab === 'upcoming' ? '#0d5c3a' : '#ffffff',
-                color: deliveryFilterTab === 'upcoming' ? '#ffffff' : '#64748b',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: deliveryFilterTab === 'upcoming' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
-              }}
-            >
-              Upcoming
-              <span style={{
-                fontSize: '0.7rem',
-                background: deliveryFilterTab === 'upcoming' ? 'rgba(255,255,255,0.25)' : '#fef3c7',
-                color: deliveryFilterTab === 'upcoming' ? '#ffffff' : '#b45309',
-                padding: '1px 6px',
-                borderRadius: '10px',
-                fontWeight: 900,
-              }}>
-                {pendingCount}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setDeliveryFilterTab('history')}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '20px',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                border: deliveryFilterTab === 'history' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-                background: deliveryFilterTab === 'history' ? '#0d5c3a' : '#ffffff',
-                color: deliveryFilterTab === 'history' ? '#ffffff' : '#64748b',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: deliveryFilterTab === 'history' ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
-              }}
-            >
-              Delivery History
-              <span style={{
-                fontSize: '0.7rem',
-                background: deliveryFilterTab === 'history' ? 'rgba(255,255,255,0.25)' : '#dcfce7',
-                color: deliveryFilterTab === 'history' ? '#ffffff' : '#15803d',
-                padding: '1px 6px',
-                borderRadius: '10px',
-                fontWeight: 900,
-              }}>
-                {deliveredCount}
-              </span>
-            </button>
+          {/* Filter Pills Bar: All, Today, Delivery History, Upcoming */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', marginTop: '2px', scrollbarWidth: 'none' }}>
+            {mobileFilterTabs.map((tab) => {
+              const active = deliveryFilterTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setDeliveryFilterTab(tab.id)}
+                  style={{
+                    padding: '7px 13px',
+                    borderRadius: '20px',
+                    fontSize: '0.76rem',
+                    fontWeight: 800,
+                    border: active ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                    background: active ? '#0d5c3a' : '#ffffff',
+                    color: active ? '#ffffff' : '#64748b',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    boxShadow: active ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+                  }}
+                >
+                  {tab.label}
+                  <span style={{
+                    fontSize: '0.68rem',
+                    background: active ? 'rgba(255,255,255,0.25)' : tab.bg,
+                    color: active ? '#ffffff' : tab.color,
+                    padding: '1px 6px',
+                    borderRadius: '10px',
+                    fontWeight: 900,
+                  }}>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Statement & PDF Download Quick Banner */}
@@ -3875,7 +4015,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               </div>
               <div>
                 <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46' }}>Delivery & Billing Statement</div>
-                <div style={{ fontSize: '0.7rem', color: '#047857' }}>Weekly, Monthly & Lifetime PDF</div>
+                <div style={{ fontSize: '0.7rem', color: '#047857' }}>View Report, Weekly, Monthly & Lifetime PDF</div>
               </div>
             </div>
             <button
@@ -3893,141 +4033,41 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 alignItems: 'center',
                 gap: '5px',
                 cursor: 'pointer',
+                flexShrink: 0,
                 boxShadow: '0 2px 6px rgba(13,92,58,0.2)',
               }}
             >
               <Download size={13} />
-              <span>Download PDF</span>
+              <span>Report & PDF</span>
             </button>
           </div>
 
-          {/* Section 1: Upcoming Deliveries */}
-          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
+          {/* Section 1: Today's Deliveries (First) */}
+          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'today') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
-                    Upcoming Deliveries
+                    Today's Deliveries
                   </h3>
-                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
-                    {sourceDeliveries.filter((d) => d.status !== 'delivered').length} Scheduled
+                  <span style={{ background: '#e0f2fe', color: '#0369a1', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #bae6fd' }}>
+                    {todayDeliveries.length} Today
                   </span>
                 </div>
-                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+                <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>Today's Slot</span>
               </div>
 
-              {sourceDeliveries.filter((d) => d.status !== 'delivered').length === 0 ? (
-                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '18px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
-                  No upcoming deliveries scheduled for this cycle.
+              {todayDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No delivery scheduled for today.
                 </div>
               ) : (
-                sourceDeliveries
-                  .filter((d) => d.status !== 'delivered')
-                  .slice(0, limit)
-                  .map((delivery, index) => {
-                    const isPaid = delivery.paymentStatus === 'paid';
-                    const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
-
-                    return (
-                      <div
-                        key={delivery.id || `up-${index}`}
-                        onClick={() => setSelectedUpcomingDelivery(delivery)}
-                        style={{
-                          background: '#ffffff',
-                          borderRadius: '16px',
-                          border: '1px solid #e2ebe5',
-                          padding: '12px 14px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {/* Left Date Chip */}
-                        <div
-                          style={{
-                            width: '56px',
-                            height: '62px',
-                            borderRadius: '12px',
-                            background: '#f3f7f4',
-                            border: '1px solid #e2ebe5',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            textAlign: 'center',
-                            padding: '2px',
-                          }}
-                        >
-                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
-                            {dateParts.dayOfWeek}
-                          </span>
-                          <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
-                            {dateParts.dayNum}
-                          </span>
-                          <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
-                            {dateParts.monthYear}
-                          </span>
-                        </div>
-
-                        {/* Middle Details */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#4b5563', fontWeight: 600, marginBottom: '2px' }}>
-                            <Clock3 size={13} color="#0d5c3a" />
-                            <span>5:00 AM – 6:30 AM</span>
-                          </div>
-
-                          <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
-                            Milk {delivery.actualMilk || delivery.milkQuantity || 1}L {(delivery.actualCurd || delivery.curdQuantity) > 0 ? `• Curd ${delivery.actualCurd || delivery.curdQuantity}g` : '• Curd 0g'}
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                background: '#fef3c7',
-                                color: '#b45309',
-                                border: '1px solid #fde68a',
-                              }}
-                            >
-                              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#d97706' }} />
-                              Pending
-                            </span>
-
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                background: '#f1f5f9',
-                                color: '#475569',
-                              }}
-                            >
-                              Payment: {isPaid ? 'Paid' : 'Advance'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <ChevronRight size={18} color="#9ca3af" />
-                      </div>
-                    );
-                  })
+                todayDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'today'))
               )}
             </div>
           )}
 
-          {/* Section 2: Delivery History (Past Verified Drops) */}
+          {/* Section 2: Delivery History (Second - Past Drops) */}
           {(deliveryFilterTab === 'all' || deliveryFilterTab === 'history') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -4036,7 +4076,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     Delivery History
                   </h3>
                   <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
-                    {sourceDeliveries.filter((d) => d.status === 'delivered').length} Completed Drops
+                    {historyDeliveries.length} Drops
                   </span>
                 </div>
                 <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -4044,130 +4084,37 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </span>
               </div>
 
-              {sourceDeliveries.filter((d) => d.status === 'delivered').length === 0 ? (
-                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '18px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
-                  No completed deliveries recorded in your history yet.
+              {historyDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No past deliveries recorded in your history yet.
                 </div>
               ) : (
-                sourceDeliveries
-                  .filter((d) => d.status === 'delivered')
-                  .slice(0, limit)
-                  .map((delivery, index) => {
-                    const dateParts = parseDateParts(delivery.deliveryDate || delivery.date);
+                historyDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'hist'))
+              )}
+            </div>
+          )}
 
-                    return (
-                      <div
-                        key={delivery.id || `hist-${index}`}
-                        style={{
-                          background: '#ffffff',
-                          borderRadius: '16px',
-                          border: '1px solid #e2ebe5',
-                          padding: '12px 14px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
-                        }}
-                      >
-                        {/* Left Date Chip */}
-                        <div
-                          style={{
-                            width: '56px',
-                            height: '62px',
-                            borderRadius: '12px',
-                            background: '#f3f7f4',
-                            border: '1px solid #e2ebe5',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            textAlign: 'center',
-                            padding: '2px',
-                          }}
-                        >
-                          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase' }}>
-                            {dateParts.dayOfWeek}
-                          </span>
-                          <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0c2340', lineHeight: 1 }}>
-                            {dateParts.dayNum}
-                          </span>
-                          <span style={{ fontSize: '0.58rem', fontWeight: 700, color: '#6b7280' }}>
-                            {dateParts.monthYear}
-                          </span>
-                        </div>
+          {/* Section 3: Upcoming Deliveries (Third - Future Scheduled Drops) */}
+          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                    Upcoming Deliveries
+                  </h3>
+                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                    {upcomingDeliveries.length} Scheduled
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+              </div>
 
-                        {/* Middle Details */}
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.76rem', color: '#059669', fontWeight: 700, marginBottom: '2px' }}>
-                            <CheckCircle2 size={13} color="#059669" />
-                            <span>Delivered at 6:15 AM</span>
-                          </div>
-
-                          <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0c2340', marginBottom: '6px' }}>
-                            Milk {delivery.actualMilk || delivery.milkQuantity || 1}L {(delivery.actualCurd || delivery.curdQuantity) > 0 ? `• Curd ${delivery.actualCurd || delivery.curdQuantity}g` : '• Curd 0g'}
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                background: '#dcfce7',
-                                color: '#15803d',
-                                border: '1px solid #bbf7d0',
-                              }}
-                            >
-                              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#15803d' }} />
-                              Delivered
-                            </span>
-
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: '12px',
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                background: '#f1f5f9',
-                                color: '#475569',
-                              }}
-                            >
-                              Payment: Paid
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={() => setViewingProofPhoto({ url: delivery.proofImage || '/dairy_hero.jpg', date: formatDeliveryDate(delivery.deliveryDate || delivery.date), delivery })}
-                              style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '3px',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                color: '#0d5c3a',
-                                background: '#e2f1ea',
-                                border: 'none',
-                                borderRadius: '8px',
-                                padding: '2px 7px',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <Camera size={11} /> Proof
-                            </button>
-                          </div>
-                        </div>
-
-                        <ChevronRight size={18} color="#9ca3af" />
-                      </div>
-                    );
-                  })
+              {upcomingDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No upcoming deliveries scheduled for this cycle.
+                </div>
+              ) : (
+                upcomingDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'up'))
               )}
             </div>
           )}
@@ -4355,7 +4302,15 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   .map((delivery, index) => (
                   <tr key={delivery.id || `${delivery.deliveryDate}-${index}`}>
                     <td><strong>{delivery.deliveryDate}</strong></td>
-                    <td>{delivery.actualMilk} L</td>
+                    <td>
+                      <div>{delivery.actualMilk} L</div>
+                      {Array.isArray(delivery.addons) && delivery.addons.length > 0 && (
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b45309', marginTop: '2px' }}>
+                          + {delivery.addons.map((a) => `${a.name} ×${a.quantity}`).join(', ')} (₹{delivery.addonsTotal || 0}
+                          {delivery.addonPaidAmount > 0 ? ` · Paid ₹${delivery.addonPaidAmount}` : ''})
+                        </div>
+                      )}
+                    </td>
                     <td>{delivery.actualCurd || 0} g</td>
                     {!hasPaidSubscription && <td>₹{delivery.totalAmount}</td>}
                     <td>
@@ -6841,6 +6796,39 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                               </span>
                             </div>
                           </div>
+
+                          {((Array.isArray(delivery.addons) && delivery.addons.length > 0) || Number(delivery.addonsTotal || 0) > 0) && (
+                            <div
+                              style={{
+                                marginTop: '10px',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                background: '#fffbeb',
+                                border: '1px solid #fde68a',
+                                fontSize: '0.76rem',
+                                color: '#92400e',
+                                fontWeight: 650,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '8px',
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <span>
+                                +{' '}
+                                {Array.isArray(delivery.addons) && delivery.addons.length > 0
+                                  ? delivery.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')
+                                  : 'Doorstep Add-ons'}
+                              </span>
+                              <span style={{ fontWeight: 800 }}>
+                                ₹{Number(delivery.addonsTotal || 0)}
+                                {Number(delivery.addonPaidAmount || 0) > 0
+                                  ? ` · Paid ₹${Number(delivery.addonPaidAmount)}`
+                                  : ''}
+                              </span>
+                            </div>
+                          )}
 
                           {/* Proof photo section if available */}
                           {delivery.proofImage && (
@@ -9998,6 +9986,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         onClose={() => setShowCustomerReportModal(false)}
         role="customer"
         entityId={currentCustomer?.id || currentCustomer?.customerId}
+        initialCustomers={currentCustomer ? [currentCustomer] : null}
+        initialDeliveries={allCustomerDeliveries}
+        initialPayments={ledgerEntries.filter((e) => e.type === 'payment').map((e) => e.rawItem || e)}
       />
 
     </div>

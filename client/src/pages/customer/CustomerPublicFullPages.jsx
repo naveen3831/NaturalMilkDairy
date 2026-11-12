@@ -529,6 +529,9 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
 // ══════════════════════════════════════════════════════════════════
 export function CustomerDeliveriesPage({ setActiveTab }) {
   const { user } = useAuth();
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
   const [deliveries, setDeliveries] = useState([]);
   const [filter, setFilter] = useState('all'); // 'all' | 'delivered' | 'pending'
   const [selectedProof, setSelectedProof] = useState(null);
@@ -536,11 +539,20 @@ export function CustomerDeliveriesPage({ setActiveTab }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
     let isMounted = true;
     const fetchDeliveries = async () => {
       try {
         const token = sessionStorage.getItem('nmd_jwt_token') || localStorage.getItem('nmd_jwt_token');
-        if (!token) return;
+        if (!user || !token) {
+          if (isMounted) setDeliveries([]);
+          return;
+        }
         const custId = user?.customerId || user?.id || 'me';
         const res = await fetch(`/api/customers/${encodeURIComponent(custId)}/ledger`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -570,6 +582,210 @@ export function CustomerDeliveriesPage({ setActiveTab }) {
     if (filter === 'pending') return d.status === 'pending';
     return true;
   });
+
+  if (!user) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          minHeight: isMobile ? 'calc(100vh - 120px)' : '82vh',
+          backgroundColor: '#f6faf7',
+          padding: isMobile ? '16px 16px 104px' : '40px 24px 72px',
+          boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ maxWidth: '720px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <span
+              style={{
+                fontSize: '0.66rem',
+                fontWeight: 800,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: '#059669',
+              }}
+            >
+              Daily Doorstep Drops
+            </span>
+            <h1 style={{ margin: 0, fontSize: isMobile ? '1.38rem' : '1.85rem', fontWeight: 900, color: '#0c2340' }}>
+              Deliveries
+            </h1>
+            <p style={{ margin: 0, fontSize: isMobile ? '0.76rem' : '0.92rem', color: '#64748b' }}>
+              Track your morning milk drops, live delivery proof photos, and past deliveries.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '10px',
+            }}
+          >
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2ebe5',
+                borderRadius: '14px',
+                padding: '11px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <div
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  background: '#ecfdf5',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Clock size={17} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: '0.78rem', fontWeight: 900, color: '#0c2340' }}>
+                  Before 6:30 AM
+                </strong>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 600 }}>Morning Slot</span>
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2ebe5',
+                borderRadius: '14px',
+                padding: '11px 12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+              }}
+            >
+              <div
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  background: '#ecfdf5',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <ShieldCheck size={17} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: '0.78rem', fontWeight: 900, color: '#0c2340' }}>
+                  Photo Verified
+                </strong>
+                <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 600 }}>Doorstep Proof</span>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '18px',
+              border: '1px solid #dbe7df',
+              padding: isMobile ? '26px 18px' : '38px 28px',
+              textAlign: 'center',
+              boxShadow: '0 4px 16px rgba(13, 92, 58, 0.05)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: '#ecfdf5',
+                border: '1px solid #bbf7d0',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '2px',
+              }}
+            >
+              <Truck size={26} />
+            </div>
+
+            <h2 style={{ margin: 0, fontSize: isMobile ? '1.08rem' : '1.25rem', fontWeight: 900, color: '#0c2340' }}>
+              Sign in to View Your Deliveries
+            </h2>
+
+            <p style={{ margin: 0, fontSize: isMobile ? '0.78rem' : '0.88rem', color: '#64748b', lineHeight: 1.5, maxWidth: '340px' }}>
+              Sign in with your customer account to track upcoming morning deliveries, drop timings, verified photos, and delivery history.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '10px', width: '100%', maxWidth: '300px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem('nmd_post_login_customer_page', 'deliveries');
+                  setActiveTab('login');
+                }}
+                style={{
+                  width: '100%',
+                  height: '42px',
+                  borderRadius: '11px',
+                  border: 'none',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '7px',
+                  boxShadow: '0 3px 10px rgba(13, 92, 58, 0.22)',
+                }}
+              >
+                <User size={15} />
+                <span>Sign In to View Deliveries</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('subscription')}
+                style={{
+                  width: '100%',
+                  height: '40px',
+                  borderRadius: '11px',
+                  border: '1.2px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#0d5c3a',
+                  fontWeight: 800,
+                  fontSize: '0.80rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '5px',
+                }}
+              >
+                <CalendarDays size={14} />
+                <span>Explore Milk Plans</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: '100%', minHeight: '85vh', backgroundColor: '#f8faf9', padding: '32px 24px 60px' }}>

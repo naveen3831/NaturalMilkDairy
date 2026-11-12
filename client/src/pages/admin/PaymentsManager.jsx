@@ -114,10 +114,20 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
       fetchPayments();
     });
 
+    const unsubPaymentUpd = wsSubscribe('PAYMENT_UPDATED', () => {
+      fetchPayments();
+    });
+
+    const unsubDeliveryUpd = wsSubscribe('DELIVERY_UPDATED', () => {
+      fetchPayments();
+    });
+
     return () => {
       if (typeof unsubHandoverSub === 'function') unsubHandoverSub();
       if (typeof unsubHandoverUpd === 'function') unsubHandoverUpd();
       if (typeof unsubPayment === 'function') unsubPayment();
+      if (typeof unsubPaymentUpd === 'function') unsubPaymentUpd();
+      if (typeof unsubDeliveryUpd === 'function') unsubDeliveryUpd();
     };
   }, [wsSubscribe, fetchHandovers, fetchPayments]);
 

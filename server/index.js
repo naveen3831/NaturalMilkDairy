@@ -73,12 +73,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   maxAge: 600,
 }));
-app.use(express.json({ limit: '1mb', strict: true }));
+app.use(express.json({ limit: '15mb', strict: true }));
 app.use(morgan('dev'));
 
-// Static files (for logo and assets)
+// Static files (for manifest and fallback static web assets)
 app.use('/public', express.static(path.join(__dirname, '../client/public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // API Routes
 app.use('/api/auth', authRoutes);

@@ -1,6 +1,7 @@
 const Delivery = require('../models/Delivery');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
+const DeliveryLocation = require('../models/DeliveryLocation');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const Notification = require('../models/Notification');
@@ -8,17 +9,13 @@ const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
 const { ensureDeliveriesForDate, ensureDeliveriesForRange, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
+const { isCloudinaryUrl, ensureCloudinaryUrl } = require('../config/cloudinary');
 
 const isPersistedProof = (proofImage) => {
   const proofUrl = typeof proofImage === 'string' ? proofImage.trim() : '';
   if (!proofUrl || proofUrl.length > 2048) return false;
   if (proofUrl.startsWith('data:')) return false;
-
-  // Cloudinary URL or valid HTTPS URL
-  if (proofUrl.includes('res.cloudinary.com') || /^https?:\/\//i.test(proofUrl)) {
-    return true;
-  }
-  return false;
+  return isCloudinaryUrl(proofUrl);
 };
 
 const canManageDelivery = (user, delivery) => {
@@ -184,19 +181,63 @@ const getDeliveries = async (req, res) => {
 
     const list = await Delivery.find(filter).sort({ deliveryDate: -1, customerName: 1 }).lean();
 
-    const total = list.length;
-    const delivered = list.filter((d) => d.status === 'delivered').length;
-    const pending = list.filter((d) => d.status === 'pending').length;
-    const notDelivered = list.filter((d) => d.status === 'not_delivered').length;
+    // Enrich deliveries with Customer area, landmark, and coordinates (fallback to DeliveryLocation)
+    const custIds = [...new Set(list.map((d) => d.customerId).filter(Boolean))];
+    const objectCustIds = custIds.filter((id) => /^[a-f\d]{24}$/i.test(id));
+    const phones = [...new Set(list.map((d) => d.customerPhone).filter(Boolean))];
+    const [custDocs, locDocs] = await Promise.all([
+      (custIds.length || phones.length)
+        ? Customer.find({
+            $or: [
+              ...(custIds.length ? [{ customerId: { $in: custIds } }] : []),
+              ...(objectCustIds.length ? [{ _id: { $in: objectCustIds } }] : []),
+              ...(phones.length ? [{ mobile: { $in: phones } }] : []),
+            ],
+          }).select('customerId mobile area landmark latitude longitude addresses').lean()
+        : [],
+      DeliveryLocation.find({ isActive: true }).select('name latitude longitude').lean().catch(() => []),
+    ]);
+
+    const custMap = new Map();
+    for (const c of custDocs) {
+      if (c.customerId) custMap.set(c.customerId, c);
+      if (c._id) custMap.set(c._id.toString(), c);
+      if (c.mobile) custMap.set(c.mobile, c);
+    }
+    const locMap = new Map();
+    for (const loc of locDocs) {
+      if (loc.name) locMap.set(loc.name.trim().toLowerCase(), loc);
+    }
+
+    const enrichedDeliveries = list.map((d) => {
+      const cust = custMap.get(d.customerId) || custMap.get(d.customerPhone) || null;
+      const areaName = (d.customerArea || cust?.area || '').trim();
+      const loc = areaName ? locMap.get(areaName.toLowerCase()) : null;
+      const lat = d.latitude ?? d.customerLatitude ?? cust?.latitude ?? cust?.addresses?.[0]?.latitude ?? loc?.latitude ?? null;
+      const lng = d.longitude ?? d.customerLongitude ?? cust?.longitude ?? cust?.addresses?.[0]?.longitude ?? loc?.longitude ?? null;
+      return {
+        ...d,
+        id: d._id.toString(),
+        customerArea: areaName || (loc?.name || ''),
+        area: d.area || areaName || (loc?.name || ''),
+        landmark: d.landmark || cust?.landmark || '',
+        latitude: lat,
+        longitude: lng,
+        customerLatitude: lat,
+        customerLongitude: lng,
+      };
+    });
+
+    const total = enrichedDeliveries.length;
+    const delivered = enrichedDeliveries.filter((d) => d.status === 'delivered').length;
+    const pending = enrichedDeliveries.filter((d) => d.status === 'pending').length;
+    const notDelivered = enrichedDeliveries.filter((d) => d.status === 'not_delivered').length;
 
     return res.json({
       success: true,
       date: targetDate,
       summary: { total, delivered, pending, notDelivered },
-      deliveries: list.map((d) => ({
-        ...d,
-        id: d._id.toString(),
-      })),
+      deliveries: enrichedDeliveries,
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -402,20 +443,19 @@ const markDelivered = async (req, res) => {
       ? proofImage.trim()
       : (typeof req.body.proofUrl === 'string' ? req.body.proofUrl.trim() : '');
 
-    // If photo is captured via device camera as base64, directly upload to Cloudinary
-    if (proofUrl.startsWith('data:image/') || (proofUrl.length > 100 && !proofUrl.startsWith('http') && !proofUrl.startsWith('/'))) {
+    // Enforce Cloudinary storage for any proof image before writing to MongoDB
+    if (proofUrl) {
       try {
-        const { uploadUrlOrBase64 } = require('../config/cloudinary');
-        const formatted = proofUrl.startsWith('data:') ? proofUrl : `data:image/jpeg;base64,${proofUrl}`;
-        // Wrap with a 12-second timeout so backend never blocks the HTTP response to mobile app
-        const cloudUploadPromise = uploadUrlOrBase64(formatted, 'natural-milk-dairy/delivery-proofs');
-        const cloudTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Cloudinary timeout')), 12000));
-        const cloudResult = await Promise.race([cloudUploadPromise, cloudTimeout]);
-        if (cloudResult && cloudResult.secure_url) {
-          proofUrl = cloudResult.secure_url;
-        }
+        proofUrl = await ensureCloudinaryUrl(proofUrl, {
+          folder: 'natural-milk-dairy/delivery-proofs',
+          timeoutMs: 30000,
+        });
       } catch (err) {
-        console.error('Failed to upload proof image to Cloudinary (will persist base64/fallback):', err.message);
+        console.error('Failed to store delivery proof image in Cloudinary:', err.message);
+        return res.status(502).json({
+          success: false,
+          message: `Failed to store doorstep photo in Cloudinary: ${err.message}`,
+        });
       }
     }
 
@@ -432,22 +472,125 @@ const markDelivered = async (req, res) => {
     const milkPrice = delivery.milkPrice || 60;
     const curdPrice = delivery.curdPrice || 30;
 
-    const totalAmount = milk * milkPrice + (curd / 500) * curdPrice;
+    // Parse doorstep add-on products selected by the delivery partner
+    const rawAddons = Array.isArray(req.body.addons)
+      ? req.body.addons
+      : (Array.isArray(req.body.addonItems) ? req.body.addonItems : []);
+    const sanitizedAddons = rawAddons
+      .filter((a) => a && typeof a === 'object' && Number(a.quantity) > 0)
+      .map((a) => ({
+        productId: a.productId ? String(a.productId) : (a.id ? String(a.id) : (a._id ? String(a._id) : '')),
+        name: String(a.name || 'Dairy Add-on').trim(),
+        quantity: Number(a.quantity) || 1,
+        unit: String(a.unit || 'pack').trim(),
+        price: Math.max(0, Number(a.price) || 0),
+      }));
+
+    const addonsTotal = sanitizedAddons.reduce((sum, a) => sum + (a.price * a.quantity), 0);
+    const existingExtra = Array.isArray(delivery.extraItems) ? delivery.extraItems : [];
+    const baseAmount = milk * milkPrice + (curd / 500) * curdPrice;
+    const totalAmount = baseAmount + addonsTotal;
+
     const activeSubscription = customer?.subscription?.status === 'active' &&
       customer.subscription.endDate &&
       formatDate(new Date(customer.subscription.endDate)) >= delivery.deliveryDate;
+
+    const addonPayMethodReq = (req.body.addonPaymentMethod || '').toString().trim().toLowerCase();
     const method = activeSubscription ? 'advance' : (paymentMethod || delivery.paymentMethod || 'credit');
 
     delivery.actualMilk = milk;
     delivery.actualCurd = curd;
+    delivery.addons = sanitizedAddons;
+    delivery.addonsTotal = addonsTotal;
+    if (sanitizedAddons.length > 0) {
+      delivery.extraItems = [...existingExtra, ...sanitizedAddons];
+    }
     delivery.totalAmount = totalAmount;
     delivery.status = 'delivered';
     delivery.deliveredAt = new Date();
     delivery.paymentMethod = method;
-    delivery.paymentStatus = activeSubscription ? 'paid' : (method === 'credit' ? 'credit' : 'paid');
-    delivery.paymentAmount = activeSubscription ? 0 : delivery.paymentAmount;
     delivery.subscriptionEndDate = activeSubscription ? customer.subscription.endDate : delivery.subscriptionEndDate;
     delivery.proofImage = proofUrl;
+
+    let totalPaidNow = 0;
+    let paidMethod = '';
+    let balanceDelta = 0;
+
+    if (activeSubscription) {
+      if (addonsTotal > 0) {
+        const effAddonMethod = ['cash', 'upi', 'credit'].includes(addonPayMethodReq)
+          ? addonPayMethodReq
+          : (['cash', 'upi'].includes(paymentMethod) ? paymentMethod : 'credit');
+        delivery.addonPaymentMethod = effAddonMethod;
+        if (effAddonMethod === 'cash' || effAddonMethod === 'upi') {
+          const reqAddonCol = req.body.addonCollectedAmount !== undefined && req.body.addonCollectedAmount !== null
+            ? Number(req.body.addonCollectedAmount)
+            : NaN;
+          const reqMainCol = collectedAmount !== undefined && collectedAmount !== null
+            ? Number(collectedAmount)
+            : NaN;
+          const rawAddonPaid = ['cash', 'upi'].includes(paymentMethod) && Number.isFinite(reqMainCol) && reqMainCol > 0
+            ? Math.max(reqMainCol, Number.isFinite(reqAddonCol) ? reqAddonCol : 0)
+            : (Number.isFinite(reqAddonCol) ? reqAddonCol : addonsTotal);
+          totalPaidNow = Math.max(0, isNaN(rawAddonPaid) ? addonsTotal : rawAddonPaid);
+          paidMethod = effAddonMethod;
+          delivery.addonPaidAmount = totalPaidNow;
+          delivery.paymentAmount = totalPaidNow;
+          delivery.paymentStatus = totalPaidNow >= addonsTotal ? 'paid' : 'pending';
+          balanceDelta = addonsTotal - totalPaidNow;
+        } else {
+          delivery.addonPaidAmount = 0;
+          delivery.paymentAmount = 0;
+          delivery.paymentStatus = 'credit';
+          balanceDelta = addonsTotal;
+        }
+      } else if (['cash', 'upi'].includes(paymentMethod) && Number(collectedAmount) > 0) {
+        // Explicit cash/UPI collected at doorstep on an active subscription drop
+        totalPaidNow = Math.max(0, Number(collectedAmount));
+        paidMethod = paymentMethod;
+        delivery.addonPaymentMethod = '';
+        delivery.addonPaidAmount = 0;
+        delivery.paymentMethod = paymentMethod;
+        delivery.paymentAmount = totalPaidNow;
+        delivery.paymentStatus = 'paid';
+        balanceDelta = -totalPaidNow;
+      } else {
+        delivery.addonPaymentMethod = '';
+        delivery.addonPaidAmount = 0;
+        delivery.paymentAmount = 0;
+        delivery.paymentStatus = 'paid';
+      }
+    } else if (method === 'cash' || method === 'upi') {
+      const rawPaid = collectedAmount !== undefined && collectedAmount !== null ? Number(collectedAmount) : totalAmount;
+      totalPaidNow = Math.max(0, isNaN(rawPaid) ? totalAmount : rawPaid);
+      paidMethod = method;
+      delivery.paymentAmount = totalPaidNow;
+      delivery.addonPaymentMethod = addonsTotal > 0 ? method : '';
+      delivery.addonPaidAmount = addonsTotal > 0 ? Math.min(totalPaidNow, addonsTotal) : 0;
+      delivery.paymentStatus = totalPaidNow >= totalAmount ? 'paid' : 'credit';
+      balanceDelta = totalAmount - totalPaidNow;
+    } else {
+      // Base delivery on credit/advance (non-subscription), check if add-ons were paid separately via cash/upi
+      if (addonsTotal > 0 && ['cash', 'upi'].includes(addonPayMethodReq)) {
+        const rawAddonPaid = req.body.addonCollectedAmount !== undefined && req.body.addonCollectedAmount !== null
+          ? Number(req.body.addonCollectedAmount)
+          : addonsTotal;
+        totalPaidNow = Math.max(0, isNaN(rawAddonPaid) ? addonsTotal : rawAddonPaid);
+        paidMethod = addonPayMethodReq;
+        delivery.addonPaymentMethod = addonPayMethodReq;
+        delivery.addonPaidAmount = totalPaidNow;
+        delivery.paymentAmount = totalPaidNow;
+        delivery.paymentStatus = totalPaidNow >= totalAmount ? 'paid' : 'credit';
+        balanceDelta = totalAmount - totalPaidNow;
+      } else {
+        delivery.addonPaymentMethod = addonsTotal > 0 ? 'credit' : '';
+        delivery.addonPaidAmount = 0;
+        delivery.paymentAmount = 0;
+        delivery.paymentStatus = 'credit';
+        balanceDelta = totalAmount;
+      }
+    }
+
     if (req.body.proofLocation) delivery.customerAddress = req.body.proofLocation;
     if (req.body.latitude !== undefined && req.body.latitude !== null && !isNaN(Number(req.body.latitude))) {
       delivery.latitude = Number(req.body.latitude);
@@ -469,72 +612,87 @@ const markDelivered = async (req, res) => {
     let newCustomerBalance = 0;
 
     if (customer) {
-      if (method === 'credit') {
-        customer.currentBalance += totalAmount;
+      const prevBal = Number(customer.currentBalance) || 0;
+      if (balanceDelta !== 0) {
+        customer.currentBalance = prevBal + balanceDelta;
         await customer.save();
-        newCustomerBalance = customer.currentBalance;
-      } else if (method === 'cash' || method === 'upi') {
-        const paid = collectedAmount !== undefined ? Number(collectedAmount) : totalAmount;
-        delivery.paymentAmount = paid;
-        await delivery.save();
+      }
+      newCustomerBalance = customer.currentBalance;
 
-        const prevBal = customer.currentBalance;
-        customer.currentBalance = prevBal + (totalAmount - paid);
-        await customer.save();
-        newCustomerBalance = customer.currentBalance;
-
+      if (totalPaidNow > 0 && (paidMethod === 'cash' || paidMethod === 'upi')) {
+        const addonSummary = sanitizedAddons.length > 0
+          ? ` + Add-ons: ${sanitizedAddons.map((a) => `${a.name} x${a.quantity}`).join(', ')}`
+          : '';
         // Record Payment in MongoDB
         await Payment.create({
           customerId: customer.customerId || customer._id.toString(),
           customerName: customer.name,
-          amount: paid,
-          paymentMethod: method,
+          amount: totalPaidNow,
+          paymentMethod: paidMethod,
           paymentDate: new Date(),
           collectedBy: actor || delivery.deliveryBoyName || 'Delivery Boy',
           deliveryBoyId: delivery.deliveryBoyId,
-          referenceNumber: `${method.toUpperCase()}-DELIVERY-${formatDate()}`,
+          referenceNumber: `${paidMethod.toUpperCase()}-DELIVERY-${formatDate()}`,
           previousBalance: prevBal,
           newBalance: customer.currentBalance,
-          notes: `Collected during delivery on ${delivery.deliveryDate}`,
+          notes: `Collected during delivery on ${delivery.deliveryDate}${addonSummary}`,
           createdAt: new Date(),
         });
 
-        // Update driver's daily cash
+        // Update driver's daily cash/UPI totals (match by deliveryBoyId, mobile, or name fallback)
+        const boyOrConditions = [];
         if (delivery.deliveryBoyId) {
-          const boyQuery = delivery.deliveryBoyId.length === 24 ? { _id: delivery.deliveryBoyId } : { mobile: delivery.deliveryBoyId };
-          const boy = await DeliveryBoy.findOne(boyQuery);
+          if (delivery.deliveryBoyId.length === 24 && /^[a-f\d]{24}$/i.test(delivery.deliveryBoyId)) {
+            boyOrConditions.push({ _id: delivery.deliveryBoyId });
+          }
+          boyOrConditions.push({ mobile: delivery.deliveryBoyId });
+        }
+        if (req.user?.boyId && /^[a-f\d]{24}$/i.test(String(req.user.boyId))) {
+          boyOrConditions.push({ _id: req.user.boyId });
+        }
+        if (req.user?.mobile) {
+          boyOrConditions.push({ mobile: req.user.mobile });
+        }
+        const boyNameMatch = delivery.deliveryBoyName || req.user?.name;
+        if (boyNameMatch) {
+          boyOrConditions.push({ name: new RegExp(`^${boyNameMatch.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') });
+        }
+        if (boyOrConditions.length > 0) {
+          const boy = await DeliveryBoy.findOne({ $or: boyOrConditions });
           if (boy) {
-            if (method === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + paid;
-            if (method === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + paid;
+            if (paidMethod === 'cash') boy.todayCashCollected = (boy.todayCashCollected || 0) + totalPaidNow;
+            if (paidMethod === 'upi') boy.todayUpiCollected = (boy.todayUpiCollected || 0) + totalPaidNow;
             await boy.save();
           }
         }
-      } else if (method === 'advance' && !activeSubscription) {
-        customer.currentBalance += totalAmount;
-        await customer.save();
-        newCustomerBalance = customer.currentBalance;
       }
     }
 
+    const addonsDesc = sanitizedAddons.length > 0
+      ? ` + Add-ons (${sanitizedAddons.map((a) => `${a.name} x${a.quantity}`).join(', ')}, ₹${addonsTotal})`
+      : '';
     await recordAudit(
       'Delivery Completed',
       actor || delivery.deliveryBoyName || 'Delivery Boy',
-      `Delivered ${milk}L Milk + ${curd}g Curd to ${delivery.customerName} (₹${totalAmount} via ${method.toUpperCase()})`,
+      `Delivered ${milk}L Milk + ${curd}g Curd${addonsDesc} to ${delivery.customerName} (Total ₹${totalAmount}, Paid ₹${totalPaidNow} ${paidMethod ? paidMethod.toUpperCase() : method.toUpperCase()})`,
       'delivery'
     );
 
-    // Send real-time notification to Admin
+    // Send real-time notification to Admin & Customer
     try {
       await Notification.create({
         recipientRole: 'admin',
-        title: '✅ Delivery Completed',
-        message: `${actor || delivery.deliveryBoyName || 'Driver'} delivered ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''} to ${delivery.customerName}. Collected: ₹${totalAmount} (${method.toUpperCase()}).`,
+        title: sanitizedAddons.length > 0 ? '✅ Delivery + Add-ons Completed' : '✅ Delivery Completed',
+        message: `${actor || delivery.deliveryBoyName || 'Driver'} delivered ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''}${addonsDesc} to ${delivery.customerName}. Order Total: ₹${totalAmount}${totalPaidNow > 0 ? ` • Collected ₹${totalPaidNow} (${paidMethod.toUpperCase()})` : ` (${method.toUpperCase()})`}.`,
         type: 'delivery_completed',
         data: {
           deliveryId: delivery._id.toString(),
           customerName: delivery.customerName,
           amount: totalAmount,
-          method,
+          addonsTotal,
+          addons: sanitizedAddons,
+          paidAmount: totalPaidNow,
+          method: paidMethod || method,
           driverName: delivery.deliveryBoyName || actor,
         },
       });
@@ -543,9 +701,11 @@ const markDelivered = async (req, res) => {
           recipientRole: 'customer',
           recipientId: customer._id.toString(),
           title: 'Delivery Completed',
-          message: `Your delivery for ${delivery.deliveryDate} is complete. View the doorstep photo proof in your delivery history.`,
+          message: sanitizedAddons.length > 0
+            ? `Your delivery for ${delivery.deliveryDate}${addonsDesc} is complete. Add-on amount: ₹${addonsTotal}${totalPaidNow > 0 ? ` (Paid ₹${totalPaidNow} ${paidMethod.toUpperCase()})` : ''}.`
+            : `Your delivery for ${delivery.deliveryDate} is complete. View the doorstep photo proof in your delivery history.`,
           type: 'delivery_completed',
-          data: { deliveryId: delivery._id.toString(), proofImage: delivery.proofImage },
+          data: { deliveryId: delivery._id.toString(), proofImage: delivery.proofImage, addons: sanitizedAddons, addonsTotal },
         });
       }
     } catch (notifErr) {
@@ -554,6 +714,10 @@ const markDelivered = async (req, res) => {
 
     broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
     broadcast('CUSTOMER_UPDATED', { id: delivery.customerId, customerId: delivery.customerId });
+    if (totalPaidNow > 0) {
+      broadcast('PAYMENT_UPDATED', { customerId: delivery.customerId, amount: totalPaidNow, method: paidMethod, addonsTotal });
+      broadcast('DELIVERY_BOY_UPDATED', { id: delivery.deliveryBoyId || '', name: delivery.deliveryBoyName || actor || '' });
+    }
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({

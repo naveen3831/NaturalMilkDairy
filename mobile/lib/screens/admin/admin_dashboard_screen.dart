@@ -59,7 +59,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   (pMob.isNotEmpty && bMob.isNotEmpty && pMob == bMob) ||
                   (pName.isNotEmpty && bName.isNotEmpty && pName == bName);
               if (matches) {
-                b['isOnline'] = isOnline;
+                if (payload['isOnline'] is bool) b['isOnline'] = isOnline;
                 if (payload['lastOnlineAt'] != null) b['lastOnlineAt'] = payload['lastOnlineAt'];
                 if (payload['lastOfflineAt'] != null) b['lastOfflineAt'] = payload['lastOfflineAt'];
                 if (payload['dutyLogs'] != null) b['dutyLogs'] = payload['dutyLogs'];
@@ -494,6 +494,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ),
                             const Divider(height: 18),
                             _buildDetailRow('Planned Products', '${actualMilk}L Pure Farm Milk${actualCurd > 0 ? " + ${actualCurd}g Curd" : ""}'),
+                            if (d['addons'] is List && (d['addons'] as List).isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              _buildDetailRow(
+                                'Doorstep Add-ons',
+                                (d['addons'] as List).map((a) => '${a['name']} ×${a['quantity']}').join(', '),
+                              ),
+                              const SizedBox(height: 6),
+                              _buildDetailRow(
+                                'Add-ons Amount',
+                                '₹${d['addonsTotal'] ?? 0}${(d['addonPaidAmount'] is num && (d['addonPaidAmount'] as num) > 0) ? " (Paid ₹${d['addonPaidAmount']} ${(d['addonPaymentMethod'] ?? '').toString().toUpperCase()})" : " (${(d['addonPaymentMethod'] ?? 'credit').toString().toUpperCase()})"}',
+                              ),
+                            ],
                             const SizedBox(height: 6),
                             _buildDetailRow('Billed Amount', '₹$totalAmount ($paymentMethod)'),
                             const SizedBox(height: 6),
@@ -1063,6 +1075,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final todayLitres = _summary['todayMilkLitres'] ?? 0;
     final todayCurd = _summary['todayCurdGrams'] ?? 0;
     final todaySales = _summary['todaySales'] ?? 0;
+    final todayCash = _summary['todayCashCollected'] ??
+        _deliveryBoys.fold<num>(0, (s, b) => s + (num.tryParse((b['todayCashCollected'] ?? '0').toString()) ?? 0));
+    final todayUpi = _summary['todayUpiCollected'] ??
+        _deliveryBoys.fold<num>(0, (s, b) => s + (num.tryParse((b['todayUpiCollected'] ?? '0').toString()) ?? 0));
+    final collections = _summary['paymentsCollected'] ?? (todayCash + todayUpi > 0 ? todayCash + todayUpi : todaySales);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1147,8 +1164,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               Expanded(
                 child: _buildSummaryMetric(
                   title: 'COLLECTIONS',
-                  value: '₹$todaySales',
-                  sub: 'Cash & UPI',
+                  value: '₹$collections',
+                  sub: 'Cash ₹$todayCash • UPI ₹$todayUpi',
                   color: const Color(0xFFB45309),
                   bgColor: const Color(0xFFFFFBEB),
                   borderColor: const Color(0xFFFDE68A),
@@ -1277,6 +1294,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     final curdKg = _summary['todayCurdKg'] ?? '0.00';
     final creditAdded = _summary['creditAdded'] ?? 0;
     final collections = _summary['paymentsCollected'] ?? todaySales;
+    final todayCashSummary = _summary['todayCashCollected'] ??
+        _deliveryBoys.fold<num>(0, (s, b) => s + (num.tryParse((b['todayCashCollected'] ?? '0').toString()) ?? 0));
+    final todayUpiSummary = _summary['todayUpiCollected'] ??
+        _deliveryBoys.fold<num>(0, (s, b) => s + (num.tryParse((b['todayUpiCollected'] ?? '0').toString()) ?? 0));
     final outstanding = _summary['totalOutstanding'] ?? 0;
 
     return Column(
@@ -1357,7 +1378,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: _buildKpiCard(
                 title: 'COLLECTIONS',
                 value: '₹$collections',
-                subtitle: 'Cash & UPI received today',
+                subtitle: 'Cash ₹$todayCashSummary • UPI ₹$todayUpiSummary',
                 icon: Icons.account_balance_wallet_rounded,
                 iconColor: const Color(0xFF0F766E),
                 iconBg: const Color(0xFFCCFBF1),
@@ -2452,7 +2473,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             final milkQty = plan['milkQty'] ?? 1;
             final bal = c['currentBalance'] ?? 0;
 
-            return Container(
+            return InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => _showAdminCustomerCollectedSheet(c),
+              child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -2527,10 +2551,92 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ],
               ),
+              ),
             );
           },
         ),
       ],
+    );
+  }
+
+  void _showAdminCustomerCollectedSheet(Map<String, dynamic> c) {
+    final name = (c['name'] ?? 'Customer').toString();
+    final mobile = (c['mobile'] ?? '').toString();
+    final area = (c['area'] ?? '').toString();
+    final custId = (c['customerId'] ?? c['_id'] ?? c['id'] ?? '').toString();
+    final bal = num.tryParse((c['currentBalance'] ?? '0').toString()) ?? 0;
+    final deliv = _findDeliveryForCustomer(c);
+    final dm = (deliv['paymentMethod'] ?? '').toString().toLowerCase();
+    final dam = (deliv['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    final todayCash = deliv['status'] == 'delivered'
+        ? (dm == 'cash'
+            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
+            : (dam == 'cash' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
+        : 0;
+    final todayUpi = deliv['status'] == 'delivered'
+        ? (dm == 'upi'
+            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
+            : (dam == 'upi' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
+        : 0;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: custId.isNotEmpty ? _api.get('/api/customers/$custId/ledger') : Future.value({}),
+          builder: (fCtx, snap) {
+            final ledgerData = snap.data ?? {};
+            final sumMap = ledgerData['summary'] is Map ? ledgerData['summary'] as Map : {};
+            final totalPaidAllTime = num.tryParse((sumMap['totalPaid'] ?? '0').toString()) ?? 0;
+            final addonsList = deliv['addons'] is List ? (deliv['addons'] as List) : const [];
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                Text('$mobile${area.isNotEmpty ? ' • $area' : ''}', style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B))),
+                const Divider(height: 22),
+                _buildDetailRow('Today Collected', '₹${todayCash + todayUpi} (Cash ₹$todayCash • UPI ₹$todayUpi)', valueColor: const Color(0xFF059669)),
+                const SizedBox(height: 8),
+                _buildDetailRow(
+                  'Total Collected (All Time)',
+                  snap.connectionState == ConnectionState.waiting ? 'Loading...' : '₹$totalPaidAllTime',
+                  valueColor: const Color(0xFF0F172A),
+                ),
+                if (addonsList.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildDetailRow('Today Add-ons', addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')),
+                ],
+                const SizedBox(height: 8),
+                _buildDetailRow('Outstanding / Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
+                const SizedBox(height: 16),
+                if (deliv.isNotEmpty)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _showDeliveryAndUserDetails(deliv);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      child: const Text('View Today Delivery Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
     );
   }
 
@@ -4696,10 +4802,49 @@ class _CollectionsScreen extends StatefulWidget {
 }
 
 class _CollectionsScreenState extends State<_CollectionsScreen> {
+  double _deliveryCashFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final m = (d['paymentMethod'] ?? '').toString().toLowerCase();
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (m == 'cash') return (num.tryParse((d['paymentAmount'] ?? d['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+    if (am == 'cash') return (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+    return 0.0;
+  }
+
+  double _deliveryUpiFor(Map<String, dynamic> d) {
+    if (d['status'] != 'delivered') return 0.0;
+    final m = (d['paymentMethod'] ?? '').toString().toLowerCase();
+    final am = (d['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    if (m == 'upi') return (num.tryParse((d['paymentAmount'] ?? d['totalAmount'] ?? '0').toString()) ?? 0).toDouble();
+    if (am == 'upi') return (num.tryParse((d['addonPaidAmount'] ?? d['paymentAmount'] ?? '0').toString()) ?? 0).toDouble();
+    return 0.0;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final collections = widget.summary['paymentsCollected'] ?? widget.summary['todaySales'] ?? 0;
+    final summaryPay = (num.tryParse((widget.summary['paymentsCollected'] ?? '0').toString()) ?? 0).toDouble();
+    final delCash = widget.deliveries.fold<double>(0.0, (s, d) => s + _deliveryCashFor(d));
+    final delUpi = widget.deliveries.fold<double>(0.0, (s, d) => s + _deliveryUpiFor(d));
+    final boysCash = widget.deliveryBoys.fold<double>(0.0, (s, b) => s + (num.tryParse((b['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble());
+    final boysUpi = widget.deliveryBoys.fold<double>(0.0, (s, b) => s + (num.tryParse((b['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble());
+    final sumCash = (num.tryParse((widget.summary['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble();
+    final sumUpi = (num.tryParse((widget.summary['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble();
+
+    final totalCash = [sumCash, delCash, boysCash].reduce((a, b) => a > b ? a : b);
+    final totalUpi = [sumUpi, delUpi, boysUpi].reduce((a, b) => a > b ? a : b);
+    final addonsCash = widget.deliveries.fold<double>(0.0, (s, d) =>
+        s + ((d['status'] == 'delivered' && (d['addonPaymentMethod'] ?? '').toString().toLowerCase() == 'cash')
+            ? (num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble()
+            : 0.0));
+    final addonsUpi = widget.deliveries.fold<double>(0.0, (s, d) =>
+        s + ((d['status'] == 'delivered' && (d['addonPaymentMethod'] ?? '').toString().toLowerCase() == 'upi')
+            ? (num.tryParse((d['addonPaidAmount'] ?? '0').toString()) ?? 0).toDouble()
+            : 0.0));
+    final collections = summaryPay > (totalCash + totalUpi) ? summaryPay : (totalCash + totalUpi);
     final todayLitres = widget.summary['todayMilkLitres'] ?? '0.0';
+
+    final paidDrops = widget.deliveries.where((d) =>
+        d['status'] == 'delivered' && (_deliveryCashFor(d) > 0 || _deliveryUpiFor(d) > 0 || (num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0) > 0)).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -4784,7 +4929,7 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '₹$collections',
+                    '₹${collections.toInt()}',
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w900,
@@ -4792,9 +4937,53 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                       letterSpacing: -0.5,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('CASH COLLECTED', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF065F46))),
+                              Text('₹${totalCash.toInt()}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF059669))),
+                              if (addonsCash > 0)
+                                Text('+₹${addonsCash.toInt()} Add-ons', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF92400E))),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('UPI COLLECTED', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF1E40AF))),
+                              Text('₹${totalUpi.toInt()}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+                              if (addonsUpi > 0)
+                                Text('+₹${addonsUpi.toInt()} Add-ons', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8))),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    'Total collections received from doorstep customers for ${todayLitres}L milk fulfilled today.',
+                    'Total collections received from doorstep & subscription customers for ${todayLitres}L milk fulfilled today.',
                     style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.35),
                   ),
                 ],
@@ -4834,9 +5023,13 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                     (d['deliveryBoyName'] ?? '').toString().toLowerCase() == name.toString().toLowerCase()
                   ).toList();
                   final completed = partnerDrops.where((d) => d['status'] == 'delivered').length;
-                  final collectedSum = partnerDrops
-                    .where((d) => d['status'] == 'delivered')
-                    .fold<num>(0, (sum, d) => sum + (d['totalAmount'] ?? 0));
+                  final dropCash = partnerDrops.fold<double>(0.0, (s, d) => s + _deliveryCashFor(d));
+                  final dropUpi = partnerDrops.fold<double>(0.0, (s, d) => s + _deliveryUpiFor(d));
+                  final pCash = (num.tryParse((b['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble();
+                  final pUpi = (num.tryParse((b['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble();
+                  final effCash = pCash > dropCash ? pCash : dropCash;
+                  final effUpi = pUpi > dropUpi ? pUpi : dropUpi;
+                  final collectedSum = effCash + effUpi;
 
                   return Container(
                     padding: const EdgeInsets.all(14),
@@ -4865,13 +5058,15 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                             children: [
                               Text(name.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
                               Text('Route: $area • $completed/${partnerDrops.length} Drops', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                              const SizedBox(height: 2),
+                              Text('Cash: ₹${effCash.toInt()} • UPI: ₹${effUpi.toInt()}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
                             ],
                           ),
                         ),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('₹$collectedSum', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F766E))),
+                            Text('₹${collectedSum.toInt()}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F766E))),
                             const Text('Collected', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
                           ],
                         ),
@@ -4885,7 +5080,7 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Delivered Drops Summary',
+                  'Delivered Drops & Add-ons Paid',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
                 ),
                 InkWell(
@@ -4894,6 +5089,63 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                 ),
               ],
             ),
+            if (paidDrops.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: paidDrops.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (ctx, i) {
+                  final d = paidDrops[i];
+                  final cashAmt = _deliveryCashFor(d);
+                  final upiAmt = _deliveryUpiFor(d);
+                  final paidAmt = cashAmt + upiAmt;
+                  final addonsList = d['addons'] is List ? (d['addons'] as List) : const [];
+                  final addonsTotal = (num.tryParse((d['addonsTotal'] ?? '0').toString()) ?? 0).toDouble();
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${d['customerName'] ?? 'Customer'} • ${d['deliveryBoyName'] ?? 'Partner'}',
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0F172A)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              paidAmt > 0 ? '₹${paidAmt.toInt()} (${cashAmt > 0 ? 'CASH' : 'UPI'})' : 'Credit Add-on',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12.5,
+                                color: cashAmt > 0 ? const Color(0xFF059669) : (upiAmt > 0 ? const Color(0xFF2563EB) : const Color(0xFF92400E)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (addonsList.isNotEmpty || addonsTotal > 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '+ Add-ons: ${addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')} (₹${addonsTotal.toInt()})',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),

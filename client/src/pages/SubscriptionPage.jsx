@@ -83,7 +83,7 @@ export default function SubscriptionPage({ setActiveTab }) {
             if (found) setActiveSubscription(found);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [isLoggedInCustomer]);
 
@@ -880,7 +880,7 @@ export default function SubscriptionPage({ setActiveTab }) {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {/* Option 1: Upgrade Plan */}
+            {/* Option 1: Upgrade Plan */}
             <div
               onClick={() => setShowUpgradeModal(true)}
               style={{
@@ -1070,390 +1070,642 @@ export default function SubscriptionPage({ setActiveTab }) {
     );
   };
 
-  // Mobile Subscription Overview Screen (Image 1)
+  // Mobile Subscription Overview Screen (Redesigned Clean Mobile Experience)
   const renderMobileOverview = () => {
+    const monthlyDeliveries = selectedFrequency === 'alternate' ? 15 : 30;
+    const activeQty = milkQuantity || 1;
+
     return (
-      <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 105px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {/* Title & Subtitle matching Image 1 */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-          <div>
-            <h2 style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0c2340', margin: '0 0 4px 0', letterSpacing: '-0.02em' }}>
-              Subscription
-            </h2>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', lineHeight: 1.4 }}>
-              Manage your daily dairy plans and upcoming deliveries.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowHistoryModal(true)}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '7px 12px',
-              borderRadius: '20px',
-              background: '#e2f1ea',
-              border: '1px solid #b7dfca',
-              color: '#0d5c3a',
-              fontWeight: 800,
-              fontSize: '0.74rem',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-          >
-            <Clock size={13} />
-            <span>History</span>
-          </button>
-        </div>
-
-        {renderPaymentNotice()}
-
-        {/* Hero Banner Card */}
-        <div
-          onClick={() => {
-            if (typeof setActiveTab === 'function') setActiveTab('products');
-          }}
-          style={{
-            borderRadius: '22px',
-            border: '1px solid #cee7d9',
-            boxShadow: '0 4px 14px rgba(13, 92, 58, 0.08)',
-            overflow: 'hidden',
-            cursor: 'pointer',
-            lineHeight: 0,
-            background: '#e8f5ee',
-          }}
-        >
-          <img
-            src="/sub_hero_banner.png"
-            alt="Doorstep Delivery Plans - Fresh Dairy Every Morning"
-            style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }}
-          />
-        </div>
-
-        {/* 4 Feature Badges (Single Card with 4 Columns matching Image 1) */}
+      <div style={{ minHeight: '100vh', background: '#f6faf7', paddingBottom: '104px' }}>
+        {/* Clean Mobile Header */}
         <div
           style={{
+            background: '#ffffff',
+            borderBottom: '1px solid #e6eee8',
+            padding: '14px 16px 12px',
             display: 'flex',
             alignItems: 'center',
-            background: '#ffffff',
-            borderRadius: '16px',
-            border: '1px solid #e2ebe5',
-            padding: '12px 4px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            justifyContent: 'space-between',
+            gap: '12px',
           }}
         >
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Leaf size={16} />
-            </div>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>100%<br />Pure & Natural</span>
+          <div style={{ minWidth: 0 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                fontSize: '0.62rem',
+                fontWeight: 800,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: '#059669',
+                marginBottom: '2px',
+              }}
+            >
+              Daily Morning Delivery
+            </span>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0c2340', margin: 0, letterSpacing: '-0.02em', lineHeight: 1.15 }}>
+              Subscription
+            </h2>
           </div>
-          <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
 
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Snowflake size={16} />
-            </div>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Chilled<br />to 4°C</span>
-          </div>
-          <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
-
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Truck size={16} />
-            </div>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Doorstep<br />Delivery</span>
-          </div>
-          <div style={{ width: '1px', height: '28px', background: '#e5ede7' }} />
-
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '6px' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <CalendarDays size={16} />
-            </div>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.15 }}>Flexible<br />Plans</span>
-          </div>
-        </div>
-
-        {/* Active Subscriptions Section */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0c2340' }}>
-              Active Subscriptions
-            </h3>
+          {isLoggedInCustomer && (
             <button
               type="button"
-              onClick={() => setShowMobileDetails(true)}
-              style={{ background: 'none', border: 'none', color: '#0d5c3a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+              onClick={() => setShowHistoryModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '7px 12px',
+                borderRadius: '999px',
+                background: '#ecfdf5',
+                border: '1px solid #bbf7d0',
+                color: '#0d5c3a',
+                fontWeight: 800,
+                fontSize: '0.73rem',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
             >
-              View All →
+              <Clock size={13} />
+              <span>History</span>
             </button>
-          </div>
+          )}
+        </div>
 
+        {/* Main Mobile Content Stack */}
+        <div style={{ padding: '14px 16px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {renderPaymentNotice()}
+
+          {/* Compact Light Hero Card */}
           <div
-            onClick={() => setShowMobileDetails(true)}
+            onClick={() => {
+              if (typeof setActiveTab === 'function') setActiveTab('products');
+            }}
             style={{
-              background: '#ffffff',
-              borderRadius: '20px',
-              border: '1px solid #e2ebe5',
-              padding: '16px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 55%, #ffffff 100%)',
+              borderRadius: '16px',
+              border: '1px solid #ccebd8',
+              padding: '14px',
               display: 'flex',
-              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'space-between',
               gap: '12px',
+              boxShadow: '0 3px 12px rgba(13, 92, 58, 0.05)',
+              cursor: 'pointer',
             }}
           >
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-              <img
-                src="/sub_active_thumb.png"
-                onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
-                alt="Plan Thumbnail"
-                style={{ width: '56px', height: '56px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0 }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '3px' }}>
-                  <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Daily Farm Pure Milk Plan
-                  </h4>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 8px',
-                      borderRadius: '20px',
-                      fontSize: '0.66rem',
-                      fontWeight: 800,
-                      background: '#e2f1ea',
-                      color: '#0d5c3a',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#0d5c3a' }} />
-                    Active
-                  </span>
-                </div>
-                <span style={{ fontSize: '0.74rem', color: '#6b7280', fontWeight: 600 }}>
-                  ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.96rem', fontWeight: 900, color: '#064e3b', lineHeight: 1.25, marginBottom: '4px' }}>
+                Pure Farm Milk by 6:30 AM
+              </div>
+              <p style={{ margin: '0 0 8px 0', fontSize: '0.72rem', color: '#475569', lineHeight: 1.4 }}>
+                Chilled to 4°C in glass bottles. Pause or modify anytime in 1 tap.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <Leaf size={10} /> 100% Pure
+                </span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <Snowflake size={10} /> 4°C Chilled
+                </span>
+                <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                  <Truck size={10} /> Zero Fee
                 </span>
               </div>
             </div>
 
-            {/* 3 Metric Boxes */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
-              <div
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '7px 5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-              >
-                <Milk size={14} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.70rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    1 L / day
-                  </strong>
-                  <span style={{ fontSize: '0.60rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Pure A2 Milk</span>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '7px 5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-              >
-                <Clock3 size={14} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.70rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Before 6:30 AM
-                  </strong>
-                  <span style={{ fontSize: '0.60rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Morning Delivery</span>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '7px 5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                }}
-              >
-                <MapPin size={14} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.70rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {user?.area || 'Madhupur'}
-                  </strong>
-                  <span style={{ fontSize: '0.60rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Delivery Area</span>
-                </div>
-              </div>
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '16px',
+                background: '#ffffff',
+                border: '1px solid #d1fae5',
+                padding: '6px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 10px rgba(13, 92, 58, 0.08)',
+              }}
+            >
+              <img
+                src="/sub_hero_milk.png"
+                onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                alt="Fresh Farm Milk"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
             </div>
+          </div>
 
-            {/* Dedicated Subscription Expiry Card */}
-            {renderExpiryCard(true)}
+          {/* Logged-In Active Subscription OR Guest Subscription Plans */}
+          {isLoggedInCustomer ? (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 900, color: '#0c2340' }}>
+                  Active Subscription
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileDetails(true)}
+                  style={{ background: 'none', border: 'none', color: '#0d5c3a', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  Manage Details →
+                </button>
+              </div>
 
-            {/* Two Action Buttons matching Image 1 */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', paddingTop: '2px' }}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMobileDetails(true);
-                }}
+              <div
+                onClick={() => setShowMobileDetails(true)}
                 style={{
-                  height: '38px',
-                  borderRadius: '12px',
-                  border: '1.2px solid #0d5c3a',
                   background: '#ffffff',
-                  color: '#0d5c3a',
-                  fontWeight: 700,
-                  fontSize: '0.80rem',
+                  borderRadius: '18px',
+                  border: '1px solid #dbe7df',
+                  padding: '14px',
+                  boxShadow: '0 3px 12px rgba(13, 92, 58, 0.05)',
                   cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
                 }}
               >
-                View Details
-              </button>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <img
+                    src="/sub_active_thumb.png"
+                    onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                    alt="Plan Thumbnail"
+                    style={{ width: '50px', height: '50px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2ebe5' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '2px' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Daily Farm Pure Milk Plan
+                      </h4>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '3px 8px',
+                          borderRadius: '20px',
+                          fontSize: '0.64rem',
+                          fontWeight: 800,
+                          background: '#e2f1ea',
+                          color: '#0d5c3a',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#0d5c3a' }} />
+                        Active
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                      ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
+                    </span>
+                  </div>
+                </div>
 
+                {/* 3 Compact Metric Chips */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                  <div
+                    style={{
+                      background: '#f4faf6',
+                      borderRadius: '10px',
+                      border: '1px solid #e1efe6',
+                      padding: '7px 6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <Milk size={13} color="#0d5c3a" />
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: '0.68rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {user?.deliveryPlan?.milkQty || 1} L / day
+                      </strong>
+                      <span style={{ fontSize: '0.58rem', color: '#64748b', display: 'block' }}>Pure A2 Milk</span>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#f4faf6',
+                      borderRadius: '10px',
+                      border: '1px solid #e1efe6',
+                      padding: '7px 6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <Clock3 size={13} color="#0d5c3a" />
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: '0.68rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Before 6:30 AM
+                      </strong>
+                      <span style={{ fontSize: '0.58rem', color: '#64748b', display: 'block' }}>Morning Drop</span>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#f4faf6',
+                      borderRadius: '10px',
+                      border: '1px solid #e1efe6',
+                      padding: '7px 6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                    }}
+                  >
+                    <MapPin size={13} color="#0d5c3a" />
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: '0.68rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {user?.area || 'Madhupur'}
+                      </strong>
+                      <span style={{ fontSize: '0.58rem', color: '#64748b', display: 'block' }}>Area</span>
+                    </div>
+                  </div>
+                </div>
+
+                {renderExpiryCard(true)}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMobileDetails(true);
+                    }}
+                    style={{
+                      height: '36px',
+                      borderRadius: '10px',
+                      border: '1.2px solid #0d5c3a',
+                      background: '#ffffff',
+                      color: '#0d5c3a',
+                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    View Details
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMobileDetails(true);
+                    }}
+                    style={{
+                      height: '36px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: '#0d5c3a',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.78rem',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 6px rgba(13, 92, 58, 0.22)',
+                    }}
+                  >
+                    Manage Plan
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Slim Sign-In Strip for Existing Subscribers */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '14px',
+                  border: '1px solid #e2ebe5',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.02)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '10px',
+                      background: '#ecfdf5',
+                      color: '#0d5c3a',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <CalendarDays size={16} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#0c2340', lineHeight: 1.2 }}>
+                      Already a Subscriber?
+                    </strong>
+                    <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      Sign in to track & pause deliveries
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof setActiveTab === 'function') setActiveTab('login');
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: '1.2px solid #0d5c3a',
+                    background: '#f2f8f4',
+                    color: '#0d5c3a',
+                    fontWeight: 800,
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                  }}
+                >
+                  Sign In
+                </button>
+              </div>
+
+              {/* Frequency & Daily Quantity Selector Bar */}
+              <div
+                style={{
+                  background: '#ffffff',
+                  borderRadius: '14px',
+                  border: '1px solid #e2ebe5',
+                  padding: '10px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'inline-flex', background: '#f1f6f3', padding: '3px', borderRadius: '10px', gap: '3px' }}>
+                  {[
+                    { id: 'daily', label: 'Daily' },
+                    { id: 'alternate', label: 'Alternate' },
+                  ].map((freq) => {
+                    const active = selectedFrequency === freq.id;
+                    return (
+                      <button
+                        key={freq.id}
+                        type="button"
+                        onClick={() => setSelectedFrequency(freq.id)}
+                        style={{
+                          padding: '5px 11px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: active ? '#0d5c3a' : 'transparent',
+                          color: active ? '#ffffff' : '#475569',
+                          fontWeight: 800,
+                          fontSize: '0.72rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {freq.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b' }}>Qty:</span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f6f3', borderRadius: '9px', padding: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setMilkQuantity((q) => Math.max(0.5, Number((q - 0.5).toFixed(1))))}
+                      style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#ffffff',
+                        color: '#0d5c3a',
+                        fontWeight: 900,
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      −
+                    </button>
+                    <span style={{ minWidth: '42px', textAlign: 'center', fontSize: '0.76rem', fontWeight: 900, color: '#0c2340' }}>
+                      {activeQty} L
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMilkQuantity((q) => Math.min(5, Number((q + 0.5).toFixed(1))))}
+                      style={{
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: '#ffffff',
+                        color: '#0d5c3a',
+                        fontWeight: 900,
+                        fontSize: '0.9rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subscription Plans Section */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 900, color: '#0c2340' }}>
+                    Choose Your Plan
+                  </h3>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#059669', background: '#ecfdf5', padding: '3px 8px', borderRadius: '999px' }}>
+                    {monthlyDeliveries} drops / mo
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {plans.map((plan) => {
+                    const isSelected = selectedPlan === plan.id;
+                    const monthlyEstimate = Math.round(plan.pricePerLiter * activeQty * monthlyDeliveries);
+                    return (
+                      <div
+                        key={plan.id}
+                        onClick={() => setSelectedPlan(plan.id)}
+                        style={{
+                          background: '#ffffff',
+                          borderRadius: '16px',
+                          border: isSelected ? `1.8px solid ${plan.color}` : '1px solid #e2ebe5',
+                          padding: '14px',
+                          boxShadow: isSelected ? '0 8px 20px rgba(5, 150, 105, 0.1)' : '0 2px 8px rgba(0,0,0,0.02)',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '9px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: plan.bgColor,
+                                color: plan.color,
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                                marginBottom: '5px',
+                              }}
+                            >
+                              <Milk size={10} />
+                              <span>{plan.tag}</span>
+                            </span>
+                            <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.2 }}>
+                              {plan.name}
+                            </h4>
+                          </div>
+
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '2px' }}>
+                              <span style={{ fontSize: '1.22rem', fontWeight: 900, color: '#0d5c3a', lineHeight: 1 }}>
+                                ₹{plan.pricePerLiter}
+                              </span>
+                              <span style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700 }}>
+                                /L
+                              </span>
+                            </div>
+                            <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#059669' }}>
+                              ~₹{monthlyEstimate.toLocaleString('en-IN')}/mo
+                            </span>
+                          </div>
+                        </div>
+
+                        <p style={{ margin: 0, fontSize: '0.73rem', color: '#64748b', lineHeight: 1.4 }}>
+                          {plan.description}
+                        </p>
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingTop: '2px' }}>
+                          {plan.features.slice(0, 2).map((feature, fIdx) => (
+                            <span
+                              key={fIdx}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: 600,
+                                color: '#334155',
+                                background: '#f8fafc',
+                                border: '1px solid #eef2f6',
+                                borderRadius: '8px',
+                                padding: '3px 7px',
+                              }}
+                            >
+                              <CheckCircle2 size={11} color={plan.color} style={{ flexShrink: 0 }} />
+                              <span>{feature}</span>
+                            </span>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartPlan(plan.id);
+                          }}
+                          style={{
+                            width: '100%',
+                            height: '38px',
+                            borderRadius: '10px',
+                            border: isSelected ? 'none' : '1.2px solid #0d5c3a',
+                            background: isSelected ? '#0d5c3a' : '#f4faf6',
+                            color: isSelected ? '#ffffff' : '#0d5c3a',
+                            fontWeight: 800,
+                            fontSize: '0.78rem',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '5px',
+                            boxShadow: isSelected ? '0 3px 10px rgba(13, 92, 58, 0.2)' : 'none',
+                          }}
+                        >
+                          <span>Start {selectedFrequency === 'alternate' ? 'Alternate-Day' : 'Daily'} Plan ({activeQty}L)</span>
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* More Subscription Plans Section */}
+          <div style={{ marginTop: '2px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, color: '#0c2340' }}>
+                Explore Dairy Categories
+              </h3>
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMobileDetails(true);
+                onClick={() => {
+                  if (typeof setActiveTab === 'function') setActiveTab('products');
                 }}
-                style={{
-                  height: '38px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background: '#0d5c3a',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.80rem',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 6px rgba(13, 92, 58, 0.25)',
-                }}
+                style={{ background: 'none', border: 'none', color: '#0d5c3a', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
               >
-                Manage Plan
+                View All →
               </button>
             </div>
-          </div>
-        </div>
 
-        {/* More Subscription Plans Section */}
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0c2340' }}>
-              More Subscription Plans
-            </h3>
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof setActiveTab === 'function') setActiveTab('products');
-              }}
-              style={{ background: 'none', border: 'none', color: '#0d5c3a', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', padding: 0 }}
-            >
-              View All →
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              gap: '10px',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-              paddingBottom: '4px',
-            }}
-          >
-            {/* Card 1: Milk Plans */}
             <div
-              onClick={() => {
-                if (typeof setActiveTab === 'function') setActiveTab('products');
-              }}
               style={{
-                flex: '0 0 134px',
-                background: '#edf7f1',
-                borderRadius: '16px',
-                border: '1px solid #dbeee2',
-                padding: '10px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '8px',
               }}
             >
-              <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/cat_img_milk.png" alt="Milk Plans" style={{ maxHeight: '64px', objectFit: 'contain' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                <strong style={{ fontSize: '0.78rem', color: '#0c2340', fontWeight: 800 }}>Milk Plans</strong>
-                <ChevronRight size={14} color="#0d5c3a" />
-              </div>
-            </div>
-
-            {/* Card 2: Curd Plans */}
-            <div
-              onClick={() => {
-                if (typeof setActiveTab === 'function') setActiveTab('products');
-              }}
-              style={{
-                flex: '0 0 134px',
-                background: '#f7f7f4',
-                borderRadius: '16px',
-                border: '1px solid #e7ebe5',
-                padding: '10px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/cat_img_curd.png" alt="Curd Plans" style={{ maxHeight: '64px', objectFit: 'contain' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                <strong style={{ fontSize: '0.78rem', color: '#0c2340', fontWeight: 800 }}>Curd Plans</strong>
-                <ChevronRight size={14} color="#0d5c3a" />
-              </div>
-            </div>
-
-            {/* Card 3: Ghee Plans */}
-            <div
-              onClick={() => {
-                if (typeof setActiveTab === 'function') setActiveTab('products');
-              }}
-              style={{
-                flex: '0 0 134px',
-                background: '#fef8ec',
-                borderRadius: '16px',
-                border: '1px solid #fae8c6',
-                padding: '10px',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ height: '70px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/cat_img_ghee.png" alt="Ghee Plans" style={{ maxHeight: '64px', objectFit: 'contain' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px' }}>
-                <strong style={{ fontSize: '0.78rem', color: '#0c2340', fontWeight: 800 }}>Ghee Plans</strong>
-                <ChevronRight size={14} color="#0d5c3a" />
-              </div>
+              {[
+                { title: 'Milk Plans', img: '/cat_img_milk.png', bg: '#edf7f1', border: '#dbeee2' },
+                { title: 'Curd Plans', img: '/cat_img_curd.png', bg: '#f4f7fa', border: '#e2e9f0' },
+                { title: 'Ghee Plans', img: '/cat_img_ghee.png', bg: '#fef8ec', border: '#fae8c6' },
+              ].map((cat) => (
+                <div
+                  key={cat.title}
+                  onClick={() => {
+                    if (typeof setActiveTab === 'function') setActiveTab('products');
+                  }}
+                  style={{
+                    background: cat.bg,
+                    borderRadius: '14px',
+                    border: `1px solid ${cat.border}`,
+                    padding: '10px 8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <img src={cat.img} alt={cat.title} style={{ height: '48px', width: 'auto', objectFit: 'contain' }} />
+                  <strong style={{ fontSize: '0.72rem', color: '#0c2340', fontWeight: 800 }}>
+                    {cat.title}
+                  </strong>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1464,17 +1716,37 @@ export default function SubscriptionPage({ setActiveTab }) {
   if (isMobile) {
     return (
       <div style={{ position: 'relative', minHeight: '100vh', background: '#f9faf9', paddingBottom: '70px' }}>
-        {showMobileDetails ? renderMobileDetails() : renderMobileOverview()}
+        {showMobileDetails && isLoggedInCustomer ? renderMobileDetails() : renderMobileOverview()}
         <CustomerBottomNav
           activePage="subscription"
           onNavigate={(pageId) => {
             setShowMobileDetails(false);
             if (pageId === 'subscription') {
-              window.scrollTo({ top: 0, behavior: 'smooth' });
+              window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
               return;
             }
             if (typeof setActiveTab === 'function') {
-              setActiveTab(pageId === 'home' ? 'customer-portal' : pageId);
+              if (pageId === 'deliveries') {
+                if (user?.role === 'customer') {
+                  localStorage.setItem('nmd_customer_page', 'deliveries');
+                  setActiveTab('customer-portal');
+                } else {
+                  setActiveTab('my-deliveries');
+                }
+                return;
+              }
+              if (pageId === 'profile') {
+                if (user?.role === 'customer') {
+                  localStorage.setItem('nmd_customer_page', 'profile');
+                  setActiveTab('customer-portal');
+                } else {
+                  setActiveTab('login');
+                }
+                return;
+              }
+              setActiveTab(pageId === 'home' && user?.role === 'customer' ? 'customer-portal' : pageId);
             }
           }}
           items={CUSTOMER_HOME_NAV_ITEMS}
@@ -1557,11 +1829,12 @@ export default function SubscriptionPage({ setActiveTab }) {
     <div className="subscription-public-page" style={{ minHeight: '100vh', background: '#fafbfc', paddingBottom: '90px' }}>
       {/* Hero Banner */}
       <section style={{
-        background: 'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)',
-        color: '#ffffff',
+        background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 55%, #f8fafc 100%)',
+        color: '#0f172a',
         padding: '52px 24px 44px',
         position: 'relative',
         overflow: 'hidden',
+        borderBottom: '1px solid #d1fae5',
       }}>
         <div style={{
           position: 'absolute',
@@ -1570,7 +1843,7 @@ export default function SubscriptionPage({ setActiveTab }) {
           width: '260px',
           height: '260px',
           borderRadius: '50%',
-          background: 'rgba(255,255,255,0.06)',
+          background: 'rgba(16, 185, 129, 0.08)',
           pointerEvents: 'none',
         }} />
 
@@ -1579,8 +1852,9 @@ export default function SubscriptionPage({ setActiveTab }) {
             display: 'inline-flex',
             alignItems: 'center',
             gap: '8px',
-            background: 'rgba(255,255,255,0.15)',
-            backdropFilter: 'blur(8px)',
+            background: '#dcfce7',
+            color: '#065f46',
+            border: '1px solid #bbf7d0',
             padding: '6px 14px',
             borderRadius: '999px',
             fontSize: '0.8rem',
@@ -1589,7 +1863,7 @@ export default function SubscriptionPage({ setActiveTab }) {
             textTransform: 'uppercase',
             marginBottom: '16px',
           }}>
-            <Sparkles size={14} color="#fde047" />
+            <Sparkles size={14} color="#059669" />
             <span>Farm-Fresh Doorstep Subscription</span>
           </div>
 
@@ -1599,13 +1873,14 @@ export default function SubscriptionPage({ setActiveTab }) {
             lineHeight: 1.18,
             marginBottom: '14px',
             letterSpacing: '-0.02em',
+            color: '#064e3b',
           }}>
             Pure Milk, Delivered Every Morning by 6:30 AM
           </h1>
 
           <p style={{
             fontSize: 'clamp(0.95rem, 2vw, 1.12rem)',
-            color: 'rgba(255,255,255,0.88)',
+            color: '#475569',
             maxWidth: '680px',
             lineHeight: 1.6,
             marginBottom: '26px',
@@ -1624,39 +1899,48 @@ export default function SubscriptionPage({ setActiveTab }) {
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: 'rgba(255,255,255,0.12)',
+              background: '#ffffff',
+              color: '#065f46',
+              border: '1px solid #bbf7d0',
+              boxShadow: '0 2px 6px rgba(6, 95, 70, 0.05)',
               padding: '6px 14px',
               borderRadius: '20px',
               fontSize: '0.82rem',
               fontWeight: 600,
             }}>
-              <Clock size={14} color="#a7f3d0" />
+              <Clock size={14} color="#059669" />
               <span>Doorstep by 6:30 AM</span>
             </div>
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: 'rgba(255,255,255,0.12)',
+              background: '#ffffff',
+              color: '#065f46',
+              border: '1px solid #bbf7d0',
+              boxShadow: '0 2px 6px rgba(6, 95, 70, 0.05)',
               padding: '6px 14px',
               borderRadius: '20px',
               fontSize: '0.82rem',
               fontWeight: 600,
             }}>
-              <PauseCircle size={14} color="#a7f3d0" />
+              <PauseCircle size={14} color="#059669" />
               <span>Pause / Resume with 1 Tap</span>
             </div>
             <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              background: 'rgba(255,255,255,0.12)',
+              background: '#ffffff',
+              color: '#065f46',
+              border: '1px solid #bbf7d0',
+              boxShadow: '0 2px 6px rgba(6, 95, 70, 0.05)',
               padding: '6px 14px',
               borderRadius: '20px',
               fontSize: '0.82rem',
               fontWeight: 600,
             }}>
-              <ShieldCheck size={14} color="#a7f3d0" />
+              <ShieldCheck size={14} color="#059669" />
               <span>Zero Chemicals & Preservatives</span>
             </div>
           </div>
@@ -1670,14 +1954,15 @@ export default function SubscriptionPage({ setActiveTab }) {
                 gap: '12px',
                 background: '#ffffff',
                 color: '#064e3b',
+                border: '1px solid #bbf7d0',
                 padding: '10px 18px',
                 borderRadius: '16px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                boxShadow: '0 8px 24px rgba(6, 95, 70, 0.08)',
                 fontWeight: 700,
                 fontSize: '0.88rem',
                 cursor: 'pointer',
               }}
-              onClick={() => handleStartPlan('cow-daily')}
+                onClick={() => handleStartPlan('cow-daily')}
               >
                 <div style={{
                   width: '10px',
@@ -1697,9 +1982,9 @@ export default function SubscriptionPage({ setActiveTab }) {
                 type="button"
                 onClick={() => setShowExtendModal(true)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  border: '1.2px solid rgba(255, 255, 255, 0.4)',
-                  color: '#ffffff',
+                  background: '#ffffff',
+                  border: '1.2px solid #bbf7d0',
+                  color: '#065f46',
                   padding: '10px 18px',
                   borderRadius: '16px',
                   fontWeight: 800,
@@ -1708,7 +1993,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  backdropFilter: 'blur(8px)',
+                  boxShadow: '0 2px 8px rgba(6, 95, 70, 0.06)',
                 }}
               >
                 <CalendarDays size={16} />
@@ -1719,9 +2004,9 @@ export default function SubscriptionPage({ setActiveTab }) {
                 type="button"
                 onClick={() => setShowHistoryModal(true)}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  border: '1.2px solid rgba(255, 255, 255, 0.4)',
-                  color: '#ffffff',
+                  background: '#ffffff',
+                  border: '1.2px solid #bbf7d0',
+                  color: '#065f46',
                   padding: '10px 18px',
                   borderRadius: '16px',
                   fontWeight: 800,
@@ -1730,7 +2015,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '8px',
-                  backdropFilter: 'blur(8px)',
+                  boxShadow: '0 2px 8px rgba(6, 95, 70, 0.06)',
                 }}
               >
                 <Clock size={16} />
@@ -2089,20 +2374,21 @@ export default function SubscriptionPage({ setActiveTab }) {
 
         {/* Call to Action Banner */}
         <div style={{
-          background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 60%, #f8fafc 100%)',
+          border: '1px solid #bbf7d0',
           borderRadius: '24px',
           padding: '36px 28px',
-          color: '#ffffff',
+          color: '#064e3b',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           textAlign: 'center',
-          boxShadow: '0 12px 36px rgba(5, 150, 105, 0.2)',
+          boxShadow: '0 10px 30px rgba(6, 95, 70, 0.08)',
         }}>
-          <h3 style={{ fontSize: '1.6rem', fontWeight: 900, marginBottom: '10px' }}>
+          <h3 style={{ fontSize: '1.6rem', fontWeight: 900, marginBottom: '10px', color: '#064e3b' }}>
             Ready for Fresh Morning Milk at Your Doorstep?
           </h3>
-          <p style={{ fontSize: '0.94rem', color: 'rgba(255,255,255,0.9)', maxWidth: '520px', marginBottom: '22px' }}>
+          <p style={{ fontSize: '0.94rem', color: '#475569', maxWidth: '520px', marginBottom: '22px' }}>
             Start with zero deposit. Delivered fresh every morning before 6:30 AM in hygienic glass bottles.
           </p>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -2110,8 +2396,8 @@ export default function SubscriptionPage({ setActiveTab }) {
               type="button"
               onClick={() => handleStartPlan(selectedPlan)}
               style={{
-                background: '#ffffff',
-                color: '#065f46',
+                background: '#0d5c3a',
+                color: '#ffffff',
                 fontWeight: 800,
                 fontSize: '0.95rem',
                 padding: '12px 24px',
@@ -2121,7 +2407,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.1)',
+                boxShadow: '0 4px 14px rgba(13, 92, 58, 0.2)',
               }}
             >
               <span>{isLoggedInCustomer ? 'Open Subscription Manager' : 'Subscribe Now'}</span>
@@ -2135,13 +2421,13 @@ export default function SubscriptionPage({ setActiveTab }) {
                 }
               }}
               style={{
-                background: 'rgba(255,255,255,0.15)',
-                color: '#ffffff',
+                background: '#ffffff',
+                color: '#065f46',
                 fontWeight: 700,
                 fontSize: '0.95rem',
                 padding: '12px 22px',
                 borderRadius: '14px',
-                border: '1.5px solid rgba(255,255,255,0.3)',
+                border: '1.5px solid #bbf7d0',
                 cursor: 'pointer',
               }}
             >

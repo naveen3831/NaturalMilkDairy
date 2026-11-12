@@ -12,7 +12,8 @@ import {
   Users,
   User,
   Search,
-  CheckCircle2,
+  Eye,
+  ArrowLeft,
 } from 'lucide-react';
 import { getApiUrl } from '../services/api';
 import {
@@ -31,6 +32,59 @@ import {
  * - Realtime Native Browser Print / "Save as PDF" dialog (100% reliable, zero server dependency)
  * - Direct Server PDF file download option
  */
+function toIstDateKey(raw) {
+  if (!raw) return '';
+  const str = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) {
+    const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+  }
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+}
+
+function getIstDateDaysAgo(daysAgo) {
+  return toIstDateKey(new Date(Date.now() - daysAgo * 86400000));
+}
+
+function extractRecordsFromLedger(ledgerRes) {
+  const deliveries = Array.isArray(ledgerRes?.deliveries) ? [...ledgerRes.deliveries] : [];
+  const payments = Array.isArray(ledgerRes?.payments) ? [...ledgerRes.payments] : [];
+  const entries = Array.isArray(ledgerRes?.ledgerEntries) ? ledgerRes.ledgerEntries : [];
+
+  entries.forEach((entry) => {
+    const raw = entry?.rawItem && typeof entry.rawItem === 'object' ? { ...entry.rawItem } : {};
+    if (entry?.type === 'delivery') {
+      deliveries.push({
+        ...raw,
+        id: raw.id || raw._id || entry.id,
+        deliveryDate: raw.deliveryDate || raw.date || entry.date || '',
+        actualMilk: raw.actualMilk ?? (Number.parseFloat(entry.milk) || 0),
+        plannedMilk: raw.plannedMilk ?? (Number.parseFloat(entry.milk) || 0),
+        actualCurd: raw.actualCurd ?? (Number.parseFloat(entry.curd) || 0),
+        plannedCurd: raw.plannedCurd ?? (Number.parseFloat(entry.curd) || 0),
+        totalAmount: raw.totalAmount ?? entry.amount ?? 0,
+        status: raw.status || entry.status || 'delivered',
+        deliveryBoyName: raw.deliveryBoyName || entry.deliveryBoyName || 'Assigned Partner',
+        addons: raw.addons || entry.addons || [],
+        addonsTotal: raw.addonsTotal ?? entry.addonsTotal ?? 0,
+      });
+    } else if (entry?.type === 'payment') {
+      payments.push({
+        ...raw,
+        id: raw.id || raw._id || entry.id,
+        paymentDate: raw.paymentDate || raw.createdAt || entry.time || entry.date || '',
+        amount: raw.amount ?? entry.paidAmount ?? Math.abs(Number(entry.amount) || 0),
+        paymentMethod: raw.paymentMethod || entry.paymentMethod || 'CASH',
+        collectedBy: raw.collectedBy || entry.deliveryBoyName || 'Partner',
+      });
+    }
+  });
+
+  return { deliveries, payments };
+}
+
 export default function ReportDownloadModal({
   isOpen,
   onClose,
@@ -39,18 +93,30 @@ export default function ReportDownloadModal({
   title = null,
   subtitle = null,
   initialCustomers = null,
+  initialDeliveries = null,
+  initialPayments = null,
 }) {
   // Scope: 'all' = All Customers consolidated; 'single' = Single customer statement
   const [reportScope, setReportScope] = useState(role === 'customer' ? 'single' : 'all');
   const [selectedPeriod, setSelectedPeriod] = useState('monthly');
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [viewMode, setViewMode] = useState('config'); // 'config' | 'preview'
+  const [previewData, setPreviewData] = useState(null);
 
   // Customer picker state (for single customer reports)
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+
+  // Reset modal view when opened/closed
+  useEffect(() => {
+    if (isOpen) {
+      setViewMode('config');
+      setErrorMsg('');
+    }
+  }, [isOpen]);
 
   // Sync initial scope on role change
   useEffect(() => {
@@ -218,155 +284,208 @@ export default function ReportDownloadModal({
   });
 
   /**
-   * Action 1: Instant Realtime Browser Print & Save as PDF (Recommended)
+   * Shared compiler: builds realtime HTML statement & resolved customer info
+   */
+  const buildCompiledReport = async () => {
+    const token =
+      sessionStorage.getItem('nmd_jwt_token') ||
+      localStorage.getItem('nmd_jwt_token') ||
+      '';
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    let allDeliveries = [];
+    let allPayments = [];
+
+    // Staff roles can query global collections; customers use /ledger directly (avoids 403)
+    if (role !== 'customer') {
+      const [delRes, payRes] = await Promise.all([
+        fetch(getApiUrl('/api/deliveries?range=all'), { headers }).then((r) => r.json()).catch(() => ({ deliveries: [] })),
+        fetch(getApiUrl('/api/payments'), { headers }).then((r) => r.json()).catch(() => ({ payments: [] })),
+      ]);
+      allDeliveries = Array.isArray(delRes?.deliveries) ? delRes.deliveries : [];
+      allPayments = Array.isArray(payRes?.payments) ? payRes.payments : [];
+    }
+
+    if (allDeliveries.length === 0 && Array.isArray(initialDeliveries) && initialDeliveries.length > 0) {
+      allDeliveries = initialDeliveries;
+    }
+    if (allPayments.length === 0 && Array.isArray(initialPayments) && initialPayments.length > 0) {
+      allPayments = initialPayments;
+    }
+
+    const todayIst = toIstDateKey(new Date());
+    const thresholdStr =
+      selectedPeriod === 'weekly'
+        ? getIstDateDaysAgo(7)
+        : selectedPeriod === 'monthly'
+          ? getIstDateDaysAgo(30)
+          : '';
+
+    const filterByPeriod = (items, getDate) => {
+      if (!thresholdStr) return items;
+      return items.filter((item) => {
+        const dtKey = toIstDateKey(getDate(item));
+        if (!dtKey) return true;
+        return dtKey >= thresholdStr && (!todayIst || dtKey <= todayIst);
+      });
+    };
+
+    const periodLabel = getPeriodLabel();
+
+    if (reportScope === 'all') {
+      let custList = customers;
+      if (!custList || custList.length === 0) {
+        const cRes = await fetch(getApiUrl('/api/customers'), { headers }).then((r) => r.json()).catch(() => ({ customers: [] }));
+        if (Array.isArray(cRes?.customers)) custList = cRes.customers;
+      }
+
+      const filteredDel = filterByPeriod(allDeliveries, (d) => d.deliveryDate || d.date);
+      const filteredPay = filterByPeriod(allPayments, (p) => p.paymentDate || p.createdAt);
+
+      const html = generateAllCustomersHtml({
+        customers: custList,
+        deliveries: filteredDel,
+        payments: filteredPay,
+        periodLabel,
+      });
+      return {
+        html,
+        titleDoc: `All_Customers_Report_${selectedPeriod}`,
+        periodLabel,
+        resolvedCustomerId: null,
+      };
+    }
+
+    // Single customer statement
+    let targetCust = selectedCustomer;
+    if (!targetCust && Array.isArray(initialCustomers) && initialCustomers.length > 0) {
+      targetCust = initialCustomers[0];
+    }
+    if (!targetCust && (role === 'customer' || entityId)) {
+      const lookupId = entityId || 'me';
+      const meRes = await fetch(getApiUrl(`/api/customers/${lookupId}`), { headers }).then((r) => r.json()).catch(() => null);
+      if (meRes?.customer) targetCust = meRes.customer;
+    }
+    if (!targetCust && customers.length > 0) {
+      targetCust = customers[0];
+    }
+    if (!targetCust && role !== 'customer') {
+      throw new Error('Please select a customer to generate their statement.');
+    }
+
+    targetCust = targetCust || {
+      name: 'Customer',
+      customerId: entityId || '',
+      mobile: '',
+      area: 'Hyderabad',
+      currentBalance: 0,
+    };
+
+    let custDeliveries = [];
+    let custPayments = [];
+    const targetLookupId =
+      targetCust.id ||
+      targetCust._id ||
+      targetCust.customerId ||
+      (role === 'customer' ? 'me' : '');
+
+    if (targetLookupId) {
+      try {
+        const ledgerRes = await fetch(getApiUrl(`/api/customers/${encodeURIComponent(targetLookupId)}/ledger`), { headers })
+          .then((r) => r.json())
+          .catch(() => null);
+        if (ledgerRes?.success) {
+          if (ledgerRes.customer) targetCust = ledgerRes.customer;
+          const extracted = extractRecordsFromLedger(ledgerRes);
+          custDeliveries = extracted.deliveries;
+          custPayments = extracted.payments;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback to initial/in-memory records if ledger returned empty
+    if (custDeliveries.length === 0 && allDeliveries.length > 0) {
+      if (role === 'customer') {
+        custDeliveries = [...allDeliveries];
+      } else {
+        const keys = [targetCust.id, targetCust._id, targetCust.customerId, targetCust.mobile].filter(Boolean).map(String);
+        custDeliveries = allDeliveries.filter((d) => {
+          const dCustId = String(d.customerId || '');
+          const dPhone = String(d.customerPhone || '');
+          return keys.includes(dCustId) || (targetCust.mobile && dPhone.includes(String(targetCust.mobile).replace(/\D/g, '')));
+        });
+      }
+    }
+
+    if (custPayments.length === 0 && allPayments.length > 0) {
+      if (role === 'customer') {
+        custPayments = [...allPayments];
+      } else {
+        const keys = [targetCust.id, targetCust._id, targetCust.customerId].filter(Boolean).map(String);
+        custPayments = allPayments.filter((p) => keys.includes(String(p.customerId || '')));
+      }
+    }
+
+    custDeliveries = filterByPeriod(custDeliveries, (d) => d.deliveryDate || d.date);
+    custPayments = filterByPeriod(custPayments, (p) => p.paymentDate || p.createdAt);
+
+    const html = generateSingleCustomerHtml({
+      customer: targetCust,
+      deliveries: custDeliveries,
+      payments: custPayments,
+      periodLabel,
+    });
+
+    const safeName = String(targetCust.name || 'Customer').replace(/\s+/g, '_');
+    const resolvedCustomerId = targetCust.customerId || targetCust.id || targetCust._id || null;
+
+    return {
+      html,
+      titleDoc: `Statement_${safeName}_${selectedPeriod}`,
+      periodLabel,
+      resolvedCustomerId,
+    };
+  };
+
+  /**
+   * Action 1: Preview Report inside modal (works cleanly on mobile responsive & web)
+   */
+  const handlePreviewReport = async () => {
+    setIsGenerating(true);
+    setErrorMsg('');
+    try {
+      const compiled = await buildCompiledReport();
+      setPreviewData(compiled);
+      setViewMode('preview');
+    } catch (err) {
+      console.error('Error generating preview report:', err);
+      setErrorMsg(err.message || 'Failed to load statement report.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  /**
+   * Action 2: Browser Print / Save as PDF
    */
   const handlePrintPdfRealtime = async () => {
     setIsGenerating(true);
     setErrorMsg('');
 
     try {
-      const token =
-        sessionStorage.getItem('nmd_jwt_token') ||
-        localStorage.getItem('nmd_jwt_token') ||
-        '';
+      const compiled = previewData && viewMode === 'preview' ? previewData : await buildCompiledReport();
+      setPreviewData(compiled);
 
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      // 1. Fetch live deliveries (with range=all to get full historical records) and payments
-      const [delRes, payRes] = await Promise.all([
-        fetch(getApiUrl('/api/deliveries?range=all'), { headers }).then((r) => r.json()).catch(() => ({ deliveries: [] })),
-        fetch(getApiUrl('/api/payments'), { headers }).then((r) => r.json()).catch(() => ({ payments: [] })),
-      ]);
-
-      let allDeliveries = Array.isArray(delRes.deliveries) ? delRes.deliveries : [];
-      let allPayments = Array.isArray(payRes.payments) ? payRes.payments : [];
-
-      // Filter by period threshold
-      let thresholdDate = null;
-      if (selectedPeriod === 'weekly') {
-        thresholdDate = new Date(Date.now() - 7 * 86400000);
-      } else if (selectedPeriod === 'monthly') {
-        thresholdDate = new Date(Date.now() - 30 * 86400000);
-      }
-
-      if (thresholdDate) {
-        const thStr = thresholdDate.toISOString().split('T')[0];
-        allDeliveries = allDeliveries.filter((d) => {
-          const dt = d.deliveryDate || d.date || '';
-          return dt >= thStr;
-        });
-
-        allPayments = allPayments.filter((p) => {
-          const raw = p.paymentDate || p.createdAt;
-          if (!raw) return true;
-          return new Date(raw) >= thresholdDate;
-        });
-      }
-
-      const periodLabel = getPeriodLabel();
-      let html = '';
-      let titleDoc = '';
-
-      if (reportScope === 'all') {
-        // Consolidated report for ALL customers
-        let custList = customers;
-        if (!custList || custList.length === 0) {
-          const cRes = await fetch(getApiUrl('/api/customers'), { headers }).then((r) => r.json()).catch(() => ({ customers: [] }));
-          if (Array.isArray(cRes.customers)) custList = cRes.customers;
-        }
-
-        html = generateAllCustomersHtml({
-          customers: custList,
-          deliveries: allDeliveries,
-          payments: allPayments,
-          periodLabel,
-        });
-        titleDoc = `All_Customers_Report_${selectedPeriod}`;
-      } else {
-        // Single customer statement: fetch direct customer ledger for 100% complete day-by-day delivery history
-        let targetCust = selectedCustomer;
-        if (!targetCust && (role === 'customer' || entityId)) {
-          const lookupId = entityId || 'me';
-          const meRes = await fetch(getApiUrl(`/api/customers/${lookupId}`), { headers }).then((r) => r.json()).catch(() => null);
-          if (meRes?.customer) targetCust = meRes.customer;
-        }
-
-        if (!targetCust && customers.length > 0) {
-          targetCust = customers[0];
-        }
-
-        if (!targetCust) {
-          throw new Error('Please select a customer to generate their statement.');
-        }
-
-        let custDeliveries = [];
-        let custPayments = [];
-        const targetLookupId = targetCust.id || targetCust._id || targetCust.customerId || (role === 'customer' ? 'me' : '');
-
-        if (targetLookupId) {
-          try {
-            const ledgerRes = await fetch(getApiUrl(`/api/customers/${targetLookupId}/ledger`), { headers }).then((r) => r.json()).catch(() => null);
-            if (ledgerRes?.success) {
-              if (ledgerRes.customer) targetCust = ledgerRes.customer;
-              if (Array.isArray(ledgerRes.deliveries)) custDeliveries = ledgerRes.deliveries;
-              if (Array.isArray(ledgerRes.payments)) custPayments = ledgerRes.payments;
-            }
-          } catch (_) {}
-        }
-
-        // Fallback filter
-        if (custDeliveries.length === 0 && allDeliveries.length > 0) {
-          const keys = [targetCust.id, targetCust._id, targetCust.customerId, targetCust.mobile].filter(Boolean).map(String);
-          custDeliveries = allDeliveries.filter((d) => {
-            const dCustId = String(d.customerId || '');
-            const dPhone = String(d.customerPhone || '');
-            return keys.includes(dCustId) || (targetCust.mobile && dPhone.includes(String(targetCust.mobile).replace(/\D/g, '')));
-          });
-        }
-
-        if (custPayments.length === 0 && allPayments.length > 0) {
-          const keys = [targetCust.id, targetCust._id, targetCust.customerId].filter(Boolean).map(String);
-          custPayments = allPayments.filter((p) => {
-            const pCustId = String(p.customerId || '');
-            return keys.includes(pCustId);
-          });
-        }
-
-        // Apply period filter (Weekly / Monthly)
-        if (thresholdDate) {
-          const thStr = thresholdDate.toISOString().split('T')[0];
-          custDeliveries = custDeliveries.filter((d) => {
-            const dt = d.deliveryDate || d.date || '';
-            return dt >= thStr;
-          });
-
-          custPayments = custPayments.filter((p) => {
-            const raw = p.paymentDate || p.createdAt;
-            if (!raw) return true;
-            return new Date(raw) >= thresholdDate;
-          });
-        }
-
-        html = generateSingleCustomerHtml({
-          customer: targetCust,
-          deliveries: custDeliveries,
-          payments: custPayments,
-          periodLabel,
-        });
-
-        const safeName = String(targetCust.name || 'Customer').replace(/\s+/g, '_');
-        titleDoc = `Statement_${safeName}_${selectedPeriod}`;
-      }
-
-      // Print document natively
-      const success = printHtmlDocument(html, titleDoc);
+      const success = printHtmlDocument(compiled.html, compiled.titleDoc);
       if (success) {
         setTimeout(() => {
           setIsGenerating(false);
-          onClose();
         }, 500);
       } else {
-        throw new Error('Unable to open print preview. Please check pop-up blocker permissions.');
+        // Fallback to in-modal preview if browser blocked print dialog
+        setViewMode('preview');
+        setIsGenerating(false);
+        setErrorMsg('Pop-up blocked — preview opened below. Use your browser menu to Print or Save PDF.');
       }
     } catch (err) {
       console.error('Error generating realtime report:', err);
@@ -376,7 +495,7 @@ export default function ReportDownloadModal({
   };
 
   /**
-   * Action 2: Direct Server PDF Download (Fallback)
+   * Action 3: Direct Server PDF File Download (via authenticated fetch -> Blob)
    */
   const handleServerDownload = async () => {
     setIsGenerating(true);
@@ -387,16 +506,23 @@ export default function ReportDownloadModal({
         sessionStorage.getItem('nmd_jwt_token') ||
         localStorage.getItem('nmd_jwt_token') ||
         '';
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const resolvedCustId =
+        previewData?.resolvedCustomerId ||
+        selectedCustomer?.customerId ||
+        selectedCustomer?.id ||
+        selectedCustomer?._id ||
+        (entityId && entityId !== 'me' ? entityId : '');
 
       let endpoint = '';
       if (reportScope === 'all') {
         endpoint = `/api/reports/all-customers/pdf?period=${selectedPeriod}`;
       } else if (role === 'customer') {
         endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}`;
-        if (entityId) endpoint += `&customerId=${encodeURIComponent(entityId)}`;
+        if (resolvedCustId) endpoint += `&customerId=${encodeURIComponent(resolvedCustId)}`;
       } else {
-        const custId = selectedCustomer?.id || selectedCustomer?._id || selectedCustomer?.customerId;
-        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}&customerId=${encodeURIComponent(custId || '')}`;
+        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}&customerId=${encodeURIComponent(resolvedCustId || '')}`;
       }
 
       if (token) {
@@ -404,37 +530,46 @@ export default function ReportDownloadModal({
       }
 
       const fullUrl = getApiUrl(endpoint);
+      const resp = await fetch(fullUrl, { headers }).catch(() => null);
+      const contentType = resp?.headers?.get('content-type') || '';
 
-      // Verify the endpoint returns valid PDF
-      const resp = await fetch(fullUrl, { method: 'HEAD' }).catch(() => null);
-      const isHtmlFallback = resp && resp.headers.get('content-type')?.includes('text/html');
-
-      if (isHtmlFallback) {
-        console.warn('Server returned non-PDF response, switching to realtime browser print engine.');
-        await handlePrintPdfRealtime();
+      if (!resp || !resp.ok || !contentType.includes('application/pdf')) {
+        console.warn('Server PDF unavailable or returned non-PDF, opening realtime report preview.');
+        const compiled = previewData || await buildCompiledReport();
+        setPreviewData(compiled);
+        setViewMode('preview');
+        setIsGenerating(false);
         return;
       }
 
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const fileName = `${previewData?.titleDoc || `${reportScope}_report_${selectedPeriod}`}.pdf`;
       const link = document.createElement('a');
-      link.href = fullUrl;
-      link.target = '_blank';
-      link.download = `${reportScope}_report_${selectedPeriod}.pdf`;
+      link.href = blobUrl;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
 
-      setTimeout(() => {
-        setIsGenerating(false);
-        onClose();
-      }, 700);
+      setIsGenerating(false);
     } catch (err) {
-      console.warn('Server download issue, falling back to realtime print:', err);
-      await handlePrintPdfRealtime();
+      console.warn('Server download issue, falling back to realtime preview:', err);
+      try {
+        const compiled = previewData || await buildCompiledReport();
+        setPreviewData(compiled);
+        setViewMode('preview');
+      } catch (e2) {
+        setErrorMsg(e2.message || 'Failed to generate report.');
+      }
+      setIsGenerating(false);
     }
   };
 
   return (
     <div
+      className="nmd-report-modal-overlay"
       style={{
         position: 'fixed',
         inset: 0,
@@ -448,12 +583,35 @@ export default function ReportDownloadModal({
       }}
       onClick={onClose}
     >
+      <style>{`
+        @media (max-width: 640px) {
+          .nmd-report-modal-overlay {
+            align-items: flex-end !important;
+            padding: 0 !important;
+          }
+          .nmd-report-modal-card {
+            max-width: 100% !important;
+            max-height: 92vh !important;
+            border-radius: 20px 20px 0 0 !important;
+          }
+          .nmd-report-modal-header {
+            padding: 16px 16px 14px 16px !important;
+          }
+          .nmd-report-modal-body {
+            padding: 14px 16px 20px 16px !important;
+          }
+          .nmd-report-actions-row {
+            flex-direction: column !important;
+          }
+        }
+      `}</style>
       <div
+        className="nmd-report-modal-card"
         style={{
           background: '#ffffff',
           borderRadius: '20px',
           width: '100%',
-          maxWidth: '520px',
+          maxWidth: viewMode === 'preview' ? '760px' : '520px',
           maxHeight: '90vh',
           boxShadow: '0 20px 40px -15px rgba(0, 0, 0, 0.25)',
           overflowY: 'auto',
@@ -465,6 +623,7 @@ export default function ReportDownloadModal({
       >
         {/* Header */}
         <div
+          className="nmd-report-modal-header"
           style={{
             background: 'linear-gradient(135deg, #0d5c3a 0%, #15803d 100%)',
             padding: '20px 24px',
@@ -532,8 +691,114 @@ export default function ReportDownloadModal({
           </p>
         </div>
 
-        {/* Body */}
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {/* Preview View vs Config Body */}
+        {viewMode === 'preview' && previewData ? (
+          <div className="nmd-report-modal-body" style={{ padding: '14px 18px 18px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('config');
+                  setErrorMsg('');
+                }}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '7px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#334155',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                <ArrowLeft size={14} />
+                <span>Back</span>
+              </button>
+
+              <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#047857', background: '#ecfdf5', padding: '5px 10px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                {previewData.periodLabel}
+              </span>
+            </div>
+
+            {errorMsg && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px', borderRadius: '10px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '0.78rem' }}>
+                <AlertCircle size={15} />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            <div style={{ border: '1px solid #cbd5e1', borderRadius: '12px', overflow: 'hidden', background: '#ffffff' }}>
+              <iframe
+                title={previewData.titleDoc || 'Delivery Statement Report'}
+                srcDoc={previewData.html}
+                style={{
+                  width: '100%',
+                  height: '52vh',
+                  minHeight: '340px',
+                  border: 'none',
+                  display: 'block',
+                  background: '#ffffff',
+                }}
+              />
+            </div>
+
+            <div className="nmd-report-actions-row" style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={handlePrintPdfRealtime}
+                disabled={isGenerating}
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  borderRadius: '12px',
+                  border: '1px solid #0d5c3a',
+                  background: '#f0fdf4',
+                  color: '#0d5c3a',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: isGenerating ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '7px',
+                }}
+              >
+                <Printer size={16} />
+                <span>Print / Save as PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleServerDownload}
+                disabled={isGenerating}
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  fontWeight: 800,
+                  fontSize: '0.84rem',
+                  cursor: isGenerating ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '7px',
+                  boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                <span>{isGenerating ? 'Downloading...' : 'Download PDF'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+        <div className="nmd-report-modal-body" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {/* Scope Selection (For Admin & Delivery Partner) */}
           {role !== 'customer' && (
             <div>
@@ -873,94 +1138,99 @@ export default function ReportDownloadModal({
 
           {/* Action Buttons */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={handlePreviewReport}
+              disabled={isGenerating}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                borderRadius: '12px',
+                border: 'none',
+                background: '#0d5c3a',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: '0.9rem',
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+                transition: 'background 0.15s ease',
+              }}
+              onMouseEnter={(e) => !isGenerating && (e.currentTarget.style.background = '#0a492e')}
+              onMouseLeave={(e) => !isGenerating && (e.currentTarget.style.background = '#0d5c3a')}
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Loading Report...</span>
+                </>
+              ) : (
+                <>
+                  <Eye size={16} />
+                  <span>
+                    {reportScope === 'all'
+                      ? 'View All Customers Report'
+                      : (selectedCustomer ? `View Report (${selectedCustomer.name})` : 'View Statement Report')}
+                  </span>
+                </>
+              )}
+            </button>
+
+            <div className="nmd-report-actions-row" style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleServerDownload}
                 disabled={isGenerating}
                 style={{
                   flex: 1,
-                  padding: '12px 14px',
+                  padding: '10px 12px',
                   borderRadius: '12px',
-                  border: '1px solid #e2e8f0',
-                  background: '#ffffff',
-                  color: '#475569',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
+                  border: '1px solid #0d5c3a',
+                  background: '#f0fdf4',
+                  color: '#0d5c3a',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: isGenerating ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
                 }}
               >
-                Cancel
+                <Download size={15} />
+                <span>Download PDF</span>
               </button>
 
-              {/* Primary Instant Realtime Action */}
               <button
                 type="button"
                 onClick={handlePrintPdfRealtime}
                 disabled={isGenerating}
                 style={{
-                  flex: 2,
-                  padding: '12px 14px',
+                  flex: 1,
+                  padding: '10px 12px',
                   borderRadius: '12px',
-                  border: 'none',
-                  background: '#0d5c3a',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.88rem',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#334155',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
                   cursor: isGenerating ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
-                  transition: 'background 0.15s ease',
+                  gap: '6px',
                 }}
-                onMouseEnter={(e) => !isGenerating && (e.currentTarget.style.background = '#0a492e')}
-                onMouseLeave={(e) => !isGenerating && (e.currentTarget.style.background = '#0d5c3a')}
               >
-                {isGenerating ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Compiling Report...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download size={16} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {reportScope === 'all'
-                        ? 'Download All Customers PDF'
-                        : (selectedCustomer ? `Download for ${selectedCustomer.name}` : 'Download Customer Statement PDF')}
-                    </span>
-                  </>
-                )}
+                <Printer size={15} />
+                <span>Print / Save PDF</span>
               </button>
             </div>
-
-            {/* Direct File Download Link (Alternative) */}
-            <button
-              type="button"
-              onClick={handleServerDownload}
-              disabled={isGenerating}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#0d5c3a',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '4px',
-                padding: '4px',
-                textDecoration: 'underline',
-              }}
-            >
-              <Printer size={13} />
-              <span>Or Print / Save Preview</span>
-            </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

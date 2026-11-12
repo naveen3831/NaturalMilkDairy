@@ -7,6 +7,7 @@ export default function RegisterPage({ setActiveTab }) {
   const { register } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     mobile: '',
     password: '',
     confirmPassword: '',
@@ -74,6 +75,12 @@ export default function RegisterPage({ setActiveTab }) {
 
     if (formData.name.trim().length < 2 || formData.name.trim().length > 80) {
       setError('Name must be between 2 and 80 characters.');
+      return;
+    }
+
+    const cleanEmail = formData.email.trim().toLowerCase();
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('Enter a valid email address.');
       return;
     }
 
@@ -435,7 +442,7 @@ export default function RegisterPage({ setActiveTab }) {
                 Account Created Successfully!
               </h3>
               <p style={{ color: '#64748b', fontSize: '0.92rem' }}>
-                Redirecting you to your customer portal...
+                Your login credentials have been emailed to {formData.email.trim()}. Redirecting...
               </p>
             </div>
           ) : (
@@ -487,6 +494,20 @@ export default function RegisterPage({ setActiveTab }) {
                       onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
                     />
                   </div>
+                </div>
+
+                {/* Email address */}
+                <div className="register-form-full">
+                  <label className="register-form-label">Email address</label>
+                  <input
+                    type="email"
+                    required
+                    maxLength={254}
+                    className="register-input"
+                    placeholder="e.g. name@gmail.com (for account credentials)"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
                 </div>
 
                 {/* Password & Confirm password */}

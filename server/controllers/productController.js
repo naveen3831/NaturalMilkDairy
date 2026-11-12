@@ -1,6 +1,18 @@
 const Product = require('../models/Product');
 const { recordAudit } = require('../services/auditService');
 const { broadcast } = require('../config/websocket');
+const { ensureCloudinaryUrl } = require('../config/cloudinary');
+
+const uploadProductImagesList = async (list) => {
+  if (!Array.isArray(list)) return [];
+  const results = [];
+  for (const item of list) {
+    if (typeof item === 'string' && item.trim()) {
+      results.push(await ensureCloudinaryUrl(item.trim(), { folder: 'natural-milk-dairy/products' }));
+    }
+  }
+  return results;
+};
 
 const getProducts = async (req, res) => {
   try {
@@ -66,22 +78,19 @@ const updateProductPrice = async (req, res) => {
 
 const addProduct = async (req, res) => {
   try {
-    const { name, category, unit, price, description, image, imageUrl, images, status, actor } = req.body;
+    const { name, category, unit, price, description, image, imageUrl, images, gallery, status, actor } = req.body;
     if (!name || !price || !unit) {
       return res.status(400).json({ success: false, message: 'Name, unit, and price are required' });
     }
 
     const cleanName = name.trim();
-    let finalImg = (image || imageUrl || '').trim();
-    if (finalImg.startsWith('data:image/')) {
-      try {
-        const { uploadUrlOrBase64 } = require('../config/cloudinary');
-        const cloudRes = await uploadUrlOrBase64(finalImg, 'natural-milk-dairy/products');
-        finalImg = cloudRes.secure_url;
-      } catch (err) {
-        console.error('Failed to upload product image to Cloudinary:', err);
-      }
-    }
+    const rawImg = (image || imageUrl || '').trim();
+    const finalImg = rawImg
+      ? await ensureCloudinaryUrl(rawImg, { folder: 'natural-milk-dairy/products' })
+      : '';
+    const finalImages = await uploadProductImagesList(images);
+    const finalGallery = await uploadProductImagesList(gallery);
+
     const newProduct = await Product.create({
       name: cleanName,
       category: category || 'milk',
@@ -91,7 +100,8 @@ const addProduct = async (req, res) => {
       description: (description || '').trim(),
       image: finalImg,
       imageUrl: finalImg,
-      images: Array.isArray(images) ? images : [],
+      images: finalImages,
+      gallery: finalGallery,
       updatedAt: new Date(),
     });
 
@@ -117,7 +127,7 @@ const addProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, category, unit, price, description, image, imageUrl, images, status, actor } = req.body;
+    const { name, category, unit, price, description, image, imageUrl, images, gallery, status, actor } = req.body;
 
     const query = id.length === 24 ? { _id: id } : { name: id };
     const product = await Product.findOne(query);
@@ -132,21 +142,18 @@ const updateProduct = async (req, res) => {
     if (price !== undefined) product.price = Number(price);
     if (description !== undefined) product.description = description.trim();
     if (image !== undefined || imageUrl !== undefined) {
-      let updatedImg = (image !== undefined ? image : imageUrl).trim();
-      if (updatedImg.startsWith('data:image/')) {
-        try {
-          const { uploadUrlOrBase64 } = require('../config/cloudinary');
-          const cloudRes = await uploadUrlOrBase64(updatedImg, 'natural-milk-dairy/products');
-          updatedImg = cloudRes.secure_url;
-        } catch (err) {
-          console.error('Failed to upload updated product image to Cloudinary:', err);
-        }
-      }
+      const rawUpdated = (image !== undefined ? image : imageUrl).trim();
+      const updatedImg = rawUpdated
+        ? await ensureCloudinaryUrl(rawUpdated, { folder: 'natural-milk-dairy/products' })
+        : '';
       product.image = updatedImg;
       product.imageUrl = updatedImg;
     }
     if (images !== undefined && Array.isArray(images)) {
-      product.images = images;
+      product.images = await uploadProductImagesList(images);
+    }
+    if (gallery !== undefined && Array.isArray(gallery)) {
+      product.gallery = await uploadProductImagesList(gallery);
     }
     if (status !== undefined) product.status = status;
     product.updatedAt = new Date();

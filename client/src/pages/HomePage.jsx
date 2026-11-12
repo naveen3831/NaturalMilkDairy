@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Heart,
   Milk,
@@ -33,6 +33,7 @@ import { getProductImage } from './admin/ProductsPricing';
 import SubscribeModal from '../components/SubscribeModal';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+import { useDesktopScrollReveal } from '../hooks/useDesktopScrollReveal';
 
 const DEFAULT_HOME_PRODUCTS = [
   {
@@ -230,12 +231,15 @@ export default function HomePage({ setActiveTab }) {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false
   );
+  const homeContainerRef = useRef(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useDesktopScrollReveal(homeContainerRef, !isMobile, [activeCategory, products.length]);
 
   const DEFAULT_BANNERS = [
     {
@@ -603,13 +607,13 @@ export default function HomePage({ setActiveTab }) {
   };
 
   return (
-    <div className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
+    <div ref={homeContainerRef} className="public-home-page" style={{ background: '#f8faf8', width: '100%', minHeight: '100vh', overflowX: 'hidden' }}>
       {isMobile ? renderMobileHome() : (
         <>
       {/* Same Dynamic Hero Carousel in Desktop Website */}
       
       {/* 1. Desktop Greeting Section directly above banner matching Image */}
-      <div className="desktop-home-greeting-section">
+      <div className="desktop-home-greeting-section web-enter">
         <div className="desktop-home-greeting-inner">
           <span className="desktop-home-greeting-salutation">{salutation?.replace(/,+$/, "")},</span>
           <h2 className="desktop-home-greeting-name">
@@ -622,7 +626,7 @@ export default function HomePage({ setActiveTab }) {
       </div>
 
       {/* 2. Desktop Hero Carousel matching Image */}
-      <section className="desktop-hero-carousel-container">
+      <section className="desktop-hero-carousel-container web-enter web-enter-d1">
         <div className="desktop-hero-carousel-inner">
           <div
             className="desktop-hero-carousel-track"
@@ -691,7 +695,7 @@ export default function HomePage({ setActiveTab }) {
       </section>
 
       {/* 3. Four Feature Badges Strip directly below banner matching Image */}
-      <section className="desktop-home-features-strip">
+      <section className="desktop-home-features-strip web-enter web-enter-d2">
         <div className="desktop-home-features-card">
           <div className="desktop-home-feat-item">
             <div className="desktop-home-feat-icon-circle">
@@ -736,7 +740,7 @@ export default function HomePage({ setActiveTab }) {
       {/* 2. 100% VX LIGHT SECTION: QUICK MORNING ESSENTIALS & MATTER   */}
       {/* ============================================================ */}
       <section
-        className="home-morning-section"
+        className="home-morning-section web-reveal"
         style={{
           width: '100%',
           background: '#ffffff',
@@ -899,8 +903,8 @@ export default function HomePage({ setActiveTab }) {
                         handleProductClick(item.prod);
                       }}
                       style={{
-                        padding: '16px 18px',
-                        borderRadius: '16px',
+                        padding: '12px 14px',
+                        borderRadius: '14px',
                         background: '#ffffff',
                         border: isSelected ? '2px solid #059669' : '1.5px solid #e2ece3',
                         boxShadow: isSelected ? '0 8px 20px rgba(5, 150, 105, 0.15)' : '0 2px 8px rgba(0,0,0,0.02)',
@@ -909,20 +913,20 @@ export default function HomePage({ setActiveTab }) {
                         display: 'flex',
                         flexDirection: 'column',
                         justifyContent: 'space-between',
-                        minHeight: '112px',
+                        minHeight: '94px',
                         boxSizing: 'border-box',
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           {item.badge}
                         </span>
-                        {isSelected && <Check size={16} color="#059669" strokeWidth={2.5} />}
+                        {isSelected && <Check size={15} color="#059669" strokeWidth={2.5} />}
                       </div>
-                      <div className="home-selector-item-title" style={{ fontWeight: 800, fontSize: '0.98rem', color: '#0c2340', lineHeight: 1.25, minHeight: '38px', display: 'flex', alignItems: 'center' }}>
+                      <div className="home-selector-item-title" style={{ fontWeight: 800, fontSize: '0.9rem', color: '#0c2340', lineHeight: 1.25, minHeight: '34px', display: 'flex', alignItems: 'center' }}>
                         {item.label}
                       </div>
-                      <div style={{ fontWeight: 900, fontSize: '1.18rem', color: '#059669', marginTop: 'auto', paddingTop: '6px' }}>
+                      <div style={{ fontWeight: 900, fontSize: '1.06rem', color: '#059669', marginTop: 'auto', paddingTop: '4px' }}>
                         {item.price}
                       </div>
                     </div>
@@ -966,7 +970,7 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 4. ARTISANAL FARM PRODUCTS COLLECTION                         */}
       {/* ============================================================ */}
-      <section className="public-home-products-section" style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
+      <section className="public-home-products-section web-reveal" style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div
           className="public-home-products-header"
           style={{
@@ -1023,11 +1027,11 @@ export default function HomePage({ setActiveTab }) {
         </div>
 
         {/* 5 Luxury Product Cards Grid */}
-        <div className="public-home-product-grid public-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '28px' }}>
-          {filteredProducts.map((prod) => (
+        <div className="public-home-product-grid public-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(255px, 1fr))', gap: '20px' }}>
+          {filteredProducts.map((prod, idx) => (
             <div
-              key={prod.id}
-              className="dairy-product-card"
+              key={`${activeCategory}-${prod.id}`}
+              className="dairy-product-card web-card-stagger"
               onClick={() => handleProductClick(prod)}
               role="button"
               tabIndex={0}
@@ -1040,24 +1044,24 @@ export default function HomePage({ setActiveTab }) {
               }}
               style={{
                 background: '#ffffff',
-                borderRadius: '24px',
-                border: '1.5px solid #e2ece3',
+                borderRadius: '18px',
+                border: '1px solid #e2ece3',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.04)',
+                boxShadow: '0 4px 16px rgba(13, 92, 58, 0.05)',
                 cursor: 'pointer',
-                transition: 'transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease',
+                animationDelay: `${Math.min(idx, 8) * 55}ms`,
               }}
             >
               {/* Product Visual Container */}
-              <div className="public-product-image" style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', maxHeight: '340px', overflow: 'hidden', background: '#f6f9f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="public-product-image" style={{ position: 'relative', width: '100%', height: '190px', overflow: 'hidden', background: '#f6f9f7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img
                   src={prod.image}
                   alt={prod.name}
                   className="product-img"
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 10%', display: 'block', transition: 'transform 0.35s ease' }}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 15%', display: 'block', transition: 'transform 0.35s ease' }}
                   onError={(e) => {
                     e.currentTarget.src = prod.name?.toLowerCase().includes('buffalo')
                       ? '/product-buffalo-milk.jpg'
@@ -1071,15 +1075,15 @@ export default function HomePage({ setActiveTab }) {
                 <span
                   style={{
                     position: 'absolute',
-                    top: '14px',
-                    left: '14px',
-                    fontSize: '0.76rem',
+                    top: '10px',
+                    left: '10px',
+                    fontSize: '0.68rem',
                     fontWeight: 800,
-                    padding: '5px 12px',
+                    padding: '4px 10px',
                     borderRadius: '30px',
                     background: '#ffffff',
                     color: prod.badgeColor,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                    boxShadow: '0 3px 10px rgba(0,0,0,0.1)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
                   }}
@@ -1091,13 +1095,13 @@ export default function HomePage({ setActiveTab }) {
                 <span
                   style={{
                     position: 'absolute',
-                    bottom: '12px',
-                    right: '12px',
-                    fontSize: '0.74rem',
+                    bottom: '10px',
+                    right: '10px',
+                    fontSize: '0.68rem',
                     fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    background: 'rgba(7, 22, 41, 0.84)',
+                    padding: '3px 8px',
+                    borderRadius: '7px',
+                    background: 'rgba(7, 22, 41, 0.82)',
                     color: '#ffffff',
                     backdropFilter: 'blur(6px)',
                   }}
@@ -1107,23 +1111,23 @@ export default function HomePage({ setActiveTab }) {
               </div>
 
               {/* Product Information Body */}
-              <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div className="public-product-card-body" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div className="public-product-card-info">
-                  <div className="public-product-tagline" style={{ fontSize: '0.78rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>
+                  <div className="public-product-tagline" style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '2px' }}>
                     {prod.tagline}
                   </div>
-                  <h3 style={{ fontSize: '1.3rem', color: '#0c2340', fontWeight: 800, marginBottom: '8px' }}>
+                  <h3 style={{ fontSize: '1.05rem', color: '#0c2340', fontWeight: 800, marginBottom: '5px', lineHeight: 1.3 }}>
                     {prod.name}
                   </h3>
-                  <p style={{ fontSize: '0.88rem', color: '#597361', lineHeight: 1.55, marginBottom: '16px' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#597361', lineHeight: 1.48, marginBottom: '10px' }}>
                     {prod.desc}
                   </p>
 
                   {/* Feature Checklist */}
-                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
+                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
                     {prod.highlights.map((h, hidx) => (
-                      <div key={hidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#334155' }}>
-                        <Check size={14} color="#059669" />
+                      <div key={hidx} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#334155' }}>
+                        <Check size={13} color="#059669" />
                         <span>{h}</span>
                       </div>
                     ))}
@@ -1150,12 +1154,12 @@ export default function HomePage({ setActiveTab }) {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     borderTop: '1px solid #edf3ee',
-                    paddingTop: '16px',
+                    paddingTop: '12px',
                   }}
                 >
                   <div className="public-product-price">
-                    <span style={{ fontSize: '1.6rem', fontWeight: 900, color: '#059669' }}>{prod.price}</span>
-                    <span style={{ fontSize: '0.82rem', color: '#597361', marginLeft: '4px' }}>{prod.unit}</span>
+                    <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#059669' }}>{prod.price}</span>
+                    <span style={{ fontSize: '0.74rem', color: '#597361', marginLeft: '4px' }}>{prod.unit}</span>
                   </div>
 
                   <button
@@ -1168,19 +1172,19 @@ export default function HomePage({ setActiveTab }) {
                       background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
                       color: '#ffffff',
                       fontWeight: 800,
-                      fontSize: '0.88rem',
-                      padding: '10px 20px',
-                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      padding: '8px 14px',
+                      borderRadius: '10px',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '8px',
+                      gap: '6px',
                       cursor: 'pointer',
                       border: 'none',
-                      boxShadow: '0 4px 14px rgba(5, 150, 105, 0.25)',
+                      boxShadow: '0 4px 12px rgba(5, 150, 105, 0.22)',
                     }}
                   >
-                    <span>Subscribe Daily</span>
-                    <ArrowRight size={16} />
+                    <span>Subscribe</span>
+                    <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
@@ -1192,7 +1196,7 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 7. 100% VX: HONEST PURITY COMPARISON MATRIX                  */}
       {/* ============================================================ */}
-      <section style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
+      <section className="web-reveal" style={{ maxWidth: '1440px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div style={{ textAlign: 'center', marginBottom: '44px' }}>
           <div
             style={{
@@ -1316,7 +1320,7 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 8. 100% VX ALL LIGHT THEMED: MONTHLY DAIRY COST CALCULATOR   */}
       {/* ============================================================ */}
-      <section className="public-home-calculator-section" style={{ maxWidth: '1360px', margin: '90px auto 0 auto', padding: '0 32px' }}>
+      <section className="public-home-calculator-section web-reveal" style={{ maxWidth: '1360px', margin: '90px auto 0 auto', padding: '0 32px' }}>
         <div
           className="public-home-calculator"
           style={{
@@ -1474,7 +1478,7 @@ export default function HomePage({ setActiveTab }) {
       {/* ============================================================ */}
       {/* 9. 100% VX: VERIFIED MUMBAI CUSTOMER TESTIMONIALS            */}
       {/* ============================================================ */}
-      <section className="home-reviews-section">
+      <section className="home-reviews-section web-reveal">
         <style>{`
           .home-reviews-section {
             max-width: 1440px;
@@ -1488,15 +1492,15 @@ export default function HomePage({ setActiveTab }) {
           .home-reviews-grid {
             display: grid !important;
             grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-            gap: 26px !important;
+            gap: 20px !important;
             width: 100% !important;
           }
           .home-review-card {
             background: #ffffff;
-            border-radius: 24px;
-            padding: 30px;
-            border: 1.5px solid #e2ece3;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.03);
+            border-radius: 18px;
+            padding: 22px;
+            border: 1px solid #e2ece3;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.03);
             display: flex;
             flex-direction: column;
             justify-content: space-between;

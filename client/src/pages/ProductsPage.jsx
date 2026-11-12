@@ -7,6 +7,7 @@ import ProductDetailsView from './ProductDetailsView';
 import Footer from '../components/Footer';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 import { useAuth } from '../context/AuthContext';
+import { useDesktopScrollReveal } from '../hooks/useDesktopScrollReveal';
 
 const DEFAULT_CATALOG = [
   {
@@ -208,12 +209,15 @@ export default function ProductsPage({ setActiveTab }) {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth <= 768 : false
   );
+  const productsContainerRef = useRef(null);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  useDesktopScrollReveal(productsContainerRef, !isMobile && !selectedProductDetails, [activeCategory, catalogProducts.length]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [favProducts, setFavProducts] = useState(new Set());
@@ -573,7 +577,7 @@ export default function ProductsPage({ setActiveTab }) {
   }
 
   return (
-    <div className="public-products-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div ref={productsContainerRef} className="public-products-page" style={{ background: '#f8faf8', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {isMobile ? renderMobileProducts() : (
         <>
       {/* Page Header with Real Glass Bottles Background Banner */}
@@ -601,7 +605,7 @@ export default function ProductsPage({ setActiveTab }) {
 
         <div className="public-page-hero-content" style={{ maxWidth: '800px', margin: '0 auto', position: 'relative', zIndex: 10 }}>
           <div
-            className="public-products-eyebrow"
+            className="public-products-eyebrow web-enter"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
@@ -620,16 +624,16 @@ export default function ProductsPage({ setActiveTab }) {
             <Sparkles size={14} color="#E5B842" />
             Direct From Farm To Table
           </div>
-          <h1 style={{ fontSize: 'clamp(2.4rem, 4.5vw, 3.4rem)', fontWeight: 900, color: '#ffffff', marginBottom: '12px' }}>
+          <h1 className="web-enter web-enter-d1" style={{ fontSize: 'clamp(2.4rem, 4.5vw, 3.4rem)', fontWeight: 900, color: '#ffffff', marginBottom: '12px' }}>
             Our Products
           </h1>
-          <p style={{ color: '#d1fae5', fontSize: '1.1rem', lineHeight: 1.6, maxWidth: '640px', margin: '0 auto' }}>
+          <p className="web-enter web-enter-d2" style={{ color: '#d1fae5', fontSize: '1.1rem', lineHeight: 1.6, maxWidth: '640px', margin: '0 auto' }}>
             Pure, cold-chain protected cow milk, rich buffalo milk, thick traditional curd, and artisanal desi ghee delivered fresh every dawn.
           </p>
 
           {/* Category Filter Tabs with Smooth Animation */}
           <div
-            className="public-product-category-filter"
+            className="public-product-category-filter web-enter web-enter-d3"
             role="group"
             aria-label="Filter products by category"
             style={{
@@ -676,19 +680,19 @@ export default function ProductsPage({ setActiveTab }) {
       </div>
 
       {/* Product Grid with Images & Animations */}
-      <div className="public-page-content" style={{ maxWidth: '1360px', margin: '60px auto', padding: '0 24px', flex: 1, width: '100%' }}>
+      <div className="public-page-content" style={{ maxWidth: '1360px', margin: '44px auto', padding: '0 24px', flex: 1, width: '100%' }}>
         <div
           className="public-card-grid"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '30px',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(255px, 1fr))',
+            gap: '20px',
           }}
         >
           {filteredProducts.map((p, idx) => (
             <div
-              key={p.id}
-              className="dairy-product-card dairy-fade-in-up"
+              key={`${activeCategory}-${p.id}`}
+              className="dairy-product-card web-card-stagger"
               onClick={() => {
                 setSelectedProductDetails(p);
                 const prodKey = p.id || p.name;
@@ -711,16 +715,15 @@ export default function ProductsPage({ setActiveTab }) {
               }}
               style={{
                 background: '#ffffff',
-                borderRadius: '22px',
-                border: '1.5px solid #e5ece6',
+                borderRadius: '18px',
+                border: '1px solid #e5ece6',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'space-between',
-                boxShadow: '0 6px 20px rgba(13, 92, 58, 0.06)',
-                animationDelay: `${idx * 0.07}s`,
+                boxShadow: '0 4px 16px rgba(13, 92, 58, 0.05)',
+                animationDelay: `${Math.min(idx, 8) * 55}ms`,
                 cursor: 'pointer',
-                transition: 'transform 0.22s ease, box-shadow 0.22s ease',
               }}
             >
               {/* Product Real Image Header */}
@@ -729,8 +732,7 @@ export default function ProductsPage({ setActiveTab }) {
                 style={{
                   position: 'relative',
                   width: '100%',
-                  aspectRatio: '1 / 1',
-                  maxHeight: '340px',
+                  height: '190px',
                   overflow: 'hidden',
                   background: '#f6f9f7',
                   display: 'flex',
@@ -753,7 +755,7 @@ export default function ProductsPage({ setActiveTab }) {
                     width: '100%',
                     height: '100%',
                     objectFit: 'cover',
-                    objectPosition: 'center 10%',
+                    objectPosition: 'center 15%',
                     display: 'block',
                     transition: 'transform 0.35s ease',
                   }}
@@ -763,15 +765,15 @@ export default function ProductsPage({ setActiveTab }) {
                 <span
                   style={{
                     position: 'absolute',
-                    top: '14px',
-                    left: '14px',
-                    fontSize: '0.75rem',
+                    top: '10px',
+                    left: '10px',
+                    fontSize: '0.68rem',
                     fontWeight: 800,
-                    padding: '5px 12px',
+                    padding: '4px 10px',
                     borderRadius: '20px',
                     background: '#ffffff',
                     color: p.tagColor,
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    boxShadow: '0 3px 10px rgba(0,0,0,0.12)',
                     textTransform: 'uppercase',
                     letterSpacing: '0.04em',
                   }}
@@ -782,12 +784,12 @@ export default function ProductsPage({ setActiveTab }) {
                 <span
                   style={{
                     position: 'absolute',
-                    bottom: '12px',
-                    right: '12px',
-                    fontSize: '0.75rem',
+                    bottom: '10px',
+                    right: '10px',
+                    fontSize: '0.68rem',
                     fontWeight: 700,
-                    padding: '4px 10px',
-                    borderRadius: '8px',
+                    padding: '3px 8px',
+                    borderRadius: '7px',
                     background: 'rgba(7, 22, 41, 0.82)',
                     backdropFilter: 'blur(4px)',
                     color: '#ffffff',
@@ -798,23 +800,23 @@ export default function ProductsPage({ setActiveTab }) {
               </div>
 
               {/* Product Body Details */}
-              <div className="public-product-card-body" style={{ padding: '24px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div className="public-product-card-body" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div className="public-product-card-info">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0c2340', margin: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                    <h3 style={{ fontSize: '1.08rem', fontWeight: 800, color: '#0c2340', margin: 0, lineHeight: 1.3 }}>
                       {p.name}
                     </h3>
                   </div>
 
-                  <p style={{ fontSize: '0.9rem', color: '#597361', lineHeight: 1.6, marginBottom: '16px' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#597361', lineHeight: 1.48, marginBottom: '10px' }}>
                     {p.desc}
                   </p>
 
                   {/* Features List */}
-                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                  <div className="public-product-card-features" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '10px' }}>
                     {p.features.map((feat, fidx) => (
-                      <div key={fidx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', color: '#475569' }}>
-                        <Check size={14} color="#16a34a" />
+                      <div key={fidx} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#475569' }}>
+                        <Check size={13} color="#16a34a" />
                         <span>{feat}</span>
                       </div>
                     ))}
@@ -833,9 +835,9 @@ export default function ProductsPage({ setActiveTab }) {
                   </div>
 
                   {/* Tap to View Details pill */}
-                  <div className="public-product-card-view-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 700, marginBottom: '6px' }}>
-                    <Eye size={13} />
-                    <span>Click card for details & specs →</span>
+                  <div className="public-product-card-view-hint" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', color: '#0d5c3a', fontWeight: 700, marginBottom: '4px' }}>
+                    <Eye size={12} />
+                    <span>Click card for details →</span>
                   </div>
                 </div>
 
@@ -846,13 +848,13 @@ export default function ProductsPage({ setActiveTab }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    paddingTop: '16px',
+                    paddingTop: '12px',
                     borderTop: '1px solid #edf3ee',
                   }}
                 >
                   <div className="public-product-price">
-                    <span style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0d5c3a' }}>{p.price}</span>
-                    <span style={{ fontSize: '0.82rem', color: '#597361', marginLeft: '6px' }}>{p.unit}</span>
+                    <span style={{ fontSize: '1.32rem', fontWeight: 900, color: '#0d5c3a' }}>{p.price}</span>
+                    <span style={{ fontSize: '0.74rem', color: '#597361', marginLeft: '5px' }}>{p.unit}</span>
                   </div>
 
                   <button
@@ -865,19 +867,19 @@ export default function ProductsPage({ setActiveTab }) {
                       background: 'linear-gradient(135deg, #0d5c3a 0%, #16945a 100%)',
                       color: '#ffffff',
                       fontWeight: 700,
-                      fontSize: '0.9rem',
-                      padding: '10px 20px',
-                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      padding: '8px 14px',
+                      borderRadius: '9px',
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '6px',
+                      gap: '5px',
                       border: 'none',
                       cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+                      boxShadow: '0 4px 10px rgba(13, 92, 58, 0.2)',
                     }}
                   >
-                    <span>Subscribe Now</span>
-                    <ArrowRight size={16} />
+                    <span>Subscribe</span>
+                    <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
@@ -887,48 +889,49 @@ export default function ProductsPage({ setActiveTab }) {
 
         {/* Quality Assurance Badges */}
         <div
+          className="public-products-qa-box web-reveal"
           style={{
-            marginTop: '50px',
+            marginTop: '36px',
             background: '#ffffff',
-            borderRadius: '24px',
-            padding: '40px',
-            border: '1.5px solid #e2ece3',
+            borderRadius: '18px',
+            padding: '26px 28px',
+            border: '1px solid #e2ece3',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-            gap: '30px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '22px',
           }}
         >
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#166534', flexShrink: 0 }}>
-              <ShieldCheck size={24} />
+          <div className="web-qa-item" style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+            <div className="web-qa-icon" style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#166534', flexShrink: 0 }}>
+              <ShieldCheck size={20} />
             </div>
             <div>
-              <h4 style={{ fontSize: '1.1rem', color: '#0c2340', fontWeight: 800, marginBottom: '6px' }}>Daily Purity Testing</h4>
-              <p style={{ fontSize: '0.86rem', color: '#597361', lineHeight: 1.5 }}>
+              <h4 style={{ fontSize: '1rem', color: '#0c2340', fontWeight: 800, marginBottom: '4px' }}>Daily Purity Testing</h4>
+              <p style={{ fontSize: '0.82rem', color: '#597361', lineHeight: 1.45 }}>
                 Every batch is tested for fat, SNF, and zero adulterants before bottling.
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0369a1', flexShrink: 0 }}>
-              <Droplets size={24} />
+          <div className="web-qa-item" style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+            <div className="web-qa-icon" style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#e0f2fe', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0369a1', flexShrink: 0 }}>
+              <Droplets size={20} />
             </div>
             <div>
-              <h4 style={{ fontSize: '1.1rem', color: '#0c2340', fontWeight: 800, marginBottom: '6px' }}>Zero Water Dilution</h4>
-              <p style={{ fontSize: '0.86rem', color: '#597361', lineHeight: 1.5 }}>
+              <h4 style={{ fontSize: '1rem', color: '#0c2340', fontWeight: 800, marginBottom: '4px' }}>Zero Water Dilution</h4>
+              <p style={{ fontSize: '0.82rem', color: '#597361', lineHeight: 1.45 }}>
                 What the cow yields is what reaches your kitchen. Never diluted with water or powder.
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#92400e', flexShrink: 0 }}>
-              <Clock size={24} />
+          <div className="web-qa-item" style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+            <div className="web-qa-icon" style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#92400e', flexShrink: 0 }}>
+              <Clock size={20} />
             </div>
             <div>
-              <h4 style={{ fontSize: '1.1rem', color: '#0c2340', fontWeight: 800, marginBottom: '6px' }}>Before 6:30 AM Drop</h4>
-              <p style={{ fontSize: '0.86rem', color: '#597361', lineHeight: 1.5 }}>
+              <h4 style={{ fontSize: '1rem', color: '#0c2340', fontWeight: 800, marginBottom: '4px' }}>Before 6:30 AM Drop</h4>
+              <p style={{ fontSize: '0.82rem', color: '#597361', lineHeight: 1.45 }}>
                 Silent, punctual delivery partner drops right at your doorstep before you wake up.
               </p>
             </div>

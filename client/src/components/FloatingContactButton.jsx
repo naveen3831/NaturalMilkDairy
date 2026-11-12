@@ -17,7 +17,9 @@ export default function FloatingContactButton({ activeTab, setActiveTab }) {
         className={`mobile-floating-contact-btn${isContactActive ? ' is-active' : ''}`}
         onClick={() => {
           setActiveTab('contact');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
         }}
         aria-label="Contact Natural Milk Dairy Support"
         title="Contact Us"

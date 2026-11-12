@@ -1,4 +1,5 @@
 const Banner = require('../models/Banner');
+const { ensureCloudinaryUrl } = require('../config/cloudinary');
 
 const DEFAULT_BANNERS = [
   {
@@ -35,12 +36,19 @@ const DEFAULT_BANNERS = [
   },
 ];
 
-// Seed default banners if DB is empty
+// Seed default banners if DB is empty, uploading local defaults to Cloudinary first
 const ensureDefaultBanners = async () => {
   try {
     const count = await Banner.countDocuments();
     if (count === 0) {
-      await Banner.insertMany(DEFAULT_BANNERS);
+      const prepared = [];
+      for (const b of DEFAULT_BANNERS) {
+        const cloudUrl = await ensureCloudinaryUrl(b.imageUrl, {
+          folder: 'natural-milk-dairy/banners',
+        }).catch(() => b.imageUrl);
+        prepared.push({ ...b, imageUrl: cloudUrl });
+      }
+      await Banner.insertMany(prepared);
     }
   } catch (err) {
     console.error('Error seeding banners:', err.message);
@@ -88,16 +96,10 @@ exports.createBanner = async (req, res) => {
     if (!title || !imageUrl) {
       return res.status(400).json({ success: false, message: 'Title and image URL are required' });
     }
-    let finalImageUrl = imageUrl;
-    if (finalImageUrl.startsWith('data:image/')) {
-      try {
-        const { uploadUrlOrBase64 } = require('../config/cloudinary');
-        const cloudRes = await uploadUrlOrBase64(finalImageUrl, 'natural-milk-dairy/banners');
-        finalImageUrl = cloudRes.secure_url;
-      } catch (err) {
-        console.error('Failed to upload banner image to Cloudinary:', err);
-      }
-    }
+    const finalImageUrl = await ensureCloudinaryUrl(imageUrl, {
+      folder: 'natural-milk-dairy/banners',
+      required: true,
+    });
     const banner = new Banner({
       title,
       subtitle: subtitle || '',
@@ -128,17 +130,10 @@ exports.updateBanner = async (req, res) => {
     if (title !== undefined) banner.title = title;
     if (subtitle !== undefined) banner.subtitle = subtitle;
     if (imageUrl !== undefined) {
-      let finalImageUrl = imageUrl;
-      if (finalImageUrl.startsWith('data:image/')) {
-        try {
-          const { uploadUrlOrBase64 } = require('../config/cloudinary');
-          const cloudRes = await uploadUrlOrBase64(finalImageUrl, 'natural-milk-dairy/banners');
-          finalImageUrl = cloudRes.secure_url;
-        } catch (err) {
-          console.error('Failed to upload updated banner image to Cloudinary:', err);
-        }
-      }
-      banner.imageUrl = finalImageUrl;
+      banner.imageUrl = await ensureCloudinaryUrl(imageUrl, {
+        folder: 'natural-milk-dairy/banners',
+        required: true,
+      });
     }
     if (category !== undefined) banner.category = category;
     if (order !== undefined) banner.order = Number(order);

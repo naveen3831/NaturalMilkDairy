@@ -94,9 +94,9 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
       setIsUploading(false);
       if (res && res.success && res.url) {
         setProdImage(res.url);
-        setUploadStatus(res.warning ? 'Saved locally' : 'Uploaded to Cloudinary');
+        setUploadStatus('Uploaded to Cloudinary');
       } else {
-        setUploadStatus('Upload failed. Used default preset.');
+        setUploadStatus(res?.message || 'Cloudinary upload failed. Please retry.');
       }
     }
   };
