@@ -74,7 +74,6 @@ import ReportDownloadModal from '../../components/ReportDownloadModal';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import { resolveProofUrl } from '../../services/api';
 import { watermarkDeliveryPhoto } from '../../services/photoWatermarker';
-import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
 import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 
 const parseCoordinatesFromInput = (input) => {
@@ -145,6 +144,18 @@ const getDeliveryRoute = () => {
     'edit',
   ];
   return { page, detail: page === 'profile' && profileViews.includes(detail) ? detail : null };
+};
+
+const toIstDateKey = (rawDate) => {
+  if (!rawDate) return '';
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) {
+    const m = str.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+  }
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 };
 
 export default function DeliveryBoyApp({ setActiveTab }) {
@@ -842,8 +853,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
   // Filter for deliveries: 'pending' (first/default) | 'delivered' | 'not_delivered' | 'all' (last)
   const [filterStatus, setFilterStatus] = useState('pending');
+  // Primary delivery section tab: 'today' (first/default) | 'upcoming' | 'history' | 'all' (last)
+  const [deliverySectionTab, setDeliverySectionTab] = useState('today');
+  const [allPartnerDeliveries, setAllPartnerDeliveries] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchAllPartnerDeliveries = useCallback(async () => {
+    try {
+      const res = await fetch('/api/deliveries?range=all', {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.deliveries)) {
+        setAllPartnerDeliveries(data.deliveries);
+      }
+    } catch (err) {
+      console.warn('Deliveries fetch all error:', err);
+    }
+  }, [getAuthHeaders]);
 
   // Modal states
   const [activeItem, setActiveItem] = useState(null);
@@ -866,7 +894,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState('');
   const [previewProofModal, setPreviewProofModal] = useState(null);
-  const [partnerProofTab, setPartnerProofTab] = useState('photo'); // 'photo' | 'map'
   const fileInputRef = useRef(null);
 
   // Not delivered form
@@ -925,7 +952,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const [syncingNow, setSyncingNow] = useState(false);
 
   // Profile Sub-Screen Detailed Views (Deliveries Details & Subscriptions History)
-  const [profileDelFilter, setProfileDelFilter] = useState('all');
+  const [profileDelFilter, setProfileDelFilter] = useState('today');
   const [profileDelSearch, setProfileDelSearch] = useState('');
   const [profileSubHistTab, setProfileSubHistTab] = useState('subscriptions');
   const [profileSubSearch, setProfileSubSearch] = useState('');
@@ -1249,7 +1276,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
   useEffect(() => {
     fetchDeliveries(selectedDate, 'all', boyId);
-  }, [selectedDate, boyId, fetchDeliveries]);
+    fetchAllPartnerDeliveries();
+  }, [selectedDate, boyId, fetchDeliveries, fetchAllPartnerDeliveries]);
 
   useEffect(() => {
     loadAssignedCustomers();
@@ -1260,19 +1288,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     if (!wsSubscribe) return;
     const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchDeliveries(selectedDate, 'all', boyId);
+      fetchAllPartnerDeliveries();
       loadAssignedCustomers();
     });
     const unsubCust = wsSubscribe('CUSTOMER_UPDATED', () => {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
+      fetchAllPartnerDeliveries();
     });
     const unsubCustCreated = wsSubscribe('CUSTOMER_CREATED', () => {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
+      fetchAllPartnerDeliveries();
     });
     const unsubLoc = wsSubscribe('LOCATION_UPDATED', (payload) => {
       loadAssignedCustomers();
       fetchDeliveries(selectedDate, 'all', boyId);
+      fetchAllPartnerDeliveries();
       if (payload && payload.customerName) {
         showToast(`📍 Location updated for ${payload.customerName}!`);
       }
@@ -1283,19 +1315,20 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       if (typeof unsubCustCreated === 'function') unsubCustCreated();
       if (typeof unsubLoc === 'function') unsubLoc();
     };
-  }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, loadAssignedCustomers]);
+  }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, fetchAllPartnerDeliveries, loadAssignedCustomers]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await Promise.all([
       fetchDeliveries(selectedDate, 'all', boyId),
+      fetchAllPartnerDeliveries(),
       loadAssignedCustomers(),
     ]);
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
   // Filter deliveries assigned to this delivery partner directly from active database
-  const myDeliveries = (deliveries || []).filter((d) => {
+  const isAssignedToMe = (d) => {
     if (!d) return false;
     const matchesId =
       (boyId && d.deliveryBoyId === boyId) ||
@@ -1318,7 +1351,47 @@ export default function DeliveryBoyApp({ setActiveTab }) {
        (d.customerArea && d.customerArea.toLowerCase().includes(boyArea.toLowerCase())));
 
     return matchesId || matchesName || matchesCustomer || matchesArea || user?.role === 'delivery_boy';
+  };
+
+  const myDeliveries = (deliveries || []).filter(isAssignedToMe);
+
+  const todayIstKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+  // Merge deliveries from context and allPartnerDeliveries
+  const combinedDeliveriesMap = new Map();
+  [...(deliveries || []), ...allPartnerDeliveries].forEach((d) => {
+    if (!d) return;
+    const key = d._id || d.id || `${d.deliveryDate}-${d.customerId}`;
+    if (!combinedDeliveriesMap.has(key)) {
+      combinedDeliveriesMap.set(key, d);
+    }
   });
+  const allKnownPartnerDeliveries = Array.from(combinedDeliveriesMap.values()).filter(isAssignedToMe);
+
+  const partnerTodayDeliveries = allKnownPartnerDeliveries.filter((d) => {
+    const k = toIstDateKey(d.deliveryDate || d.date);
+    return k === todayIstKey;
+  });
+  const effectiveTodayDeliveries = partnerTodayDeliveries.length > 0 ? partnerTodayDeliveries : myDeliveries;
+
+  const partnerUpcomingDeliveries = allKnownPartnerDeliveries
+    .filter((d) => {
+      const k = toIstDateKey(d.deliveryDate || d.date);
+      return k > todayIstKey && d.status !== 'delivered';
+    })
+    .sort((a, b) => toIstDateKey(a.deliveryDate || a.date).localeCompare(toIstDateKey(b.deliveryDate || b.date)));
+
+  const partnerHistoryDeliveries = allKnownPartnerDeliveries
+    .filter((d) => {
+      const k = toIstDateKey(d.deliveryDate || d.date);
+      if (k === todayIstKey && d.status !== 'delivered') return false;
+      return (k && k < todayIstKey) || d.status === 'delivered';
+    })
+    .sort((a, b) => toIstDateKey(b.deliveryDate || b.date).localeCompare(toIstDateKey(a.deliveryDate || a.date)));
+
+  const allPartnerTotalCount = allKnownPartnerDeliveries.length > 0
+    ? allKnownPartnerDeliveries.length
+    : (effectiveTodayDeliveries.length + partnerUpcomingDeliveries.length + partnerHistoryDeliveries.length);
 
   const pendingList = myDeliveries.filter((d) => d.status === 'pending');
   const completedList = myDeliveries.filter((d) => d.status === 'delivered');
@@ -3431,9 +3504,71 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               </div>
 
-              {/* Filter Tabs & Search Controls */}
-              <div
-                className="driver-controls-bar"
+              {/* PRIMARY DELIVERY SECTION TABS: Today (First), Upcoming, Delivery History, All Deliveries (Last) */}
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', scrollbarWidth: 'none' }}>
+                {[
+                  { id: 'today', label: 'Today', count: effectiveTodayDeliveries.length, bg: '#e0f2fe', color: '#0369a1' },
+                  { id: 'upcoming', label: 'Upcoming', count: partnerUpcomingDeliveries.length, bg: '#fef3c7', color: '#b45309' },
+                  { id: 'history', label: 'Delivery History', count: partnerHistoryDeliveries.length, bg: '#dcfce7', color: '#15803d' },
+                  { id: 'all', label: 'All Deliveries', count: allPartnerTotalCount, bg: '#f1f5f9', color: '#475569' },
+                ].map((tab) => {
+                  const active = deliverySectionTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setDeliverySectionTab(tab.id)}
+                      style={{
+                        padding: '7px 14px',
+                        borderRadius: '20px',
+                        fontSize: '0.8rem',
+                        fontWeight: 800,
+                        border: active ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                        background: active ? '#0d5c3a' : '#ffffff',
+                        color: active ? '#ffffff' : '#64748b',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        boxShadow: active ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+                      }}
+                    >
+                      {tab.label}
+                      <span style={{
+                        fontSize: '0.7rem',
+                        background: active ? 'rgba(255,255,255,0.25)' : tab.bg,
+                        color: active ? '#ffffff' : tab.color,
+                        padding: '1px 6px',
+                        borderRadius: '10px',
+                        fontWeight: 900,
+                      }}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* SECTION 1: TODAY'S DELIVERIES */}
+              {(deliverySectionTab === 'all' || deliverySectionTab === 'today') && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {deliverySectionTab === 'all' && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>Today's Deliveries</h3>
+                        <span style={{ background: '#e0f2fe', color: '#0369a1', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #bae6fd' }}>
+                          {effectiveTodayDeliveries.length} Today
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>Today's Morning Slot</span>
+                    </div>
+                  )}
+
+                  {/* Filter Tabs & Search Controls */}
+                  <div
+                    className="driver-controls-bar"
                 style={{
                   background: '#ffffff',
                   border: '1px solid #e2e8f0',
@@ -3935,6 +4070,163 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   })}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* SECTION 2: UPCOMING DELIVERIES */}
+          {(deliverySectionTab === 'all' || deliverySectionTab === 'upcoming') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: deliverySectionTab === 'all' ? '14px' : '0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>Upcoming Deliveries</h3>
+                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                    {partnerUpcomingDeliveries.length} Scheduled
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Morning Route</span>
+              </div>
+
+              {partnerUpcomingDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>
+                  No upcoming deliveries scheduled for future dates on your route.
+                </div>
+              ) : (
+                partnerUpcomingDeliveries.map((item, index) => {
+                  const rawDate = item.deliveryDate || item.date;
+                  const formattedDate = rawDate ? new Date(rawDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : 'Next Drop';
+                  return (
+                    <div
+                      key={item.id || item._id || `up-${index}`}
+                      className="driver-mobile-card is-pending"
+                      style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#fef3c7', color: '#b45309', fontSize: '0.74rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            #{index + 1}
+                          </span>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>{item.customerName || 'Customer'}</h4>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>📅 {formattedDate} • 5:00 AM – 6:30 AM</div>
+                          </div>
+                        </div>
+                        <span style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', borderRadius: '10px', padding: '2px 8px', fontSize: '0.68rem', fontWeight: 800 }}>
+                          Upcoming Drop
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={13} color="#059669" />
+                        <span>{item.customerAddress || item.address || 'Doorstep drop address'}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '2px' }}>
+                        <span style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '3px 8px', fontSize: '0.74rem', fontWeight: 800, color: '#065f46' }}>
+                          🥛 Milk {item.plannedMilk ?? item.actualMilk ?? 1}L
+                        </span>
+                        {(item.plannedCurd > 0 || item.actualCurd > 0) && (
+                          <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '3px 8px', fontSize: '0.74rem', fontWeight: 800, color: '#1d4ed8' }}>
+                            🥣 Curd {item.plannedCurd ?? item.actualCurd}g
+                          </span>
+                        )}
+                        <span style={{ background: '#f1f5f9', borderRadius: '8px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>
+                          💳 Advance Prepaid
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* SECTION 3: DELIVERY HISTORY */}
+          {(deliverySectionTab === 'all' || deliverySectionTab === 'history') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: deliverySectionTab === 'all' ? '14px' : '0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>Delivery History</h3>
+                  <span style={{ background: '#dcfce7', color: '#15803d', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #bbf7d0' }}>
+                    {partnerHistoryDeliveries.length} Verified Drops
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <CheckCircle2 size={13} /> Completed
+                </span>
+              </div>
+
+              {partnerHistoryDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>
+                  No past deliveries in history yet.
+                </div>
+              ) : (
+                partnerHistoryDeliveries.map((item, index) => {
+                  const rawDate = item.deliveryDate || item.date;
+                  const formattedDate = rawDate ? new Date(rawDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Past Drop';
+                  return (
+                    <div
+                      key={item.id || item._id || `hist-${index}`}
+                      className="driver-mobile-card is-done"
+                      style={{ background: '#ffffff', borderRadius: '14px', border: '1px solid #bbf7d0', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ width: '24px', height: '24px', borderRadius: '6px', background: '#dcfce7', color: '#059669', fontSize: '0.74rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            #{index + 1}
+                          </span>
+                          <div>
+                            <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>{item.customerName || 'Customer'}</h4>
+                            <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 700 }}>✓ Delivered on {formattedDate}</div>
+                          </div>
+                        </div>
+                        {item.proofImage ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewProofModal(item)}
+                            style={{
+                              background: '#e2f1ea',
+                              color: '#0d5c3a',
+                              border: '1px solid #bbf7d0',
+                              borderRadius: '8px',
+                              padding: '3px 8px',
+                              fontSize: '0.7rem',
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Camera size={12} />
+                            <span>Proof Photo</span>
+                          </button>
+                        ) : (
+                          <span style={{ background: '#ecfdf5', color: '#059669', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '2px 8px', fontSize: '0.68rem', fontWeight: 800 }}>
+                            ✓ Verified
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MapPin size={13} color="#059669" />
+                        <span>{item.customerAddress || item.address || 'Doorstep delivery address'}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginTop: '2px' }}>
+                        <span style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '3px 8px', fontSize: '0.74rem', fontWeight: 800, color: '#065f46' }}>
+                          🥛 Milk {item.actualMilk ?? item.plannedMilk ?? 1}L
+                        </span>
+                        {(item.actualCurd > 0 || item.plannedCurd > 0) && (
+                          <span style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '3px 8px', fontSize: '0.74rem', fontWeight: 800, color: '#1d4ed8' }}>
+                            🥣 Curd {item.actualCurd ?? item.plannedCurd}g
+                          </span>
+                        )}
+                        <span style={{ background: '#f1f5f9', borderRadius: '8px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>
+                          Paid / Settled
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
             </div>
           )}
 
@@ -6543,12 +6835,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                     <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
                       {[
-                        { key: 'all', label: `All (${myDeliveries.length})` },
+                        { key: 'today', label: `Today (${partnerTodayDeliveries.length})` },
                         { key: 'pending', label: `Pending (${pendingList.length})` },
                         { key: 'delivered', label: `Delivered (${completedList.length})` },
                         { key: 'not_delivered', label: `Missed (${missedList.length})` },
                         { key: 'cash', label: 'Cash Only' },
                         { key: 'upi', label: 'UPI / Online' },
+                        { key: 'all', label: `All Deliveries (${allKnownPartnerDeliveries.length || myDeliveries.length})` },
                       ].map((chip) => {
                         const isChipActive = profileDelFilter === chip.key;
                         return (
@@ -6578,7 +6871,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                   {/* Delivery Cards List */}
                   {(() => {
-                    const filtered = myDeliveries.filter((d) => {
+                    const sourceList = allKnownPartnerDeliveries.length > 0 ? allKnownPartnerDeliveries : myDeliveries;
+                    const filtered = sourceList.filter((d) => {
+                      if (profileDelFilter === 'today') return toIstDateKey(d.deliveryDate || d.date) === todayIstKey;
                       if (profileDelFilter === 'pending' && d.status !== 'pending') return false;
                       if (profileDelFilter === 'delivered' && d.status !== 'delivered') return false;
                       if (profileDelFilter === 'not_delivered' && d.status !== 'not_delivered') return false;
@@ -10531,119 +10826,32 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </button>
               </div>
 
-              {/* View Switcher Tabs: Photo Proof vs Leaflet Map */}
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => setPartnerProofTab('photo')}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: partnerProofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                    background: partnerProofTab === 'photo' ? '#059669' : '#f8fafc',
-                    color: partnerProofTab === 'photo' ? '#ffffff' : '#475569',
-                    fontWeight: 800,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
+              {/* Viewport: Verified Photo Proof with Location Inside Image */}
+              <div
+                style={{
+                  borderRadius: '12px',
+                  overflow: 'hidden',
+                  border: '1.5px solid #059669',
+                  background: '#0b1e14',
+                  position: 'relative',
+                  minHeight: '260px',
+                  maxHeight: '440px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <img
+                  src={proofImgUrl}
+                  alt="Verified doorstep proof photo"
+                  onError={(e) => {
+                    const rawP = proofObj.proofImage || proofObj.proofUrl || '';
+                    const cloud = `https://naturalmilkdairy.speshway.site${rawP.startsWith('/') ? rawP : `/${rawP}`}`;
+                    if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
                   }}
-                >
-                  <Camera size={14} />
-                  <span>Doorstep Photo Proof</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPartnerProofTab('map')}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: partnerProofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                    background: partnerProofTab === 'map' ? '#059669' : '#f8fafc',
-                    color: partnerProofTab === 'map' ? '#ffffff' : '#475569',
-                    fontWeight: 800,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <MapPin size={14} />
-                  <span>Leaflet Map Location</span>
-                </button>
-              </div>
-
-              {/* Viewport: Photo (clicking switches to Map) OR Leaflet Map */}
-              {partnerProofTab === 'photo' ? (
-                <div
-                  onClick={() => setPartnerProofTab('map')}
-                  title="Click image to view doorstep location on Leaflet Map"
-                  style={{
-                    borderRadius: '12px',
-                    overflow: 'hidden',
-                    border: '1.5px solid #059669',
-                    background: '#0b1e14',
-                    position: 'relative',
-                    minHeight: '260px',
-                    maxHeight: '440px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <img
-                    src={proofImgUrl}
-                    alt="Verified doorstep proof photo"
-                    onError={(e) => {
-                      const rawP = proofObj.proofImage || proofObj.proofUrl || '';
-                      const cloud = `https://naturalmilkdairy.speshway.site${rawP.startsWith('/') ? rawP : `/${rawP}`}`;
-                      if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
-                    }}
-                    style={{ width: '100%', maxHeight: '440px', objectFit: 'contain', display: 'block' }}
-                  />
-                  {/* Floating click prompt */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '12px',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      backdropFilter: 'blur(4px)',
-                      color: '#ffffff',
-                      borderRadius: '20px',
-                      padding: '4px 12px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      border: '1px solid rgba(52, 211, 153, 0.5)',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    <MapPin size={12} color="#34d399" />
-                    <span>Tap image to view location on Leaflet Map</span>
-                  </div>
-                </div>
-              ) : (
-                /* Leaflet Map for this location ONLY */
-                <LeafletSingleLocationMap
-                  lat={custLat}
-                  lng={custLng}
-                  title={custName}
-                  address={address}
-                  partnerName={driver}
-                  height="340px"
+                  style={{ width: '100%', maxHeight: '440px', objectFit: 'contain', display: 'block' }}
                 />
-              )}
+              </div>
 
               {/* Timestamp & Location Detail Card in IST */}
               <div style={{ marginTop: '14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px' }}>
@@ -10652,6 +10860,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     <Clock size={13} color="#059669" /> Exact Timestamp (IST):
                   </span>
                   <strong style={{ color: '#065f46', fontWeight: 800 }}>{formattedTime}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem' }}>
+                  <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <MapPin size={13} color="#059669" /> Location:
+                  </span>
+                  <strong style={{ color: '#0f172a', textAlign: 'right', maxWidth: '65%' }}>{address}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
                   <span style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -10663,35 +10877,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
               {/* Action Buttons */}
               <div style={{ marginTop: '14px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setPartnerProofTab(partnerProofTab === 'photo' ? 'map' : 'photo')}
-                  style={{
-                    padding: '8px 14px',
-                    background: '#ecfdf5',
-                    color: '#059669',
-                    borderRadius: '8px',
-                    fontWeight: 800,
-                    fontSize: '0.82rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1.5px solid #a7f3d0',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {partnerProofTab === 'photo' ? (
-                    <>
-                      <MapPin size={14} />
-                      <span>View on Leaflet Map</span>
-                    </>
-                  ) : (
-                    <>
-                      <Camera size={14} />
-                      <span>View Proof Photo</span>
-                    </>
-                  )}
-                </button>
                 <a
                   href={proofImgUrl}
                   target="_blank"

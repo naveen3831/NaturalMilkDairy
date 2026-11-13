@@ -13,6 +13,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 const CATEGORY_OPTIONS = [
   { id: 'milk', label: 'Fresh Milks' },
@@ -275,7 +276,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                       borderRadius: '10px',
                       border: '1px solid #e2e8f0',
                     }}
-                    onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                    onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
                   />
                 ) : (
                   <div
@@ -473,7 +474,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                     setEditingBanner({
                       title: '',
                       subtitle: '',
-                      imageUrl: '/hero_banner_card.png',
+                      imageUrl: CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png',
                       category: 'milk',
                       order: banners.length,
                       isActive: true,
@@ -524,7 +525,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                             src={b.imageUrl}
                             alt={b.title}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                            onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
                           />
                           <div
                             style={{

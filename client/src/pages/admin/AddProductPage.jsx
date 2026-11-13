@@ -396,7 +396,7 @@ export default function AddProductPage({ onBack, onSaved }) {
                 src={image}
                 alt="Product Preview"
                 onError={(e) => {
-                  e.currentTarget.src = '/product-cow-milk.jpg';
+                  e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk;
                 }}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />

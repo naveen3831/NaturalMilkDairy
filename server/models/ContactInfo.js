@@ -97,6 +97,30 @@ const contactInfoSchema = new mongoose.Schema(
         trim: true,
       },
     },
+    footerBgImage: {
+      type: String,
+      default:
+        'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794486539/natural-milk-dairy/assets/footer_farm_bg.jpg',
+      trim: true,
+    },
+    footerLogo: {
+      type: String,
+      default:
+        'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454814/natural-milk-dairy/logo.jpg',
+      trim: true,
+    },
+    footerFarmLandscape: {
+      type: String,
+      default:
+        'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794486539/natural-milk-dairy/assets/footer_farm_bg.jpg',
+      trim: true,
+    },
+    logoUrl: {
+      type: String,
+      default:
+        'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454814/natural-milk-dairy/logo.jpg',
+      trim: true,
+    },
     isPrimary: {
       type: Boolean,
       default: true,

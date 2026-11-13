@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MapPin, Phone, Mail, X } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function Footer({ setActiveTab }) {
   const [legalModal, setLegalModal] = useState(null);
@@ -25,6 +26,15 @@ export default function Footer({ setActiveTab }) {
   const instagramUrl = socials.instagram || 'https://instagram.com';
   const youtubeUrl = socials.youtube || 'https://youtube.com';
 
+  const effectiveFooterBg =
+    info.footerBgImage ||
+    info.footerFarmLandscape ||
+    CLOUDINARY_MEDIA.footerFarmBg;
+  const effectiveLogo =
+    info.footerLogo ||
+    info.logoUrl ||
+    CLOUDINARY_MEDIA.logo;
+
   const scrollToTop = () => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     document.documentElement.scrollTop = 0;
@@ -43,7 +53,11 @@ export default function Footer({ setActiveTab }) {
   };
 
   return (
-    <footer className="nmd-spesh-footer" aria-label="Site footer">
+    <footer
+      className="nmd-spesh-footer"
+      style={{ '--footer-farm-bg': `url('${effectiveFooterBg}')` }}
+      aria-label="Site footer"
+    >
       {/* Desktop Footer (Web) - 100% Unchanged */}
       <div className="nmd-footer-desktop-view">
         <div className="nmd-spesh-container">
@@ -59,9 +73,10 @@ export default function Footer({ setActiveTab }) {
               >
                 <div className="nmd-spesh-logo-box">
                   <img
-                    src="/logo.png"
+                    src={effectiveLogo}
                     alt="Natural Milk Dairy"
                     className="nmd-spesh-logo-img"
+                    onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.logo; }}
                   />
                 </div>
                 <div className="nmd-spesh-brand-names">
@@ -286,8 +301,9 @@ export default function Footer({ setActiveTab }) {
         >
           <div className="nmd-mobile-footer-logo">
             <img
-              src="/logo.png"
+              src={effectiveLogo}
               alt="Natural Milk Dairy"
+              onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.logo; }}
             />
           </div>
           <div className="nmd-mobile-footer-brand-info">

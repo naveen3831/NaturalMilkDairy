@@ -38,6 +38,7 @@ import { useAuth } from '../context/AuthContext';
 import CustomerBottomNav, { CUSTOMER_HOME_NAV_ITEMS } from '../components/CustomerBottomNav';
 import SubscriptionHistoryModal, { SubscriptionStatusBadge } from '../components/SubscriptionHistoryModal';
 import { startSubscriptionPayment, getSubscriptionHistory } from '../services/subscriptionPayment';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 import {
   UpgradePlanFullPage,
   ExtendSubscriptionFullPage,
@@ -628,7 +629,7 @@ export default function SubscriptionPage({ setActiveTab }) {
           <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
             <img
               src="/sub_active_thumb.png"
-              onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+              onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
               alt="Farm Pure Milk"
               style={{
                 width: '64px',
@@ -1191,8 +1192,8 @@ export default function SubscriptionPage({ setActiveTab }) {
               }}
             >
               <img
-                src="/sub_hero_milk.png"
-                onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                src={CLOUDINARY_MEDIA.subHeroMilk || '/sub_hero_milk.png'}
+                onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                 alt="Fresh Farm Milk"
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
@@ -1232,7 +1233,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <img
                     src="/sub_active_thumb.png"
-                    onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                    onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                     alt="Plan Thumbnail"
                     style={{ width: '50px', height: '50px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2ebe5' }}
                   />
@@ -1678,9 +1679,9 @@ export default function SubscriptionPage({ setActiveTab }) {
               }}
             >
               {[
-                { title: 'Milk Plans', img: '/cat_img_milk.png', bg: '#edf7f1', border: '#dbeee2' },
-                { title: 'Curd Plans', img: '/cat_img_curd.png', bg: '#f4f7fa', border: '#e2e9f0' },
-                { title: 'Ghee Plans', img: '/cat_img_ghee.png', bg: '#fef8ec', border: '#fae8c6' },
+                { title: 'Milk Plans', img: CLOUDINARY_MEDIA.catImgMilk, bg: '#edf7f1', border: '#dbeee2' },
+                { title: 'Curd Plans', img: CLOUDINARY_MEDIA.catImgCurd, bg: '#f4f7fa', border: '#e2e9f0' },
+                { title: 'Ghee Plans', img: CLOUDINARY_MEDIA.catImgGhee, bg: '#fef8ec', border: '#fae8c6' },
               ].map((cat) => (
                 <div
                   key={cat.title}
@@ -2051,7 +2052,7 @@ export default function SubscriptionPage({ setActiveTab }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <img
                   src="/sub_active_thumb.png"
-                  onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                   alt="Active Subscription"
                   style={{ width: '60px', height: '60px', borderRadius: '16px', objectFit: 'cover', border: '1px solid #e2ebe5' }}
                 />

@@ -22,6 +22,24 @@ String _todayIstCacheKey() {
   return 'nmd_addon_drops_${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
 }
 
+String _getTodayIstDateStr() {
+  final nowIst = IstDateTime.toIst(DateTime.now());
+  return '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+}
+
+String _toIstDateKey(dynamic rawDate) {
+  if (rawDate == null) return '';
+  final str = rawDate.toString().trim();
+  if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(str)) return str;
+  final dt = DateTime.tryParse(str);
+  if (dt != null) {
+    final ist = IstDateTime.toIst(dt);
+    return '${ist.year}-${ist.month.toString().padLeft(2, '0')}-${ist.day.toString().padLeft(2, '0')}';
+  }
+  final m = RegExp(r'^(\d{4}-\d{2}-\d{2})').firstMatch(str);
+  return m?.group(1) ?? '';
+}
+
 Future<void> _saveLocalAddonCache(String deliveryId, Map<String, dynamic> patch) async {
   if (deliveryId.isEmpty) return;
   try {
@@ -86,6 +104,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   List<Map<String, dynamic>> _assignedCustomers = [];
   bool _isLoading = false;
   String _filterStatus = 'pending'; // 'pending', 'delivered', 'not_delivered', 'all'
+  String _deliverySectionTab = 'today'; // 'today', 'upcoming', 'history', 'all'
   String _searchQuery = '';
   StreamSubscription? _wsSub;
 
@@ -147,7 +166,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   };
 
   // Deliveries Details Sub-Screen States
-  String _delSubFilter = 'all'; // 'all', 'pending', 'delivered', 'not_delivered', 'cash', 'upi'
+  String _delSubFilter = 'today'; // 'today', 'pending', 'delivered', 'not_delivered', 'cash', 'upi', 'all'
   String _delSubSearch = '';
   final TextEditingController _delSubSearchCtrl = TextEditingController();
 
@@ -2082,105 +2101,229 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           ),
           const SizedBox(height: 16),
 
-          // 3. FILTER PILLS & SEARCH BAR
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
+          // PRIMARY SECTION FILTER PILLS: Today (First), Upcoming, Delivery History, All Deliveries (Last)
+          Builder(builder: (ctx) {
+            final todayStr = _getTodayIstDateStr();
+            final allList = _allDeliveries.isNotEmpty ? _allDeliveries : _deliveries;
+
+            final todayList = allList.where((d) => _toIstDateKey(d['deliveryDate'] ?? d['date']) == todayStr).toList();
+            final effectiveTodayList = todayList.isNotEmpty ? todayList : _deliveries;
+
+            final upcomingList = allList.where((d) {
+              final k = _toIstDateKey(d['deliveryDate'] ?? d['date']);
+              return k.compareTo(todayStr) > 0 && d['status'] != 'delivered';
+            }).toList()..sort((a, b) => _toIstDateKey(a['deliveryDate'] ?? a['date']).compareTo(_toIstDateKey(b['deliveryDate'] ?? b['date'])));
+
+            final historyList = allList.where((d) {
+              final k = _toIstDateKey(d['deliveryDate'] ?? d['date']);
+              if (k == todayStr && d['status'] != 'delivered') return false;
+              return k.compareTo(todayStr) < 0 || d['status'] == 'delivered';
+            }).toList()..sort((a, b) => _toIstDateKey(b['deliveryDate'] ?? b['date']).compareTo(_toIstDateKey(a['deliveryDate'] ?? a['date'])));
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Scrollable Pill Tabs
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      _buildPillTab('pending', 'Pending ($_pendingCount)'),
+                      _buildSectionPillTab('today', 'Today', effectiveTodayList.length),
                       const SizedBox(width: 8),
-                      _buildPillTab('delivered', 'Delivered ($_completedCount)'),
+                      _buildSectionPillTab('upcoming', 'Upcoming', upcomingList.length),
                       const SizedBox(width: 8),
-                      _buildPillTab('not_delivered', 'Not Done ($_notDeliveredCount)'),
+                      _buildSectionPillTab('history', 'Delivery History', historyList.length),
                       const SizedBox(width: 8),
-                      _buildPillTab('all', 'All ($_totalCount)'),
+                      _buildSectionPillTab('all', 'All Deliveries', allList.length),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
 
-                // Search Input Box
-                TextField(
-                  onChanged: (v) => setState(() => _searchQuery = v.trim()),
-                  decoration: InputDecoration(
-                    hintText: 'Search customer, flat, phone...',
-                    hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF94A3B8)),
-                    isDense: true,
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAF9),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE5EBE6)),
+                // SECTION 1: TODAY'S DELIVERIES
+                if (_deliverySectionTab == 'all' || _deliverySectionTab == 'today') ...[
+                  if (_deliverySectionTab == 'all') ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Today's Deliveries", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: const Color(0xFFE0F2FE), borderRadius: BorderRadius.circular(10)),
+                          child: Text('${effectiveTodayList.length} Today', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0369A1))),
+                        ),
+                      ],
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE5EBE6)),
+                    const SizedBox(height: 10),
+                  ],
+
+                  // 3. FILTER PILLS & SEARCH BAR
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF059669)),
+                    child: Column(
+                      children: [
+                        // Scrollable Pill Tabs
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: [
+                              _buildPillTab('pending', 'Pending ($_pendingCount)'),
+                              const SizedBox(width: 8),
+                              _buildPillTab('delivered', 'Delivered ($_completedCount)'),
+                              const SizedBox(width: 8),
+                              _buildPillTab('not_delivered', 'Not Done ($_notDeliveredCount)'),
+                              const SizedBox(width: 8),
+                              _buildPillTab('all', 'All ($_totalCount)'),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Search Input Box
+                        TextField(
+                          onChanged: (v) => setState(() => _searchQuery = v.trim()),
+                          decoration: InputDecoration(
+                            hintText: 'Search customer, flat, phone...',
+                            hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF94A3B8)),
+                            isDense: true,
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAF9),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFFE5EBE6)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFFE5EBE6)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFF059669)),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // 4. DELIVERY CARDS LIST
-          if (_isLoading)
-            const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: Color(0xFF059669))))
-          else if (_filteredDeliveries.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                children: [
-                  Icon(Icons.check_circle_outline_rounded, size: 48, color: Colors.green.shade300),
-                  const SizedBox(height: 12),
-                  const Text('No drops match this view', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                  const SizedBox(height: 4),
-                  const Text('Route fulfillments are fully up to date.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
                   const SizedBox(height: 14),
-                  ElevatedButton.icon(
-                    onPressed: _showAddCustomerModal,
-                    icon: const Icon(Icons.person_add_alt_1_rounded, size: 16, color: Colors.white),
-                    label: const Text('Add Customer to Route', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF059669),
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+                  // 4. TODAY'S DELIVERY CARDS LIST
+                  if (_isLoading)
+                    const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator(color: Color(0xFF059669))))
+                  else if (_filteredDeliveries.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(32),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(Icons.check_circle_outline_rounded, size: 48, color: Colors.green.shade300),
+                          const SizedBox(height: 12),
+                          const Text('No drops match this view', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                          const SizedBox(height: 4),
+                          const Text('Route fulfillments are fully up to date.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+                          const SizedBox(height: 14),
+                          ElevatedButton.icon(
+                            onPressed: _showAddCustomerModal,
+                            icon: const Icon(Icons.person_add_alt_1_rounded, size: 16, color: Colors.white),
+                            label: const Text('Add Customer to Route', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF059669),
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _filteredDeliveries.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 14),
+                      itemBuilder: (ctx, idx) => _buildDeliveryCard(_filteredDeliveries[idx], idx),
                     ),
-                  ),
+                  const SizedBox(height: 16),
                 ],
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _filteredDeliveries.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 14),
-              itemBuilder: (ctx, idx) => _buildDeliveryCard(_filteredDeliveries[idx], idx),
-            ),
+
+                // SECTION 2: UPCOMING DELIVERIES
+                if (_deliverySectionTab == 'all' || _deliverySectionTab == 'upcoming') ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Upcoming Deliveries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(10)),
+                        child: Text('${upcomingList.length} Scheduled', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFB45309))),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (upcomingList.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No upcoming deliveries scheduled for future dates.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12))),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: upcomingList.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (ctx, idx) => _buildDeliveryCard(upcomingList[idx], idx),
+                    ),
+                  const SizedBox(height: 16),
+                ],
+
+                // SECTION 3: DELIVERY HISTORY
+                if (_deliverySectionTab == 'all' || _deliverySectionTab == 'history') ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Delivery History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(10)),
+                        child: Text('${historyList.length} Verified Drops', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF15803D))),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (historyList.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No past deliveries in history yet.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12))),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: historyList.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (ctx, idx) => _buildDeliveryCard(historyList[idx], idx),
+                    ),
+                  const SizedBox(height: 16),
+                ],
+              ],
+            );
+          }),
         ],
       ),
     );
@@ -2215,6 +2358,72 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: valColor),
           ),
         ],
+      ),
+    );
+  }
+
+  // PRIMARY SECTION PILL TAB HELPER (Today, Upcoming, History, All)
+  Widget _buildSectionPillTab(String id, String label, int count) {
+    final isSelected = _deliverySectionTab == id;
+    final Color badgeBg = isSelected
+        ? Colors.white.withValues(alpha: 0.25)
+        : (id == 'today'
+            ? const Color(0xFFE0F2FE)
+            : (id == 'upcoming'
+                ? const Color(0xFFFEF3C7)
+                : (id == 'history' ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9))));
+    final Color badgeColor = isSelected
+        ? Colors.white
+        : (id == 'today'
+            ? const Color(0xFF0369A1)
+            : (id == 'upcoming'
+                ? const Color(0xFFB45309)
+                : (id == 'history' ? const Color(0xFF15803D) : const Color(0xFF475569))));
+
+    return InkWell(
+      onTap: () => setState(() => _deliverySectionTab = id),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: isSelected ? 13 : 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0),
+          ),
+          boxShadow: isSelected
+              ? [BoxShadow(color: const Color(0xFF0D5C3A).withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: badgeBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: badgeColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -6396,8 +6605,18 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       }
     }
 
-    List<Map<String, dynamic>> list = List.from(_deliveries);
-    if (_delSubFilter == 'pending') {
+    final todayStr = _getTodayIstDateStr();
+    final allList = _allDeliveries.isNotEmpty ? _allDeliveries : _deliveries;
+    final todayDropsList = allList.where((d) => _toIstDateKey(d['deliveryDate'] ?? d['date']) == todayStr).toList();
+    final effectiveTodayList = todayDropsList.isNotEmpty ? todayDropsList : _deliveries;
+
+    List<Map<String, dynamic>> list = _delSubFilter == 'all'
+        ? List.from(allList)
+        : List.from(effectiveTodayList);
+
+    if (_delSubFilter == 'today') {
+      list = List.from(effectiveTodayList);
+    } else if (_delSubFilter == 'pending') {
       list = list.where((d) => d['status'] == 'pending').toList();
     } else if (_delSubFilter == 'delivered') {
       list = list.where((d) => d['status'] == 'delivered').toList();
@@ -6643,7 +6862,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildDelSubFilterChip('all', 'All ($total)'),
+                _buildDelSubFilterChip('today', 'Today (${effectiveTodayList.length})'),
                 const SizedBox(width: 8),
                 _buildDelSubFilterChip('pending', 'Pending ($pending)'),
                 const SizedBox(width: 8),
@@ -6654,6 +6873,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 _buildDelSubFilterChip('cash', 'Cash ($cashCount)'),
                 const SizedBox(width: 8),
                 _buildDelSubFilterChip('upi', 'UPI ($upiCount)'),
+                const SizedBox(width: 8),
+                _buildDelSubFilterChip('all', 'All Deliveries (${allList.length})'),
               ],
             ),
           ),

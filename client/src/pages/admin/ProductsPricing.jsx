@@ -69,7 +69,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
   const [prodUnit, setProdUnit] = useState('1 L');
   const [prodPrice, setProdPrice] = useState('');
   const [prodDesc, setProdDesc] = useState('');
-  const [prodImage, setProdImage] = useState('/product-cow-milk.jpg');
+  const [prodImage, setProdImage] = useState(CLOUDINARY_MEDIA.cowMilk);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
 
@@ -116,7 +116,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
     setProdName('');
     setProdPrice('');
     setProdDesc('');
-    setProdImage('/product-cow-milk.jpg');
+    setProdImage(CLOUDINARY_MEDIA.cowMilk);
     setUploadStatus('');
     setShowAddForm(false);
     showToast(`✅ Product "${prodName}" added to catalog & MongoDB Atlas.`);
@@ -634,7 +634,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
                     src={imgSrc}
                     alt={p.name}
                     onError={(e) => {
-                      e.currentTarget.src = '/product-cow-milk.jpg';
+                      e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk;
                     }}
                     style={{
                       width: '100%',
@@ -870,7 +870,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
                               src={imgSrc}
                               alt={p.name}
                               onError={(e) => {
-                                e.currentTarget.src = '/product-cow-milk.jpg';
+                                e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk;
                               }}
                               style={{
                                 width: '100%',
@@ -1091,7 +1091,7 @@ export default function ProductsPricing({ onNavigateToAdd, onNavigateToEdit }) {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <img
-                    src={editProdImage || '/product-cow-milk.jpg'}
+                    src={editProdImage || CLOUDINARY_MEDIA.cowMilk}
                     alt="Current"
                     style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1px solid #059669' }}
                   />

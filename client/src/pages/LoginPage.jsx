@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff } from 'lucide-react';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function LoginPage({ setActiveTab }) {
   const { login } = useAuth();
@@ -339,9 +340,10 @@ export default function LoginPage({ setActiveTab }) {
             title="Natural Milk Dairy - Back to Home"
           >
             <img
-              src="/logo.png"
+              src={CLOUDINARY_MEDIA.logo || '/logo.png'}
               alt="Natural Milk Dairy"
               className="auth-logo-img"
+              onError={(e) => { e.currentTarget.src = '/logo.png'; }}
             />
           </div>
           <div className="auth-badge-subtitle">

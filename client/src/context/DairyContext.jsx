@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import { useAuth } from './AuthContext';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 const DairyContext = createContext();
 
@@ -40,7 +41,12 @@ export const DairyProvider = ({ children }) => {
       instagram: 'https://instagram.com',
       youtube: 'https://youtube.com',
     },
+    footerBgImage: CLOUDINARY_MEDIA.footerFarmBg,
+    footerLogo: CLOUDINARY_MEDIA.logo,
+    footerFarmLandscape: CLOUDINARY_MEDIA.footerFarmLandscape,
+    logoUrl: CLOUDINARY_MEDIA.logo,
   });
+  const [mediaAssets, setMediaAssets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
@@ -295,6 +301,18 @@ export const DairyProvider = ({ children }) => {
     }
   }, [getAuthHeaders, notifyRealtimeSync]);
 
+  const fetchMediaAssets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/media');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.assets)) {
+        setMediaAssets(data.assets);
+      }
+    } catch (err) {
+      console.warn('Media assets fetch error:', err);
+    }
+  }, []);
+
   // Reload everything
   const refreshAll = useCallback(() => {
     fetchDashboard();
@@ -307,7 +325,8 @@ export const DairyProvider = ({ children }) => {
     fetchPendingCredit();
     fetchAuditLogs();
     fetchContactInfo();
-  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPayments, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo]);
+    fetchMediaAssets();
+  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPayments, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo, fetchMediaAssets]);
 
   useEffect(() => {
     refreshAll();
@@ -1155,6 +1174,8 @@ export const DairyProvider = ({ children }) => {
         fetchContactInfo,
         updateContactInfo,
         resetContactInfo,
+        mediaAssets,
+        fetchMediaAssets,
       }}
     >
       {children}

@@ -10,6 +10,7 @@ const { isCloudinaryUrl, ensureCloudinaryUrl, cloudinary } = require('../config/
 
 const PUBLIC_DIR = path.join(__dirname, '../../client/public');
 const LEGACY_UPLOADS_DIR = path.join(__dirname, '../uploads');
+const LIVE_BACKEND_URL = process.env.LIVE_BACKEND_URL || 'https://naturalmilkdairy.speshway.site';
 
 async function migrateField(doc, field, folder, report) {
   const val = typeof doc[field] === 'string' ? doc[field].trim() : '';
@@ -24,7 +25,17 @@ async function migrateField(doc, field, folder, report) {
   }
 
   try {
-    const cloudUrl = await ensureCloudinaryUrl(val, { folder, timeoutMs: 45000 });
+    let cloudUrl;
+    try {
+      cloudUrl = await ensureCloudinaryUrl(val, { folder, timeoutMs: 45000 });
+    } catch (localErr) {
+      if (val.startsWith('/uploads/')) {
+        const remoteSource = `${LIVE_BACKEND_URL}${val}`;
+        cloudUrl = await ensureCloudinaryUrl(remoteSource, { folder, timeoutMs: 45000 });
+      } else {
+        throw localErr;
+      }
+    }
     doc[field] = cloudUrl;
     report.migrated++;
     return true;

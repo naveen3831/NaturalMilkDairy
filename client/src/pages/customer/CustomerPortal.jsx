@@ -71,7 +71,6 @@ import {
 } from 'lucide-react';
 import ReportDownloadModal from '../../components/ReportDownloadModal';
 import { resolveProofUrl, LIVE_BACKEND_URL } from '../../services/api';
-import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
 import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
 import CustomerBottomNav, {
@@ -253,7 +252,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [profileMessage, setProfileMessage] = useState('');
   const [profileError, setProfileError] = useState('');
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
-  const [deliveryFilterTab, setDeliveryFilterTab] = useState('all');
+  const [deliveryFilterTab, setDeliveryFilterTab] = useState('today');
   const [selectedUpcomingDelivery, setSelectedUpcomingDelivery] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
@@ -331,38 +330,39 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [expandedFaqId, setExpandedFaqId] = useState(null);
 
   const getProductImage = (p) => {
-    if (!p) return '/product-cow-milk.jpg';
+    if (!p) return CLOUDINARY_MEDIA.cowMilk;
+    if (p.imageUrl && typeof p.imageUrl === 'string' && p.imageUrl.startsWith('http')) return p.imageUrl;
+    if (p.image && typeof p.image === 'string' && p.image.startsWith('http')) return p.image;
+
     const n = (p.name || '').toLowerCase();
     const c = (p.category || '').toLowerCase();
 
     // Specific product asset matches
     if (n.includes('500ml') || n.includes('500 ml') || n.includes('half')) {
-      return '/product-cow-milk-500ml.jpg';
+      return CLOUDINARY_MEDIA.cowMilk500ml;
     }
-    if (n.includes('buffalo')) return '/product-buffalo-milk.jpg';
-    if (c === 'curd' || n.includes('curd') || n.includes('dahi')) return '/product-curd.jpg';
-    if (c === 'ghee' || n.includes('ghee')) return '/product-ghee.jpg';
-    if (c === 'paneer' || n.includes('paneer')) return '/product-paneer.jpg';
+    if (n.includes('buffalo')) return CLOUDINARY_MEDIA.buffaloMilk;
+    if (c === 'curd' || n.includes('curd') || n.includes('dahi')) return CLOUDINARY_MEDIA.curd;
+    if (c === 'ghee' || n.includes('ghee')) return CLOUDINARY_MEDIA.ghee;
+    if (c === 'paneer' || n.includes('paneer')) return CLOUDINARY_MEDIA.paneer;
 
-    if (p.imageUrl && p.imageUrl.startsWith('http')) return p.imageUrl;
-    if (p.image && p.image.startsWith('http')) return p.image;
     if (p.imageUrl && p.imageUrl.startsWith('/')) return p.imageUrl;
     if (p.image && p.image.startsWith('/')) return p.image;
 
-    return '/product-cow-milk.jpg';
+    return CLOUDINARY_MEDIA.cowMilk;
   };
 
   const handleProductImgError = (e, product) => {
     const n = (product?.name || '').toLowerCase();
     const c = (product?.category || '').toLowerCase();
-    let fallback = '/product-cow-milk.jpg';
-    if (n.includes('500ml') || n.includes('500 ml')) fallback = '/product-cow-milk-500ml.jpg';
-    else if (n.includes('buffalo')) fallback = '/product-buffalo-milk.jpg';
-    else if (c === 'curd' || n.includes('curd') || n.includes('dahi')) fallback = '/product-curd.jpg';
-    else if (c === 'ghee' || n.includes('ghee')) fallback = '/product-ghee.jpg';
-    else if (c === 'paneer' || n.includes('paneer')) fallback = '/product-paneer.jpg';
+    let fallback = CLOUDINARY_MEDIA.cowMilk;
+    if (n.includes('500ml') || n.includes('500 ml')) fallback = CLOUDINARY_MEDIA.cowMilk500ml;
+    else if (n.includes('buffalo')) fallback = CLOUDINARY_MEDIA.buffaloMilk;
+    else if (c === 'curd' || n.includes('curd') || n.includes('dahi')) fallback = CLOUDINARY_MEDIA.curd;
+    else if (c === 'ghee' || n.includes('ghee')) fallback = CLOUDINARY_MEDIA.ghee;
+    else if (c === 'paneer' || n.includes('paneer')) fallback = CLOUDINARY_MEDIA.paneer;
 
-    if (e.currentTarget.src !== window.location.origin + fallback) {
+    if (e.currentTarget.src !== fallback) {
       e.currentTarget.src = fallback;
     }
   };
@@ -378,7 +378,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 60,
         status: 'active',
         description: 'Raw, unpasteurized, farm-fresh A2 milk from grass-fed indigenous Gir cows. Bottled in sterilized glass.',
-        imageUrl: '/product-cow-milk.jpg',
+        imageUrl: CLOUDINARY_MEDIA.cowMilk,
       },
       {
         _id: 'prod-buffalo-1l',
@@ -388,7 +388,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 75,
         status: 'active',
         description: 'Naturally thick milk with rich golden malai, ideal for traditional kheer, tea, and homemade paneer.',
-        imageUrl: '/product-buffalo-milk.jpg',
+        imageUrl: CLOUDINARY_MEDIA.buffaloMilk,
       },
       {
         _id: 'prod-curd-500g',
@@ -398,7 +398,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 35,
         status: 'active',
         description: 'Set naturally in earthen pots with live probiotic active cultures for perfect gut health and digestion.',
-        imageUrl: '/product-curd.jpg',
+        imageUrl: CLOUDINARY_MEDIA.curd,
       },
       {
         _id: 'prod-ghee-500ml',
@@ -408,7 +408,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 480,
         status: 'active',
         description: 'Slow-cooked over firewood from cultured Gir cow curd butter using authentic Vedic bilona churning.',
-        imageUrl: '/product-ghee.jpg',
+        imageUrl: CLOUDINARY_MEDIA.ghee,
       },
       {
         _id: 'prod-paneer-250g',
@@ -418,7 +418,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 110,
         status: 'active',
         description: 'Soft, melt-in-mouth cottage cheese crafted fresh every morning with zero starch or synthetic coagulants.',
-        imageUrl: '/product-paneer.jpg',
+        imageUrl: CLOUDINARY_MEDIA.paneer,
       },
       {
         _id: 'prod-cow-500ml',
@@ -428,7 +428,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         price: 32,
         status: 'active',
         description: 'Fresh morning portion of raw A2 Gir cow milk for individuals or single tea servings.',
-        imageUrl: '/product-cow-milk-500ml.jpg',
+        imageUrl: CLOUDINARY_MEDIA.cowMilk500ml,
       },
     ];
   }, [products]);
@@ -3851,10 +3851,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     // Mobile View matching Image 3
     if (isMobile) {
       const mobileFilterTabs = [
-        { id: 'all', label: 'All', count: sourceDeliveries.length, bg: '#f1f5f9', color: '#475569' },
         { id: 'today', label: 'Today', count: todayDeliveries.length, bg: '#e0f2fe', color: '#0369a1' },
-        { id: 'history', label: 'Delivery History', count: historyDeliveries.length, bg: '#dcfce7', color: '#15803d' },
         { id: 'upcoming', label: 'Upcoming', count: upcomingDeliveries.length, bg: '#fef3c7', color: '#b45309' },
+        { id: 'history', label: 'Delivery History', count: historyDeliveries.length, bg: '#dcfce7', color: '#15803d' },
+        { id: 'all', label: 'All Deliveries', count: sourceDeliveries.length, bg: '#f1f5f9', color: '#475569' },
       ];
 
       return (
@@ -4067,7 +4067,32 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </div>
           )}
 
-          {/* Section 2: Delivery History (Second - Past Drops) */}
+          {/* Section 2: Upcoming Deliveries (Second - Future Scheduled Drops) */}
+          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                    Upcoming Deliveries
+                  </h3>
+                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
+                    {upcomingDeliveries.length} Scheduled
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
+              </div>
+
+              {upcomingDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No upcoming deliveries scheduled for this cycle.
+                </div>
+              ) : (
+                upcomingDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'up'))
+              )}
+            </div>
+          )}
+
+          {/* Section 3: Delivery History (Third - Past Drops) */}
           {(deliveryFilterTab === 'all' || deliveryFilterTab === 'history') && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -4090,31 +4115,6 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </div>
               ) : (
                 historyDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'hist'))
-              )}
-            </div>
-          )}
-
-          {/* Section 3: Upcoming Deliveries (Third - Future Scheduled Drops) */}
-          {(deliveryFilterTab === 'all' || deliveryFilterTab === 'upcoming') && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: deliveryFilterTab === 'all' ? '10px' : '4px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
-                    Upcoming Deliveries
-                  </h3>
-                  <span style={{ background: '#fef3c7', color: '#b45309', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #fde68a' }}>
-                    {upcomingDeliveries.length} Scheduled
-                  </span>
-                </div>
-                <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>Daily Morning Slot</span>
-              </div>
-
-              {upcomingDeliveries.length === 0 ? (
-                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
-                  No upcoming deliveries scheduled for this cycle.
-                </div>
-              ) : (
-                upcomingDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'up'))
               )}
             </div>
           )}
@@ -4207,22 +4207,22 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
           <button
             type="button"
-            onClick={() => setDeliveryFilterTab('all')}
+            onClick={() => setDeliveryFilterTab('today')}
             style={{
               padding: '6px 14px',
               borderRadius: '20px',
               fontSize: '0.8rem',
               fontWeight: 800,
-              border: deliveryFilterTab === 'all' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-              background: deliveryFilterTab === 'all' ? '#0d5c3a' : '#ffffff',
-              color: deliveryFilterTab === 'all' ? '#ffffff' : '#64748b',
+              border: deliveryFilterTab === 'today' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'today' ? '#0d5c3a' : '#ffffff',
+              color: deliveryFilterTab === 'today' ? '#ffffff' : '#64748b',
               cursor: 'pointer',
               display: 'inline-flex',
               alignItems: 'center',
               gap: '6px',
             }}
           >
-            All <span style={{ background: deliveryFilterTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f1f5f9', color: deliveryFilterTab === 'all' ? '#fff' : '#475569', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{sourceDeliveries.length}</span>
+            Today <span style={{ background: deliveryFilterTab === 'today' ? 'rgba(255,255,255,0.25)' : '#e0f2fe', color: deliveryFilterTab === 'today' ? '#fff' : '#0369a1', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{todayDeliveries.length}</span>
           </button>
           <button
             type="button"
@@ -4241,7 +4241,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               gap: '6px',
             }}
           >
-            Upcoming <span style={{ background: deliveryFilterTab === 'upcoming' ? 'rgba(255,255,255,0.25)' : '#fef3c7', color: deliveryFilterTab === 'upcoming' ? '#fff' : '#b45309', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{pendingCount}</span>
+            Upcoming <span style={{ background: deliveryFilterTab === 'upcoming' ? 'rgba(255,255,255,0.25)' : '#fef3c7', color: deliveryFilterTab === 'upcoming' ? '#fff' : '#b45309', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{upcomingDeliveries.length}</span>
           </button>
           <button
             type="button"
@@ -4260,13 +4260,41 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               gap: '6px',
             }}
           >
-            Delivery History <span style={{ background: deliveryFilterTab === 'history' ? 'rgba(255,255,255,0.25)' : '#dcfce7', color: deliveryFilterTab === 'history' ? '#fff' : '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{deliveredCount}</span>
+            Delivery History <span style={{ background: deliveryFilterTab === 'history' ? 'rgba(255,255,255,0.25)' : '#dcfce7', color: deliveryFilterTab === 'history' ? '#fff' : '#15803d', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{historyDeliveries.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeliveryFilterTab('all')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              border: deliveryFilterTab === 'all' ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'all' ? '#0d5c3a' : '#ffffff',
+              color: deliveryFilterTab === 'all' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            All Deliveries <span style={{ background: deliveryFilterTab === 'all' ? 'rgba(255,255,255,0.25)' : '#f1f5f9', color: deliveryFilterTab === 'all' ? '#fff' : '#475569', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{sourceDeliveries.length}</span>
           </button>
         </div>
 
         {visibleDeliveries.filter((d) => {
-          if (deliveryFilterTab === 'upcoming') return d.status !== 'delivered';
-          if (deliveryFilterTab === 'history') return d.status === 'delivered';
+          if (deliveryFilterTab === 'today') {
+            return toIstDateKey(d.deliveryDate || d.date) === todayIstKey;
+          }
+          if (deliveryFilterTab === 'upcoming') {
+            const key = toIstDateKey(d.deliveryDate || d.date);
+            return key > todayIstKey && d.status !== 'delivered';
+          }
+          if (deliveryFilterTab === 'history') {
+            const key = toIstDateKey(d.deliveryDate || d.date);
+            return (key && key < todayIstKey) || d.status === 'delivered';
+          }
           return true;
         }).length === 0 ? (
           <div className="customer-empty-history">
@@ -4295,8 +4323,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <tbody>
                 {visibleDeliveries
                   .filter((d) => {
-                    if (deliveryFilterTab === 'upcoming') return d.status !== 'delivered';
-                    if (deliveryFilterTab === 'history') return d.status === 'delivered';
+                    if (deliveryFilterTab === 'today') {
+                      return toIstDateKey(d.deliveryDate || d.date) === todayIstKey;
+                    }
+                    if (deliveryFilterTab === 'upcoming') {
+                      const key = toIstDateKey(d.deliveryDate || d.date);
+                      return key > todayIstKey && d.status !== 'delivered';
+                    }
+                    if (deliveryFilterTab === 'history') {
+                      const key = toIstDateKey(d.deliveryDate || d.date);
+                      return (key && key < todayIstKey) || d.status === 'delivered';
+                    }
                     return true;
                   })
                   .map((delivery, index) => (
@@ -4753,7 +4790,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderBookingModal = () => {
     const isFullscreen = !isMobile;
-    const prodImg = selectedBookingProduct ? getProductImage(selectedBookingProduct) : '/product-cow-milk.jpg';
+    const prodImg = selectedBookingProduct ? getProductImage(selectedBookingProduct) : CLOUDINARY_MEDIA.cowMilk;
     const prodPrice = Number(selectedBookingProduct?.price) || 60;
     const prodUnit = selectedBookingProduct?.unit || 'unit';
     const totalCalc = prodPrice * (Number(bookingForm.quantity) || 1);
@@ -9766,60 +9803,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             </button>
           </div>
 
-          {/* View Mode Toggle: Photo Proof vs Leaflet Map */}
-          <div style={{ padding: '0 18px 10px 18px', display: 'flex', gap: '8px', background: '#ffffff' }}>
-            <button
-              type="button"
-              onClick={() => setCustomerProofTab('photo')}
-              style={{
-                flex: 1,
-                padding: '7px 12px',
-                borderRadius: '8px',
-                border: customerProofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                background: customerProofTab === 'photo' ? '#059669' : '#f8fafc',
-                color: customerProofTab === 'photo' ? '#ffffff' : '#475569',
-                fontWeight: 800,
-                fontSize: '0.76rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-            >
-              <Camera size={13} />
-              <span>Doorstep Photo</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCustomerProofTab('map')}
-              style={{
-                flex: 1,
-                padding: '7px 12px',
-                borderRadius: '8px',
-                border: customerProofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                background: customerProofTab === 'map' ? '#059669' : '#f8fafc',
-                color: customerProofTab === 'map' ? '#ffffff' : '#475569',
-                fontWeight: 800,
-                fontSize: '0.76rem',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-              }}
-            >
-              <MapPin size={13} />
-              <span>Leaflet Map Location</span>
-            </button>
-          </div>
-
-          {/* 2. Full Page Photo / Leaflet Map Display Area */}
+          {/* 2. Full Page Photo Display Area with Location Inside Image */}
           <div
             style={{
               flex: 1,
               width: '100%',
-              background: '#f8fafc',
+              background: '#0b1e14',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -9828,69 +9817,34 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               position: 'relative',
             }}
           >
-            {customerProofTab === 'photo' ? (
-              <div
-                onClick={() => setCustomerProofTab('map')}
-                title="Click image to view doorstep location on Leaflet Map"
-                style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}
-              >
-                <img
-                  src={resolveProofUrl(viewingProofPhoto.url)}
-                  alt="Delivery proof"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    width: 'auto',
-                    height: 'auto',
-                    objectFit: 'contain',
-                    borderRadius: '12px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-                    background: '#ffffff',
-                  }}
-                  onError={(e) => {
-                    const cloud = `${LIVE_BACKEND_URL}${String(viewingProofPhoto.url).startsWith('/') ? viewingProofPhoto.url : `/${viewingProofPhoto.url}`}`;
-                    if (e.currentTarget.src !== cloud) {
-                      e.currentTarget.src = cloud;
-                    } else {
-                      e.currentTarget.style.display = 'none';
-                      if (e.currentTarget.nextSibling) {
-                        e.currentTarget.nextSibling.style.display = 'block';
-                      }
+            <div
+              style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}
+            >
+              <img
+                src={resolveProofUrl(viewingProofPhoto.url)}
+                alt="Delivery proof"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '100%',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+                }}
+                onError={(e) => {
+                  const cloud = `${LIVE_BACKEND_URL}${String(viewingProofPhoto.url).startsWith('/') ? viewingProofPhoto.url : `/${viewingProofPhoto.url}`}`;
+                  if (e.currentTarget.src !== cloud) {
+                    e.currentTarget.src = cloud;
+                  } else {
+                    e.currentTarget.style.display = 'none';
+                    if (e.currentTarget.nextSibling) {
+                      e.currentTarget.nextSibling.style.display = 'block';
                     }
-                  }}
-                />
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: '12px',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    backdropFilter: 'blur(4px)',
-                    color: '#ffffff',
-                    borderRadius: '20px',
-                    padding: '4px 12px',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    pointerEvents: 'none',
-                  }}
-                >
-                  <MapPin size={12} color="#34d399" />
-                  <span>Tap image to view location on Leaflet Map</span>
-                </div>
-              </div>
-            ) : (
-              <LeafletSingleLocationMap
-                lat={Number(viewingProofPhoto?.delivery?.customerLatitude ?? viewingProofPhoto?.delivery?.latitude ?? matchedCustomer?.latitude ?? 17.4483)}
-                lng={Number(viewingProofPhoto?.delivery?.customerLongitude ?? viewingProofPhoto?.delivery?.longitude ?? matchedCustomer?.longitude ?? 78.3915)}
-                title={matchedCustomer?.name || 'Registered Home'}
-                address={viewingProofPhoto?.delivery?.deliveryAddress || viewingProofPhoto?.delivery?.address || 'Doorstep Delivery Location'}
-                partnerName={viewingProofPhoto?.delivery?.deliveryBoyName || viewingProofPhoto?.delivery?.driverName || ''}
-                height="100%"
+                  }
+                }}
               />
-            )}
+            </div>
           </div>
 
           {/* 3. Full Page Bottom Status & Action Bar */}

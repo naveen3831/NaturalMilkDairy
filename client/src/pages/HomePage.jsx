@@ -245,25 +245,25 @@ export default function HomePage({ setActiveTab }) {
     {
       title: 'Pure Milk. Healthier Lives.',
       subtitle: 'Fresh farm harvest delivered to your doorstep daily before 6:30 AM.',
-      imageUrl: '/hero_banner_card.png',
+      imageUrl: CLOUDINARY_MEDIA.heroBannerCard,
       category: 'milk',
     },
     {
       title: 'Artisanal Curd & Soft Paneer',
       subtitle: 'Naturally set in traditional clay pots. Rich, creamy, and probiotic.',
-      imageUrl: '/banner_curd_paneer.png',
+      imageUrl: CLOUDINARY_MEDIA.bannerCurdPaneer,
       category: 'curd',
     },
     {
       title: 'A2 Vedic Desi Cow Ghee',
       subtitle: 'Slow-simmered bilona method with authentic granular golden aroma.',
-      imageUrl: '/banner_ghee_butter.png',
+      imageUrl: CLOUDINARY_MEDIA.bannerGheeButter,
       category: 'ghee',
     },
     {
       title: 'Pure Milk Dairy Sweets',
       subtitle: 'Delicious handcrafted traditional sweets made 100% from farm dairy.',
-      imageUrl: '/banner_dairy_sweets.png',
+      imageUrl: CLOUDINARY_MEDIA.bannerDairySweets,
       category: 'sweets',
     },
   ];
@@ -272,25 +272,25 @@ export default function HomePage({ setActiveTab }) {
     {
       title: 'Pure Milk. Healthier Lives.',
       subtitle: 'Fresh farm harvest delivered to your doorstep daily before 6:30 AM.',
-      imageUrl: '/premium_hero_milk_banner.png?v=3',
+      imageUrl: CLOUDINARY_MEDIA.premiumHeroMilk,
       category: 'milk',
     },
     {
       title: 'Artisanal Curd & Soft Paneer',
       subtitle: 'Naturally set in authentic clay pots with rich, creamy texture and live probiotics.',
-      imageUrl: '/premium_hero_curd_banner.png?v=3',
+      imageUrl: CLOUDINARY_MEDIA.premiumHeroCurd,
       category: 'curd',
     },
     {
       title: 'A2 Vedic Desi Cow Ghee',
       subtitle: 'Slow-simmered bilona method with golden granular aroma and ayurvedic goodness.',
-      imageUrl: '/premium_hero_ghee_banner.png?v=3',
+      imageUrl: CLOUDINARY_MEDIA.premiumHeroGhee,
       category: 'ghee',
     },
     {
       title: 'Pure Milk Dairy Sweets',
       subtitle: 'Handcrafted traditional Indian sweets prepared daily from 100% whole fresh farm milk.',
-      imageUrl: '/premium_hero_sweets_banner.png?v=3',
+      imageUrl: CLOUDINARY_MEDIA.premiumHeroSweets,
       category: 'sweets',
     },
   ];
@@ -363,10 +363,10 @@ export default function HomePage({ setActiveTab }) {
 
   const renderMobileHome = () => {
     const categories = [
-      { id: 'milk', title: 'Fresh Milks', bg: '#FFF8E7', img: '/cat_img_milk.png' },
-      { id: 'curd', title: 'Curd & Paneer', bg: '#EAF7EE', img: '/cat_img_curd.png' },
-      { id: 'ghee', title: 'Ghee & Butter', bg: '#FFF3D6', img: '/cat_img_ghee.png' },
-      { id: 'sweets', title: 'Dairy Sweets', bg: '#FDF0ED', img: '/cat_img_sweets.png' },
+      { id: 'milk', title: 'Fresh Milks', bg: '#FFF8E7', img: CLOUDINARY_MEDIA.catImgMilk },
+      { id: 'curd', title: 'Curd & Paneer', bg: '#EAF7EE', img: CLOUDINARY_MEDIA.catImgCurd },
+      { id: 'ghee', title: 'Ghee & Butter', bg: '#FFF3D6', img: CLOUDINARY_MEDIA.catImgGhee },
+      { id: 'sweets', title: 'Dairy Sweets', bg: '#FDF0ED', img: CLOUDINARY_MEDIA.catImgSweets },
     ];
 
     const bestSellers = products.slice(0, 4);
@@ -407,7 +407,7 @@ export default function HomePage({ setActiveTab }) {
                   src={banner.imageUrl}
                   alt={banner.title}
                   className="mobile-home-hero-full-img"
-                  onError={(e) => { e.currentTarget.src = '/hero_banner_card.png'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
                 />
               </div>
             ))}
@@ -482,7 +482,7 @@ export default function HomePage({ setActiveTab }) {
               }}
             >
               <div className="mobile-category-img-wrap">
-                <img src={cat.img} alt={cat.title} onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }} />
+                <img src={cat.img} alt={cat.title} onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }} />
               </div>
               <span className="mobile-category-label">{cat.title}</span>
             </div>
@@ -516,7 +516,7 @@ export default function HomePage({ setActiveTab }) {
                 }}
               >
                 <div className="mobile-bestseller-img-box">
-                  <img src={prod.image || '/product-cow-milk.jpg'} alt={prod.name} />
+                  <img src={prod.image || CLOUDINARY_MEDIA.cowMilk} alt={prod.name} />
                   <span className="mobile-bestseller-badge">{badgeLabel}</span>
                   
                 </div>
@@ -646,7 +646,7 @@ export default function HomePage({ setActiveTab }) {
                   src={banner.imageUrl}
                   alt={banner.title}
                   className="desktop-hero-carousel-img"
-                  onError={(e) => { e.currentTarget.src = '/premium_hero_milk_banner.png'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.premiumHeroMilk || '/premium_hero_milk_banner.png'; }}
                 />
               </div>
             ))}
@@ -1064,9 +1064,9 @@ export default function HomePage({ setActiveTab }) {
                   style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 15%', display: 'block', transition: 'transform 0.35s ease' }}
                   onError={(e) => {
                     e.currentTarget.src = prod.name?.toLowerCase().includes('buffalo')
-                      ? '/product-buffalo-milk.jpg'
+                      ? CLOUDINARY_MEDIA.buffaloMilk
                       : prod.name?.toLowerCase().includes('500')
-                      ? '/product-cow-milk-500ml.jpg'
+                      ? CLOUDINARY_MEDIA.cowMilk500ml
                       : CLOUDINARY_MEDIA.cowMilk;
                   }}
                 />

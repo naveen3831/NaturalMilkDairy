@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { getApiUrl } from '../services/api';
 import { startSubscriptionPayment } from '../services/subscriptionPayment';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 const FARM_PRODUCTS = [
   {
@@ -27,28 +28,28 @@ const FARM_PRODUCTS = [
     name: 'Desi Cow Bilona Ghee (500ml)',
     unit: '500ml',
     price: 450,
-    image: '/product-ghee.jpg',
+    image: CLOUDINARY_MEDIA.ghee,
   },
   {
     id: 'malai-paneer',
     name: 'Fresh Malai Paneer (200g)',
     unit: '200g',
     price: 90,
-    image: '/product-paneer.jpg',
+    image: CLOUDINARY_MEDIA.paneer,
   },
   {
     id: 'farm-butter',
     name: 'Traditional Farm Butter (250g)',
     unit: '250g',
     price: 120,
-    image: '/banner_ghee_butter.png',
+    image: CLOUDINARY_MEDIA.bannerGheeButter,
   },
   {
     id: 'country-eggs',
     name: 'Farm Fresh Country Eggs (Pack of 6)',
     unit: 'Pack of 6',
     price: 65,
-    image: '/product-curd.jpg',
+    image: CLOUDINARY_MEDIA.curd,
   },
 ];
 
@@ -344,7 +345,7 @@ export function UpgradePlanFullPage({ user, onClose, onSuccess }) {
                     <img
                       src={prod.image}
                       alt={prod.name}
-                      onError={(e) => { e.currentTarget.src = '/product-cow-milk.jpg'; }}
+                      onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk || '/product-cow-milk.jpg'; }}
                       style={{
                         width: '44px',
                         height: '44px',

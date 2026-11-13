@@ -255,7 +255,7 @@ export default function ProductsPage({ setActiveTab }) {
             </p>
           </div>
           <div className="mobile-products-header-splash">
-            <img src="/header_milk_splash.png" alt="" />
+            <img src={CLOUDINARY_MEDIA.headerMilkSplash || '/header_milk_splash.png'} alt="" />
           </div>
         </div>
 
@@ -378,7 +378,7 @@ export default function ProductsPage({ setActiveTab }) {
               >
                 {/* Top Image */}
                 <div className="mobile-card-top-image">
-                  <img src={p.image || '/product-cow-milk.jpg'} alt={p.name} />
+                  <img src={p.image || CLOUDINARY_MEDIA.cowMilk} alt={p.name} />
                   <span className={`mobile-grid-card-badge ${badgeClass}`}>{badgeText}</span>
                   
                 </div>
@@ -746,9 +746,9 @@ export default function ProductsPage({ setActiveTab }) {
                   className="product-img"
                   onError={(e) => {
                     e.currentTarget.src = p.name?.toLowerCase().includes('buffalo')
-                      ? '/product-buffalo-milk.jpg'
+                      ? CLOUDINARY_MEDIA.buffaloMilk
                       : p.name?.toLowerCase().includes('500')
-                      ? '/product-cow-milk-500ml.jpg'
+                      ? CLOUDINARY_MEDIA.cowMilk500ml
                       : CLOUDINARY_MEDIA.cowMilk;
                   }}
                   style={{

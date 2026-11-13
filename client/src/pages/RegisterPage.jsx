@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { getApiUrl } from '../services/api';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function RegisterPage({ setActiveTab }) {
   const { register } = useAuth();
@@ -404,9 +405,10 @@ export default function RegisterPage({ setActiveTab }) {
             title="Natural Milk Dairy - Back to Home"
           >
             <img
-              src="/logo.png"
+              src={CLOUDINARY_MEDIA.logo || '/logo.png'}
               alt="Natural Milk Dairy"
               className="auth-logo-img"
+              onError={(e) => { e.currentTarget.src = '/logo.png'; }}
             />
           </div>
           <div className="auth-badge-subtitle">

@@ -24,6 +24,14 @@ const DEFAULT_CONTACT_INFO = {
     instagram: 'https://instagram.com',
     youtube: 'https://youtube.com',
   },
+  footerBgImage:
+    'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794486539/natural-milk-dairy/assets/footer_farm_bg.jpg',
+  footerLogo:
+    'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454814/natural-milk-dairy/logo.jpg',
+  footerFarmLandscape:
+    'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794486539/natural-milk-dairy/assets/footer_farm_bg.jpg',
+  logoUrl:
+    'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454814/natural-milk-dairy/logo.jpg',
   isPrimary: true,
   isActive: true,
   updatedBy: 'System Default',
@@ -196,6 +204,10 @@ exports.updatePrimaryContactInfo = async (req, res) => {
     if (payload.whatsapp !== undefined) contactInfo.whatsapp = payload.whatsapp;
     if (payload.workingHours !== undefined) contactInfo.workingHours = payload.workingHours;
     if (payload.deliveryHours !== undefined) contactInfo.deliveryHours = payload.deliveryHours;
+    if (payload.footerBgImage !== undefined) contactInfo.footerBgImage = payload.footerBgImage;
+    if (payload.footerLogo !== undefined) contactInfo.footerLogo = payload.footerLogo;
+    if (payload.footerFarmLandscape !== undefined) contactInfo.footerFarmLandscape = payload.footerFarmLandscape;
+    if (payload.logoUrl !== undefined) contactInfo.logoUrl = payload.logoUrl;
 
     if (payload.socialLinks && typeof payload.socialLinks === 'object') {
       contactInfo.socialLinks = {
@@ -253,6 +265,10 @@ exports.updateContactInfoById = async (req, res) => {
     if (payload.whatsapp !== undefined) contactInfo.whatsapp = payload.whatsapp;
     if (payload.workingHours !== undefined) contactInfo.workingHours = payload.workingHours;
     if (payload.deliveryHours !== undefined) contactInfo.deliveryHours = payload.deliveryHours;
+    if (payload.footerBgImage !== undefined) contactInfo.footerBgImage = payload.footerBgImage;
+    if (payload.footerLogo !== undefined) contactInfo.footerLogo = payload.footerLogo;
+    if (payload.footerFarmLandscape !== undefined) contactInfo.footerFarmLandscape = payload.footerFarmLandscape;
+    if (payload.logoUrl !== undefined) contactInfo.logoUrl = payload.logoUrl;
     if (payload.isActive !== undefined) contactInfo.isActive = Boolean(payload.isActive);
 
     if (payload.isPrimary !== undefined) {

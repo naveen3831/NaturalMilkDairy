@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { resolveProofUrl, LIVE_BACKEND_URL } from '../../services/api';
-import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
 import { formatISTDateTime, formatISTTime } from '../../utils/istDateTime';
 import {
   Truck,
@@ -542,154 +541,66 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                 </button>
               </div>
 
-              {/* View Switcher Tabs: Photo Proof vs Leaflet Map */}
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                <button
-                  type="button"
-                  onClick={() => setProofViewMode('photo')}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: proofViewMode === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                    background: proofViewMode === 'photo' ? '#059669' : '#f8fafc',
-                    color: proofViewMode === 'photo' ? '#ffffff' : '#475569',
-                    fontWeight: 800,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <Camera size={14} />
-                  <span>Doorstep Photo Proof</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProofViewMode('map')}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: proofViewMode === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                    background: proofViewMode === 'map' ? '#059669' : '#f8fafc',
-                    color: proofViewMode === 'map' ? '#ffffff' : '#475569',
-                    fontWeight: 800,
-                    fontSize: '0.78rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <MapPin size={14} />
-                  <span>Leaflet Map Location</span>
-                </button>
-              </div>
-
-              {/* Viewport: Either Photo (clicking switches to Map) OR Leaflet Map */}
-              {proofViewMode === 'photo' ? (
+              {/* Viewport: Verified Photo Proof with Location Inside Image */}
+              <div
+                style={{
+                  position: 'relative',
+                  borderRadius: '14px',
+                  overflow: 'hidden',
+                  border: '2px solid #059669',
+                  background: '#07160e',
+                  minHeight: '280px',
+                  maxHeight: '440px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
+                }}
+              >
+                {proofResolvedUrl ? (
+                  <img
+                    src={proofResolvedUrl}
+                    alt="Home doorstep proof photo"
+                    loading="lazy"
+                    onError={(e) => {
+                      if (e.currentTarget.src !== fallbackUrl) {
+                        e.currentTarget.src = fallbackUrl;
+                      } else {
+                        e.currentTarget.style.display = 'none';
+                        const fb = document.getElementById('admin-proof-fallback-box');
+                        if (fb) fb.style.display = 'flex';
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      maxHeight: '440px',
+                      objectFit: 'contain',
+                      display: 'block',
+                    }}
+                  />
+                ) : null}
                 <div
-                  onClick={() => setProofViewMode('map')}
-                  title="Click image to view doorstep location on Leaflet Map"
+                  id="admin-proof-fallback-box"
                   style={{
-                    position: 'relative',
-                    borderRadius: '14px',
-                    overflow: 'hidden',
-                    border: '2px solid #059669',
-                    background: '#07160e',
-                    minHeight: '280px',
-                    maxHeight: '440px',
-                    display: 'flex',
+                    display: proofResolvedUrl ? 'none' : 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: 'inset 0 2px 10px rgba(0,0,0,0.5)',
-                    cursor: 'pointer',
+                    padding: '28px',
+                    color: '#94a3b8',
+                    textAlign: 'center',
+                    gap: '10px',
                   }}
                 >
-                  {proofResolvedUrl ? (
-                    <img
-                      src={proofResolvedUrl}
-                      alt="Home doorstep proof photo"
-                      loading="lazy"
-                      onError={(e) => {
-                        if (e.currentTarget.src !== fallbackUrl) {
-                          e.currentTarget.src = fallbackUrl;
-                        } else {
-                          e.currentTarget.style.display = 'none';
-                          const fb = document.getElementById('admin-proof-fallback-box');
-                          if (fb) fb.style.display = 'flex';
-                        }
-                      }}
-                      style={{
-                        width: '100%',
-                        maxHeight: '440px',
-                        objectFit: 'contain',
-                        display: 'block',
-                      }}
-                    />
-                  ) : null}
-                  <div
-                    id="admin-proof-fallback-box"
-                    style={{
-                      display: proofResolvedUrl ? 'none' : 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: '28px',
-                      color: '#94a3b8',
-                      textAlign: 'center',
-                      gap: '10px',
-                    }}
-                  >
-                    <Camera size={42} color="#34d399" />
-                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f1f5f9' }}>
-                      Doorstep Drop Verified & Authenticated
-                    </span>
-                    <span style={{ fontSize: '0.76rem', color: '#94a3b8', maxWidth: '320px' }}>
-                      Realtime camera timestamp and GPS coordinates securely recorded at doorstep drop.
-                    </span>
-                  </div>
-
-                  {/* Subtle Floating pill over image indicating it's clickable for Leaflet map */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '12px',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      backdropFilter: 'blur(4px)',
-                      color: '#ffffff',
-                      borderRadius: '20px',
-                      padding: '4px 12px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      border: '1px solid rgba(52, 211, 153, 0.5)',
-                      pointerEvents: 'none',
-                    }}
-                  >
-                    <MapPin size={12} color="#34d399" />
-                    <span>Tap image to view location on Leaflet Map</span>
-                  </div>
+                  <Camera size={42} color="#34d399" />
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f1f5f9' }}>
+                    Doorstep Drop Verified & Authenticated
+                  </span>
+                  <span style={{ fontSize: '0.76rem', color: '#94a3b8', maxWidth: '320px' }}>
+                    Realtime camera timestamp and GPS coordinates securely recorded at doorstep drop.
+                  </span>
                 </div>
-              ) : (
-                /* Leaflet Map for this location ONLY */
-                <LeafletSingleLocationMap
-                  lat={custLat}
-                  lng={custLng}
-                  title={previewProof.customerName || 'Customer'}
-                  address={address}
-                  partnerName={previewProof.deliveryBoyName || 'Dairy Partner'}
-                  height="340px"
-                />
-              )}
+              </div>
 
               {/* Info Card with IST Timestamp */}
               <div style={{ marginTop: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 16px' }}>
@@ -705,35 +616,6 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
 
               {/* Actions */}
               <div style={{ marginTop: '16px', display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={() => setProofViewMode(proofViewMode === 'photo' ? 'map' : 'photo')}
-                  style={{
-                    padding: '8px 14px',
-                    background: '#ecfdf5',
-                    color: '#059669',
-                    borderRadius: '8px',
-                    fontWeight: 800,
-                    fontSize: '0.82rem',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1.5px solid #a7f3d0',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {proofViewMode === 'photo' ? (
-                    <>
-                      <MapPin size={14} />
-                      <span>View on Leaflet Map</span>
-                    </>
-                  ) : (
-                    <>
-                      <Camera size={14} />
-                      <span>View Proof Photo</span>
-                    </>
-                  )}
-                </button>
                 <a
                   href={proofResolvedUrl || fallbackUrl}
                   target="_blank"

@@ -15,6 +15,7 @@ import 'contact_support_screen.dart';
 import 'product_details_screen.dart';
 import 'subscription_details_screen.dart';
 import 'subscription_history_screen.dart';
+import 'delivery_history_screen.dart';
 import 'account_details_screen.dart';
 import 'delivery_addresses_screen.dart';
 import 'faq_screen.dart';
@@ -59,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PageController _bannerPageController = PageController();
   int _currentBannerIndex = 0;
   Timer? _bannerTimer;
-  String _deliveryFilterTab = 'all'; // 'all', 'upcoming', 'history'
+  String _deliveryFilterTab = 'today'; // 'today', 'upcoming', 'history', 'all'
 
   final List<Map<String, dynamic>> _defaultBanners = [
     {
@@ -231,6 +232,18 @@ class _HomeScreenState extends State<HomeScreen> {
       lng: lng,
       timestamp: time ?? date,
       partnerName: driverName,
+    );
+  }
+
+  void _openDeliveryHistoryFullScreen({List<Map<String, dynamic>>? deliveries, dynamic user}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeliveryHistoryScreen(
+          initialDeliveries: deliveries,
+          user: user ?? context.read<AuthProvider>().user,
+        ),
+      ),
     );
   }
 
@@ -855,11 +868,33 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Text(
                     'Verified Delivery Drops',
-                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(ctx),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          backgroundColor: const Color(0xFFE2F1EA),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _openDeliveryHistoryFullScreen();
+                        },
+                        icon: const Icon(Icons.fullscreen_rounded, size: 16, color: Color(0xFF0D5C3A)),
+                        label: const Text(
+                          'Full Screen',
+                          style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 11),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -2996,7 +3031,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildDeliveryFilterTabPill(String tabKey, String label, int count) {
+  Widget _buildDeliveryFilterTabPill(String tabKey, String label, int count, {VoidCallback? onTapOverride}) {
     final bool isSelected = _deliveryFilterTab == tabKey;
     final Color badgeBg = isSelected
         ? Colors.white.withValues(alpha: 0.25)
@@ -3014,7 +3049,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 : (tabKey == 'history' ? const Color(0xFF15803D) : const Color(0xFF475569))));
 
     return InkWell(
-      onTap: () => setState(() => _deliveryFilterTab = tabKey),
+      onTap: onTapOverride ?? () => setState(() => _deliveryFilterTab = tabKey),
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: EdgeInsets.symmetric(
@@ -3271,18 +3306,26 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Filter Pills: All, Today, Delivery History, Upcoming
+            // Filter Pills: Today (First), Upcoming, Delivery History, All Deliveries (Last)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  _buildDeliveryFilterTabPill('all', 'All', allDeliveries.length),
-                  const SizedBox(width: 8),
                   _buildDeliveryFilterTabPill('today', 'Today', todayDeliveries.length),
                   const SizedBox(width: 8),
-                  _buildDeliveryFilterTabPill('history', 'Delivery History', historyDeliveries.length),
-                  const SizedBox(width: 8),
                   _buildDeliveryFilterTabPill('upcoming', 'Upcoming', upcomingDeliveries.length),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill(
+                    'history',
+                    'Delivery History',
+                    historyDeliveries.length,
+                    onTapOverride: () {
+                      setState(() => _deliveryFilterTab = 'history');
+                      _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill('all', 'All Deliveries', allDeliveries.length),
                 ],
               ),
             ),
@@ -3481,119 +3524,7 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 10),
             ],
 
-            // SECTION 2: DELIVERY HISTORY (Second - Past Verified Drops)
-            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'history') ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Flexible(
-                          child: Text(
-                            'Delivery History',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 15.5,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0C2340),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Text(
-                            '${historyDeliveries.length} Drops',
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF15803D),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF059669)),
-                      SizedBox(width: 3),
-                      Text(
-                        'Verified',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-
-              if (historyDeliveries.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFE2EBE5)),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'No past deliveries in your history yet.',
-                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-                    ),
-                  ),
-                )
-              else
-                ...historyDeliveries.map((delivery) {
-                  final isDeliveredItem = delivery['isDelivered'] == true;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _buildUpcomingDeliveryCard(
-                      day: delivery['day'] ?? 'Wed',
-                      date: delivery['dayNum'] ?? '28',
-                      monthYear: delivery['monthYear'] ?? 'Oct 2026',
-                      timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
-                      milkQty: delivery['milkQty'] ?? '1 L',
-                      curdQty: delivery['curdQty'] ?? '0 g',
-                      addonsText: delivery['addonsText']?.toString(),
-                      addonsTotal: num.tryParse(delivery['addonsTotal']?.toString() ?? '0'),
-                      isDelivered: isDeliveredItem,
-                      paymentStatus: delivery['paymentStatus'] ?? (isDeliveredItem ? 'Paid' : 'Advance'),
-                      proofImage: delivery['proofImage'],
-                      driverName: delivery['driver'],
-                      onProofTap: () => _showProofPhotoDialog(
-                        delivery['date'] ?? 'Morning Drop',
-                        delivery['proofImage'],
-                        delivery['driver'],
-                        address: delivery['address'] ?? delivery['deliveryAddress'],
-                        time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
-                        lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
-                        lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
-                      ),
-                      onTap: () => _showDeliveriesModal(customerProvider),
-                    ),
-                  );
-                }),
-              const SizedBox(height: 10),
-            ],
-
-            // SECTION 3: UPCOMING DELIVERIES (Third - Future Scheduled Drops)
+            // SECTION 2: UPCOMING DELIVERIES (Second - After Today's Deliveries)
             if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'upcoming') ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3690,6 +3621,134 @@ class _HomeScreenState extends State<HomeScreen> {
                         onTap: () => _showUpcomingDeliveryDetails(delivery),
                       ),
                     )),
+              const SizedBox(height: 10),
+            ],
+
+            // SECTION 3: DELIVERY HISTORY (Third - Past Verified Drops)
+            if (_deliveryFilterTab == 'all' || _deliveryFilterTab == 'history') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Flexible(
+                            child: Text(
+                              'Delivery History',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0C2340),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: Text(
+                              '${historyDeliveries.length} Drops',
+                              style: const TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF15803D),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2F1EA),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFCCE8DA)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.fullscreen_rounded, size: 14, color: Color(0xFF0D5C3A)),
+                          SizedBox(width: 3),
+                          Text(
+                            'Full Screen',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0D5C3A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (historyDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'No past deliveries in your history yet.',
+                      style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...historyDeliveries.map((delivery) {
+                  final isDeliveredItem = delivery['isDelivered'] == true;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildUpcomingDeliveryCard(
+                      day: delivery['day'] ?? 'Wed',
+                      date: delivery['dayNum'] ?? '28',
+                      monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                      timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
+                      milkQty: delivery['milkQty'] ?? '1 L',
+                      curdQty: delivery['curdQty'] ?? '0 g',
+                      addonsText: delivery['addonsText']?.toString(),
+                      addonsTotal: num.tryParse(delivery['addonsTotal']?.toString() ?? '0'),
+                      isDelivered: isDeliveredItem,
+                      paymentStatus: delivery['paymentStatus'] ?? (isDeliveredItem ? 'Paid' : 'Advance'),
+                      proofImage: delivery['proofImage'],
+                      driverName: delivery['driver'],
+                      onProofTap: () => _showProofPhotoDialog(
+                        delivery['date'] ?? 'Morning Drop',
+                        delivery['proofImage'],
+                        delivery['driver'],
+                        address: delivery['address'] ?? delivery['deliveryAddress'],
+                        time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                        lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                        lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
+                      ),
+                      onTap: () => _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user),
+                    ),
+                  );
+                }),
               const SizedBox(height: 30),
             ],
           ],

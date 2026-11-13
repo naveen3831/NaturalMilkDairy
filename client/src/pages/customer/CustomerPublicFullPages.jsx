@@ -25,7 +25,6 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import { resolveProofUrl } from '../../services/api';
-import LeafletSingleLocationMap from '../../components/LeafletSingleLocationMap';
 import { formatISTDateTime } from '../../utils/istDateTime';
 
 // Helper for dates
@@ -1092,110 +1091,26 @@ export function CustomerDeliveriesPage({ setActiveTab }) {
               </button>
             </div>
 
-            {/* View Switcher Tabs */}
-            <div style={{ padding: '12px 20px 0 20px', display: 'flex', gap: '10px', background: '#ffffff' }}>
-              <button
-                type="button"
-                onClick={() => setProofTab('photo')}
-                style={{
-                  flex: 1,
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  border: proofTab === 'photo' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                  background: proofTab === 'photo' ? '#059669' : '#f8fafc',
-                  color: proofTab === 'photo' ? '#ffffff' : '#475569',
-                  fontWeight: 800,
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Camera size={14} />
-                <span>Doorstep Photo</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setProofTab('map')}
-                style={{
-                  flex: 1,
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  border: proofTab === 'map' ? '1.5px solid #059669' : '1px solid #e2e8f0',
-                  background: proofTab === 'map' ? '#059669' : '#f8fafc',
-                  color: proofTab === 'map' ? '#ffffff' : '#475569',
-                  fontWeight: 800,
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <MapPin size={14} />
-                <span>Leaflet Map Location</span>
-              </button>
-            </div>
-
-            <div style={{ padding: '16px', background: '#f8fafc', textAlign: 'center' }}>
-              {proofTab === 'photo' ? (
-                <div
-                  onClick={() => setProofTab('map')}
-                  title="Click image to view doorstep location on Leaflet Map"
-                  style={{ position: 'relative', cursor: 'pointer', display: 'inline-block', maxWidth: '100%' }}
-                >
-                  <img
-                    src={resolveProofUrl(selectedProof)}
-                    alt="Delivery Proof"
-                    onError={(e) => {
-                      const cloud = `https://naturalmilkdairy.speshway.site${String(selectedProof).startsWith('/') ? selectedProof : `/${selectedProof}`}`;
-                      if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
-                    }}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '70vh',
-                      borderRadius: '12px',
-                      objectFit: 'contain',
-                      display: 'block',
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: '12px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      backdropFilter: 'blur(4px)',
-                      color: '#ffffff',
-                      borderRadius: '20px',
-                      padding: '5px 14px',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      border: '1px solid rgba(52, 211, 153, 0.5)',
-                      pointerEvents: 'none',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <MapPin size={12} color="#34d399" />
-                    <span>Tap image to view on Leaflet Map</span>
-                  </div>
-                </div>
-              ) : (
-                <LeafletSingleLocationMap
-                  lat={Number(user?.latitude ?? 17.4483)}
-                  lng={Number(user?.longitude ?? 78.3915)}
-                  title={user?.name || 'Registered Home'}
-                  address={user?.address || 'Doorstep Delivery Location'}
-                  height="360px"
+            {/* Photo Display with Location Inside Image */}
+            <div style={{ padding: '16px', background: '#0b1e14', textAlign: 'center', borderRadius: '0 0 18px 18px' }}>
+              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                <img
+                  src={resolveProofUrl(selectedProof)}
+                  alt="Delivery Proof"
+                  onError={(e) => {
+                    const cloud = `https://naturalmilkdairy.speshway.site${String(selectedProof).startsWith('/') ? selectedProof : `/${selectedProof}`}`;
+                    if (e.currentTarget.src !== cloud) e.currentTarget.src = cloud;
+                  }}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '70vh',
+                    borderRadius: '12px',
+                    objectFit: 'contain',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                    display: 'block',
+                  }}
                 />
-              )}
+              </div>
             </div>
           </div>
         </div>
