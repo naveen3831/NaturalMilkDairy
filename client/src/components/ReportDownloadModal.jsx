@@ -49,38 +49,44 @@ function getIstDateDaysAgo(daysAgo) {
 }
 
 function extractRecordsFromLedger(ledgerRes) {
-  const deliveries = Array.isArray(ledgerRes?.deliveries) ? [...ledgerRes.deliveries] : [];
-  const payments = Array.isArray(ledgerRes?.payments) ? [...ledgerRes.payments] : [];
+  const deliveries = Array.isArray(ledgerRes?.deliveries) && ledgerRes.deliveries.length > 0
+    ? [...ledgerRes.deliveries]
+    : [];
+  const payments = Array.isArray(ledgerRes?.payments) && ledgerRes.payments.length > 0
+    ? [...ledgerRes.payments]
+    : [];
   const entries = Array.isArray(ledgerRes?.ledgerEntries) ? ledgerRes.ledgerEntries : [];
 
-  entries.forEach((entry) => {
-    const raw = entry?.rawItem && typeof entry.rawItem === 'object' ? { ...entry.rawItem } : {};
-    if (entry?.type === 'delivery') {
-      deliveries.push({
-        ...raw,
-        id: raw.id || raw._id || entry.id,
-        deliveryDate: raw.deliveryDate || raw.date || entry.date || '',
-        actualMilk: raw.actualMilk ?? (Number.parseFloat(entry.milk) || 0),
-        plannedMilk: raw.plannedMilk ?? (Number.parseFloat(entry.milk) || 0),
-        actualCurd: raw.actualCurd ?? (Number.parseFloat(entry.curd) || 0),
-        plannedCurd: raw.plannedCurd ?? (Number.parseFloat(entry.curd) || 0),
-        totalAmount: raw.totalAmount ?? entry.amount ?? 0,
-        status: raw.status || entry.status || 'delivered',
-        deliveryBoyName: raw.deliveryBoyName || entry.deliveryBoyName || 'Assigned Partner',
-        addons: raw.addons || entry.addons || [],
-        addonsTotal: raw.addonsTotal ?? entry.addonsTotal ?? 0,
-      });
-    } else if (entry?.type === 'payment') {
-      payments.push({
-        ...raw,
-        id: raw.id || raw._id || entry.id,
-        paymentDate: raw.paymentDate || raw.createdAt || entry.time || entry.date || '',
-        amount: raw.amount ?? entry.paidAmount ?? Math.abs(Number(entry.amount) || 0),
-        paymentMethod: raw.paymentMethod || entry.paymentMethod || 'CASH',
-        collectedBy: raw.collectedBy || entry.deliveryBoyName || 'Partner',
-      });
-    }
-  });
+  if (deliveries.length === 0 || payments.length === 0) {
+    entries.forEach((entry) => {
+      const raw = entry?.rawItem && typeof entry.rawItem === 'object' ? { ...entry.rawItem } : {};
+      if (deliveries.length === 0 && entry?.type === 'delivery') {
+        deliveries.push({
+          ...raw,
+          id: raw.id || raw._id || entry.id,
+          deliveryDate: raw.deliveryDate || raw.date || entry.date || '',
+          actualMilk: raw.actualMilk ?? (Number.parseFloat(entry.milk) || 0),
+          plannedMilk: raw.plannedMilk ?? (Number.parseFloat(entry.milk) || 0),
+          actualCurd: raw.actualCurd ?? (Number.parseFloat(entry.curd) || 0),
+          plannedCurd: raw.plannedCurd ?? (Number.parseFloat(entry.curd) || 0),
+          totalAmount: raw.totalAmount ?? entry.amount ?? 0,
+          status: raw.status || entry.status || 'delivered',
+          deliveryBoyName: raw.deliveryBoyName || entry.deliveryBoyName || 'Assigned Partner',
+          addons: raw.addons || entry.addons || [],
+          addonsTotal: raw.addonsTotal ?? entry.addonsTotal ?? 0,
+        });
+      } else if (payments.length === 0 && entry?.type === 'payment') {
+        payments.push({
+          ...raw,
+          id: raw.id || raw._id || entry.id,
+          paymentDate: raw.paymentDate || raw.createdAt || entry.time || entry.date || '',
+          amount: raw.amount ?? entry.paidAmount ?? Math.abs(Number(entry.amount) || 0),
+          paymentMethod: raw.paymentMethod || entry.paymentMethod || 'CASH',
+          collectedBy: raw.collectedBy || entry.deliveryBoyName || 'Partner',
+        });
+      }
+    });
+  }
 
   return { deliveries, payments };
 }
@@ -95,10 +101,22 @@ export default function ReportDownloadModal({
   initialCustomers = null,
   initialDeliveries = null,
   initialPayments = null,
+  initialPeriod = null,
+  initialStartDate = null,
+  initialEndDate = null,
 }) {
   // Scope: 'all' = All Customers consolidated; 'single' = Single customer statement
   const [reportScope, setReportScope] = useState(role === 'customer' ? 'single' : 'all');
-  const [selectedPeriod, setSelectedPeriod] = useState('monthly');
+  const [selectedPeriod, setSelectedPeriod] = useState(initialPeriod || 'monthly');
+  const [customStartDate, setCustomStartDate] = useState(() => {
+    if (initialStartDate) return initialStartDate;
+    const d = new Date(Date.now() - 7 * 86400000);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  const [customEndDate, setCustomEndDate] = useState(() => {
+    if (initialEndDate) return initialEndDate;
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  });
   const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [viewMode, setViewMode] = useState('config'); // 'config' | 'preview'
@@ -115,8 +133,11 @@ export default function ReportDownloadModal({
     if (isOpen) {
       setViewMode('config');
       setErrorMsg('');
+      if (initialPeriod) setSelectedPeriod(initialPeriod);
+      if (initialStartDate) setCustomStartDate(initialStartDate);
+      if (initialEndDate) setCustomEndDate(initialEndDate);
     }
-  }, [isOpen]);
+  }, [isOpen, initialPeriod, initialStartDate, initialEndDate]);
 
   // Sync initial scope on role change
   useEffect(() => {
@@ -256,12 +277,22 @@ export default function ReportDownloadModal({
       icon: Clock,
       badge: 'Full Archive',
     },
+    {
+      id: 'custom',
+      label: 'Custom Date Range',
+      range: 'Certain Dates (From - To)',
+      desc: 'Pick specific start & end dates for certain delivery and billing records',
+      icon: Calendar,
+      badge: 'From - To',
+    },
   ];
 
   const getPeriodLabel = () => {
     const now = new Date();
     const todayStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-    if (selectedPeriod === 'weekly') {
+    if (selectedPeriod === 'custom') {
+      return `Custom Range (${customStartDate} to ${customEndDate})`;
+    } else if (selectedPeriod === 'weekly') {
       const past = new Date(Date.now() - 7 * 86400000);
       const pastStr = past.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
       return `Weekly (${pastStr} to ${todayStr})`;
@@ -314,19 +345,31 @@ export default function ReportDownloadModal({
     }
 
     const todayIst = toIstDateKey(new Date());
-    const thresholdStr =
-      selectedPeriod === 'weekly'
-        ? getIstDateDaysAgo(7)
-        : selectedPeriod === 'monthly'
-          ? getIstDateDaysAgo(30)
-          : '';
+    let thresholdStr = '';
+    let endBoundStr = todayIst;
+
+    if (selectedPeriod === 'custom') {
+      thresholdStr = customStartDate;
+      endBoundStr = customEndDate;
+    } else if (selectedPeriod === 'weekly') {
+      thresholdStr = getIstDateDaysAgo(7);
+      endBoundStr = '9999-99-99';
+    } else if (selectedPeriod === 'monthly') {
+      thresholdStr = getIstDateDaysAgo(30);
+      endBoundStr = '9999-99-99';
+    } else if (selectedPeriod === 'all') {
+      thresholdStr = '';
+      endBoundStr = '9999-99-99';
+    }
 
     const filterByPeriod = (items, getDate) => {
-      if (!thresholdStr) return items;
+      if (!thresholdStr && (!endBoundStr || endBoundStr === '9999-99-99')) return items;
       return items.filter((item) => {
         const dtKey = toIstDateKey(getDate(item));
         if (!dtKey) return true;
-        return dtKey >= thresholdStr && (!todayIst || dtKey <= todayIst);
+        if (thresholdStr && dtKey < thresholdStr) return false;
+        if (endBoundStr && endBoundStr !== '9999-99-99' && dtKey > endBoundStr) return false;
+        return true;
       });
     };
 
@@ -362,7 +405,7 @@ export default function ReportDownloadModal({
       targetCust = initialCustomers[0];
     }
     if (!targetCust && (role === 'customer' || entityId)) {
-      const lookupId = entityId || 'me';
+      const lookupId = (role === 'customer') ? 'me' : (entityId || 'me');
       const meRes = await fetch(getApiUrl(`/api/customers/${lookupId}`), { headers }).then((r) => r.json()).catch(() => null);
       if (meRes?.customer) targetCust = meRes.customer;
     }
@@ -373,21 +416,22 @@ export default function ReportDownloadModal({
       throw new Error('Please select a customer to generate their statement.');
     }
 
-    targetCust = targetCust || {
-      name: 'Customer',
-      customerId: entityId || '',
-      mobile: '',
-      area: 'Hyderabad',
-      currentBalance: 0,
-    };
+    targetCust = targetCust
+      ? { ...targetCust }
+      : {
+          name: 'Customer',
+          customerId: entityId || '',
+          mobile: '',
+          area: 'Hyderabad',
+          currentBalance: 0,
+        };
 
     let custDeliveries = [];
     let custPayments = [];
     const targetLookupId =
-      targetCust.id ||
-      targetCust._id ||
-      targetCust.customerId ||
-      (role === 'customer' ? 'me' : '');
+      role === 'customer'
+        ? 'me'
+        : (targetCust.id || targetCust._id || targetCust.customerId || entityId || 'me');
 
     if (targetLookupId) {
       try {
@@ -395,7 +439,22 @@ export default function ReportDownloadModal({
           .then((r) => r.json())
           .catch(() => null);
         if (ledgerRes?.success) {
-          if (ledgerRes.customer) targetCust = ledgerRes.customer;
+          if (ledgerRes.customer) targetCust = { ...targetCust, ...ledgerRes.customer };
+          const extracted = extractRecordsFromLedger(ledgerRes);
+          custDeliveries = extracted.deliveries;
+          custPayments = extracted.payments;
+        }
+      } catch (_) {}
+    }
+
+    // Customer fallback: If targetLookupId !== 'me' and returned empty, try 'me'
+    if (custDeliveries.length === 0 && role === 'customer' && targetLookupId !== 'me') {
+      try {
+        const ledgerRes = await fetch(getApiUrl('/api/customers/me/ledger'), { headers })
+          .then((r) => r.json())
+          .catch(() => null);
+        if (ledgerRes?.success) {
+          if (ledgerRes.customer) targetCust = { ...targetCust, ...ledgerRes.customer };
           const extracted = extractRecordsFromLedger(ledgerRes);
           custDeliveries = extracted.deliveries;
           custPayments = extracted.payments;
@@ -417,12 +476,40 @@ export default function ReportDownloadModal({
       }
     }
 
+    if (custDeliveries.length === 0 && Array.isArray(initialDeliveries) && initialDeliveries.length > 0) {
+      custDeliveries = [...initialDeliveries];
+    }
+
     if (custPayments.length === 0 && allPayments.length > 0) {
       if (role === 'customer') {
         custPayments = [...allPayments];
       } else {
         const keys = [targetCust.id, targetCust._id, targetCust.customerId].filter(Boolean).map(String);
         custPayments = allPayments.filter((p) => keys.includes(String(p.customerId || '')));
+      }
+    }
+
+    if (custPayments.length === 0 && Array.isArray(initialPayments) && initialPayments.length > 0) {
+      custPayments = [...initialPayments];
+    }
+
+    // Hydrate customer profile if fields are empty
+    if (Array.isArray(initialCustomers) && initialCustomers.length > 0) {
+      const initC = initialCustomers[0];
+      if (targetCust.name === 'Customer' && initC.name && initC.name !== 'Customer') {
+        targetCust.name = initC.name;
+      }
+      if (!targetCust.mobile && initC.mobile) {
+        targetCust.mobile = initC.mobile;
+      }
+      if ((!targetCust.address || targetCust.address === 'Doorstep Address') && initC.address) {
+        targetCust.address = initC.address;
+      }
+      if (!targetCust.area && initC.area) {
+        targetCust.area = initC.area;
+      }
+      if (targetCust.currentBalance == null && initC.currentBalance != null) {
+        targetCust.currentBalance = initC.currentBalance;
       }
     }
 
@@ -515,14 +602,20 @@ export default function ReportDownloadModal({
         selectedCustomer?._id ||
         (entityId && entityId !== 'me' ? entityId : '');
 
+      const dateParams = selectedPeriod === 'custom' ? `&startDate=${encodeURIComponent(customStartDate)}&endDate=${encodeURIComponent(customEndDate)}` : '';
       let endpoint = '';
       if (reportScope === 'all') {
-        endpoint = `/api/reports/all-customers/pdf?period=${selectedPeriod}`;
+        endpoint = `/api/reports/all-customers/pdf?period=${selectedPeriod}${dateParams}`;
+      } else if (role === 'partner' || role === 'delivery_boy') {
+        endpoint = `/api/reports/partner/pdf?period=${selectedPeriod}${dateParams}`;
+        if (entityId) endpoint += `&partnerId=${encodeURIComponent(entityId)}`;
+      } else if (role === 'admin' && reportScope !== 'single') {
+        endpoint = `/api/reports/admin/pdf?period=${selectedPeriod}${dateParams}`;
       } else if (role === 'customer') {
-        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}`;
+        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}${dateParams}`;
         if (resolvedCustId) endpoint += `&customerId=${encodeURIComponent(resolvedCustId)}`;
       } else {
-        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}&customerId=${encodeURIComponent(resolvedCustId || '')}`;
+        endpoint = `/api/reports/customer/pdf?period=${selectedPeriod}&customerId=${encodeURIComponent(resolvedCustId || '')}${dateParams}`;
       }
 
       if (token) {
@@ -534,10 +627,10 @@ export default function ReportDownloadModal({
       const contentType = resp?.headers?.get('content-type') || '';
 
       if (!resp || !resp.ok || !contentType.includes('application/pdf')) {
-        console.warn('Server PDF unavailable or returned non-PDF, opening realtime report preview.');
-        const compiled = previewData || await buildCompiledReport();
+        console.warn('Server PDF endpoint unavailable or returned non-PDF, triggering direct client-side Print / Save as PDF.');
+        const compiled = previewData || (await buildCompiledReport());
         setPreviewData(compiled);
-        setViewMode('preview');
+        printHtmlDocument(compiled.html, compiled.titleDoc || 'Natural_Milk_Dairy_Report');
         setIsGenerating(false);
         return;
       }
@@ -555,11 +648,11 @@ export default function ReportDownloadModal({
 
       setIsGenerating(false);
     } catch (err) {
-      console.warn('Server download issue, falling back to realtime preview:', err);
+      console.warn('Server download issue, falling back to direct client-side Print / Save as PDF:', err);
       try {
-        const compiled = previewData || await buildCompiledReport();
+        const compiled = previewData || (await buildCompiledReport());
         setPreviewData(compiled);
-        setViewMode('preview');
+        printHtmlDocument(compiled.html, compiled.titleDoc || 'Natural_Milk_Dairy_Report');
       } catch (e2) {
         setErrorMsg(e2.message || 'Failed to generate report.');
       }
@@ -1114,6 +1207,69 @@ export default function ReportDownloadModal({
                   </div>
                 );
               })}
+
+              {selectedPeriod === 'custom' && (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '12px',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    marginTop: '2px',
+                  }}
+                >
+                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Select Custom Date Range (From - To)
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        From Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customStartDate}
+                        onChange={(e) => setCustomStartDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          background: '#ffffff',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', marginBottom: '4px' }}>
+                        To Date
+                      </label>
+                      <input
+                        type="date"
+                        value={customEndDate}
+                        onChange={(e) => setCustomEndDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.82rem',
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          background: '#ffffff',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

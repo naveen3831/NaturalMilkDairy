@@ -20,9 +20,6 @@ class SubscriptionDetailsScreen extends StatefulWidget {
 }
 
 class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
-  int _selectedDayIndex = 0;
-  final List<String> _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -911,93 +908,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 2. ORDER SCHEDULE (Weekdays - Matching Image 2)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE2EBE5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.calendar_month_outlined, color: Color(0xFF0D5C3A), size: 18),
-                          SizedBox(width: 8),
-                          Text(
-                            'Order Schedule',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0C2340),
-                            ),
-                          ),
-                        ],
-                      ),
-                      InkWell(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Custom daily delivery schedule updated!'),
-                              backgroundColor: Color(0xFF0D5C3A),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'Change →',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0D5C3A),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(_weekdays.length, (index) {
-                      final bool isSelected = _selectedDayIndex == index;
-                      return InkWell(
-                        onTap: () => setState(() => _selectedDayIndex = index),
-                        borderRadius: BorderRadius.circular(12),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          width: 40,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFF3F7F4),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE2EBE5),
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            _weekdays[index],
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                              color: isSelected ? Colors.white : const Color(0xFF4B5563),
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // 3. DELIVERY ADDRESS CARD (Matching Image 2)
+            // 2. DELIVERY ADDRESS CARD (Matching Image 2)
             InkWell(
               onTap: () {
                 Navigator.push(

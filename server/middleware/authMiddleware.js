@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Customer = require('../models/Customer');
+const { findCustomerForRequest } = require('../services/customerLookupService');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET || Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
@@ -165,12 +166,11 @@ const requireAuth = (req, res, next) => {
 const authorizeCustomerAccess = async (req, res, next) => {
   if (req.user?.role === 'admin') return next();
   const requestedId = req.params.id || req.query.customerId;
+  if (!requestedId || requestedId === 'me') return next();
+
   if (req.user?.role === 'delivery_boy') {
     try {
-      const query = /^[a-f\d]{24}$/i.test(requestedId)
-        ? { _id: requestedId }
-        : { customerId: requestedId };
-      const customer = await Customer.findOne(query).lean();
+      const customer = await findCustomerForRequest(req);
       if (!customer) return res.status(404).json({ success: false, message: 'Customer not found.' });
       const identity = [req.user.id, req.user.boyId, req.user.mobile].filter(Boolean);
       const assignedIds = [
@@ -190,15 +190,43 @@ const authorizeCustomerAccess = async (req, res, next) => {
       return next(error);
     }
   }
-  const isOwner = ['customer', 'user'].includes(req.user?.role) &&
-    (requestedId === 'me' || requestedId === req.user.id || requestedId === req.user.customerId);
-  if (!isOwner) {
-    return res.status(403).json({
-      success: false,
-      message: 'You can only access your own customer account.',
-    });
+
+  if (['customer', 'user'].includes(req.user?.role)) {
+    const cleanReq = String(requestedId).trim().toLowerCase();
+    const uid = String(req.user.id || '').toLowerCase();
+    const ucid = String(req.user.customerId || '').toLowerCase();
+    const umob = String(req.user.mobile || '').replace(/\D/g, '').slice(-10);
+
+    if (
+      cleanReq === 'me' ||
+      cleanReq === uid ||
+      (ucid && cleanReq === ucid) ||
+      (umob && cleanReq === umob)
+    ) {
+      return next();
+    }
+
+    try {
+      const authedCust = await findCustomerForRequest({ user: req.user });
+      if (authedCust) {
+        const allowedKeys = [
+          authedCust._id?.toString().toLowerCase(),
+          (authedCust.customerId || '').toLowerCase(),
+          (authedCust.mobile || '').replace(/\D/g, '').slice(-10),
+        ].filter(Boolean);
+
+        const targetDigits = cleanReq.replace(/\D/g, '').slice(-10);
+        if (allowedKeys.includes(cleanReq) || (targetDigits.length === 10 && allowedKeys.includes(targetDigits))) {
+          return next();
+        }
+      }
+    } catch (_) {}
   }
-  return next();
+
+  return res.status(403).json({
+    success: false,
+    message: 'You can only access your own customer account.',
+  });
 };
 
 module.exports = {

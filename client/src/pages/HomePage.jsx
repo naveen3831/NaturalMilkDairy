@@ -62,7 +62,7 @@ const DEFAULT_HOME_PRODUCTS = [
     price: '₹30',
     numericPrice: 30,
     unit: '/ 500ml',
-    image: CLOUDINARY_MEDIA.cowMilk500ml || '/product-cow-milk-500ml.jpg',
+    image: CLOUDINARY_MEDIA.cowMilk500ml,
     desc: 'Convenient daily half-litre pack of pure farm cow milk, ideal for morning chai & coffee.',
     highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin', 'Chilled to 4°C in 30 Mins'],
   },
@@ -77,7 +77,7 @@ const DEFAULT_HOME_PRODUCTS = [
     price: '₹75',
     numericPrice: 75,
     unit: '/ Litre',
-    image: CLOUDINARY_MEDIA.buffaloMilk || '/product-buffalo-milk.jpg',
+    image: CLOUDINARY_MEDIA.buffaloMilk,
     desc: 'Thick creamy high-fat pure buffalo milk with rich natural malai.',
     highlights: ['Heavy Natural Malai', 'Zero Dilution', 'Pure Grass-Fed Cattle'],
   },
@@ -407,7 +407,7 @@ export default function HomePage({ setActiveTab }) {
                   src={banner.imageUrl}
                   alt={banner.title}
                   className="mobile-home-hero-full-img"
-                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard; }}
                 />
               </div>
             ))}
@@ -646,7 +646,7 @@ export default function HomePage({ setActiveTab }) {
                   src={banner.imageUrl}
                   alt={banner.title}
                   className="desktop-hero-carousel-img"
-                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.premiumHeroMilk || '/premium_hero_milk_banner.png'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.premiumHeroMilk; }}
                 />
               </div>
             ))}

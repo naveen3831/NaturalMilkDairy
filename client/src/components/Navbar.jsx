@@ -280,7 +280,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
               <img
                 src={CLOUDINARY_MEDIA.logo}
                 alt="Natural Milk Dairy"
-                onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+                onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.logoPng; }}
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
               />
             </div>

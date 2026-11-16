@@ -125,6 +125,7 @@ class _ProductCardState extends State<ProductCard> {
                   child: Image.network(
                     ProductModel.resolveImageUrl(p.imageUrl, p.name, p.category),
                     fit: BoxFit.cover,
+                    cacheWidth: 400,
                     errorBuilder: (_, _, _) => Image.asset(
                       ProductModel.resolveAssetFallback(p.name, p.category),
                       fit: BoxFit.cover,

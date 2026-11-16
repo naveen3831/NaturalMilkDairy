@@ -1,4 +1,33 @@
 const PDFDocument = require('pdfkit');
+const path = require('path');
+const fs = require('fs');
+const https = require('https');
+
+const CLOUDINARY_LOGO_URL =
+  'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg';
+
+let cachedLogoBuffer = null;
+
+const getCloudinaryLogoBuffer = async () => {
+  if (cachedLogoBuffer) return cachedLogoBuffer;
+  return new Promise((resolve) => {
+    try {
+      https
+        .get(CLOUDINARY_LOGO_URL, (res) => {
+          if (res.statusCode !== 200) return resolve(null);
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            cachedLogoBuffer = Buffer.concat(chunks);
+            resolve(cachedLogoBuffer);
+          });
+        })
+        .on('error', () => resolve(null));
+    } catch (_) {
+      resolve(null);
+    }
+  });
+};
 
 /**
  * Natural Milk Dairy - Professional PDF Report Service
@@ -26,31 +55,46 @@ const formatDateStr = (dateVal) => {
   }
 };
 
-// Draw common header banner
-const drawHeader = (doc, title, subtitle, periodLabel) => {
+// Draw common header banner with Company Logo
+const drawHeader = (doc, title, subtitle, periodLabel, logoBuffer = null) => {
   // Top green brand bar
   doc.rect(0, 0, doc.page.width, 10).fill('#0d5c3a');
   doc.rect(0, 10, doc.page.width, 3).fill('#f59e0b');
 
-  doc.y = 28;
+  const startX = 40;
+  let textX = startX;
+
+  const buf = logoBuffer || cachedLogoBuffer;
+  if (buf) {
+    try {
+      doc.save();
+      doc.roundedRect(startX, 24, 46, 46, 8).fillAndStroke('#ffffff', '#e2e8f0');
+      doc.image(buf, startX + 3, 27, { width: 40, height: 40 });
+      doc.restore();
+      textX = startX + 56;
+    } catch (e) {
+      console.warn('PDFKit logo render warning:', e.message);
+      textX = startX;
+    }
+  }
 
   // Dairy Title & Branding
-  doc.fontSize(18).font('Helvetica-Bold').fillColor('#0d5c3a').text('NATURAL MILK DAIRY', 40, doc.y);
-  doc.fontSize(8.5).font('Helvetica').fillColor('#555555').text('100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery', 40, doc.y + 2);
-  doc.fontSize(8).fillColor('#64748b').text('Helpline: +91 97018 78789  |  Email: contact@naturalmilkdairy.com  |  Hyderabad, Telangana', 40, doc.y + 2);
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('#0d5c3a').text('NATURAL MILK DAIRY', textX, 24);
+  doc.fontSize(8.5).font('Helvetica').fillColor('#555555').text('100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery', textX, 43);
+  doc.fontSize(8).fillColor('#64748b').text('Helpline: +91 97018 78789  |  Email: contact@naturalmilkdairy.com  |  Hyderabad, Telangana', textX, 56);
 
   // Date Generated on Top Right
   const generatedText = `Generated: ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-  doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text(generatedText, 350, 32, { align: 'right', width: 210 });
+  doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text(generatedText, 350, 26, { align: 'right', width: doc.page.width - 390 });
 
   // Divider line
-  doc.y += 10;
-  doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
+  doc.y = 78;
+  doc.moveTo(startX, doc.y).lineTo(doc.page.width - startX, doc.y).strokeColor('#e2e8f0').lineWidth(1).stroke();
 
   // Report Title Box
-  doc.y += 12;
+  doc.y += 10;
   const bannerY = doc.y;
-  doc.roundedRect(40, bannerY, doc.page.width - 80, 42, 6).fillAndStroke('#f0fdf4', '#bbf7d0');
+  doc.roundedRect(startX, bannerY, doc.page.width - 80, 42, 6).fillAndStroke('#f0fdf4', '#bbf7d0');
 
   doc.fontSize(13).font('Helvetica-Bold').fillColor('#065f46').text(title.toUpperCase(), 52, bannerY + 8);
   doc.fontSize(8.5).font('Helvetica').fillColor('#047857').text(`${subtitle}  |  Period: ${periodLabel}`, 52, bannerY + 25);
@@ -90,11 +134,13 @@ const generateCustomerPdfReport = async ({ customer, deliveries = [], payments =
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
   doc.pipe(res);
 
+  const logoBuffer = await getCloudinaryLogoBuffer();
   drawHeader(
     doc,
     'Customer Statement & Delivery History',
     `Account Holder: ${customer.name} (${customer.customerId || 'ID'})`,
-    periodLabel
+    periodLabel,
+    logoBuffer
   );
 
   // Customer Information Card
@@ -309,11 +355,13 @@ const generatePartnerPdfReport = async ({ partner, deliveries = [], collections 
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
   doc.pipe(res);
 
+  const logoBuffer = await getCloudinaryLogoBuffer();
   drawHeader(
     doc,
     'Delivery Partner Route & Collections Report',
     `Partner: ${partner.name} (${partner.assignedArea || 'All Routes'})`,
-    periodLabel
+    periodLabel,
+    logoBuffer
   );
 
   // Partner Profile Box
@@ -500,11 +548,13 @@ const generateAdminPdfReport = async ({ summary, partnerPerformance = [], dailyT
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
   doc.pipe(res);
 
+  const logoBuffer = await getCloudinaryLogoBuffer();
   drawHeader(
     doc,
     'Executive Operations & Financial Report',
     'Natural Milk Dairy Enterprise Operations',
-    periodLabel
+    periodLabel,
+    logoBuffer
   );
 
   // Business KPI Grid (Row 1)
@@ -659,11 +709,13 @@ const generateAllCustomersPdfReport = async ({ customersData = [], summary = {},
   const doc = new PDFDocument({ size: 'A4', margin: 40, bufferPages: true });
   doc.pipe(res);
 
+  const logoBuffer = await getCloudinaryLogoBuffer();
   drawHeader(
     doc,
     'Consolidated Customers Ledger & Deliveries Report',
     `All Active & Registered Customers (${customersData.length} Accounts)`,
-    periodLabel
+    periodLabel,
+    logoBuffer
   );
 
   // KPI Grid

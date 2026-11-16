@@ -276,7 +276,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                       borderRadius: '10px',
                       border: '1px solid #e2e8f0',
                     }}
-                    onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
+                    onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard; }}
                   />
                 ) : (
                   <div
@@ -331,7 +331,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                     type="text"
                     value={editingBanner.imageUrl || ''}
                     onChange={(e) => setEditingBanner({ ...editingBanner, imageUrl: e.target.value })}
-                    placeholder="Or enter direct image URL / path (/hero_banner_card.png)"
+                    placeholder="Or enter Cloudinary image URL (https://res.cloudinary.com/...)"
                     style={{
                       width: '100%',
                       padding: '8px 12px',
@@ -474,7 +474,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                     setEditingBanner({
                       title: '',
                       subtitle: '',
-                      imageUrl: CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png',
+                      imageUrl: CLOUDINARY_MEDIA.heroBannerCard,
                       category: 'milk',
                       order: banners.length,
                       isActive: true,
@@ -525,7 +525,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
                             src={b.imageUrl}
                             alt={b.title}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard || '/hero_banner_card.png'; }}
+                            onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.heroBannerCard; }}
                           />
                           <div
                             style={{

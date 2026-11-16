@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { login, register, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers } = require('../controllers/authController');
+const { login, register, googleLogin, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers } = require('../controllers/authController');
 const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
 const { createRateLimiter } = require('../middleware/rateLimitMiddleware');
 
 const loginLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 10,
+  maxRequests: 15,
   message: 'Too many sign-in attempts. Please wait and try again.',
 });
 const registerLimiter = createRateLimiter({
@@ -17,6 +17,7 @@ const registerLimiter = createRateLimiter({
 
 router.post('/login', loginLimiter, login);
 router.post('/register', registerLimiter, register);
+router.post('/google', loginLimiter, googleLogin);
 router.get('/delivery-areas', getDeliveryAreas);
 router.get('/me', verifyToken, getMe);
 router.get('/verify', verifyToken, verifyTokenStatus);

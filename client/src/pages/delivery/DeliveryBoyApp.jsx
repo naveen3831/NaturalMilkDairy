@@ -193,6 +193,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
   // Active delivery partner details (pure real data)
   const boyId = matchedBoy?._id?.toString() || matchedBoy?.id?.toString() || user?.boyId || user?.id || '';
+  const targetDriverId = boyId || user?.id || user?.mobile || '';
   const boyName = user?.name || matchedBoy?.name || 'Delivery Partner';
   const boyArea = user?.assignedArea || matchedBoy?.assignedArea || matchedBoy?.area || 'Madhapur';
   const [assignedCustomers, setAssignedCustomers] = useState([]);
@@ -831,6 +832,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   });
   const [profileDetailView, setProfileDetailView] = useState(() => getDeliveryRoute()?.detail || null);
   const [showPartnerReportModal, setShowPartnerReportModal] = useState(false);
+  const [partnerCashPeriod, setPartnerCashPeriod] = useState('today'); // 'today' | 'weekly' | 'monthly' | 'all' | 'custom'
+  const [partnerCustomStartDate, setPartnerCustomStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  const [partnerCustomEndDate, setPartnerCustomEndDate] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  });
 
   const setDeliveryPath = (path, replace = false) => {
     if (window.location.pathname === path) return;
@@ -1011,12 +1021,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     const unsub3 = wsSubscribe('DELIVERY_UPDATED', refreshCollections);
     const unsub4 = wsSubscribe('PAYMENT_UPDATED', refreshCollections);
     const unsub5 = wsSubscribe('PAYMENT_RECORDED', refreshCollections);
+    const unsub6 = wsSubscribe('REPORT_UPDATED', refreshCollections);
     return () => {
       if (typeof unsub1 === 'function') unsub1();
       if (typeof unsub2 === 'function') unsub2();
       if (typeof unsub3 === 'function') unsub3();
       if (typeof unsub4 === 'function') unsub4();
       if (typeof unsub5 === 'function') unsub5();
+      if (typeof unsub6 === 'function') unsub6();
     };
   }, [wsSubscribe, loadDriverHandovers, fetchDeliveries, fetchPayments]);
 
@@ -1389,6 +1401,16 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     })
     .sort((a, b) => toIstDateKey(b.deliveryDate || b.date).localeCompare(toIstDateKey(a.deliveryDate || a.date)));
 
+  const partnerCustomDeliveries = allKnownPartnerDeliveries
+    .filter((d) => {
+      const k = toIstDateKey(d.deliveryDate || d.date);
+      if (!k) return false;
+      if (partnerCustomStartDate && k < partnerCustomStartDate) return false;
+      if (partnerCustomEndDate && k > partnerCustomEndDate) return false;
+      return true;
+    })
+    .sort((a, b) => toIstDateKey(b.deliveryDate || b.date).localeCompare(toIstDateKey(a.deliveryDate || a.date)));
+
   const allPartnerTotalCount = allKnownPartnerDeliveries.length > 0
     ? allKnownPartnerDeliveries.length
     : (effectiveTodayDeliveries.length + partnerUpcomingDeliveries.length + partnerHistoryDeliveries.length);
@@ -1488,19 +1510,79 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     return true;
   });
 
-  const totalDeliveryCashCollected = completedList.reduce((sum, d) => sum + getDropCashCollected(d), 0);
-  const totalDeliveryUpiCollected = completedList.reduce((sum, d) => sum + getDropUpiCollected(d), 0);
-  const totalCustomerCashCollected = todayNonDeliveryPayments
+  const nowCalc = new Date();
+  const weekStartIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(nowCalc.getTime() - 7 * 86400000));
+  const monthStartIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(nowCalc.getTime() - 30 * 86400000));
+
+  const periodCompletedDeliveries = (allKnownPartnerDeliveries.length > 0 ? allKnownPartnerDeliveries : myDeliveries).filter((d) => {
+    if (d.status !== 'delivered') return false;
+    const k = toIstDateKey(d.deliveryDate || d.date);
+    if (partnerCashPeriod === 'today') return k === todayIstStr;
+    if (partnerCashPeriod === 'weekly') return k >= weekStartIst;
+    if (partnerCashPeriod === 'monthly') return k >= monthStartIst;
+    if (partnerCashPeriod === 'custom') {
+      const s = partnerCustomStartDate;
+      const e = partnerCustomEndDate;
+      if (s && e) return k >= s && k <= e;
+      if (s) return k >= s;
+      if (e) return k <= e;
+    }
+    return true; // 'all'
+  });
+
+  const periodPayments = (payments || []).filter((p) => {
+    const rawDt = p.paymentDate || p.createdAt;
+    if (!rawDt) return partnerCashPeriod === 'all';
+    const pIst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(rawDt));
+    if (partnerCashPeriod === 'today' && pIst !== todayIstStr) return false;
+    if (partnerCashPeriod === 'weekly' && pIst < weekStartIst) return false;
+    if (partnerCashPeriod === 'monthly' && pIst < monthStartIst) return false;
+    if (partnerCashPeriod === 'custom') {
+      const s = partnerCustomStartDate;
+      const e = partnerCustomEndDate;
+      if (s && pIst < s) return false;
+      if (e && pIst > e) return false;
+    }
+    const pBoyId = String(p.deliveryBoyId || '');
+    const pColBy = String(p.collectedBy || '').trim().toLowerCase();
+    const pCustId = String(p.customerId || '');
+    return (
+      (boyId && pBoyId === String(boyId)) ||
+      (user?.id && pBoyId === String(user.id)) ||
+      (boyName && pColBy === boyName.trim().toLowerCase()) ||
+      myCustomerIdSet.has(pCustId)
+    );
+  });
+
+  const periodNonDeliveryPayments = periodPayments.filter((p) => {
+    if (String(p.referenceNumber || '').toUpperCase().includes('DELIVERY-')) return false;
+    const notes = String(p.notes || '');
+    if (notes.startsWith('Doorstep Add-ons:') || notes.startsWith('Doorstep Delivery')) {
+      const custId = String(p.customerId || '');
+      const alreadyInDrop = periodCompletedDeliveries.some(
+        (d) => String(d.customerId || '') === custId && (Number(d.addonPaidAmount) > 0 || Number(d.paymentAmount) > 0)
+      );
+      if (alreadyInDrop) return false;
+    }
+    return true;
+  });
+
+  const activeCompletedList = partnerCashPeriod === 'today' ? completedList : periodCompletedDeliveries;
+  const activeNonDelPayments = partnerCashPeriod === 'today' ? todayNonDeliveryPayments : periodNonDeliveryPayments;
+
+  const totalDeliveryCashCollected = activeCompletedList.reduce((sum, d) => sum + getDropCashCollected(d), 0);
+  const totalDeliveryUpiCollected = activeCompletedList.reduce((sum, d) => sum + getDropUpiCollected(d), 0);
+  const totalCustomerCashCollected = activeNonDelPayments
     .filter((p) => p.paymentMethod === 'cash')
     .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
-  const totalCustomerUpiCollected = todayNonDeliveryPayments
+  const totalCustomerUpiCollected = activeNonDelPayments
     .filter((p) => p.paymentMethod === 'upi')
     .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
   const totalCashCollected = totalDeliveryCashCollected + totalCustomerCashCollected;
   const totalUpiCollected = totalDeliveryUpiCollected + totalCustomerUpiCollected;
-  const totalAddonCashCollected = completedList.reduce((sum, d) => sum + getDropAddonCash(d), 0);
-  const totalAddonUpiCollected = completedList.reduce((sum, d) => sum + getDropAddonUpi(d), 0);
+  const totalAddonCashCollected = activeCompletedList.reduce((sum, d) => sum + getDropAddonCash(d), 0);
+  const totalAddonUpiCollected = activeCompletedList.reduce((sum, d) => sum + getDropAddonUpi(d), 0);
 
   const totalRevenue = totalCashCollected + totalUpiCollected;
 
@@ -3398,118 +3480,124 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 </div>
               </div>
 
-              {/* DESKTOP 4 KPI STATS (Hidden on Mobile) */}
-              <div
-                className="driver-desktop-stats"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '16px',
-                }}
-              >
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TOTAL ASSIGNED</span>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Truck size={16} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>{totalDrops}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600, marginTop: '8px' }}>Route: {boyArea}</div>
-                </div>
-
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>DELIVERED</span>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <CheckCircle2 size={16} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '6px', lineHeight: 1.1 }}>{completedList.length}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginTop: '8px' }}>{progressPercent}% Complete</div>
-                </div>
-
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PENDING DROPS</span>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Clock size={16} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#b45309', marginTop: '6px', lineHeight: 1.1 }}>{pendingList.length}</div>
-                  <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: '8px' }}>Awaiting doorstep delivery</div>
-                </div>
-
-                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>COLLECTIONS</span>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Wallet size={16} />
-                    </div>
-                  </div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>₹{totalRevenue.toLocaleString()}</div>
-                  <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '8px' }}>💵 ₹{totalCashCollected} • 📱 ₹{totalUpiCollected}</div>
-                </div>
-              </div>
-
-              {/* DEDICATED MOBILE SHIFT SUMMARY CARD (Visible only on Mobile) */}
-              <div className="driver-mobile-shift-card">
-                {/* Header row: Status & Progress % */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }} />
-                    <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      Route Progress
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#059669' }}>
-                    {progressPercent}% Complete
-                  </span>
-                </div>
-
-                {/* Progress bar */}
-                <div style={{ width: '100%', height: '6px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', marginBottom: '12px' }}>
+              {/* DESKTOP 4 KPI STATS & MOBILE SHIFT SUMMARY (Hidden when Custom is selected) */}
+              {deliverySectionTab !== 'custom' && (
+                <>
+                  {/* DESKTOP 4 KPI STATS (Hidden on Mobile) */}
                   <div
+                    className="driver-desktop-stats"
                     style={{
-                      width: `${progressPercent}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #059669, #10b981)',
-                      borderRadius: '6px',
-                      transition: 'width 0.3s ease',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '16px',
                     }}
-                  />
-                </div>
+                  >
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>TOTAL ASSIGNED</span>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Truck size={16} />
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>{totalDrops}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#2563eb', fontWeight: 600, marginTop: '8px' }}>Route: {boyArea}</div>
+                    </div>
 
-                {/* 4 Compact Stat Pills */}
-                <div className="driver-mobile-shift-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Drops</div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{totalDrops}</div>
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>DELIVERED</span>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <CheckCircle2 size={16} />
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#059669', marginTop: '6px', lineHeight: 1.1 }}>{completedList.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 600, marginTop: '8px' }}>{progressPercent}% Complete</div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PENDING DROPS</span>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fffbeb', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Clock size={16} />
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#b45309', marginTop: '6px', lineHeight: 1.1 }}>{pendingList.length}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#b45309', fontWeight: 600, marginTop: '8px' }}>Awaiting doorstep delivery</div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '18px 20px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>COLLECTIONS</span>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Wallet size={16} />
+                        </div>
+                      </div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0f172a', marginTop: '6px', lineHeight: 1.1 }}>₹{totalRevenue.toLocaleString()}</div>
+                      <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '8px' }}>💵 ₹{totalCashCollected} • 📱 ₹{totalUpiCollected}</div>
+                    </div>
                   </div>
 
-                  <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>Done</div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{completedList.length}</div>
-                  </div>
+                  {/* DEDICATED MOBILE SHIFT SUMMARY CARD (Visible only on Mobile) */}
+                  <div className="driver-mobile-shift-card">
+                    {/* Header row: Status & Progress % */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }} />
+                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#065f46', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                          Route Progress
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#059669' }}>
+                        {progressPercent}% Complete
+                      </span>
+                    </div>
 
-                  <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Pending</div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>{pendingList.length}</div>
-                  </div>
+                    {/* Progress bar */}
+                    <div style={{ width: '100%', height: '6px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', marginBottom: '12px' }}>
+                      <div
+                        style={{
+                          width: `${progressPercent}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #059669, #10b981)',
+                          borderRadius: '6px',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
 
-                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>Cash</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>₹{totalRevenue}</div>
-                  </div>
-                </div>
-              </div>
+                    {/* 4 Compact Stat Pills */}
+                    <div className="driver-mobile-shift-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Drops</div>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{totalDrops}</div>
+                      </div>
 
-              {/* PRIMARY DELIVERY SECTION TABS: Today (First), Upcoming, Delivery History, All Deliveries (Last) */}
+                      <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>Done</div>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{completedList.length}</div>
+                      </div>
+
+                      <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>Pending</div>
+                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>{pendingList.length}</div>
+                      </div>
+
+                      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '9px', padding: '8px 4px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>Cash</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>₹{totalRevenue}</div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* PRIMARY DELIVERY SECTION TABS: Today (First), Upcoming, Delivery History, Custom Range, All Deliveries (Last) */}
               <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', scrollbarWidth: 'none' }}>
                 {[
                   { id: 'today', label: 'Today', count: effectiveTodayDeliveries.length, bg: '#e0f2fe', color: '#0369a1' },
                   { id: 'upcoming', label: 'Upcoming', count: partnerUpcomingDeliveries.length, bg: '#fef3c7', color: '#b45309' },
                   { id: 'history', label: 'Delivery History', count: partnerHistoryDeliveries.length, bg: '#dcfce7', color: '#15803d' },
+                  { id: 'custom', label: 'Custom Range', count: partnerCustomDeliveries.length, bg: '#ede9fe', color: '#6d28d9' },
                   { id: 'all', label: 'All Deliveries', count: allPartnerTotalCount, bg: '#f1f5f9', color: '#475569' },
                 ].map((tab) => {
                   const active = deliverySectionTab === tab.id;
@@ -3550,6 +3638,58 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   );
                 })}
               </div>
+
+              {/* Custom Date Range Picker for Partner */}
+              {deliverySectionTab === 'custom' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px 14px',
+                    background: '#ffffff',
+                    borderRadius: '14px',
+                    border: '1px solid #e2ebe5',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                    marginTop: '8px',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>From:</span>
+                    <input
+                      type="date"
+                      value={partnerCustomStartDate}
+                      onChange={(e) => setPartnerCustomStartDate(e.target.value)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>To:</span>
+                    <input
+                      type="date"
+                      value={partnerCustomEndDate}
+                      onChange={(e) => setPartnerCustomEndDate(e.target.value)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.8rem',
+                        color: '#0f172a',
+                        fontWeight: 600,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* SECTION 1: TODAY'S DELIVERIES */}
               {(deliverySectionTab === 'all' || deliverySectionTab === 'today') && (
@@ -4219,6 +4359,88 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         )}
                         <span style={{ background: '#f1f5f9', borderRadius: '8px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 700, color: '#475569' }}>
                           Paid / Settled
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {/* SECTION 4: CUSTOM RANGE DELIVERIES ONLY */}
+          {deliverySectionTab === 'custom' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>Deliveries in Selected Range</h3>
+                  <span style={{ background: '#ede9fe', color: '#6d28d9', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
+                    {partnerCustomDeliveries.length} Records
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#6d28d9', fontWeight: 700 }}>
+                  {partnerCustomStartDate} to {partnerCustomEndDate}
+                </span>
+              </div>
+
+              {partnerCustomDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.84rem' }}>
+                  No deliveries found between {partnerCustomStartDate} and {partnerCustomEndDate}.
+                </div>
+              ) : (
+                partnerCustomDeliveries.map((item, index) => {
+                  const rawDate = item.deliveryDate || item.date;
+                  const formattedDate = rawDate ? new Date(rawDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : 'Custom Drop';
+                  return (
+                    <div
+                      key={item.id || item._id || `custom-${index}`}
+                      style={{
+                        background: '#ffffff',
+                        borderRadius: '16px',
+                        border: '1px solid #e2e8f0',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>{item.customerName || item.customer?.name || 'Customer'}</span>
+                            <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>#{item.customer?.customerId || item.customerId || ''}</span>
+                          </div>
+                          <div style={{ fontSize: '0.76rem', color: '#475569', marginTop: '2px' }}>
+                            {item.customerAddress || item.customer?.address || item.address || 'Address'}
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            background: item.status === 'delivered' ? '#dcfce7' : '#fef3c7',
+                            color: item.status === 'delivered' ? '#15803d' : '#b45309',
+                            border: item.status === 'delivered' ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                          }}
+                        >
+                          {item.status === 'delivered' ? '✓ Delivered' : 'Pending'}
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
+                        <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700 }}>
+                          🥛 {item.actualMilk ?? item.plannedMilk ?? 1} L Milk
+                        </span>
+                        {(item.actualCurd > 0 || item.plannedCurd > 0) && (
+                          <span style={{ background: '#f8fafc', color: '#334155', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700 }}>
+                            🥣 {item.actualCurd ?? item.plannedCurd} g Curd
+                          </span>
+                        )}
+                        <span style={{ marginLeft: 'auto', fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
+                          Date: {formattedDate}
                         </span>
                       </div>
                     </div>
@@ -5229,29 +5451,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <button
                     type="button"
-                    onClick={loadAssignedCustomers}
-                    disabled={isLoadingCustomers}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '8px 14px',
-                      borderRadius: '9px',
-                      border: '1px solid #e2e8f0',
-                      background: '#ffffff',
-                      color: '#475569',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                      cursor: isLoadingCustomers ? 'wait' : 'pointer',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <RefreshCw size={14} className={isLoadingCustomers ? 'spin-animation' : ''} />
-                    <span>Refresh</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={openAddCustomer}
                     style={{
                       display: 'inline-flex',
@@ -5814,7 +6013,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                   <div>
                     <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      Today's Route Cash Collection
+                      {partnerCashPeriod === 'today'
+                        ? "Today's Route Cash Collection"
+                        : partnerCashPeriod === 'weekly'
+                        ? 'Last 7 Days Route Collection'
+                        : partnerCashPeriod === 'monthly'
+                        ? 'Last 30 Days Route Collection'
+                        : partnerCashPeriod === 'custom'
+                        ? `Custom Route Collection (${partnerCustomStartDate} to ${partnerCustomEndDate})`
+                        : 'All-Time Route Collection'}
                     </h3>
                     <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
                       Reconcile shift collections and handover physical cash to admin
@@ -5865,6 +6072,104 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </button>
                   </div>
                 </div>
+
+                {/* Timeframe Selector Pills */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    background: '#f1f5f9',
+                    borderRadius: '10px',
+                    padding: '3px',
+                    marginBottom: partnerCashPeriod === 'custom' ? '8px' : '14px',
+                    gap: '4px',
+                  }}
+                >
+                  {[
+                    { id: 'today', label: 'Today' },
+                    { id: 'weekly', label: 'Weekly (7 Days)' },
+                    { id: 'monthly', label: 'Monthly (30 Days)' },
+                    { id: 'all', label: 'All Time' },
+                    { id: 'custom', label: 'Custom (From - To)' },
+                  ].map((p) => {
+                    const active = partnerCashPeriod === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setPartnerCashPeriod(p.id)}
+                        style={{
+                          flex: '1 1 auto',
+                          minWidth: '60px',
+                          padding: '6px 8px',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: active ? '#ffffff' : 'transparent',
+                          color: active ? '#059669' : '#64748b',
+                          fontWeight: active ? 800 : 600,
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Date Range Selector (From - To) */}
+                {partnerCashPeriod === 'custom' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '10px 14px',
+                      background: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      marginBottom: '14px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>From:</span>
+                      <input
+                        type="date"
+                        value={partnerCustomStartDate}
+                        onChange={(e) => setPartnerCustomStartDate(e.target.value)}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.8rem',
+                          color: '#0f172a',
+                          background: '#ffffff',
+                          fontWeight: 600,
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>To:</span>
+                      <input
+                        type="date"
+                        value={partnerCustomEndDate}
+                        onChange={(e) => setPartnerCustomEndDate(e.target.value)}
+                        style={{
+                          padding: '5px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          fontSize: '0.8rem',
+                          color: '#0f172a',
+                          background: '#ffffff',
+                          fontWeight: 600,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Cash Metrics & Handover State Calculation */}
                 {(() => {
@@ -11257,11 +11562,11 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               </div>
             </div>
 
-            {/* Quick Actions Strip */}
+            {/* Quick Actions Strip - 3 Cards Per Row */}
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(75px, 1fr))',
+                gridTemplateColumns: 'repeat(3, 1fr)',
                 gap: '8px',
               }}
             >
@@ -11272,19 +11577,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: '#f0fdf4',
                   border: '1px solid #bbf7d0',
                   color: '#15803d',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   textDecoration: 'none',
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <Phone size={16} />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Phone size={16} color="#15803d" />
+                </div>
                 <span>Call</span>
               </a>
 
@@ -11297,19 +11606,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: '#ecfdf5',
                   border: '1px solid #a7f3d0',
                   color: '#047857',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   textDecoration: 'none',
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <MessageCircle size={16} />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#d1fae5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <MessageCircle size={16} color="#047857" />
+                </div>
                 <span>WhatsApp</span>
               </a>
 
@@ -11333,18 +11646,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: '#f5f3ff',
                   border: '1px solid #ddd6fe',
                   color: '#7c3aed',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <Calendar size={16} />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Calendar size={16} color="#7c3aed" />
+                </div>
                 <span>Extend</span>
               </button>
 
@@ -11356,18 +11673,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: selectedCustomer.status === 'paused' ? '#ecfdf5' : '#fffbeb',
                   border: `1px solid ${selectedCustomer.status === 'paused' ? '#a7f3d0' : '#fde68a'}`,
                   color: selectedCustomer.status === 'paused' ? '#047857' : '#b45309',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                {selectedCustomer.status === 'paused' ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: selectedCustomer.status === 'paused' ? '#d1fae5' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {selectedCustomer.status === 'paused' ? <PlayCircle size={16} color="#047857" /> : <PauseCircle size={16} color="#b45309" />}
+                </div>
                 <span>{selectedCustomer.status === 'paused' ? 'Resume' : 'Pause'}</span>
               </button>
 
@@ -11383,18 +11704,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: '#eff6ff',
                   border: '1px solid #bfdbfe',
                   color: '#1d4ed8',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <Edit2 size={16} />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Edit2 size={16} color="#1d4ed8" />
+                </div>
                 <span>Edit</span>
               </button>
 
@@ -11410,18 +11735,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '4px',
-                  padding: '9px 6px',
-                  borderRadius: '10px',
+                  gap: '5px',
+                  padding: '11px 6px',
+                  borderRadius: '12px',
                   background: '#fff1f2',
                   border: '1px solid #fecdd3',
                   color: '#be123c',
-                  fontSize: '0.75rem',
+                  fontSize: '0.76rem',
                   fontWeight: 700,
                   cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <Trash2 size={16} />
+                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#ffe4e6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Trash2 size={16} color="#be123c" />
+                </div>
                 <span>Delete</span>
               </button>
             </div>
@@ -11429,34 +11758,41 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             {/* Detail Blocks */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* 1. Delivery Plan Box */}
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
-                  <Truck size={15} color="#059669" />
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.86rem', fontWeight: 800, color: '#0f172a', marginBottom: '10px' }}>
+                  <Truck size={16} color="#059669" />
                   <span>Doorstep Delivery Plan</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Daily Milk: </span>
-                    <strong style={{ color: '#0f172a' }}>
+
+                {/* 3 Cards for the Row: Delivery Plan Metrics */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Daily Milk</div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
                       {Number(selectedCustomer.deliveryPlan?.milkQty) > 0
                         ? selectedCustomer.deliveryPlan.milkQty
                         : (Number(selectedCustomer.subscription?.plan?.milkQty) > 0
                           ? selectedCustomer.subscription.plan.milkQty
                           : (Number(selectedCustomer.subscription?.milkQty) > 0 ? selectedCustomer.subscription.milkQty : 1))} {selectedCustomer.deliveryPlan?.milkUnit || 'L'}
-                    </strong>
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Curd Qty: </span>
-                    <strong style={{ color: '#0f172a' }}>{selectedCustomer.deliveryPlan?.curdQty || 0} {selectedCustomer.deliveryPlan?.curdUnit || 'g'}</strong>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Curd Qty</div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>
+                      {selectedCustomer.deliveryPlan?.curdQty || 0} {selectedCustomer.deliveryPlan?.curdUnit || 'g'}
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Frequency: </span>
-                    <strong style={{ color: '#0f172a', textTransform: 'capitalize' }}>{selectedCustomer.deliveryPlan?.frequency || 'Daily'}</strong>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                    <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Frequency</div>
+                    <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#059669', marginTop: '3px', textTransform: 'capitalize' }}>
+                      {selectedCustomer.deliveryPlan?.frequency || 'Daily'}
+                    </div>
                   </div>
-                  <div>
-                    <span style={{ color: '#64748b' }}>Delivery Schedule: </span>
-                    <strong style={{ color: '#0f172a' }}>{(selectedCustomer.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).join(', ')}</strong>
-                  </div>
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: '#64748b', padding: '2px 4px' }}>
+                  <span>Delivery Schedule: </span>
+                  <strong style={{ color: '#0f172a' }}>{(selectedCustomer.deliveryPlan?.deliveryDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']).join(', ')}</strong>
                 </div>
 
                 {Array.isArray(selectedCustomer.deliveryPlan?.extraProducts) && selectedCustomer.deliveryPlan.extraProducts.length > 0 && (
@@ -11616,55 +11952,59 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
                     )}
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
-                      <div>
-                        <span style={{ color: '#64748b' }}>Billing Mode: </span>
-                        <strong style={{ color: (selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? '#059669' : '#d97706' }}>
-                          {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
-                        </strong>
-                      </div>
-                      {(() => {
-                        const cols = getCustomerCollections(selectedCustomer);
-                        return (
-                          <>
+                    {(() => {
+                      const cols = getCustomerCollections(selectedCustomer);
+                      return (
+                        <>
+                          {/* 3 Cards for the Row: Ledger Highlights */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}>
+                            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                              <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Today</div>
+                              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#059669', marginTop: '3px' }}>₹{cols.todayTotal}</div>
+                            </div>
+                            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                              <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Total Paid</div>
+                              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', marginTop: '3px' }}>₹{cols.allTimeTotal}</div>
+                            </div>
+                            <div style={{ background: overdueAmt > 0 ? '#fff1f2' : '#f0fdf4', border: `1px solid ${overdueAmt > 0 ? '#fecdd3' : '#bbf7d0'}`, borderRadius: '10px', padding: '10px 6px', textAlign: 'center', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+                              <div style={{ fontSize: '0.66rem', fontWeight: 700, color: overdueAmt > 0 ? '#be123c' : '#15803d', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Balance</div>
+                              <div style={{ fontSize: '0.98rem', fontWeight: 800, color: overdueAmt > 0 ? '#be123c' : '#15803d', marginTop: '3px' }}>
+                                {overdueAmt > 0 ? `₹${overdueAmt}` : '₹0'}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem', padding: '0 2px' }}>
+                            <div>
+                              <span style={{ color: '#64748b' }}>Billing Mode: </span>
+                              <strong style={{ color: (selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? '#059669' : '#d97706' }}>
+                                {(selectedCustomer.paymentInfo?.paymentType === 'prepaid' || selectedCustomer.subscription?.amount > 0) ? 'Prepaid Plan' : 'Monthly Credit'}
+                              </strong>
+                            </div>
                             <div>
                               <span style={{ color: '#64748b' }}>Status: </span>
                               <strong style={{ color: selectedCustomer.status === 'paused' ? '#d97706' : '#059669' }}>
                                 {selectedCustomer.status === 'paused' ? 'Paused' : 'Active'}
                               </strong>
                             </div>
-                            <div style={{ gridColumn: 'span 2', background: '#ecfdf5', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '8px 10px', marginTop: '4px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-                                <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#065f46' }}>💵 Collected Today</span>
-                                <strong style={{ fontSize: '0.88rem', color: '#059669' }}>
-                                  ₹{cols.todayTotal} {cols.todayTotal > 0 ? `(Cash ₹${cols.todayCash} • UPI ₹${cols.todayUpi})` : ''}
+                            {startD && (
+                              <div>
+                                <span style={{ color: '#64748b' }}>Started On: </span>
+                                <strong style={{ color: '#334155' }}>
+                                  {startD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                                 </strong>
                               </div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontSize: '0.72rem', fontWeight: 650, color: '#475569' }}>Total Collected (All Time)</span>
-                                <strong style={{ fontSize: '0.82rem', color: '#0f172a' }}>
-                                  ₹{cols.allTimeTotal} {cols.allTimeTotal > 0 ? `(Cash ₹${cols.allTimeCash} • UPI ₹${cols.allTimeUpi})` : ''}
-                                </strong>
-                              </div>
+                            )}
+                            <div>
+                              <span style={{ color: '#64748b' }}>Valid Till: </span>
+                              <strong style={{ color: isExp ? '#dc2626' : '#6b21a8' }}>
+                                {endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Ongoing'}
+                              </strong>
                             </div>
-                          </>
-                        );
-                      })()}
-                      {startD && (
-                        <div>
-                          <span style={{ color: '#64748b' }}>Started On: </span>
-                          <strong style={{ color: '#334155' }}>
-                            {startD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </strong>
-                        </div>
-                      )}
-                      <div>
-                        <span style={{ color: '#64748b' }}>Valid Till: </span>
-                        <strong style={{ color: isExp ? '#dc2626' : '#6b21a8' }}>
-                          {endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Ongoing'}
-                        </strong>
-                      </div>
-                    </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 );
               })()}
@@ -13632,6 +13972,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         onClose={() => setShowPartnerReportModal(false)}
         role="partner"
         entityId={targetDriverId}
+        initialPeriod={partnerCashPeriod}
+        initialStartDate={partnerCustomStartDate}
+        initialEndDate={partnerCustomEndDate}
         initialCustomers={assignedCustomers}
       />
 

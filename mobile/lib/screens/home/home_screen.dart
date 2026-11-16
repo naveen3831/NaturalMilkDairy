@@ -60,7 +60,9 @@ class _HomeScreenState extends State<HomeScreen> {
   late final PageController _bannerPageController = PageController();
   int _currentBannerIndex = 0;
   Timer? _bannerTimer;
-  String _deliveryFilterTab = 'today'; // 'today', 'upcoming', 'history', 'all'
+  String _deliveryFilterTab = 'today'; // 'today', 'upcoming', 'history', 'custom', 'all'
+  DateTime _deliveriesCustomStart = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+  DateTime _deliveriesCustomEnd = IstDateTime.toIst(DateTime.now());
 
   final List<Map<String, dynamic>> _defaultBanners = [
     {
@@ -3172,6 +3174,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList()
       ..sort((a, b) => (a['dateKey']?.toString() ?? '').compareTo(b['dateKey']?.toString() ?? ''));
 
+    final customStartStr = '${_deliveriesCustomStart.year}-${_deliveriesCustomStart.month.toString().padLeft(2, '0')}-${_deliveriesCustomStart.day.toString().padLeft(2, '0')}';
+    final customEndStr = '${_deliveriesCustomEnd.year}-${_deliveriesCustomEnd.month.toString().padLeft(2, '0')}-${_deliveriesCustomEnd.day.toString().padLeft(2, '0')}';
+    final customDeliveries = allDeliveries.where((d) {
+      final key = d['dateKey']?.toString() ?? '';
+      return key.isNotEmpty && key.compareTo(customStartStr) >= 0 && key.compareTo(customEndStr) <= 0;
+    }).toList()
+      ..sort((a, b) => (b['dateKey']?.toString() ?? '').compareTo(a['dateKey']?.toString() ?? ''));
+
     return RefreshIndicator(
       onRefresh: () async {
         if (!isGuest) await customerProvider.loadAllCustomerData(silent: true);
@@ -3232,81 +3242,83 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            if (_deliveryFilterTab != 'custom') ...[
+              const SizedBox(height: 16),
 
-            // Hero Illustration Banner (Farm pasture with bottle and glass)
-            Container(
-              height: 140,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFCEE7D9)),
-                image: const DecorationImage(
-                  image: AssetImage('assets/images/dairy_hero.jpg'),
-                  fit: BoxFit.cover,
+              // Hero Illustration Banner (Farm pasture with bottle and glass)
+              Container(
+                height: 140,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFCEE7D9)),
+                  image: const DecorationImage(
+                    image: AssetImage('assets/images/dairy_hero.jpg'),
+                    fit: BoxFit.cover,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
+              ),
+              const SizedBox(height: 16),
+
+              // 4 Stat Metric Cards (2x2 Grid)
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDeliveryMetricCard(
+                      icon: Icons.local_shipping_outlined,
+                      iconBg: const Color(0xFFE0F2FE),
+                      iconColor: const Color(0xFF0284C7),
+                      value: allDeliveries.length.toString(),
+                      label: 'Total Drops',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDeliveryMetricCard(
+                      icon: Icons.check_circle_outline_rounded,
+                      iconBg: const Color(0xFFDCFCE7),
+                      iconColor: const Color(0xFF16A34A),
+                      value: totalDeliveredCount.toString(),
+                      label: 'Delivered',
+                    ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildDeliveryMetricCard(
+                      icon: Icons.access_time_rounded,
+                      iconBg: const Color(0xFFFEF3C7),
+                      iconColor: const Color(0xFFD97706),
+                      value: totalPendingCount.toString(),
+                      label: 'Pending Drops',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _buildDeliveryMetricCard(
+                      icon: Icons.ac_unit_rounded,
+                      iconBg: const Color(0xFFE2F1EA),
+                      iconColor: const Color(0xFF0D5C3A),
+                      value: '100%',
+                      label: 'Cold-Chain 4°C',
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
 
-            // 4 Stat Metric Cards (2x2 Grid)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDeliveryMetricCard(
-                    icon: Icons.local_shipping_outlined,
-                    iconBg: const Color(0xFFE0F2FE),
-                    iconColor: const Color(0xFF0284C7),
-                    value: allDeliveries.length.toString(),
-                    label: 'Total Drops',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildDeliveryMetricCard(
-                    icon: Icons.check_circle_outline_rounded,
-                    iconBg: const Color(0xFFDCFCE7),
-                    iconColor: const Color(0xFF16A34A),
-                    value: totalDeliveredCount.toString(),
-                    label: 'Delivered',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDeliveryMetricCard(
-                    icon: Icons.access_time_rounded,
-                    iconBg: const Color(0xFFFEF3C7),
-                    iconColor: const Color(0xFFD97706),
-                    value: totalPendingCount.toString(),
-                    label: 'Pending Drops',
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildDeliveryMetricCard(
-                    icon: Icons.ac_unit_rounded,
-                    iconBg: const Color(0xFFE2F1EA),
-                    iconColor: const Color(0xFF0D5C3A),
-                    value: '100%',
-                    label: 'Cold-Chain 4°C',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Filter Pills: Today (First), Upcoming, Delivery History, All Deliveries (Last)
+            // Filter Pills: Today (First), Upcoming, Delivery History, Custom Range, All Deliveries (Last)
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -3315,106 +3327,211 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 8),
                   _buildDeliveryFilterTabPill('upcoming', 'Upcoming', upcomingDeliveries.length),
                   const SizedBox(width: 8),
-                  _buildDeliveryFilterTabPill(
-                    'history',
-                    'Delivery History',
-                    historyDeliveries.length,
-                    onTapOverride: () {
-                      setState(() => _deliveryFilterTab = 'history');
-                      _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user);
-                    },
-                  ),
+                  _buildDeliveryFilterTabPill('history', 'Delivery History', historyDeliveries.length),
+                  const SizedBox(width: 8),
+                  _buildDeliveryFilterTabPill('custom', 'Custom Range', customDeliveries.length),
                   const SizedBox(width: 8),
                   _buildDeliveryFilterTabPill('all', 'All Deliveries', allDeliveries.length),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-
-            // Download Statement PDF Banner
-            InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => ReportDownloadSheet.show(
-                context,
-                role: 'customer',
-                customerId: user?.customerId ?? user?.id,
-                initialCustomers: customerProvider.customerData != null
-                    ? [customerProvider.customerData!]
-                    : null,
-                initialDeliveries: customerProvider.deliveries,
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            if (_deliveryFilterTab == 'custom') ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF0FDF4),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.picture_as_pdf_rounded,
-                        color: Color(0xFF0D5C3A),
-                        size: 20,
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _deliveriesCustomStart,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() => _deliveriesCustomStart = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('From Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_deliveriesCustomStart.day}/${_deliveriesCustomStart.month}/${_deliveriesCustomStart.year}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Delivery & Billing Statement',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF065F46),
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'View Report, Weekly, Monthly & History PDF',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF047857),
-                            ),
-                          ),
-                        ],
-                      ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFF94A3B8)),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF0D5C3A),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.article_outlined, color: Colors.white, size: 14),
-                          SizedBox(width: 4),
-                          Text(
-                            'Report / PDF',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _deliveriesCustomEnd,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() => _deliveriesCustomEnd = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                        ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('To Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.event, size: 12, color: Color(0xFF0D5C3A)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_deliveriesCustomEnd.day}/${_deliveriesCustomEnd.month}/${_deliveriesCustomEnd.year}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
+            ],
+            if (_deliveryFilterTab != 'custom') ...[
+              const SizedBox(height: 14),
+
+              // Download Statement PDF Banner
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => ReportDownloadSheet.show(
+                  context,
+                  role: 'customer',
+                  initialPeriod: _deliveryFilterTab == 'custom' ? 'custom' : 'monthly',
+                  initialStartDate: _deliveryFilterTab == 'custom' ? _deliveriesCustomStart : null,
+                  initialEndDate: _deliveryFilterTab == 'custom' ? _deliveriesCustomEnd : null,
+                  customerId: user?.customerId ?? user?.id,
+                  initialCustomers: customerProvider.customerData != null
+                      ? [customerProvider.customerData!]
+                      : null,
+                  initialDeliveries: customerProvider.deliveries,
+                ),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.picture_as_pdf_rounded,
+                          color: Color(0xFF0D5C3A),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Delivery & Billing Statement',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF065F46),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'View Report, Weekly, Monthly & History PDF',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF047857),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0D5C3A),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.article_outlined, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text(
+                              'Report / PDF',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // SECTION 1: TODAY'S DELIVERIES (First)
@@ -3516,7 +3633,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
                       ),
                       onTap: () => deliveredToday
-                          ? _showDeliveriesModal(customerProvider)
+                          ? _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user)
                           : _showUpcomingDeliveryDetails(delivery),
                     ),
                   );
@@ -3720,6 +3837,102 @@ class _HomeScreenState extends State<HomeScreen> {
                 )
               else
                 ...historyDeliveries.map((delivery) {
+                  final isDeliveredItem = delivery['isDelivered'] == true;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _buildUpcomingDeliveryCard(
+                      day: delivery['day'] ?? 'Wed',
+                      date: delivery['dayNum'] ?? '28',
+                      monthYear: delivery['monthYear'] ?? 'Oct 2026',
+                      timeSlot: delivery['timeSlot'] ?? 'Delivered 6:15 AM',
+                      milkQty: delivery['milkQty'] ?? '1 L',
+                      curdQty: delivery['curdQty'] ?? '0 g',
+                      addonsText: delivery['addonsText']?.toString(),
+                      addonsTotal: num.tryParse(delivery['addonsTotal']?.toString() ?? '0'),
+                      isDelivered: isDeliveredItem,
+                      paymentStatus: delivery['paymentStatus'] ?? (isDeliveredItem ? 'Paid' : 'Advance'),
+                      proofImage: delivery['proofImage'],
+                      driverName: delivery['driver'],
+                      onProofTap: () => _showProofPhotoDialog(
+                        delivery['date'] ?? 'Morning Drop',
+                        delivery['proofImage'],
+                        delivery['driver'],
+                        address: delivery['address'] ?? delivery['deliveryAddress'],
+                        time: delivery['deliveredAt'] ?? delivery['timeSlot'] ?? delivery['date'],
+                        lat: num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? ''),
+                        lng: num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? ''),
+                      ),
+                      onTap: () => _openDeliveryHistoryFullScreen(deliveries: allDeliveries, user: user),
+                    ),
+                  );
+                }),
+              const SizedBox(height: 30),
+            ],
+
+            // SECTION 4: CUSTOM RANGE DELIVERIES
+            if (_deliveryFilterTab == 'custom') ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Text(
+                        'Deliveries in Date Range',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0C2340),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE9FE),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFDDD6FE)),
+                        ),
+                        child: Text(
+                          '${customDeliveries.length} Drops',
+                          style: const TextStyle(
+                            color: Color(0xFF6D28D9),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${_deliveriesCustomStart.day}/${_deliveriesCustomStart.month} - ${_deliveriesCustomEnd.day}/${_deliveriesCustomEnd.month}',
+                    style: const TextStyle(
+                      color: Color(0xFF6D28D9),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              if (customDeliveries.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2EBE5)),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'No deliveries found between ${_deliveriesCustomStart.day}/${_deliveriesCustomStart.month} and ${_deliveriesCustomEnd.day}/${_deliveriesCustomEnd.month}.',
+                      style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                    ),
+                  ),
+                )
+              else
+                ...customDeliveries.map((delivery) {
                   final isDeliveredItem = delivery['isDelivered'] == true;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 10),

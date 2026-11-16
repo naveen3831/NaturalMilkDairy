@@ -92,6 +92,7 @@ const recordPayment = async (req, res) => {
     broadcast('PAYMENT_UPDATED', { customerId: customer.customerId, amount: paymentAmount, method });
     broadcast('DELIVERY_BOY_UPDATED', { id: collectorBoyId || '', name: isDriver ? req.user.name : (collectedBy || '') });
     broadcast('CUSTOMER_UPDATED', { customerId: customer.customerId });
+    broadcast('REPORT_UPDATED', { customerId: customer.customerId });
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.status(201).json({

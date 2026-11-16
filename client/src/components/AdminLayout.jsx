@@ -333,7 +333,7 @@ export default function AdminLayout({
               <img
                 src={CLOUDINARY_MEDIA.logo}
                 alt="Natural Milk Dairy"
-                onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+                onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.logoPng; }}
                 style={{ width: '32px', height: '32px', objectFit: 'contain' }}
               />
             </div>
@@ -630,7 +630,7 @@ export default function AdminLayout({
                 <img
                   src={CLOUDINARY_MEDIA.logo}
                   alt="Natural Milk Dairy"
-                  onError={(e) => { e.currentTarget.src = '/logo.png'; }}
+                  onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.logoPng; }}
                   style={{ width: '28px', height: '28px', objectFit: 'contain' }}
                 />
               </div>

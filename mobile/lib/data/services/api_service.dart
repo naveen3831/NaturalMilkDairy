@@ -15,6 +15,7 @@ class ApiService {
   String? _cachedToken;
   String? _customBaseUrl;
   String? _activeBaseUrl;
+  final http.Client _client = http.Client();
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -107,9 +108,11 @@ class ApiService {
   /// Generate full PDF report URL for customer / partner / admin
   String getReportPdfUrl({
     required String role, // 'customer', 'partner', 'admin'
-    String period = 'monthly', // 'weekly', 'monthly', 'all'
+    String period = 'monthly', // 'weekly', 'monthly', 'all', 'custom'
     String? customerId,
     String? partnerId,
+    String? startDate,
+    String? endDate,
   }) {
     final queryParams = <String, String>{
       'period': period,
@@ -122,6 +125,12 @@ class ApiService {
     }
     if (partnerId != null && partnerId.isNotEmpty) {
       queryParams['partnerId'] = partnerId;
+    }
+    if (startDate != null && startDate.isNotEmpty) {
+      queryParams['startDate'] = startDate;
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      queryParams['endDate'] = endDate;
     }
 
     final cleanBase = baseUrl.replaceAll(RegExp(r'/+$'), '');
@@ -158,7 +167,7 @@ class ApiService {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
-      final response = await http
+      final response = await _client
           .get(url, headers: _getHeaders(requiresAuth: true))
           .timeout(const Duration(seconds: 25));
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -177,7 +186,7 @@ class ApiService {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
-      final response = await http
+      final response = await _client
           .post(
             url,
             headers: _getHeaders(requiresAuth: true),
@@ -200,7 +209,7 @@ class ApiService {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
-      final response = await http
+      final response = await _client
           .put(
             url,
             headers: _getHeaders(requiresAuth: true),
@@ -223,7 +232,7 @@ class ApiService {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
     final url = Uri.parse('$baseUrl$cleanPath');
     try {
-      final response = await http
+      final response = await _client
           .delete(url, headers: _getHeaders(requiresAuth: true))
           .timeout(const Duration(seconds: 20));
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -295,6 +304,53 @@ class ApiService {
     }
   }
 
+  /// Login via Google / Firebase ID token
+  Future<Map<String, dynamic>> loginWithGoogle({
+    required String idToken,
+    String portal = 'customer',
+  }) async {
+    final url = Uri.parse('$baseUrl/api/auth/google');
+    try {
+      final response = await http
+          .post(
+            url,
+            headers: _getHeaders(requiresAuth: false),
+            body: jsonEncode({
+              'idToken': idToken,
+              'portal': portal,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (data['success'] == true) {
+          final t = data['token']?.toString();
+          if (t != null) {
+            await setToken(t);
+          }
+          final userJson = data['user'] as Map<String, dynamic>?;
+          if (userJson != null) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(AppConstants.keyUserData, jsonEncode(userJson));
+          }
+        }
+        return data;
+      } else {
+        return {
+          'success': false,
+          'message': data['message'] ?? 'Google Sign-In failed (${response.statusCode})',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Cannot reach server at $baseUrl. Please verify connection.',
+      };
+    }
+  }
+
   /// 2. Register new customer
   Future<Map<String, dynamic>> register(Map<String, dynamic> payload) async {
     final url = Uri.parse('$baseUrl/api/auth/register');
@@ -348,7 +404,7 @@ class ApiService {
 
     final url = Uri.parse('$baseUrl/api/auth/delivery-areas');
     try {
-      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 15));
+      final response = await _client.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['success'] == true && data['areas'] is List) {
@@ -370,7 +426,7 @@ class ApiService {
     if (_cachedToken == null) return null;
     final url = Uri.parse('$baseUrl/api/auth/me');
     try {
-      final response = await http.get(url, headers: _getHeaders()).timeout(const Duration(seconds: 20));
+      final response = await _client.get(url, headers: _getHeaders()).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['success'] == true && data['user'] is Map<String, dynamic>) {
@@ -387,7 +443,7 @@ class ApiService {
   Future<List<ProductModel>> getProducts({bool retryIfFailed = true}) async {
     final url = Uri.parse('$baseUrl/api/products');
     try {
-      final response = await http.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 20));
+      final response = await _client.get(url, headers: _getHeaders(requiresAuth: false)).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         List rawList = [];
@@ -451,5 +507,29 @@ class ApiService {
       return res['url'].toString();
     }
     return null;
+  }
+
+  /// 10. Register FCM device push token with backend
+  Future<bool> registerFcmToken(String token, {String platform = 'android'}) async {
+    final clean = token.trim();
+    if (clean.isEmpty) return false;
+    try {
+      final res = await post('/api/notifications/fcm-token', {
+        'token': clean,
+        'platform': platform,
+      });
+      return res['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 11. Unregister FCM device push token (e.g. on logout)
+  Future<void> unregisterFcmToken(String token) async {
+    final clean = token.trim();
+    if (clean.isEmpty) return;
+    try {
+      await delete('/api/notifications/fcm-token');
+    } catch (_) {}
   }
 }

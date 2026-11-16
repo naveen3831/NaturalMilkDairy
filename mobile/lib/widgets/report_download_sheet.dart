@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../core/utils/ist_date_time.dart';
 import '../data/services/api_service.dart';
+import '../data/services/realtime_service.dart';
 import '../services/launcher_service.dart';
 import '../services/html_report_service.dart';
 
@@ -15,6 +17,9 @@ class ReportDownloadSheet {
     String? customerId,
     String? partnerId,
     String? customTitle,
+    String? initialPeriod,
+    DateTime? initialStartDate,
+    DateTime? initialEndDate,
     List<Map<String, dynamic>>? initialCustomers,
     List<Map<String, dynamic>>? initialDeliveries,
   }) {
@@ -27,6 +32,9 @@ class ReportDownloadSheet {
         customerId: customerId,
         partnerId: partnerId,
         customTitle: customTitle,
+        initialPeriod: initialPeriod,
+        initialStartDate: initialStartDate,
+        initialEndDate: initialEndDate,
         initialCustomers: initialCustomers,
         initialDeliveries: initialDeliveries,
       ),
@@ -39,6 +47,9 @@ class _ReportDownloadBottomSheetContent extends StatefulWidget {
   final String? customerId;
   final String? partnerId;
   final String? customTitle;
+  final String? initialPeriod;
+  final DateTime? initialStartDate;
+  final DateTime? initialEndDate;
   final List<Map<String, dynamic>>? initialCustomers;
   final List<Map<String, dynamic>>? initialDeliveries;
 
@@ -47,6 +58,9 @@ class _ReportDownloadBottomSheetContent extends StatefulWidget {
     this.customerId,
     this.partnerId,
     this.customTitle,
+    this.initialPeriod,
+    this.initialStartDate,
+    this.initialEndDate,
     this.initialCustomers,
     this.initialDeliveries,
   });
@@ -62,7 +76,9 @@ class _ReportDownloadBottomSheetContentState
 
   // 'all' = All Customers report, 'single' = Single Customer report
   late String _reportScope;
-  String _selectedPeriod = 'monthly'; // 'weekly' | 'monthly' | 'all'
+  late String _selectedPeriod; // 'weekly' | 'monthly' | 'all' | 'custom'
+  late DateTime _customStartDate;
+  late DateTime _customEndDate;
   bool _isGenerating = false;
   bool _isLoadingCustomers = false;
 
@@ -70,16 +86,35 @@ class _ReportDownloadBottomSheetContentState
   Map<String, dynamic>? _selectedCustomer;
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  StreamSubscription? _realtimeSub;
 
   @override
   void initState() {
     super.initState();
     // Default to 'single' if customer portal or customerId is passed; otherwise 'all' for admin/partner
     _reportScope = (widget.role == 'customer' || widget.customerId != null) ? 'single' : 'all';
+    _selectedPeriod = widget.initialPeriod ?? 'monthly';
+    _customStartDate = widget.initialStartDate ??
+        IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+    _customEndDate = widget.initialEndDate ?? IstDateTime.toIst(DateTime.now());
 
     _searchCtrl.addListener(() {
       if (mounted) {
         setState(() => _searchQuery = _searchCtrl.text);
+      }
+    });
+
+    _realtimeSub = RealtimeService().eventStream.listen((event) {
+      final type = event['type']?.toString();
+      if (type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_CREATED' ||
+          type == 'CUSTOMER_UPDATED' ||
+          type == 'PAYMENT_RECORDED' ||
+          type == 'PAYMENT_UPDATED' ||
+          type == 'REPORT_UPDATED') {
+        if (mounted) {
+          _fetchCustomers();
+        }
       }
     });
 
@@ -88,6 +123,7 @@ class _ReportDownloadBottomSheetContentState
 
   @override
   void dispose() {
+    _realtimeSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -126,6 +162,14 @@ class _ReportDownloadBottomSheetContentState
             fetched = [Map<String, dynamic>.from(meRes['customer'] as Map)];
           }
         } catch (_) {}
+        if (fetched.isEmpty) {
+          try {
+            final ledgerRes = await _api.get('/api/customers/me/ledger');
+            if (ledgerRes['success'] == true && ledgerRes['customer'] is Map) {
+              fetched = [Map<String, dynamic>.from(ledgerRes['customer'] as Map)];
+            }
+          } catch (_) {}
+        }
       } else {
         // Tier 1: Try /api/customers
         try {
@@ -208,7 +252,11 @@ class _ReportDownloadBottomSheetContentState
   String _getPeriodLabel() {
     final nowIst = IstDateTime.toIst(DateTime.now());
     final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
-    if (_selectedPeriod == 'weekly') {
+    if (_selectedPeriod == 'custom') {
+      final fStr = DateFormat('dd MMM yyyy').format(_customStartDate);
+      final tStr = DateFormat('dd MMM yyyy').format(_customEndDate);
+      return 'Custom ($fStr to $tStr)';
+    } else if (_selectedPeriod == 'weekly') {
       final past = nowIst.subtract(const Duration(days: 7));
       final pastStr = '${past.year}-${past.month.toString().padLeft(2, '0')}-${past.day.toString().padLeft(2, '0')}';
       return 'Weekly ($pastStr to $todayStr)';
@@ -232,12 +280,12 @@ class _ReportDownloadBottomSheetContentState
     final List<Map<String, dynamic>> deliveries = [];
     final List<Map<String, dynamic>> payments = [];
 
-    if (ledgerRes['deliveries'] is List) {
+    if (ledgerRes['deliveries'] is List && (ledgerRes['deliveries'] as List).isNotEmpty) {
       for (final item in ledgerRes['deliveries'] as List) {
         if (item is Map) deliveries.add(Map<String, dynamic>.from(item));
       }
     }
-    if (ledgerRes['payments'] is List) {
+    if (ledgerRes['payments'] is List && (ledgerRes['payments'] as List).isNotEmpty) {
       for (final item in ledgerRes['payments'] as List) {
         if (item is Map) payments.add(Map<String, dynamic>.from(item));
       }
@@ -251,7 +299,7 @@ class _ReportDownloadBottomSheetContentState
             ? Map<String, dynamic>.from(entry['rawItem'] as Map)
             : <String, dynamic>{};
 
-        if (entry['type'] == 'delivery') {
+        if (deliveries.isEmpty && entry['type'] == 'delivery') {
           deliveries.add({
             ...rawItem,
             'id': rawItem['id'] ?? rawItem['_id'] ?? entry['id'],
@@ -266,7 +314,7 @@ class _ReportDownloadBottomSheetContentState
             'addons': rawItem['addons'] ?? entry['addons'] ?? const [],
             'addonsTotal': rawItem['addonsTotal'] ?? entry['addonsTotal'] ?? 0,
           });
-        } else if (entry['type'] == 'payment') {
+        } else if (payments.isEmpty && entry['type'] == 'payment') {
           payments.add({
             ...rawItem,
             'id': rawItem['id'] ?? rawItem['_id'] ?? entry['id'],
@@ -286,26 +334,43 @@ class _ReportDownloadBottomSheetContentState
     List<Map<String, dynamic>> items,
     String Function(Map<String, dynamic>) getDate,
     String thresholdStr,
-    String todayStr,
+    String endBoundStr,
   ) {
-    if (thresholdStr.isEmpty) return items;
+    if (thresholdStr.isEmpty && (endBoundStr.isEmpty || endBoundStr == '9999-99-99')) return items;
     return items.where((item) {
       final dtKey = _toIstDateKey(getDate(item));
       if (dtKey.isEmpty) return true;
-      return dtKey.compareTo(thresholdStr) >= 0 && dtKey.compareTo(todayStr) <= 0;
+      if (thresholdStr.isNotEmpty && dtKey.compareTo(thresholdStr) < 0) return false;
+      if (endBoundStr.isNotEmpty && endBoundStr != '9999-99-99' && dtKey.compareTo(endBoundStr) > 0) return false;
+      return true;
     }).toList();
   }
 
+  Future<String?> _loadLogoDataUri() async {
+    return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg';
+  }
+
   Future<_CompiledReportData> _compileReportData() async {
+    final logoUri = await _loadLogoDataUri();
     final nowIst = IstDateTime.toIst(DateTime.now());
     final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
     String thresholdStr = '';
-    if (_selectedPeriod == 'weekly') {
+    String endBoundStr = todayStr;
+
+    if (_selectedPeriod == 'custom') {
+      thresholdStr = '${_customStartDate.year}-${_customStartDate.month.toString().padLeft(2, '0')}-${_customStartDate.day.toString().padLeft(2, '0')}';
+      endBoundStr = '${_customEndDate.year}-${_customEndDate.month.toString().padLeft(2, '0')}-${_customEndDate.day.toString().padLeft(2, '0')}';
+    } else if (_selectedPeriod == 'weekly') {
       final past = nowIst.subtract(const Duration(days: 7));
       thresholdStr = '${past.year}-${past.month.toString().padLeft(2, '0')}-${past.day.toString().padLeft(2, '0')}';
+      endBoundStr = '9999-99-99';
     } else if (_selectedPeriod == 'monthly') {
       final past = nowIst.subtract(const Duration(days: 30));
       thresholdStr = '${past.year}-${past.month.toString().padLeft(2, '0')}-${past.day.toString().padLeft(2, '0')}';
+      endBoundStr = '9999-99-99';
+    } else if (_selectedPeriod == 'all') {
+      thresholdStr = '';
+      endBoundStr = '9999-99-99';
     }
 
     List<Map<String, dynamic>> allDeliveries = [];
@@ -351,13 +416,13 @@ class _ReportDownloadBottomSheetContentState
         allDeliveries,
         (d) => d['deliveryDate']?.toString() ?? d['date']?.toString() ?? '',
         thresholdStr,
-        todayStr,
+        endBoundStr,
       );
       final filteredPay = _filterListByPeriod(
         allPayments,
         (p) => (p['paymentDate'] ?? p['createdAt'] ?? '').toString(),
         thresholdStr,
-        todayStr,
+        endBoundStr,
       );
 
       final html = HtmlReportService.generateAllCustomersHtml(
@@ -365,6 +430,7 @@ class _ReportDownloadBottomSheetContentState
         deliveries: filteredDel,
         payments: filteredPay,
         periodLabel: periodLabel,
+        logoDataUri: logoUri,
       );
 
       return _CompiledReportData(
@@ -373,6 +439,8 @@ class _ReportDownloadBottomSheetContentState
         periodKey: _selectedPeriod,
         jobName: 'All_Customers_Report_$_selectedPeriod',
         html: html,
+        startDate: thresholdStr.isNotEmpty ? thresholdStr : null,
+        endDate: endBoundStr,
         customers: custList,
         deliveries: filteredDel,
         payments: filteredPay,
@@ -393,9 +461,11 @@ class _ReportDownloadBottomSheetContentState
       } else if (_customers.isNotEmpty) {
         targetCustomer = _customers.first;
       } else if (widget.role == 'customer' || widget.customerId != null) {
-        final lookup = (widget.customerId != null && widget.customerId!.isNotEmpty)
-            ? widget.customerId!
-            : 'me';
+        final lookup = (widget.role == 'customer')
+            ? 'me'
+            : ((widget.customerId != null && widget.customerId!.isNotEmpty)
+                ? widget.customerId!
+                : 'me');
         final meRes = await _api.get('/api/customers/$lookup');
         if (meRes['customer'] is Map) {
           targetCustomer = Map<String, dynamic>.from(meRes['customer'] as Map);
@@ -407,18 +477,26 @@ class _ReportDownloadBottomSheetContentState
       throw 'Please select a customer to generate report.';
     }
 
-    Map<String, dynamic> activeCustomer = targetCustomer ?? {
-      'name': 'Customer',
-      'customerId': widget.customerId ?? '',
-      'mobile': '',
-      'area': 'Hyderabad',
-      'currentBalance': 0,
-    };
+    Map<String, dynamic> activeCustomer = targetCustomer != null
+        ? Map<String, dynamic>.from(targetCustomer)
+        : {
+            'name': 'Customer',
+            'customerId': widget.customerId ?? '',
+            'mobile': '',
+            'area': 'Hyderabad',
+            'currentBalance': 0,
+          };
 
-    final targetLookupId = activeCustomer['id']?.toString() ??
-        activeCustomer['_id']?.toString() ??
-        activeCustomer['customerId']?.toString() ??
-        (widget.role == 'customer' ? 'me' : '');
+    // For customer role, always query 'me' to avoid ID/token mismatch
+    final targetLookupId = widget.role == 'customer'
+        ? 'me'
+        : (activeCustomer['id']?.toString().isNotEmpty == true
+            ? activeCustomer['id'].toString()
+            : (activeCustomer['_id']?.toString().isNotEmpty == true
+                ? activeCustomer['_id'].toString()
+                : (activeCustomer['customerId']?.toString().isNotEmpty == true
+                    ? activeCustomer['customerId'].toString()
+                    : (widget.customerId ?? 'me'))));
 
     List<Map<String, dynamic>> custDeliveries = [];
     List<Map<String, dynamic>> custPayments = [];
@@ -428,7 +506,26 @@ class _ReportDownloadBottomSheetContentState
         final ledgerRes = await _api.get('/api/customers/$targetLookupId/ledger');
         if (ledgerRes['success'] == true) {
           if (ledgerRes['customer'] is Map) {
-            activeCustomer = Map<String, dynamic>.from(ledgerRes['customer'] as Map);
+            final custMap = Map<String, dynamic>.from(ledgerRes['customer'] as Map);
+            activeCustomer.addAll(custMap);
+          }
+          final extracted = _extractLedgerRecords(ledgerRes);
+          custDeliveries = extracted.deliveries;
+          custPayments = extracted.payments;
+        }
+      } catch (e) {
+        debugPrint('Error loading customer ledger: $e');
+      }
+    }
+
+    // Customer fallback: If targetLookupId != 'me' and returned no deliveries, try 'me'
+    if (custDeliveries.isEmpty && widget.role == 'customer' && targetLookupId != 'me') {
+      try {
+        final ledgerRes = await _api.get('/api/customers/me/ledger');
+        if (ledgerRes['success'] == true) {
+          if (ledgerRes['customer'] is Map) {
+            final custMap = Map<String, dynamic>.from(ledgerRes['customer'] as Map);
+            activeCustomer.addAll(custMap);
           }
           final extracted = _extractLedgerRecords(ledgerRes);
           custDeliveries = extracted.deliveries;
@@ -454,6 +551,10 @@ class _ReportDownloadBottomSheetContentState
       }
     }
 
+    if (custDeliveries.isEmpty && widget.initialDeliveries != null && widget.initialDeliveries!.isNotEmpty) {
+      custDeliveries = widget.initialDeliveries!.map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+
     if (custPayments.isEmpty && allPayments.isNotEmpty) {
       final cId = activeCustomer['id']?.toString() ?? activeCustomer['_id']?.toString() ?? '';
       final cCode = activeCustomer['customerId']?.toString() ?? '';
@@ -464,17 +565,37 @@ class _ReportDownloadBottomSheetContentState
       }).toList();
     }
 
+    // Hydrate customer profile if fields are empty
+    if (widget.initialCustomers != null && widget.initialCustomers!.isNotEmpty) {
+      final initC = widget.initialCustomers!.first;
+      if (activeCustomer['name'] == 'Customer' && initC['name'] != null && initC['name'].toString().trim().isNotEmpty) {
+        activeCustomer['name'] = initC['name'];
+      }
+      if ((activeCustomer['mobile'] == null || activeCustomer['mobile'].toString().trim().isEmpty) && initC['mobile'] != null) {
+        activeCustomer['mobile'] = initC['mobile'];
+      }
+      if ((activeCustomer['address'] == null || activeCustomer['address'].toString().trim().isEmpty || activeCustomer['address'] == 'Doorstep Address') && initC['address'] != null) {
+        activeCustomer['address'] = initC['address'];
+      }
+      if ((activeCustomer['area'] == null || activeCustomer['area'].toString().trim().isEmpty) && initC['area'] != null) {
+        activeCustomer['area'] = initC['area'];
+      }
+      if (activeCustomer['currentBalance'] == null || activeCustomer['currentBalance'] == 0) {
+        if (initC['currentBalance'] != null) activeCustomer['currentBalance'] = initC['currentBalance'];
+      }
+    }
+
     custDeliveries = _filterListByPeriod(
       custDeliveries,
       (d) => d['deliveryDate']?.toString() ?? d['date']?.toString() ?? '',
       thresholdStr,
-      todayStr,
+      endBoundStr,
     );
     custPayments = _filterListByPeriod(
       custPayments,
       (p) => (p['paymentDate'] ?? p['createdAt'] ?? '').toString(),
       thresholdStr,
-      todayStr,
+      endBoundStr,
     );
 
     final html = HtmlReportService.generateSingleCustomerHtml(
@@ -482,6 +603,7 @@ class _ReportDownloadBottomSheetContentState
       deliveries: custDeliveries,
       payments: custPayments,
       periodLabel: periodLabel,
+      logoDataUri: logoUri,
     );
 
     final safeName = (activeCustomer['name']?.toString() ?? 'Customer').replaceAll(RegExp(r'\s+'), '_');
@@ -495,6 +617,8 @@ class _ReportDownloadBottomSheetContentState
       periodKey: _selectedPeriod,
       jobName: 'Statement_${safeName}_$_selectedPeriod',
       html: html,
+      startDate: thresholdStr.isNotEmpty ? thresholdStr : null,
+      endDate: endBoundStr,
       activeCustomer: activeCustomer,
       resolvedCustomerId: resolvedCustId,
       deliveries: custDeliveries,
@@ -516,17 +640,10 @@ class _ReportDownloadBottomSheetContentState
             data: compiled,
             onPrintPdf: () async {
               final ok = await LauncherService.printHtml(compiled.html, jobName: compiled.jobName);
-              if (!ok) {
-                final url = _api.getReportPdfUrl(
-                  role: compiled.isAllCustomers ? 'admin' : 'customer',
-                  period: compiled.periodKey,
-                  customerId: compiled.resolvedCustomerId,
-                );
-                await LauncherService.openUrl(url);
-              } else {
+              if (ok) {
                 messenger.showSnackBar(
                   SnackBar(
-                    content: Text('${compiled.jobName} ready — select "Save as PDF" to download.'),
+                    content: Text('${compiled.jobName} ready — tap "Save as PDF" to download.'),
                     backgroundColor: const Color(0xFF0D5C3A),
                     behavior: SnackBarBehavior.floating,
                   ),
@@ -534,12 +651,16 @@ class _ReportDownloadBottomSheetContentState
               }
             },
             onOpenServerPdf: () async {
-              final url = _api.getReportPdfUrl(
-                role: compiled.isAllCustomers ? 'admin' : 'customer',
-                period: compiled.periodKey,
-                customerId: compiled.resolvedCustomerId,
-              );
-              await LauncherService.openUrl(url);
+              final ok = await LauncherService.printHtml(compiled.html, jobName: compiled.jobName);
+              if (ok) {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Downloading ${compiled.jobName} — tap "Save as PDF" to save.'),
+                    backgroundColor: const Color(0xFF0D5C3A),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              }
             },
           ),
         ),
@@ -565,18 +686,6 @@ class _ReportDownloadBottomSheetContentState
       final compiled = await _compileReportData();
       if (!mounted) return;
 
-      if (!isDirectDownload) {
-        final url = _api.getReportPdfUrl(
-          role: compiled.isAllCustomers ? 'admin' : 'customer',
-          period: compiled.periodKey,
-          customerId: compiled.resolvedCustomerId,
-        );
-        await LauncherService.openUrl(url);
-        if (!mounted) return;
-        Navigator.pop(context);
-        return;
-      }
-
       final printed = await LauncherService.printHtml(compiled.html, jobName: compiled.jobName);
       if (!mounted) return;
 
@@ -590,7 +699,7 @@ class _ReportDownloadBottomSheetContentState
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${compiled.jobName} generated. Select "Save as PDF" to download.',
+                    '${compiled.jobName} generated. Tap "Save as PDF" to download.',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -603,12 +712,8 @@ class _ReportDownloadBottomSheetContentState
           ),
         );
       } else {
-        final url = _api.getReportPdfUrl(
-          role: compiled.isAllCustomers ? 'admin' : 'customer',
-          period: compiled.periodKey,
-          customerId: compiled.resolvedCustomerId,
-        );
-        await LauncherService.openUrl(url);
+        // Fallback directly to native downloadPdf method
+        await LauncherService.downloadPdf(compiled.html, fileName: '${compiled.jobName}.pdf');
         if (!mounted) return;
         Navigator.pop(context);
       }
@@ -1087,13 +1192,140 @@ class _ReportDownloadBottomSheetContentState
 
             Row(
               children: [
-                _buildPeriodChip('weekly', 'Weekly', 'Last 7 Days', Icons.calendar_view_week_rounded),
-                const SizedBox(width: 8),
-                _buildPeriodChip('monthly', 'Monthly', 'Last 30 Days', Icons.calendar_month_rounded),
-                const SizedBox(width: 8),
+                _buildPeriodChip('weekly', 'Weekly', '7 Days', Icons.calendar_view_week_rounded),
+                const SizedBox(width: 6),
+                _buildPeriodChip('monthly', 'Monthly', '30 Days', Icons.calendar_month_rounded),
+                const SizedBox(width: 6),
                 _buildPeriodChip('all', 'History', 'All Time', Icons.all_inclusive_rounded),
+                const SizedBox(width: 6),
+                _buildPeriodChip('custom', 'Custom', 'From - To', Icons.date_range_rounded),
               ],
             ),
+            if (_selectedPeriod == 'custom') ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.edit_calendar_rounded, size: 14, color: Color(0xFF0D5C3A)),
+                        SizedBox(width: 6),
+                        Text(
+                          'SELECT CERTAIN DATE RANGE (FROM - TO)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0D5C3A),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _customStartDate,
+                                firstDate: DateTime(2020),
+                                lastDate: _customEndDate,
+                              );
+                              if (picked != null) {
+                                setState(() => _customStartDate = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'FROM DATE',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('dd MMM yyyy').format(_customStartDate),
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                      const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF0D5C3A)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _customEndDate,
+                                firstDate: _customStartDate,
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() => _customEndDate = picked);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'TO DATE',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        DateFormat('dd MMM yyyy').format(_customEndDate),
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                      const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF0D5C3A)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
 
             // 4. ACTION BUTTONS
@@ -1220,6 +1452,8 @@ class _CompiledReportData {
   final String periodKey;
   final String jobName;
   final String html;
+  final String? startDate;
+  final String? endDate;
   final Map<String, dynamic>? activeCustomer;
   final String? resolvedCustomerId;
   final List<Map<String, dynamic>> customers;
@@ -1232,6 +1466,8 @@ class _CompiledReportData {
     required this.periodKey,
     required this.jobName,
     required this.html,
+    this.startDate,
+    this.endDate,
     this.activeCustomer,
     this.resolvedCustomerId,
     this.customers = const [],

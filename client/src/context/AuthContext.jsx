@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getApiUrl, api } from '../services/api';
+import { triggerGoogleSignIn } from '../services/googleAuthService';
 
 const AuthContext = createContext();
 
@@ -151,6 +152,40 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const loginWithGoogle = async (portal = 'customer') => {
+    try {
+      const idToken = await triggerGoogleSignIn();
+      if (!idToken) {
+        return { success: false, message: 'Google Sign-In was cancelled.' };
+      }
+
+      const res = await api.post('/api/auth/google', {
+        idToken,
+        portal,
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success && data.user && data.token) {
+        setUser(data.user);
+        sessionStorage.setItem('nmd_user', JSON.stringify(data.user));
+        setToken(data.token);
+        sessionStorage.setItem('nmd_jwt_token', data.token);
+        return { success: true, user: data.user, token: data.token, isNewUser: data.isNewUser };
+      } else {
+        return {
+          success: false,
+          message: data.message || 'Google Sign-In failed. Please try again.',
+        };
+      }
+    } catch (err) {
+      console.error('Google Sign-In error:', err);
+      return {
+        success: false,
+        message: err.message || 'Unable to complete Google Sign-In.',
+      };
+    }
+  };
+
   const authFetch = async (url, options = {}) => {
     const fullUrl = getApiUrl(url);
     const headers = {
@@ -210,6 +245,7 @@ export const AuthProvider = ({ children }) => {
         getAuthHeaders,
         authFetch,
         login,
+        loginWithGoogle,
         register,
         logout,
       }}

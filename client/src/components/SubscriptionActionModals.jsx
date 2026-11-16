@@ -345,7 +345,7 @@ export function UpgradePlanFullPage({ user, onClose, onSuccess }) {
                     <img
                       src={prod.image}
                       alt={prod.name}
-                      onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk || '/product-cow-milk.jpg'; }}
+                      onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                       style={{
                         width: '44px',
                         height: '44px',

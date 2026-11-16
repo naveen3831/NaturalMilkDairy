@@ -9,19 +9,23 @@ class CustomerProvider extends ChangeNotifier {
 
   Map<String, dynamic>? _customerData;
   List<Map<String, dynamic>> _deliveries = [];
+  List<Map<String, dynamic>> _payments = [];
   List<Map<String, dynamic>> _subscriptions = [];
   List<Map<String, dynamic>> _subscriptionsHistory = [];
   Map<String, dynamic>? _ledgerSummary;
 
   bool _isLoading = false;
+  bool _isSyncing = false;
   String? _errorMessage;
   DateTime? _lastSyncTime;
   StreamSubscription? _realtimeSubscription;
   Timer? _pollingTimer;
+  Timer? _debounceTimer;
 
   Map<String, dynamic>? get customerData => _customerData;
   Map<String, dynamic>? get customer => _customerData;
   List<Map<String, dynamic>> get deliveries => _deliveries;
+  List<Map<String, dynamic>> get payments => _payments;
   List<Map<String, dynamic>> get subscriptions => _subscriptions;
   List<Map<String, dynamic>> get subscriptionsHistory => _subscriptionsHistory;
   Map<String, dynamic>? get ledgerSummary => _ledgerSummary;
@@ -205,6 +209,7 @@ class CustomerProvider extends ChangeNotifier {
   void clearCustomerData() {
     _customerData = null;
     _deliveries = [];
+    _payments = [];
     _subscriptions = [];
     _subscriptionsHistory = [];
     _ledgerSummary = null;
@@ -234,25 +239,36 @@ class CustomerProvider extends ChangeNotifier {
       final type = event['type']?.toString();
       debugPrint('⚡ CustomerProvider received real-time event: $type');
       if (type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_CREATED' ||
           type == 'CUSTOMER_UPDATED' ||
-          type == 'PAYMENT_RECORDED') {
-        loadAllCustomerData(silent: true);
-      } else if (type == 'SUBSCRIPTION_UPDATED') {
-        fetchSubscriptionHistory();
-        loadAllCustomerData(silent: true);
+          type == 'PAYMENT_RECORDED' ||
+          type == 'PAYMENT_UPDATED' ||
+          type == 'REPORT_UPDATED' ||
+          type == 'ORDER_UPDATED' ||
+          type == 'ORDER_CREATED' ||
+          type == 'SUBSCRIPTION_UPDATED') {
+        _debounceTimer?.cancel();
+        _debounceTimer = Timer(const Duration(milliseconds: 600), () {
+          loadAllCustomerData(silent: true);
+        });
       }
     });
   }
 
   void _startPolling() {
     _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      loadAllCustomerData(silent: true);
+    _pollingTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      final hasToken = _api.token != null && _api.token!.isNotEmpty;
+      if (hasToken) {
+        loadAllCustomerData(silent: true);
+      }
     });
   }
 
   Future<void> loadAllCustomerData({bool silent = false}) async {
     final hasToken = _api.token != null && _api.token!.isNotEmpty;
+    if (_isSyncing) return;
+    _isSyncing = true;
 
     if (!silent) {
       _isLoading = true;
@@ -280,6 +296,7 @@ class CustomerProvider extends ChangeNotifier {
       debugPrint('Error loading customer real-time data: $e');
       _errorMessage = e.toString();
     } finally {
+      _isSyncing = false;
       _isLoading = false;
       notifyListeners();
     }
@@ -300,31 +317,59 @@ class CustomerProvider extends ChangeNotifier {
     try {
       final res = await _api.get('/api/customers/me/ledger');
       if (res['success'] == true) {
-        if (res['ledgerEntries'] is List) {
-          final entries = (res['ledgerEntries'] as List)
+        if (res['customer'] is Map) {
+          _customerData = Map<String, dynamic>.from(res['customer'] as Map);
+        }
+
+        if (res['deliveries'] is List) {
+          _deliveries = (res['deliveries'] as List)
               .map((e) => Map<String, dynamic>.from(e as Map))
               .toList();
+        } else if (res['ledgerEntries'] is List) {
+          final entries = (res['ledgerEntries'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .where((e) => e['type'] == 'delivery' || e['type'] == null)
+              .toList();
           entries.sort((a, b) {
-            final dateA = a['date']?.toString() ?? '';
-            final dateB = b['date']?.toString() ?? '';
+            final dateA = (a['deliveryDate'] ?? a['date'] ?? '').toString();
+            final dateB = (b['deliveryDate'] ?? b['date'] ?? '').toString();
             return dateB.compareTo(dateA);
           });
           _deliveries = entries;
         } else {
           _deliveries = [];
         }
+
+        if (res['payments'] is List) {
+          _payments = (res['payments'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        } else if (res['ledgerEntries'] is List) {
+          final pList = (res['ledgerEntries'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .where((e) => e['type'] == 'payment')
+              .toList();
+          _payments = pList;
+        } else {
+          _payments = [];
+        }
+
         _ledgerSummary = {
           'grossBill': res['grossBill'],
           'totalPaid': res['totalPaid'],
+          'netBalance': res['netBalance'],
+          'currentBalance': res['currentBalance'] ?? res['outstanding'],
           'totalMilkDelivered': res['totalMilkDelivered'],
           'totalCurdDelivered': res['totalCurdDelivered'],
         };
       } else {
         _deliveries = [];
+        _payments = [];
       }
     } catch (e) {
       debugPrint('Error fetching customer ledger: $e');
       _deliveries = [];
+      _payments = [];
     }
   }
 
@@ -878,6 +923,7 @@ class CustomerProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _realtimeSubscription?.cancel();
     _pollingTimer?.cancel();
     super.dispose();

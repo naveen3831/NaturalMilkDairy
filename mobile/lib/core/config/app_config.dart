@@ -25,7 +25,7 @@ class AppConfig {
 
   /// If true, release APKs will always use liveBaseUrl.
   /// Set to false to allow local IP / candidate discovery during release testing.
-  static const bool autoEnforceLiveInRelease = false;
+  static const bool autoEnforceLiveInRelease = true;
 
   /// Effective active server flag
   static bool get isLiveServerActive =>

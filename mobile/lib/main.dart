@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,7 +6,9 @@ import 'package:natural_milk_dairy/core/constants/app_colors.dart';
 import 'package:natural_milk_dairy/core/constants/app_constants.dart';
 import 'package:natural_milk_dairy/core/theme/app_theme.dart';
 import 'package:natural_milk_dairy/data/services/api_service.dart';
+import 'package:natural_milk_dairy/data/services/fcm_service.dart';
 import 'package:natural_milk_dairy/data/services/realtime_service.dart';
+import 'package:natural_milk_dairy/services/in_app_notification_service.dart';
 import 'package:natural_milk_dairy/providers/auth_provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'package:natural_milk_dairy/providers/product_provider.dart';
@@ -24,9 +27,11 @@ void main() async {
     ),
   );
                                                                                 
-  // Initialize API service, detect connectivity, and start WebSocket
+  // Initialize API service, detect connectivity, start WebSocket, and FCM notifications
   await ApiService().init();
   RealtimeService().connect();
+  InAppNotificationService.init();
+  unawaited(FcmService().init());
 
   runApp(const NaturalMilkDairyApp());
 }
@@ -45,6 +50,7 @@ class NaturalMilkDairyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: AppConstants.appName,
+        scaffoldMessengerKey: InAppNotificationService.scaffoldMessengerKey,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
         home: const SplashScreen(),

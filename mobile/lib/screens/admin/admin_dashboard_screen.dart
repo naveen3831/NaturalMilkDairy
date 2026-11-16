@@ -9,6 +9,7 @@ import '../../services/launcher_service.dart';
 import '../auth/login_screen.dart';
 import '../../widgets/report_download_sheet.dart';
 import '../../widgets/delivery_proof_dialog.dart';
+import '../../core/utils/ist_date_time.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -30,7 +31,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   List<Map<String, dynamic>> _auditLogs = [];
   String _deliveryFilter = 'all';
   String _customerSearch = '';
+  String _reportPeriod = 'today'; // 'today', 'weekly', 'monthly', 'all', 'custom'
+  DateTime _customStartDate = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+  DateTime _customEndDate = IstDateTime.toIst(DateTime.now());
   StreamSubscription? _wsSub;
+  Timer? _adminWsDebounce;
+  bool _isAdminDataSyncing = false;
 
   @override
   void initState() {
@@ -68,7 +74,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           });
         }
       }
-      _loadAllData(silent: true);
+      _adminWsDebounce?.cancel();
+      _adminWsDebounce = Timer(const Duration(milliseconds: 600), () {
+        _loadAllData(silent: true);
+      });
     });
   }
 
@@ -80,11 +89,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   void dispose() {
+    _adminWsDebounce?.cancel();
     _wsSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadAllData({bool silent = false}) async {
+    if (_isAdminDataSyncing) return;
+    _isAdminDataSyncing = true;
     if (!silent) setState(() => _isLoading = true);
 
     try {
@@ -98,13 +110,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     } catch (e) {
       debugPrint('Admin load error: $e');
     } finally {
+      _isAdminDataSyncing = false;
       if (mounted && !silent) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _loadDashboardSummary() async {
+  Future<void> _loadDashboardSummary([String? period, DateTime? fromDate, DateTime? toDate]) async {
     try {
-      final res = await _api.get('/api/reports/dashboard');
+      final p = period ?? _reportPeriod;
+      String url = '/api/reports/dashboard?period=$p';
+      if (p == 'custom') {
+        final f = fromDate ?? _customStartDate;
+        final t = toDate ?? _customEndDate;
+        final fStr = '${f.year}-${f.month.toString().padLeft(2, '0')}-${f.day.toString().padLeft(2, '0')}';
+        final tStr = '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+        url += '&startDate=$fStr&endDate=$tStr';
+      }
+      final res = await _api.get(url);
       if (res['success'] == true && res['summary'] is Map) {
         if (mounted) setState(() => _summary = Map<String, dynamic>.from(res['summary']));
       }
@@ -113,9 +135,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _loadDeliveries() async {
+  Future<void> _loadDeliveries([String? range, DateTime? fromDate, DateTime? toDate]) async {
     try {
-      final res = await _api.get('/api/deliveries?range=today');
+      final r = range ?? (_reportPeriod == 'custom' ? 'custom' : _reportPeriod);
+      String url = '/api/deliveries?range=$r';
+      if (r == 'custom') {
+        final f = fromDate ?? _customStartDate;
+        final t = toDate ?? _customEndDate;
+        final fStr = '${f.year}-${f.month.toString().padLeft(2, '0')}-${f.day.toString().padLeft(2, '0')}';
+        final tStr = '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+        url += '&startDate=$fStr&endDate=$tStr';
+      }
+      final res = await _api.get(url);
       if (res['success'] == true && res['deliveries'] is List) {
         if (mounted) {
           setState(() {
@@ -937,6 +968,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             onPressed: () => ReportDownloadSheet.show(
               context,
               role: 'admin',
+              initialPeriod: _reportPeriod == 'today' ? 'weekly' : _reportPeriod,
               initialCustomers: _customers,
               initialDeliveries: _deliveries,
             ),
@@ -1028,20 +1060,27 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildWelcomeBanner(),
-              const SizedBox(height: 14),
-              _buildExecutiveSummary(),
-              const SizedBox(height: 16),
-              _buildKpiMetricsGrid(),
-              const SizedBox(height: 16),
-              _buildQuickActionHub(),
-              const SizedBox(height: 18),
-              _buildPartnerPerformanceSection(),
-              const SizedBox(height: 18),
-              const Text('Recent Operations Activity', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A))),
-              const SizedBox(height: 10),
-              _buildOperationsView(),
-              const SizedBox(height: 20),
-              _buildRecentAuditLogSection(),
+              const SizedBox(height: 12),
+              _buildReportPeriodSelector(),
+              if (_reportPeriod == 'custom') ...[
+                const SizedBox(height: 16),
+                _buildOperationsView(),
+              ] else ...[
+                const SizedBox(height: 14),
+                _buildExecutiveSummary(),
+                const SizedBox(height: 16),
+                _buildKpiMetricsGrid(),
+                const SizedBox(height: 16),
+                _buildQuickActionHub(),
+                const SizedBox(height: 18),
+                _buildPartnerPerformanceSection(),
+                const SizedBox(height: 18),
+                const Text('Recent Operations Activity', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A))),
+                const SizedBox(height: 10),
+                _buildOperationsView(),
+                const SizedBox(height: 20),
+                _buildRecentAuditLogSection(),
+              ],
               const SizedBox(height: 14),
             ],
           ),
@@ -1209,6 +1248,177 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildReportPeriodSelector() {
+    final periods = [
+      {'id': 'today', 'label': 'Today'},
+      {'id': 'weekly', 'label': 'Weekly (7 Days)'},
+      {'id': 'monthly', 'label': 'Monthly (30 Days)'},
+      {'id': 'all', 'label': 'All Time'},
+      {'id': 'custom', 'label': 'Custom (From - To)'},
+    ];
+
+    String formatReadable(DateTime d) {
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${d.day} ${months[d.month - 1]} ${d.year}';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: periods.map((p) {
+              final isSelected = _reportPeriod == p['id'];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () {
+                    setState(() => _reportPeriod = p['id']!);
+                    _loadDashboardSummary(p['id']!);
+                    _loadDeliveries(p['id']!);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0),
+                      ),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF0D5C3A).withValues(alpha: 0.2),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              )
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      p['label']!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: isSelected ? Colors.white : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        if (_reportPeriod == 'custom') ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.3)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _customStartDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setState(() => _customStartDate = picked);
+                        _loadDashboardSummary('custom', picked, _customEndDate);
+                        _loadDeliveries('custom', picked, _customEndDate);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('From Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                              const SizedBox(width: 4),
+                              Text(formatReadable(_customStartDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFF94A3B8)),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _customEndDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (picked != null) {
+                        setState(() => _customEndDate = picked);
+                        _loadDashboardSummary('custom', _customStartDate, picked);
+                        _loadDeliveries('custom', _customStartDate, picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('To Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              const Icon(Icons.event, size: 12, color: Color(0xFF0D5C3A)),
+                              const SizedBox(width: 4),
+                              Text(formatReadable(_customEndDate), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1508,6 +1718,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 () => ReportDownloadSheet.show(
                   context,
                   role: 'admin',
+                  initialPeriod: _reportPeriod == 'today' ? 'weekly' : _reportPeriod,
                   initialCustomers: _customers,
                   initialDeliveries: _deliveries,
                 ),

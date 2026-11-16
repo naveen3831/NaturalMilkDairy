@@ -19,6 +19,8 @@ const userSchema = new mongoose.Schema({
     area: { type: String, default: '' },
     note: { type: String, default: '' },
   }],
+  firebaseUid: { type: String, default: null, sparse: true, index: true },
+  authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
   createdAt: { type: Date, default: Date.now },
 });
 

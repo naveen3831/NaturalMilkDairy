@@ -7,7 +7,7 @@ const DairyContext = createContext();
 
 export const DairyProvider = ({ children }) => {
   const { isConnected: wsConnected, subscribe: wsSubscribe } = useWebSocket();
-  const { getAuthHeaders } = useAuth();
+  const { getAuthHeaders, user, token } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
   const [deliverySummary, setDeliverySummary] = useState({ total: 0, delivered: 0, pending: 0, notDelivered: 0 });
@@ -80,10 +80,54 @@ export const DairyProvider = ({ children }) => {
     localStorage.setItem('nmd_offline_queue', JSON.stringify(offlineQueue));
   }, [offlineQueue]);
 
-  // Fetch Dashboard Summary
-  const fetchDashboard = useCallback(async (date = selectedDate) => {
+  // Report Analytics State (Today, Weekly, Monthly, All, Custom)
+  const [reportPeriod, setReportPeriod] = useState('today');
+  const [customDateRange, setCustomDateRange] = useState(() => {
+    const d = new Date(Date.now() - 7 * 86400000);
+    return {
+      startDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d),
+      endDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()),
+    };
+  });
+  const [reportAnalytics, setReportAnalytics] = useState(null);
+  const [isLoadingReports, setIsLoadingReports] = useState(false);
+
+  const fetchReportAnalytics = useCallback(async (period = reportPeriod, extraParams = {}) => {
+    if (!token) return null;
+    setIsLoadingReports(true);
     try {
-      const res = await fetch(`/api/reports/dashboard?date=${date}`, {
+      const q = new URLSearchParams({
+        period,
+        ...(period === 'custom' && customDateRange ? customDateRange : {}),
+        ...extraParams,
+      });
+      const res = await fetch(`/api/reports/analytics?${q.toString()}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setReportAnalytics(data);
+        return data;
+      }
+    } catch (err) {
+      console.warn('Report analytics fetch error:', err);
+    } finally {
+      setIsLoadingReports(false);
+    }
+    return null;
+  }, [reportPeriod, customDateRange, getAuthHeaders, token]);
+
+  // Fetch Dashboard Summary (Admin Only - Supports period: 'today', 'weekly', 'monthly', 'all', 'custom' + startDate & endDate)
+  const fetchDashboard = useCallback(async (date = selectedDate, period = reportPeriod, customRange = customDateRange) => {
+    if (!token || user?.role !== 'admin') return;
+    try {
+      const q = new URLSearchParams({
+        date,
+        period,
+      });
+      if (customRange?.startDate) q.set('startDate', customRange.startDate);
+      if (customRange?.endDate) q.set('endDate', customRange.endDate);
+      const res = await fetch(`/api/reports/dashboard?${q.toString()}`, {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
@@ -93,20 +137,28 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Dashboard fetch error:', err);
     }
-  }, [selectedDate, getAuthHeaders]);
+  }, [selectedDate, reportPeriod, customDateRange, getAuthHeaders, token, user?.role]);
 
   // Fetch Deliveries
-  const fetchDeliveries = useCallback(async (date = selectedDate, status = 'all', boyId = 'all', range = 'today') => {
+  const fetchDeliveries = useCallback(async (date = selectedDate, status = 'all', boyId = 'all', range = 'today', customRange = customDateRange) => {
+    if (!token) return;
     try {
       const params = new URLSearchParams({
         status,
         deliveryBoyId: boyId,
       });
-      if (range === 'all') {
+      const activeRange = range === 'custom' || reportPeriod === 'custom' ? 'custom' : range;
+      if (activeRange === 'custom') {
+        params.set('range', 'custom');
+        const s = customRange?.startDate || customDateRange?.startDate;
+        const e = customRange?.endDate || customDateRange?.endDate;
+        if (s) params.set('startDate', s);
+        if (e) params.set('endDate', e);
+      } else if (activeRange === 'all') {
         params.set('range', 'all');
-      } else if (range === 'weekly') {
+      } else if (activeRange === 'weekly') {
         params.set('range', 'weekly');
-      } else if (range === 'monthly') {
+      } else if (activeRange === 'monthly') {
         params.set('range', 'monthly');
       } else {
         params.set('range', 'today');
@@ -123,10 +175,11 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Deliveries fetch error:', err);
     }
-  }, [selectedDate, getAuthHeaders]);
+  }, [selectedDate, reportPeriod, customDateRange, getAuthHeaders, token]);
 
   // Fetch Customers
   const fetchCustomers = useCallback(async (search = '', status = 'all') => {
+    if (!token) return;
     try {
       const res = await fetch(`/api/customers?search=${encodeURIComponent(search)}&status=${status}`, {
         headers: getAuthHeaders(),
@@ -138,7 +191,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Customers fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, token]);
 
   // Fetch Products
   const fetchProducts = useCallback(async () => {
@@ -157,6 +210,7 @@ export const DairyProvider = ({ children }) => {
 
   // Fetch Delivery Boys
   const fetchDeliveryBoys = useCallback(async () => {
+    if (!token) return;
     try {
       const res = await fetch(`/api/delivery-boys?_t=${Date.now()}`, {
         headers: getAuthHeaders(),
@@ -168,10 +222,11 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Delivery boys fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, token]);
 
-  // Fetch Pending Credit Report
+  // Fetch Pending Credit Report (Admin Only)
   const fetchPendingCredit = useCallback(async (sortBy = 'highest') => {
+    if (!token || user?.role !== 'admin') return;
     try {
       const res = await fetch(`/api/reports/pending-credit?sortBy=${sortBy}`, {
         headers: getAuthHeaders(),
@@ -183,10 +238,11 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Pending credit fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, token, user?.role]);
 
-  // Fetch Audit Logs
+  // Fetch Audit Logs (Admin Only)
   const fetchAuditLogs = useCallback(async () => {
+    if (!token || user?.role !== 'admin') return;
     try {
       const res = await fetch('/api/reports/audit-logs', {
         headers: getAuthHeaders(),
@@ -198,10 +254,11 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Audit logs fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, token, user?.role]);
 
   // Fetch Payments
   const fetchPayments = useCallback(async () => {
+    if (!token) return;
     try {
       const res = await fetch('/api/payments', {
         headers: getAuthHeaders(),
@@ -213,7 +270,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Payments fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, token]);
 
   // Fetch Service Locations
   const fetchLocations = useCallback(async () => {
@@ -315,18 +372,40 @@ export const DairyProvider = ({ children }) => {
 
   // Reload everything
   const refreshAll = useCallback(() => {
-    fetchDashboard();
-    fetchDeliveries();
-    fetchCustomers();
     fetchProducts();
-    fetchDeliveryBoys();
-    fetchPayments();
     fetchLocations();
-    fetchPendingCredit();
-    fetchAuditLogs();
     fetchContactInfo();
     fetchMediaAssets();
-  }, [fetchDashboard, fetchDeliveries, fetchCustomers, fetchProducts, fetchDeliveryBoys, fetchPayments, fetchLocations, fetchPendingCredit, fetchAuditLogs, fetchContactInfo, fetchMediaAssets]);
+
+    if (!token) return;
+
+    if (user?.role === 'admin') {
+      fetchDashboard();
+      fetchPendingCredit();
+      fetchAuditLogs();
+    }
+
+    if (user?.role === 'admin' || user?.role === 'delivery_boy') {
+      fetchDeliveries();
+      fetchCustomers();
+      fetchDeliveryBoys();
+      fetchPayments();
+    }
+  }, [
+    token,
+    user?.role,
+    fetchDashboard,
+    fetchDeliveries,
+    fetchCustomers,
+    fetchProducts,
+    fetchDeliveryBoys,
+    fetchPayments,
+    fetchLocations,
+    fetchPendingCredit,
+    fetchAuditLogs,
+    fetchContactInfo,
+    fetchMediaAssets,
+  ]);
 
   useEffect(() => {
     refreshAll();
@@ -334,11 +413,12 @@ export const DairyProvider = ({ children }) => {
 
   // Background interval polling for guaranteed multi-device real-time sync
   useEffect(() => {
+    if (!token || (user?.role !== 'admin' && user?.role !== 'delivery_boy')) return;
     const interval = setInterval(() => {
       fetchDeliveryBoys();
     }, 4000);
     return () => clearInterval(interval);
-  }, [fetchDeliveryBoys]);
+  }, [fetchDeliveryBoys, token, user?.role]);
 
   // Listen for real-time updates from other tabs or windows (Customer, Driver, Admin)
   useEffect(() => {
@@ -371,6 +451,7 @@ export const DairyProvider = ({ children }) => {
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchDeliveries();
       fetchDashboard();
+      fetchReportAnalytics();
       fetchPendingCredit();
       fetchDeliveryBoys();
       fetchPayments();
@@ -379,6 +460,7 @@ export const DairyProvider = ({ children }) => {
     const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', () => {
       fetchCustomers();
       fetchDashboard();
+      fetchReportAnalytics();
       fetchPendingCredit();
     });
 
@@ -386,12 +468,23 @@ export const DairyProvider = ({ children }) => {
       fetchDeliveries();
       fetchPendingCredit();
       fetchDashboard();
+      fetchReportAnalytics();
       fetchCustomers();
       fetchDeliveryBoys();
       fetchPayments();
     };
     const unsubPayment = wsSubscribe('PAYMENT_RECORDED', syncPaymentUpdate);
     const unsubPaymentUpdated = wsSubscribe('PAYMENT_UPDATED', syncPaymentUpdate);
+
+    const unsubReport = wsSubscribe('REPORT_UPDATED', () => {
+      fetchDashboard();
+      fetchReportAnalytics();
+    });
+
+    const unsubHandover = wsSubscribe('CASH_HANDOVER_UPDATED', () => {
+      fetchDashboard();
+      fetchReportAnalytics();
+    });
 
     const unsubProduct = wsSubscribe('PRODUCT_UPDATED', () => {
       fetchProducts();
@@ -1165,6 +1258,13 @@ export const DairyProvider = ({ children }) => {
         sendCustomerCredentials,
         getCustomerLedger,
         getCustomerStatement,
+        reportAnalytics,
+        fetchReportAnalytics,
+        reportPeriod,
+        setReportPeriod,
+        customDateRange,
+        setCustomDateRange,
+        isLoadingReports,
         locations,
         fetchLocations,
         addLocation,

@@ -27,6 +27,7 @@ import {
 import SubscribeModal from '../components/SubscribeModal';
 import StaffLoginModal from '../components/StaffLoginModal';
 import Footer from '../components/Footer';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
 
 export default function LandingPage({ setActiveTab }) {
   const { products, deliveryBoys } = useDairy();
@@ -168,7 +169,7 @@ export default function LandingPage({ setActiveTab }) {
           position: 'relative',
           width: '100%',
           minHeight: '740px',
-          backgroundImage: 'url(/hero-dairy.jpg)',
+          backgroundImage: `url(${CLOUDINARY_MEDIA.heroDairy || 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545618/natural-milk-dairy/assets/hero-dairy.jpg'})`,
           backgroundSize: 'cover',
           backgroundPosition: 'right center',
           backgroundRepeat: 'no-repeat',

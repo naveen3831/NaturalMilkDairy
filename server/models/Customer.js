@@ -79,6 +79,8 @@ const customerSchema = new mongoose.Schema({
   createdByDriverId: { type: String, default: '' },
   createdByDriverName: { type: String, default: '' },
   notes: { type: String, default: '' },
+  firebaseUid: { type: String, default: null, sparse: true, index: true },
+  authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
   createdAt: { type: Date, default: Date.now },
 });
 

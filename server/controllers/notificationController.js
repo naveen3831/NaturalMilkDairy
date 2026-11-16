@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 const { broadcast } = require('../config/websocket');
+const { registerDeviceToken, unregisterDeviceToken, sendPushNotification } = require('../services/fcmService');
 
 // Default initial notifications to seed if collection is truly brand new
 const defaultSeedNotifications = [
@@ -288,6 +289,19 @@ const createNotification = async (req, res) => {
     broadcast('NOTIFICATION_CREATED', formattedNotification);
     broadcast('NOTIFICATION_UPDATED', { action: 'created', notification: formattedNotification });
 
+    // Push notification to registered Android / Web FCM devices
+    sendPushNotification({
+      recipientRole: formattedNotification.recipientRole,
+      recipientId: formattedNotification.recipientId,
+      title: formattedNotification.title,
+      body: formattedNotification.message,
+      data: {
+        id: String(formattedNotification.id || formattedNotification._id),
+        type: String(formattedNotification.type || 'system'),
+        ...formattedNotification.data,
+      },
+    }).catch((pushErr) => console.error('FCM dispatch notice:', pushErr.message));
+
     return res.status(201).json({
       success: true,
       notification: formattedNotification,
@@ -406,6 +420,43 @@ const deleteNotification = async (req, res) => {
   }
 };
 
+/**
+ * Register FCM device token from Mobile App or Web
+ * POST /api/notifications/fcm-token
+ */
+const registerFcmToken = async (req, res) => {
+  try {
+    const { token, platform } = req.body || {};
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'FCM token is required' });
+    }
+    const userId = (req.user?.id || req.user?._id || req.user?.customerId || req.user?.boyId || '').toString();
+    const role = req.user?.role || req.body?.role || 'customer';
+    const record = await registerDeviceToken({ token, userId, role, platform });
+    return res.json({ success: true, message: 'Device token registered for push notifications', record });
+  } catch (err) {
+    console.error('registerFcmToken error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/**
+ * Unregister FCM device token
+ * DELETE /api/notifications/fcm-token
+ */
+const unregisterFcmToken = async (req, res) => {
+  try {
+    const { token } = req.body || {};
+    if (token) {
+      await unregisterDeviceToken(token);
+    }
+    return res.json({ success: true, message: 'Device token removed successfully' });
+  } catch (err) {
+    console.error('unregisterFcmToken error:', err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getNotifications,
   createNotification,
@@ -413,4 +464,6 @@ module.exports = {
   markAllAsRead,
   clearAll,
   deleteNotification,
+  registerFcmToken,
+  unregisterFcmToken,
 };

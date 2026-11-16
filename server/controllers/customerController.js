@@ -8,9 +8,10 @@ const DeliveryLocation = require('../models/DeliveryLocation');
 const Notification = require('../models/Notification');
 const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
-const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
+const { ensureDeliveriesForDate, ensureDeliveriesForCustomer, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
 const { hashPassword, generateTemporaryPassword } = require('../security/password');
+const { findCustomerForRequest, escapeRegex } = require('../services/customerLookupService');
 
 // Get all customers with search and filters
 const getCustomers = async (req, res) => {
@@ -96,20 +97,7 @@ const getCustomers = async (req, res) => {
 // Get single customer
 const getCustomerById = async (req, res) => {
   try {
-    const { id } = req.params;
-    let query;
-    if (id === 'me') {
-      const candidates = [
-        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
-        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
-        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
-      ];
-      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
-    } else {
-      query = id.length === 24 ? { _id: id } : { customerId: id };
-    }
-    const customer = await Customer.findOne(query).lean();
-
+    const customer = await findCustomerForRequest(req);
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
@@ -1048,66 +1036,70 @@ const setTemporaryQty = async (req, res) => {
 // Complete Customer Ledger
 const getCustomerLedger = async (req, res) => {
   try {
-    const customerId = req.params.id;
-    let query;
-    if (customerId === 'me') {
-      const candidates = [
-        ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
-        ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
-        ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
-      ];
-      query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
-    } else {
-      query = customerId.length === 24 ? { _id: customerId } : { customerId };
-    }
-    const customer = await Customer.findOne(query).lean();
-
+    const customer = await findCustomerForRequest(req);
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    const custIds = [customer._id.toString(), customer.customerId].filter(Boolean);
+    // Ensure all deliveries exist for this customer throughout their history/subscription
+    await ensureDeliveriesForCustomer(customer);
+
+    const custIds = [
+      customer._id.toString(),
+      customer.customerId,
+      (customer.customerId || '').toLowerCase(),
+      (customer.customerId || '').toUpperCase(),
+    ].filter(Boolean);
+
+    const cleanCustomerPhone = (customer.mobile || '').replace(/\D/g, '').slice(-10);
+
+    const deliveryOrConditions = [
+      { customerId: { $in: custIds } },
+    ];
+    if (cleanCustomerPhone.length === 10) {
+      deliveryOrConditions.push({ customerPhone: new RegExp(cleanCustomerPhone + '$') });
+    }
+
+    const paymentOrConditions = [
+      { customerId: { $in: custIds } },
+    ];
+    if (cleanCustomerPhone.length === 10) {
+      paymentOrConditions.push({ customerPhone: new RegExp(cleanCustomerPhone + '$') });
+    }
 
     // Deliveries and payments for this customer (respecting user-deleted history entries)
     const [rawCustomerDeliveries, rawCustomerPayments] = await Promise.all([
-      Delivery.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
-      Payment.find({ customerId: { $in: custIds }, deletedForCustomer: { $ne: true } }).lean(),
+      Delivery.find({
+        $or: deliveryOrConditions,
+        deletedForCustomer: { $ne: true },
+      }).sort({ deliveryDate: -1, createdAt: -1 }).lean(),
+      Payment.find({
+        $or: paymentOrConditions,
+        deletedForCustomer: { $ne: true },
+      }).sort({ paymentDate: -1, createdAt: -1 }).lean(),
     ]);
 
-    // STRICT CUSTOMER IDENTITY SCOPING: Ensure legacy/reused customerId test records from other users never leak
-    const cleanCustomerPhone = (customer.mobile || '').replace(/\D/g, '').slice(-10);
-    const cleanCustomerName = (customer.name || '').toLowerCase().trim();
-    const customerCreatedTime = customer.createdAt ? new Date(customer.createdAt).getTime() - 24 * 60 * 60 * 1000 : 0;
-
+    // Ensure deliveries matched by phone have same customerId or valid phone match
     const customerDeliveries = rawCustomerDeliveries.filter((del) => {
-      // 1. If delivery has customerPhone, it MUST match this customer's mobile
-      if (del.customerPhone && cleanCustomerPhone) {
+      if (del.customerPhone && cleanCustomerPhone && cleanCustomerPhone.length === 10) {
         const delPhone = String(del.customerPhone).replace(/\D/g, '').slice(-10);
-        if (delPhone && delPhone !== cleanCustomerPhone) {
-          return false;
-        }
-      }
-      // 2. If delivery has customerName, it must match this customer's name
-      if (del.customerName && cleanCustomerName) {
-        const delName = String(del.customerName).toLowerCase().trim();
-        if (delName && delName !== cleanCustomerName && !delName.includes(cleanCustomerName) && !cleanCustomerName.includes(delName)) {
-          return false;
-        }
-      }
-      // 3. If delivery was created before this customer account was created, drop it
-      if (customerCreatedTime && del.createdAt) {
-        const delTime = new Date(del.createdAt).getTime();
-        if (delTime < customerCreatedTime) {
-          return false;
+        if (delPhone && delPhone.length === 10 && delPhone !== cleanCustomerPhone) {
+          if (!custIds.includes(del.customerId)) {
+            return false;
+          }
         }
       }
       return true;
     });
 
     const customerPayments = rawCustomerPayments.filter((pay) => {
-      if (pay.customerPhone && cleanCustomerPhone) {
+      if (pay.customerPhone && cleanCustomerPhone && cleanCustomerPhone.length === 10) {
         const pmtPhone = String(pay.customerPhone).replace(/\D/g, '').slice(-10);
-        if (pmtPhone && pmtPhone !== cleanCustomerPhone) return false;
+        if (pmtPhone && pmtPhone.length === 10 && pmtPhone !== cleanCustomerPhone) {
+          if (!custIds.includes(pay.customerId)) {
+            return false;
+          }
+        }
       }
       return true;
     });
@@ -1119,47 +1111,75 @@ const getCustomerLedger = async (req, res) => {
       const addonText = addonList.length > 0
         ? ` + Add-ons: ${addonList.map((a) => `${a.name} x${a.quantity}`).join(', ')}`
         : '';
+      const milkAmount = (del.actualMilk || del.plannedMilk || 0) * (del.milkPrice || 60);
+      const curdAmount = ((del.actualCurd || del.plannedCurd || 0) / 1000) * (del.curdPrice || 60);
+      const rawAddonsTotal = Number(del.addonsTotal) || (Array.isArray(del.addons) ? del.addons.reduce((sum, a) => sum + (Number(a.price || 0) * Number(a.quantity || 1)), 0) : 0);
+      const deliveryTotal = Number(del.totalAmount) || Math.round((milkAmount + curdAmount + rawAddonsTotal) * 100) / 100;
+
       ledgerEntries.push({
         id: del._id.toString(),
         type: 'delivery',
         date: del.deliveryDate,
-        time: del.deliveredAt,
-        milk: `${del.actualMilk || del.plannedMilk} L`,
+        deliveryDate: del.deliveryDate,
+        time: del.deliveredAt || del.createdAt,
+        milk: `${del.actualMilk || del.plannedMilk || 0} L`,
         curd: del.actualCurd || del.plannedCurd ? `${del.actualCurd || del.plannedCurd} g` : '0',
+        actualMilk: del.actualMilk || del.plannedMilk || 0,
+        plannedMilk: del.plannedMilk || del.actualMilk || 0,
+        actualCurd: del.actualCurd || del.plannedCurd || 0,
+        plannedCurd: del.plannedCurd || del.actualCurd || 0,
+        milkPrice: del.milkPrice || 60,
+        curdPrice: del.curdPrice || 60,
         addons: addonList,
-        addonsTotal: Number(del.addonsTotal) || 0,
+        addonsTotal: rawAddonsTotal,
         addonPaymentMethod: del.addonPaymentMethod || '',
         addonPaidAmount: Number(del.addonPaidAmount) || 0,
         rateDetails: `Milk @₹${del.milkPrice || 60}/L${del.actualCurd ? `, Curd @₹${del.curdPrice || 30}` : ''}${addonText}`,
-        amount: del.status === 'not_delivered' ? 0 : del.totalAmount,
-        status: del.status,
-        paymentMethod: del.paymentMethod,
-        paymentStatus: del.paymentStatus,
+        amount: del.status === 'not_delivered' ? 0 : deliveryTotal,
+        totalAmount: deliveryTotal,
+        status: del.status || 'delivered',
+        paymentMethod: del.paymentMethod || 'credit',
+        paymentStatus: del.paymentStatus || 'Recorded',
         notes: del.notes || (del.status === 'not_delivered' ? del.notDeliveredReason : ''),
-        deliveryBoyName: del.deliveryBoyName,
+        deliveryBoyName: del.deliveryBoyName || 'Assigned Partner',
         proofImage: del.proofImage || '',
-        rawItem: del,
+        rawItem: {
+          ...del,
+          id: del._id.toString(),
+          deliveryDate: del.deliveryDate,
+          date: del.deliveryDate,
+          totalAmount: deliveryTotal,
+        },
       });
     });
 
-    const ledgerPayments = customerPayments.filter((pay) => pay.purpose !== 'subscription');
+    const ledgerPayments = customerPayments;
     ledgerPayments.forEach((pay) => {
+      const pmtDateStr = typeof pay.paymentDate === 'string'
+        ? pay.paymentDate.split('T')[0]
+        : (pay.paymentDate ? new Date(pay.paymentDate).toISOString().split('T')[0] : (pay.createdAt ? new Date(pay.createdAt).toISOString().split('T')[0] : ''));
+
       ledgerEntries.push({
         id: pay._id.toString(),
         type: 'payment',
-        date: typeof pay.paymentDate === 'string' ? pay.paymentDate.split('T')[0] : new Date(pay.paymentDate).toISOString().split('T')[0],
-        time: pay.paymentDate,
+        date: pmtDateStr,
+        paymentDate: pay.paymentDate || pay.createdAt,
+        time: pay.paymentDate || pay.createdAt,
         milk: '-',
         curd: '-',
-        rateDetails: `Ref: ${pay.referenceNumber || 'N/A'}`,
+        rateDetails: `Ref: ${pay.referenceNumber || pay.gatewayPaymentId || pay.purpose || 'N/A'}`,
         amount: -Math.abs(pay.amount),
         paidAmount: pay.amount,
         status: 'Paid',
-        paymentMethod: pay.paymentMethod?.toUpperCase(),
+        paymentMethod: (pay.paymentMethod || 'cash').toUpperCase(),
         paymentStatus: 'Recorded',
-        notes: pay.notes || `Collected by ${pay.collectedBy}`,
-        deliveryBoyName: pay.collectedBy,
-        rawItem: pay,
+        notes: pay.notes || (pay.purpose === 'subscription' ? 'Subscription Payment' : `Collected by ${pay.collectedBy || 'Staff'}`),
+        deliveryBoyName: pay.collectedBy || 'Staff',
+        rawItem: {
+          ...pay,
+          id: pay._id.toString(),
+          paymentDate: pay.paymentDate || pay.createdAt,
+        },
       });
     });
 
@@ -1182,10 +1202,77 @@ const getCustomerLedger = async (req, res) => {
     });
 
     const deliveredList = customerDeliveries.filter((d) => d.status === 'delivered');
-    const totalMilkDelivered = deliveredList.reduce((sum, d) => sum + (d.actualMilk || 0), 0);
-    const totalCurdDelivered = deliveredList.reduce((sum, d) => sum + (d.actualCurd || 0), 0) / 1000;
+    const totalMilkDelivered = deliveredList.reduce((sum, d) => sum + (d.actualMilk || d.plannedMilk || 0), 0);
+    const totalCurdDelivered = deliveredList.reduce((sum, d) => sum + (d.actualCurd || d.plannedCurd || 0), 0) / 1000;
     const grossBill = deliveredList.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
     const totalPaid = ledgerPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    const now = new Date();
+    const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(now);
+    const weekAgoStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(now.getTime() - 7 * 86400000));
+    const monthAgoStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(now.getTime() - 30 * 86400000));
+
+    const computeMetricsFor = (delList, payList) => {
+      const delivered = delList.filter((d) => d.status === 'delivered');
+      const milk = delivered.reduce((sum, d) => sum + (Number(d.actualMilk || d.plannedMilk) || 0), 0);
+      const curd = delivered.reduce((sum, d) => sum + (Number(d.actualCurd || d.plannedCurd) || 0), 0) / 1000;
+      const bill = delivered.reduce((sum, d) => sum + (Number(d.totalAmount) || 0), 0);
+      const paid = payList.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      return {
+        totalMilkDelivered: `${milk.toFixed(1)} L`,
+        totalCurdDelivered: `${curd.toFixed(2)} Kg`,
+        grossBill: bill,
+        totalPaid: paid,
+        netBalance: Math.round((bill - paid) * 100) / 100,
+        dropsCount: delList.length,
+        deliveredCount: delivered.length,
+      };
+    };
+
+    const isMatchDate = (dStr, startStr, endStr) => {
+      if (!dStr) return false;
+      const clean = dStr.slice(0, 10);
+      if (startStr && clean < startStr) return false;
+      if (endStr && clean > endStr) return false;
+      return true;
+    };
+
+    const getPaymentDateStr = (p) => {
+      const raw = p.paymentDate || p.createdAt;
+      if (!raw) return '';
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(raw));
+    };
+
+    const customStart = req.query.startDate || req.query.fromDate || req.query.from;
+    const customEnd = req.query.endDate || req.query.toDate || req.query.to;
+
+    const summaryByPeriod = {
+      today: computeMetricsFor(
+        customerDeliveries.filter((d) => isMatchDate(d.deliveryDate, todayStr, todayStr)),
+        ledgerPayments.filter((p) => isMatchDate(getPaymentDateStr(p), todayStr, todayStr))
+      ),
+      weekly: computeMetricsFor(
+        customerDeliveries.filter((d) => isMatchDate(d.deliveryDate, weekAgoStr)),
+        ledgerPayments.filter((p) => isMatchDate(getPaymentDateStr(p), weekAgoStr))
+      ),
+      monthly: computeMetricsFor(
+        customerDeliveries.filter((d) => isMatchDate(d.deliveryDate, monthAgoStr)),
+        ledgerPayments.filter((p) => isMatchDate(getPaymentDateStr(p), monthAgoStr))
+      ),
+      all: computeMetricsFor(customerDeliveries, ledgerPayments),
+    };
+
+    if (customStart) {
+      const cStart = String(customStart).slice(0, 10);
+      const cEnd = customEnd ? String(customEnd).slice(0, 10) : todayStr;
+      summaryByPeriod.custom = computeMetricsFor(
+        customerDeliveries.filter((d) => isMatchDate(d.deliveryDate, cStart, cEnd)),
+        ledgerPayments.filter((p) => isMatchDate(getPaymentDateStr(p), cStart, cEnd))
+      );
+    }
+
+    const requestedPeriod = String(req.query.period || (customStart ? 'custom' : 'all')).toLowerCase();
+    const periodMetric = summaryByPeriod[requestedPeriod] || summaryByPeriod.custom || summaryByPeriod.all;
 
     const waPhone = customer.whatsapp || customer.mobile;
     const reminderMessage = encodeURIComponent(
@@ -1199,11 +1286,18 @@ const getCustomerLedger = async (req, res) => {
         ...customer,
         id: customer._id.toString(),
       },
+      deliveries: customerDeliveries,
+      payments: customerPayments,
       outstanding: customer.currentBalance,
-      totalMilkDelivered: `${totalMilkDelivered.toFixed(1)} L`,
-      totalCurdDelivered: `${totalCurdDelivered.toFixed(2)} Kg`,
-      grossBill,
-      totalPaid,
+      currentBalance: customer.currentBalance,
+      netBalance: periodMetric.netBalance,
+      totalMilkDelivered: requestedPeriod !== 'all' ? periodMetric.totalMilkDelivered : `${totalMilkDelivered.toFixed(1)} L`,
+      totalCurdDelivered: requestedPeriod !== 'all' ? periodMetric.totalCurdDelivered : `${totalCurdDelivered.toFixed(2)} Kg`,
+      grossBill: requestedPeriod !== 'all' ? periodMetric.grossBill : grossBill,
+      totalPaid: requestedPeriod !== 'all' ? periodMetric.totalPaid : totalPaid,
+      deliveriesCount: customerDeliveries.length,
+      paymentsCount: customerPayments.length,
+      summaryByPeriod,
       ledgerEntries,
       whatsappUrl,
     });
@@ -2588,4 +2682,5 @@ module.exports = {
   updateCustomerAddress,
   deleteCustomerAddress,
   setDefaultCustomerAddress,
+  findCustomerForRequest,
 };

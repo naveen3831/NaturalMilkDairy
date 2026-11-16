@@ -93,6 +93,31 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  /// Sign in with Google / Firebase ID token
+  Future<bool> loginWithGoogleToken(String idToken, {String portal = 'customer'}) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    final res = await _apiService.loginWithGoogle(idToken: idToken, portal: portal);
+
+    _isLoading = false;
+    if (res['success'] == true) {
+      _isGuest = false;
+      _token = res['token']?.toString();
+      if (res['user'] is Map<String, dynamic>) {
+        _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
+      }
+      _realtimeService.updateToken(_token);
+      notifyListeners();
+      return true;
+    } else {
+      _errorMessage = res['message']?.toString() ?? 'Google Sign-In failed.';
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// Register new customer
   Future<bool> register(Map<String, dynamic> payload) async {
     _isLoading = true;

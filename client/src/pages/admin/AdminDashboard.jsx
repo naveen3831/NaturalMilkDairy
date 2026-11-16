@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import {
   Users,
@@ -18,11 +18,29 @@ import {
   Activity,
   Download,
   FileText,
+  BarChart3,
+  Calendar,
+  Sparkles,
 } from 'lucide-react';
 import ReportDownloadModal from '../../components/ReportDownloadModal';
 
 export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpenPaymentModal }) {
-  const { dashboardSummary, deliveryBoys, deliveries, fetchDeliveries, auditLogs, fetchDashboard, refreshAll } = useDairy();
+  const {
+    dashboardSummary,
+    deliveryBoys,
+    deliveries,
+    fetchDeliveries,
+    auditLogs,
+    fetchDashboard,
+    refreshAll,
+    reportAnalytics,
+    fetchReportAnalytics,
+    reportPeriod,
+    setReportPeriod,
+    customDateRange,
+    setCustomDateRange,
+    isLoadingReports,
+  } = useDairy();
 
   const [mobileFilter, setMobileFilter] = useState('all'); // 'all', 'delivered', 'pending'
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
@@ -35,25 +53,53 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
   }, []);
 
   useEffect(() => {
-    fetchDashboard();
-    if (typeof fetchDeliveries === 'function') fetchDeliveries();
+    fetchDashboard(undefined, reportPeriod, customDateRange);
+    if (typeof fetchReportAnalytics === 'function') {
+      fetchReportAnalytics(reportPeriod, reportPeriod === 'custom' ? customDateRange : {});
+    }
+    if (typeof fetchDeliveries === 'function') {
+      if (reportPeriod === 'custom') {
+        fetchDeliveries(undefined, 'all', 'all', 'custom', customDateRange);
+      } else {
+        fetchDeliveries(undefined, 'all', 'all', reportPeriod);
+      }
+    }
     refreshAll();
-  }, [fetchDashboard, fetchDeliveries, refreshAll]);
+  }, [fetchDashboard, fetchReportAnalytics, reportPeriod, customDateRange, fetchDeliveries, refreshAll]);
 
-  const summary = dashboardSummary || {
-    totalCustomers: 0,
-    activeCustomers: 0,
-    deliveriesCount: 0,
-    completed: 0,
-    pending: 0,
-    notDelivered: 0,
-    todaySales: 0,
-    creditAdded: 0,
-    paymentsCollected: 0,
-    totalOutstanding: 0,
-    totalAdvance: 0,
-    todayMilkLitres: '0.0',
-    todayCurdKg: '0.00',
+  const customDeliveries = useMemo(() => {
+    if (!Array.isArray(deliveries)) return [];
+    return deliveries
+      .filter((d) => {
+        const key = (d.deliveryDate || d.date || '').slice(0, 10);
+        if (!key) return false;
+        if (customDateRange?.startDate && key < customDateRange.startDate) return false;
+        if (customDateRange?.endDate && key > customDateRange.endDate) return false;
+        return true;
+      })
+      .sort((a, b) => ((b.deliveryDate || b.date || '') > (a.deliveryDate || a.date || '') ? 1 : -1));
+  }, [deliveries, customDateRange]);
+
+  // Support period calculations: if reportAnalytics is loaded for the active period, prioritize it!
+  const effectiveSummary = (reportAnalytics?.summary) || dashboardSummary || {};
+
+  const summary = {
+    totalCustomers: effectiveSummary.totalCustomers ?? dashboardSummary?.totalCustomers ?? 0,
+    activeCustomers: effectiveSummary.activeCustomers ?? dashboardSummary?.activeCustomers ?? 0,
+    deliveriesCount: effectiveSummary.totalDeliveries ?? effectiveSummary.deliveriesCount ?? dashboardSummary?.deliveriesCount ?? 0,
+    completed: effectiveSummary.completedDeliveries ?? effectiveSummary.completed ?? dashboardSummary?.completed ?? 0,
+    pending: effectiveSummary.pendingDeliveries ?? effectiveSummary.pending ?? dashboardSummary?.pending ?? 0,
+    notDelivered: effectiveSummary.notDelivered ?? dashboardSummary?.notDelivered ?? 0,
+    todaySales: effectiveSummary.totalSales ?? effectiveSummary.todaySales ?? dashboardSummary?.todaySales ?? 0,
+    creditAdded: effectiveSummary.creditAdded ?? dashboardSummary?.creditAdded ?? 0,
+    paymentsCollected: effectiveSummary.paymentsCollected ?? dashboardSummary?.paymentsCollected ?? 0,
+    todayCashCollected: effectiveSummary.cashCollected ?? dashboardSummary?.todayCashCollected ?? 0,
+    todayUpiCollected: effectiveSummary.upiCollected ?? dashboardSummary?.todayUpiCollected ?? 0,
+    totalOutstanding: effectiveSummary.totalOutstanding ?? dashboardSummary?.totalOutstanding ?? 0,
+    totalAdvance: effectiveSummary.totalAdvance ?? dashboardSummary?.totalAdvance ?? 0,
+    todayMilkLitres: String(effectiveSummary.totalMilkLitres ?? effectiveSummary.todayMilkLitres ?? dashboardSummary?.todayMilkLitres ?? '0.0'),
+    todayCurdKg: String(effectiveSummary.totalCurdKg ?? effectiveSummary.todayCurdKg ?? dashboardSummary?.todayCurdKg ?? '0.00'),
+    fulfillmentRate: effectiveSummary.fulfillmentRate ?? (effectiveSummary.totalDeliveries > 0 ? ((effectiveSummary.completedDeliveries / effectiveSummary.totalDeliveries) * 100).toFixed(1) + '%' : '100%'),
   };
 
   const deliveryProgress = summary.deliveriesCount > 0
@@ -121,19 +167,219 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           </div>
         </div>
 
-        {/* 2. Today Route Fulfillment Card */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: '16px',
-            border: '1px solid #e2e8f0',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-          }}
-        >
+        {/* Realtime Report Range Tabs (Mobile View) */}
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', scrollbarWidth: 'none' }}>
+          {[
+            { id: 'today', label: 'Today' },
+            { id: 'weekly', label: 'Weekly (7 Days)' },
+            { id: 'monthly', label: 'Monthly (30 Days)' },
+            { id: 'all', label: 'All Time' },
+            { id: 'custom', label: 'Custom (From - To)' },
+          ].map((tab) => {
+            const active = reportPeriod === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setReportPeriod(tab.id);
+                  if (typeof fetchReportAnalytics === 'function') {
+                    fetchReportAnalytics(tab.id, tab.id === 'custom' ? customDateRange : {});
+                  }
+                  if (typeof fetchDashboard === 'function') {
+                    fetchDashboard(undefined, tab.id, tab.id === 'custom' ? customDateRange : null);
+                  }
+                }}
+                style={{
+                  padding: '7px 13px',
+                  borderRadius: '20px',
+                  fontSize: '0.76rem',
+                  fontWeight: 800,
+                  border: active ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
+                  background: active ? '#0d5c3a' : '#ffffff',
+                  color: active ? '#ffffff' : '#64748b',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  boxShadow: active ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom Date Range Picker (Mobile View) */}
+        {reportPeriod === 'custom' && (
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '14px',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+            }}
+          >
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Select Custom Range (From - To)
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', marginBottom: '3px' }}>
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={customDateRange?.startDate || ''}
+                  onChange={(e) => {
+                    const next = { ...customDateRange, startDate: e.target.value };
+                    setCustomDateRange(next);
+                    if (typeof fetchReportAnalytics === 'function') fetchReportAnalytics('custom', next);
+                    if (typeof fetchDashboard === 'function') fetchDashboard(undefined, 'custom', next);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    background: '#ffffff',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', marginBottom: '3px' }}>
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={customDateRange?.endDate || ''}
+                  onChange={(e) => {
+                    const next = { ...customDateRange, endDate: e.target.value };
+                    setCustomDateRange(next);
+                    if (typeof fetchReportAnalytics === 'function') fetchReportAnalytics('custom', next);
+                    if (typeof fetchDashboard === 'function') fetchDashboard(undefined, 'custom', next);
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    background: '#ffffff',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* When Custom is selected: Show ONLY custom date deliveries */}
+        {reportPeriod === 'custom' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                  Deliveries in Selected Range
+                </h3>
+                <span style={{ background: '#ede9fe', color: '#6d28d9', fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
+                  {customDeliveries.length} Records
+                </span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: '#6d28d9', fontWeight: 700 }}>
+                {customDateRange?.startDate || 'Start'} to {customDateRange?.endDate || 'End'}
+              </span>
+            </div>
+
+            {customDeliveries.length === 0 ? (
+              <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                No deliveries recorded between {customDateRange?.startDate || ''} and {customDateRange?.endDate || ''}.
+              </div>
+            ) : (
+              customDeliveries.map((del, idx) => (
+                <div
+                  key={del.id || `${del.deliveryDate}-${idx}`}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2ebe5',
+                    borderRadius: '14px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <strong style={{ fontSize: '0.92rem', color: '#0f172a' }}>{del.customerName || del.customer?.name || 'Customer'}</strong>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', marginLeft: '6px' }}>
+                        {del.customer?.customerId || del.customerId || ''}
+                      </span>
+                    </div>
+                    <span
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                        fontSize: '0.7rem',
+                        fontWeight: 800,
+                        background: del.status === 'delivered' ? '#dcfce7' : '#fef3c7',
+                        color: del.status === 'delivered' ? '#15803d' : '#b45309',
+                        border: del.status === 'delivered' ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                      }}
+                    >
+                      {del.status === 'delivered' ? '✓ Delivered' : 'Pending'}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: '0.78rem', color: '#475569' }}>
+                    {del.customerAddress || del.customer?.address || del.address || 'Address'}
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid #f1f5f9' }}>
+                    <span style={{ background: '#f0fdf4', color: '#166534', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700 }}>
+                      🥛 {del.actualMilk || del.plannedMilk || 0} L Milk
+                    </span>
+                    {(del.actualCurd || del.plannedCurd) > 0 && (
+                      <span style={{ background: '#f8fafc', color: '#334155', padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700 }}>
+                        🥣 {del.actualCurd || del.plannedCurd} g Curd
+                      </span>
+                    )}
+                    <span style={{ marginLeft: 'auto', fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
+                      Date: {(del.deliveryDate || del.date || '').slice(0, 10)}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Normal Dashboard Overview: Hidden when Custom is selected */}
+        {reportPeriod !== 'custom' && (
+          <>
+            {/* 2. Today Route Fulfillment Card */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+              }}
+            >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
@@ -797,11 +1043,14 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
             </div>
           </div>
         )}
+      </>
+    )}
 
         <ReportDownloadModal
           isOpen={showReportModal}
           onClose={() => setShowReportModal(false)}
           role="admin"
+          initialPeriod={reportPeriod === 'today' ? 'weekly' : reportPeriod}
           initialCustomers={customers}
         />
       </div>
@@ -927,10 +1176,263 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
         </div>
       </div>
 
-      {/* 2. Sleek KPI Metrics Cards Grid (3 cards per row) */}
+      {/* Realtime Report Range Bar (Desktop View) */}
       <div
-        className="kpi-grid-3cols"
+        style={{
+          background: '#ffffff',
+          borderRadius: '14px',
+          border: '1px solid #e2e8f0',
+          padding: '12px 18px',
+          marginBottom: '18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+        }}
       >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#ecfdf5', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <BarChart3 size={18} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Live Executive Data Reports & Analytics</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', background: '#ecfdf5', padding: '2px 8px', borderRadius: '8px', border: '1px solid #a7f3d0' }}>
+                ● Real-time WebSocket Sync
+              </span>
+            </div>
+            <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '1px' }}>
+              {reportAnalytics?.periodLabel || (reportPeriod === 'weekly' ? 'Weekly (Last 7 Days)' : reportPeriod === 'monthly' ? 'Monthly (Last 30 Days)' : 'Today')}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {[
+              { id: 'today', label: 'Today' },
+              { id: 'weekly', label: 'Weekly (Last 7 Days)' },
+              { id: 'monthly', label: 'Monthly (Last 30 Days)' },
+              { id: 'all', label: 'All Time' },
+              { id: 'custom', label: 'Custom (From - To)' },
+            ].map((tab) => {
+              const active = reportPeriod === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => {
+                    setReportPeriod(tab.id);
+                    if (typeof fetchReportAnalytics === 'function') {
+                      fetchReportAnalytics(tab.id, tab.id === 'custom' ? customDateRange : {});
+                    }
+                    if (typeof fetchDashboard === 'function') {
+                      fetchDashboard(undefined, tab.id, tab.id === 'custom' ? customDateRange : null);
+                    }
+                  }}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '20px',
+                    fontSize: '0.8rem',
+                    fontWeight: 800,
+                    border: active ? '1px solid #0d5c3a' : '1px solid #cbd5e1',
+                    background: active ? '#0d5c3a' : '#ffffff',
+                    color: active ? '#ffffff' : '#64748b',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    boxShadow: active ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {reportPeriod === 'custom' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                background: '#f8fafc',
+                padding: '6px 12px',
+                borderRadius: '12px',
+                border: '1px solid #cbd5e1',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b' }}>From:</span>
+                <input
+                  type="date"
+                  value={customDateRange?.startDate || ''}
+                  onChange={(e) => {
+                    const next = { ...customDateRange, startDate: e.target.value };
+                    setCustomDateRange(next);
+                    if (typeof fetchReportAnalytics === 'function') fetchReportAnalytics('custom', next);
+                    if (typeof fetchDashboard === 'function') fetchDashboard(undefined, 'custom', next);
+                  }}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    background: '#ffffff',
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#64748b' }}>To:</span>
+                <input
+                  type="date"
+                  value={customDateRange?.endDate || ''}
+                  onChange={(e) => {
+                    const next = { ...customDateRange, endDate: e.target.value };
+                    setCustomDateRange(next);
+                    if (typeof fetchReportAnalytics === 'function') fetchReportAnalytics('custom', next);
+                    if (typeof fetchDashboard === 'function') fetchDashboard(undefined, 'custom', next);
+                  }}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    background: '#ffffff',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* When Custom is selected: Show ONLY custom date deliveries table */}
+      {reportPeriod === 'custom' && (
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '20px 24px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div>
+              <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                CUSTOM RANGE DELIVERIES
+              </div>
+              <h2 style={{ margin: '2px 0 0 0', fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
+                Deliveries from {customDateRange?.startDate || 'Start'} to {customDateRange?.endDate || 'End'}
+              </h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ background: '#ede9fe', color: '#6d28d9', fontSize: '0.78rem', fontWeight: 800, padding: '4px 12px', borderRadius: '12px', border: '1px solid #ddd6fe' }}>
+                {customDeliveries.length} Total Deliveries
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowReportModal(true)}
+                style={{
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '7px 14px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                }}
+              >
+                <Download size={14} /> Export Custom PDF
+              </button>
+            </div>
+          </div>
+
+          {customDeliveries.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b', fontSize: '0.9rem', border: '1px dashed #cbd5e1', borderRadius: '12px' }}>
+              No deliveries found for the date range {customDateRange?.startDate} to {customDateRange?.endDate}.
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#475569', fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                    <th style={{ padding: '10px 12px' }}>Customer</th>
+                    <th style={{ padding: '10px 12px' }}>Address</th>
+                    <th style={{ padding: '10px 12px' }}>Milk</th>
+                    <th style={{ padding: '10px 12px' }}>Curd</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px' }}>Partner</th>
+                    <th style={{ padding: '10px 12px' }}>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customDeliveries.map((del, idx) => (
+                    <tr key={del.id || `${del.deliveryDate}-${idx}`} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>
+                        {(del.deliveryDate || del.date || '').slice(0, 10)}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <strong style={{ color: '#0f172a' }}>{del.customerName || del.customer?.name || 'Customer'}</strong>
+                        <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{del.customer?.customerId || del.customerId || ''}</div>
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#475569', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {del.customerAddress || del.customer?.address || del.address || '—'}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 800, color: '#0d5c3a' }}>
+                        {del.actualMilk || del.plannedMilk || 0} L
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#475569' }}>
+                        {del.actualCurd || del.plannedCurd || 0} g
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '12px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            background: del.status === 'delivered' ? '#dcfce7' : '#fef3c7',
+                            color: del.status === 'delivered' ? '#15803d' : '#b45309',
+                            border: del.status === 'delivered' ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                          }}
+                        >
+                          {del.status === 'delivered' ? '✓ Delivered' : 'Pending'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#334155', fontWeight: 600 }}>
+                        {del.deliveryBoyName || del.deliveryBoy?.name || 'Unassigned'}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontWeight: 800, color: '#0f172a' }}>
+                        ₹{del.totalAmount || del.price || 0}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Normal Dashboard Overview: Hidden when Custom is selected */}
+      {reportPeriod !== 'custom' && (
+        <>
+          {/* 2. Sleek KPI Metrics Cards Grid (3 cards per row) */}
+          <div
+            className="kpi-grid-3cols"
+          >
         {/* Card 1: Total Customers */}
         <div
           onClick={() => setActiveTab('customers')}
@@ -1617,6 +2119,85 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
         </div>
       </div>
 
+      {/* Day-by-Day Itemized Trend Breakdown (Visible for Weekly, Monthly, All Time) */}
+      {reportPeriod !== 'today' && reportAnalytics?.dayByDay && reportAnalytics.dayByDay.length > 0 && (
+        <div
+          style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '14px',
+            padding: '20px 24px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>Daily Itemized Breakdown</span>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#047857', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+                  {reportAnalytics.periodLabel}
+                </span>
+              </h2>
+              <p style={{ fontSize: '0.78rem', color: '#64748b', margin: '2px 0 0 0' }}>
+                Day-by-day doorstep fulfillment, milk volume, sales revenue, and collections
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowReportModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                background: '#f0fdf4',
+                color: '#0d5c3a',
+                border: '1px solid #bbf7d0',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Download size={13} />
+              <span>Export {reportPeriod === 'weekly' ? 'Weekly' : 'Monthly'} PDF</span>
+            </button>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+              <thead>
+                <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left' }}>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Date</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Drops Delivered</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Milk (L)</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Curd (Kg)</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Sales (₹)</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Collected (₹)</th>
+                  <th style={{ padding: '10px 12px', fontWeight: 800, color: '#475569' }}>Cash / UPI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportAnalytics.dayByDay.slice(0, 15).map((d) => (
+                  <tr key={d.date} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0f172a' }}>{d.date}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <span style={{ color: '#059669', fontWeight: 800 }}>{d.completed}</span> / {d.totalDrops}
+                    </td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700 }}>{d.milkLitres} L</td>
+                    <td style={{ padding: '10px 12px', color: '#64748b' }}>{d.curdKg} Kg</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 800, color: '#0f172a' }}>₹{d.sales.toLocaleString()}</td>
+                    <td style={{ padding: '10px 12px', fontWeight: 800, color: '#059669' }}>₹{d.collections.toLocaleString()}</td>
+                    <td style={{ padding: '10px 12px', color: '#64748b', fontSize: '0.76rem' }}>
+                      💵 ₹{d.cash} • 📱 ₹{d.upi}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* 6. Recent Audit Activity Trail */}
       <div
         style={{
@@ -1705,11 +2286,14 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
           ))}
         </div>
       </div>
+    </>
+  )}
 
       <ReportDownloadModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         role="admin"
+        initialPeriod={reportPeriod === 'today' ? 'weekly' : reportPeriod}
         initialCustomers={customers}
       />
     </div>

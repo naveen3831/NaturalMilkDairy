@@ -62,6 +62,7 @@ class DeliveryProofHelper {
       resolved,
       width: width,
       height: height,
+      cacheWidth: width != null ? (width * 2).toInt() : 600,
       fit: fit,
       errorBuilder: (context, error, stackTrace) {
         // Fallback to direct live cloud server if not already attempted
@@ -72,6 +73,7 @@ class DeliveryProofHelper {
             cloudUrl,
             width: width,
             height: height,
+            cacheWidth: width != null ? (width * 2).toInt() : 600,
             fit: fit,
             errorBuilder: (context, error, stackTrace) => buildPlaceholder(width: width, height: height),
           );

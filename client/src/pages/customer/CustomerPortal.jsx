@@ -164,6 +164,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
   });
   const [ledgerEntries, setLedgerEntries] = useState([]);
+  const [ledgerDeliveriesRaw, setLedgerDeliveriesRaw] = useState([]);
+  const [ledgerPaymentsRaw, setLedgerPaymentsRaw] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState(null);
   const [ledgerCustomer, setLedgerCustomer] = useState(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -245,7 +247,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const currentPage = CUSTOMER_PORTAL_ITEMS.find((page) => page.id === activePage)
     || CUSTOMER_PORTAL_ITEMS.find((page) => page.id === 'dashboard')
     || CUSTOMER_PORTAL_ITEMS[0];
-  const customerLedgerId = matchedCustomer.customerId || matchedCustomer.id || user?.customerId || user?.id;
+  const customerLedgerId = matchedCustomer.customerId || matchedCustomer.id || user?.customerId || user?.id || 'me';
   const [isEditingProfile, setIsEditingProfile] = useState(() => getCustomerRoute()?.detail === 'personal-info');
   const [profileForm, setProfileForm] = useState({});
   const [profileSaving, setProfileSaving] = useState(false);
@@ -253,6 +255,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [profileError, setProfileError] = useState('');
   const [locationSearchQuery, setLocationSearchQuery] = useState('');
   const [deliveryFilterTab, setDeliveryFilterTab] = useState('today');
+  const [customerCustomStart, setCustomerCustomStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  });
+  const [customerCustomEnd, setCustomerCustomEnd] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+  });
   const [selectedUpcomingDelivery, setSelectedUpcomingDelivery] = useState(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showExtendModal, setShowExtendModal] = useState(false);
@@ -697,15 +707,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       .then((data) => {
         if (data.success) {
           if (Array.isArray(data.ledgerEntries)) setLedgerEntries(data.ledgerEntries);
+          if (Array.isArray(data.deliveries) && data.deliveries.length > 0) setLedgerDeliveriesRaw(data.deliveries);
+          if (Array.isArray(data.payments) && data.payments.length > 0) setLedgerPaymentsRaw(data.payments);
           if (data.customer) setLedgerCustomer(data.customer);
           setLedgerSummary({
             grossBill: Number(data.grossBill) || 0,
             totalPaid: Number(data.totalPaid) || 0,
             totalMilkDelivered: data.totalMilkDelivered || '0 L',
             totalCurdDelivered: data.totalCurdDelivered || '0 Kg',
+            summaryByPeriod: data.summaryByPeriod || null,
           });
         }
       })
+      .catch((e) => console.warn('Ledger reload error:', e));
   }, [customerLedgerId, getAuthHeaders]);
 
   const handleDeleteUserHistory = async (entryId) => {
@@ -750,12 +764,16 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => reloadLedger());
     const unsubCustomer = wsSubscribe('CUSTOMER_UPDATED', () => reloadLedger());
     const unsubPayment = wsSubscribe('PAYMENT_RECORDED', () => reloadLedger());
+    const unsubPaymentUpdated = wsSubscribe('PAYMENT_UPDATED', () => reloadLedger());
+    const unsubReport = wsSubscribe('REPORT_UPDATED', () => reloadLedger());
 
     return () => {
       if (bc) bc.close();
-      unsubDelivery();
-      unsubCustomer();
-      unsubPayment();
+      if (typeof unsubDelivery === 'function') unsubDelivery();
+      if (typeof unsubCustomer === 'function') unsubCustomer();
+      if (typeof unsubPayment === 'function') unsubPayment();
+      if (typeof unsubPaymentUpdated === 'function') unsubPaymentUpdated();
+      if (typeof unsubReport === 'function') unsubReport();
     };
   }, [wsSubscribe, reloadLedger]);
 
@@ -776,12 +794,15 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           throw new Error(data.message || 'Unable to load account history.');
         }
         setLedgerEntries(Array.isArray(data.ledgerEntries) ? data.ledgerEntries : []);
+        if (Array.isArray(data.deliveries) && data.deliveries.length > 0) setLedgerDeliveriesRaw(data.deliveries);
+        if (Array.isArray(data.payments) && data.payments.length > 0) setLedgerPaymentsRaw(data.payments);
         setLedgerCustomer(data.customer || null);
         setLedgerSummary({
           grossBill: Number(data.grossBill) || 0,
           totalPaid: Number(data.totalPaid) || 0,
           totalMilkDelivered: data.totalMilkDelivered || '0 L',
           totalCurdDelivered: data.totalCurdDelivered || '0 Kg',
+          summaryByPeriod: data.summaryByPeriod || null,
         });
       })
       .catch((error) => {
@@ -2108,68 +2129,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           );
         })()}
 
-        {/* 2. Order Schedule */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: '20px',
-            border: '1px solid #e2ebe5',
-            padding: '16px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Calendar size={18} color="#0d5c3a" />
-              <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Order Schedule</strong>
-            </div>
-            <button
-              type="button"
-              onClick={() => alert('Daily doorstep schedule active. You can customize daily quantities anytime.')}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#0d5c3a',
-                fontSize: '0.78rem',
-                fontWeight: 800,
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              Change →
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-            {weekdays.map((day, idx) => {
-              const isSelected = selectedWeekdayIndex === idx;
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => setSelectedWeekdayIndex(idx)}
-                  style={{
-                    height: '38px',
-                    borderRadius: '10px',
-                    border: isSelected ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-                    background: isSelected ? '#0d5c3a' : '#f3f7f4',
-                    color: isSelected ? '#ffffff' : '#4b5563',
-                    fontSize: '0.74rem',
-                    fontWeight: isSelected ? 900 : 700,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 3. Delivery Address */}
+        {/* 2. Delivery Address */}
         <div
           onClick={() => {
             setSelectedSubForDetails(null);
@@ -3632,7 +3592,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       subscriptionPaymentAmount: entry.rawItem?.subscriptionPaymentAmount,
     }))
     .reverse();
-  const allCustomerDeliveries = ledgerDeliveries.length > 0 ? ledgerDeliveries : customerDeliveries;
+  const allCustomerDeliveries = ledgerDeliveriesRaw.length > 0
+    ? ledgerDeliveriesRaw
+    : ledgerDeliveries.length > 0
+      ? ledgerDeliveries
+      : customerDeliveries;
 
   const parseDateParts = (rawDate) => {
     if (!rawDate) return { dayOfWeek: 'Mon', dayNum: '26', monthYear: 'Oct 2026' };
@@ -3691,6 +3655,17 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       .sort((a, b) =>
         toIstDateKey(a.deliveryDate || a.date).localeCompare(toIstDateKey(b.deliveryDate || b.date))
       );
+    const customDeliveries = sourceDeliveries
+      .filter((d) => {
+        const key = toIstDateKey(d.deliveryDate || d.date);
+        if (!key) return false;
+        if (customerCustomStart && key < customerCustomStart) return false;
+        if (customerCustomEnd && key > customerCustomEnd) return false;
+        return true;
+      })
+      .sort((a, b) =>
+        toIstDateKey(b.deliveryDate || b.date).localeCompare(toIstDateKey(a.deliveryDate || a.date))
+      );
 
     const deliveredCount = sourceDeliveries.filter((d) => d.status === 'delivered').length;
     const pendingCount = sourceDeliveries.filter((d) => d.status !== 'delivered').length;
@@ -3711,7 +3686,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         <div
           key={delivery.id || `${keyPrefix}-${idx}`}
           onClick={() => {
-            if (isDelivered) {
+            if (activePage !== 'deliveries' && keyPrefix === 'hist') {
+              setDeliveryFilterTab('history');
+              navigateToPage('deliveries');
+            } else if (isDelivered || keyPrefix === 'hist') {
               setViewingProofPhoto({
                 url: delivery.proofImage || '/dairy_hero.jpg',
                 date: formatDeliveryDate(delivery.deliveryDate || delivery.date),
@@ -3854,107 +3832,113 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         { id: 'today', label: 'Today', count: todayDeliveries.length, bg: '#e0f2fe', color: '#0369a1' },
         { id: 'upcoming', label: 'Upcoming', count: upcomingDeliveries.length, bg: '#fef3c7', color: '#b45309' },
         { id: 'history', label: 'Delivery History', count: historyDeliveries.length, bg: '#dcfce7', color: '#15803d' },
+        { id: 'custom', label: 'Custom Range', count: customDeliveries.length, bg: '#ede9fe', color: '#6d28d9' },
         { id: 'all', label: 'All Deliveries', count: sourceDeliveries.length, bg: '#f1f5f9', color: '#475569' },
       ];
 
       return (
         <section className="customer-dashboard-card customer-history-card-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '14px', background: 'transparent', border: 'none', padding: 0, boxShadow: 'none' }}>
-          {/* Hero Banner: Farm pasture, cows grazing, milk bottle and glass on wooden table */}
-          <div
-            style={{
-              position: 'relative',
-              borderRadius: '20px',
-              overflow: 'hidden',
-              height: '145px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-            }}
-          >
-            <img
-              src="/cows-pasture.jpg"
-              alt="Farm pasture, cows grazing, milk bottle on table"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
-              onError={(e) => { e.currentTarget.src = '/dairy_hero.jpg'; }}
-            />
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                background: 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(12,35,64,0.72) 100%)',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'flex-end',
-                padding: '14px 16px',
-              }}
-            >
-              <span style={{ color: '#a7f3d0', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                FRESH FARM DOORSTEP DROPS
-              </span>
-              <h3 style={{ margin: '2px 0 0 0', color: '#ffffff', fontSize: '1.18rem', fontWeight: 900 }}>
-                Cold-Chain Morning Deliveries
-              </h3>
-            </div>
-          </div>
-
-          {/* 4 Metric Cards (2x2 grid) */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '10px',
-            }}
-          >
-            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Truck size={20} />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.1 }}>
-                  {sourceDeliveries.length}
+          {/* Hero Banner & 4 Metric Cards (Hidden when Custom is selected) */}
+          {deliveryFilterTab !== 'custom' && (
+            <>
+              {/* Hero Banner: Farm pasture, cows grazing, milk bottle and glass on wooden table */}
+              <div
+                style={{
+                  position: 'relative',
+                  borderRadius: '20px',
+                  overflow: 'hidden',
+                  height: '145px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                }}
+              >
+                <img
+                  src="/cows-pasture.jpg"
+                  alt="Farm pasture, cows grazing, milk bottle on table"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                  onError={(e) => { e.currentTarget.src = '/dairy_hero.jpg'; }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(12,35,64,0.72) 100%)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-end',
+                    padding: '14px 16px',
+                  }}
+                >
+                  <span style={{ color: '#a7f3d0', fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                    FRESH FARM DOORSTEP DROPS
+                  </span>
+                  <h3 style={{ margin: '2px 0 0 0', color: '#ffffff', fontSize: '1.18rem', fontWeight: 900 }}>
+                    Cold-Chain Morning Deliveries
+                  </h3>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
               </div>
-            </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <CheckCircle2 size={20} />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d', lineHeight: 1.1 }}>
-                  {deliveredCount}
+              {/* 4 Metric Cards (2x2 grid) */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#e0f2fe', color: '#0284c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Truck size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.1 }}>
+                      {sourceDeliveries.length}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>Delivered</div>
-              </div>
-            </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Clock3 size={20} />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>
-                  {pendingCount}
+                <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#dcfce7', color: '#15803d', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <CheckCircle2 size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#15803d', lineHeight: 1.1 }}>
+                      {deliveredCount}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#15803d', fontWeight: 700 }}>Delivered</div>
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>Pending Drops</div>
-              </div>
-            </div>
 
-            <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Snowflake size={20} />
-              </div>
-              <div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0d5c3a', lineHeight: 1.1 }}>100%</div>
-                <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Cold-Chain 4°C</div>
-              </div>
-            </div>
-          </div>
+                <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#fef3c7', color: '#d97706', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Clock3 size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#b45309', lineHeight: 1.1 }}>
+                      {pendingCount}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>Pending Drops</div>
+                  </div>
+                </div>
 
-          {/* Filter Pills Bar: All, Today, Delivery History, Upcoming */}
+                <div style={{ background: '#ffffff', border: '1px solid #e2ebe5', borderRadius: '16px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ecfdf5', color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Snowflake size={20} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0d5c3a', lineHeight: 1.1 }}>100%</div>
+                    <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>Cold-Chain 4°C</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Filter Pills Bar: All, Today, Delivery History, Upcoming, Custom */}
           <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 0', marginTop: '2px', scrollbarWidth: 'none' }}>
             {mobileFilterTabs.map((tab) => {
               const active = deliveryFilterTab === tab.id;
@@ -3996,51 +3980,103 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             })}
           </div>
 
-          {/* Statement & PDF Download Quick Banner */}
-          <div
-            style={{
-              background: '#f0fdf4',
-              border: '1px solid #bbf7d0',
-              borderRadius: '14px',
-              padding: '10px 14px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#dcfce7', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <FileText size={15} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46' }}>Delivery & Billing Statement</div>
-                <div style={{ fontSize: '0.7rem', color: '#047857' }}>View Report, Weekly, Monthly & Lifetime PDF</div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowCustomerReportModal(true)}
+          {/* Custom Date Range Picker for Mobile */}
+          {deliveryFilterTab === 'custom' && (
+            <div
               style={{
-                background: '#0d5c3a',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '10px',
-                padding: '6px 12px',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                display: 'inline-flex',
+                display: 'flex',
+                flexWrap: 'wrap',
                 alignItems: 'center',
-                gap: '5px',
-                cursor: 'pointer',
-                flexShrink: 0,
-                boxShadow: '0 2px 6px rgba(13,92,58,0.2)',
+                gap: '10px',
+                padding: '10px 14px',
+                background: '#ffffff',
+                borderRadius: '14px',
+                border: '1px solid #e2ebe5',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
               }}
             >
-              <Download size={13} />
-              <span>Report & PDF</span>
-            </button>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>From:</span>
+                <input
+                  type="date"
+                  value={customerCustomStart}
+                  onChange={(e) => setCustomerCustomStart(e.target.value)}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.8rem',
+                    color: '#0f172a',
+                    fontWeight: 600,
+                  }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>To:</span>
+                <input
+                  type="date"
+                  value={customerCustomEnd}
+                  onChange={(e) => setCustomerCustomEnd(e.target.value)}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.8rem',
+                    color: '#0f172a',
+                    fontWeight: 600,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Statement & PDF Download Quick Banner (Hidden when Custom is selected) */}
+          {deliveryFilterTab !== 'custom' && (
+            <div
+              style={{
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '14px',
+                padding: '10px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: '#dcfce7', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <FileText size={15} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#065f46' }}>Delivery & Billing Statement</div>
+                  <div style={{ fontSize: '0.7rem', color: '#047857' }}>View Report, Weekly, Monthly & Lifetime PDF</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomerReportModal(true)}
+                style={{
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '6px 12px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  boxShadow: '0 2px 6px rgba(13,92,58,0.2)',
+                }}
+              >
+                <Download size={13} />
+                <span>Report & PDF</span>
+              </button>
+            </div>
+          )}
 
           {/* Section 1: Today's Deliveries (First) */}
           {(deliveryFilterTab === 'all' || deliveryFilterTab === 'today') && (
@@ -4118,6 +4154,33 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               )}
             </div>
           )}
+
+          {/* Section 4: Custom Range Deliveries */}
+          {deliveryFilterTab === 'custom' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                    Deliveries in Date Range
+                  </h3>
+                  <span style={{ background: '#ede9fe', color: '#6d28d9', fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '10px', border: '1px solid #ddd6fe' }}>
+                    {customDeliveries.length} Records
+                  </span>
+                </div>
+                <span style={{ fontSize: '0.74rem', color: '#6d28d9', fontWeight: 700 }}>
+                  {customerCustomStart} to {customerCustomEnd}
+                </span>
+              </div>
+
+              {customDeliveries.length === 0 ? (
+                <div style={{ background: '#ffffff', borderRadius: '14px', border: '1px dashed #cbd5e1', padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.82rem' }}>
+                  No deliveries recorded between {customerCustomStart} and {customerCustomEnd}.
+                </div>
+              ) : (
+                customDeliveries.slice(0, limit).map((delivery, idx) => renderMobileDeliveryCard(delivery, idx, 'custom'))
+              )}
+            </div>
+          )}
         </section>
       );
     }
@@ -4158,8 +4221,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         </div>
 
-        {/* Quick metrics bar on Deliveries page */}
-        {limit === Infinity && (
+        {/* Quick metrics bar on Deliveries page (Hidden when Custom is selected) */}
+        {limit === Infinity && deliveryFilterTab !== 'custom' && (
           <div className="customer-deliveries-mobile-metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px', marginBottom: '18px' }}>
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#e0f2fe', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -4264,6 +4327,25 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </button>
           <button
             type="button"
+            onClick={() => setDeliveryFilterTab('custom')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              border: deliveryFilterTab === 'custom' ? '1px solid #7c3aed' : '1px solid #e2ebe5',
+              background: deliveryFilterTab === 'custom' ? '#7c3aed' : '#ffffff',
+              color: deliveryFilterTab === 'custom' ? '#ffffff' : '#64748b',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            Custom Range <span style={{ background: deliveryFilterTab === 'custom' ? 'rgba(255,255,255,0.25)' : '#ede9fe', color: deliveryFilterTab === 'custom' ? '#fff' : '#6d28d9', padding: '1px 6px', borderRadius: '10px', fontSize: '0.72rem' }}>{customDeliveries.length}</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setDeliveryFilterTab('all')}
             style={{
               padding: '6px 14px',
@@ -4283,6 +4365,60 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </button>
         </div>
 
+        {/* Custom Date Range Picker for Desktop */}
+        {deliveryFilterTab === 'custom' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '10px 16px',
+              background: '#f8fafc',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              marginBottom: '14px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>From Date:</span>
+              <input
+                type="date"
+                value={customerCustomStart}
+                onChange={(e) => setCustomerCustomStart(e.target.value)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.82rem',
+                  color: '#0f172a',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569' }}>To Date:</span>
+              <input
+                type="date"
+                value={customerCustomEnd}
+                onChange={(e) => setCustomerCustomEnd(e.target.value)}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.82rem',
+                  color: '#0f172a',
+                  background: '#ffffff',
+                  fontWeight: 600,
+                }}
+              />
+            </div>
+            <span style={{ fontSize: '0.78rem', color: '#64748b', marginLeft: 'auto' }}>
+              Showing {customDeliveries.length} deliveries
+            </span>
+          </div>
+        )}
+
         {visibleDeliveries.filter((d) => {
           if (deliveryFilterTab === 'today') {
             return toIstDateKey(d.deliveryDate || d.date) === todayIstKey;
@@ -4294,6 +4430,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           if (deliveryFilterTab === 'history') {
             const key = toIstDateKey(d.deliveryDate || d.date);
             return (key && key < todayIstKey) || d.status === 'delivered';
+          }
+          if (deliveryFilterTab === 'custom') {
+            const key = toIstDateKey(d.deliveryDate || d.date);
+            if (!key) return false;
+            if (customerCustomStart && key < customerCustomStart) return false;
+            if (customerCustomEnd && key > customerCustomEnd) return false;
+            return true;
           }
           return true;
         }).length === 0 ? (
@@ -4333,6 +4476,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     if (deliveryFilterTab === 'history') {
                       const key = toIstDateKey(d.deliveryDate || d.date);
                       return (key && key < todayIstKey) || d.status === 'delivered';
+                    }
+                    if (deliveryFilterTab === 'custom') {
+                      const key = toIstDateKey(d.deliveryDate || d.date);
+                      if (!key) return false;
+                      if (customerCustomStart && key < customerCustomStart) return false;
+                      if (customerCustomEnd && key > customerCustomEnd) return false;
+                      return true;
                     }
                     return true;
                   })
@@ -9908,29 +10058,54 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <span>Verified Contactless Doorstep Drop</span>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setViewingProofPhoto(null)}
-              style={{
-                width: '100%',
-                padding: '12px 18px',
-                borderRadius: '10px',
-                background: '#0d5c3a',
-                color: '#ffffff',
-                border: 'none',
-                fontSize: '0.92rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'background 0.15s ease',
-                boxShadow: '0 2px 6px rgba(13, 92, 58, 0.25)',
-              }}
-            >
-              Close
-            </button>
+            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingProofPhoto(null);
+                  setShowCustomerReportModal(true);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  background: '#f0fdf4',
+                  color: '#0d5c3a',
+                  border: '1px solid #bbf7d0',
+                  fontSize: '0.85rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <Download size={14} /> Statement PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingProofPhoto(null)}
+                style={{
+                  flex: 1,
+                  padding: '11px 14px',
+                  borderRadius: '10px',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -9939,10 +10114,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         isOpen={showCustomerReportModal}
         onClose={() => setShowCustomerReportModal(false)}
         role="customer"
-        entityId={currentCustomer?.id || currentCustomer?.customerId}
+        entityId={currentCustomer?.id || currentCustomer?.customerId || 'me'}
+        initialPeriod={deliveryFilterTab === 'custom' ? 'custom' : (deliveryFilterTab === 'all' ? 'all' : (deliveryFilterTab === 'week' ? 'weekly' : 'monthly'))}
+        initialStartDate={customerCustomStart}
+        initialEndDate={customerCustomEnd}
         initialCustomers={currentCustomer ? [currentCustomer] : null}
         initialDeliveries={allCustomerDeliveries}
-        initialPayments={ledgerEntries.filter((e) => e.type === 'payment').map((e) => e.rawItem || e)}
+        initialPayments={ledgerPaymentsRaw.length > 0 ? ledgerPaymentsRaw : ledgerEntries.filter((e) => e.type === 'payment').map((e) => e.rawItem || e)}
       />
 
     </div>

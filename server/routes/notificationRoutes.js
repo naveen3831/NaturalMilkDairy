@@ -7,12 +7,16 @@ const {
   markAllAsRead,
   clearAll,
   deleteNotification,
+  registerFcmToken,
+  unregisterFcmToken,
 } = require('../controllers/notificationController');
 
 const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
 
 router.get('/', verifyToken, getNotifications);
 router.post('/', verifyToken, requireAdmin, createNotification);
+router.post('/fcm-token', verifyToken, registerFcmToken);
+router.delete('/fcm-token', verifyToken, unregisterFcmToken);
 router.put('/:id/read', verifyToken, markAsRead);
 router.put('/read-all', verifyToken, markAllAsRead);
 router.delete('/clear-all', verifyToken, clearAll);

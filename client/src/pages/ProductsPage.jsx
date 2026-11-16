@@ -35,7 +35,7 @@ const DEFAULT_CATALOG = [
     tagColor: '#0c2340',
     tagBg: '#edf4fc',
     fat: '4.2% Fat • 8.5% SNF',
-    image: CLOUDINARY_MEDIA.cowMilk500ml || '/product-cow-milk-500ml.jpg',
+    image: CLOUDINARY_MEDIA.cowMilk500ml,
     features: ['Fresh Every Dawn', 'Sealed Bottle', 'Easy Morning Drop'],
   },
   {
@@ -49,7 +49,7 @@ const DEFAULT_CATALOG = [
     tagColor: '#d98a0d',
     tagBg: '#fef8eb',
     fat: '7.5% Fat • 9.0% SNF',
-    image: CLOUDINARY_MEDIA.buffaloMilk || '/product-buffalo-milk.jpg',
+    image: CLOUDINARY_MEDIA.buffaloMilk,
     features: ['Extra Thick Malai', 'Natural Cream', 'Wholesome Taste'],
   },
   {
@@ -255,7 +255,7 @@ export default function ProductsPage({ setActiveTab }) {
             </p>
           </div>
           <div className="mobile-products-header-splash">
-            <img src={CLOUDINARY_MEDIA.headerMilkSplash || '/header_milk_splash.png'} alt="" />
+            <img src={CLOUDINARY_MEDIA.headerMilkSplash} alt="" />
           </div>
         </div>
 

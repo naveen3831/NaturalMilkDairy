@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "402055824353",
+    "project_id": "milkdairy-2800e",
+    "storage_bucket": "milkdairy-2800e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:402055824353:android:28610a9bfe9a12b5ae88a0",
+        "android_client_info": {
+          "package_name": "com.naturalmilk.dairy.natural_milk_dairy"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "402055824353-rbjkemrlk6snih6kg8vivcejl6aauooo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmkctkZJJcfZ8vTyRipmhsxOPeleG-sew"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "402055824353-rbjkemrlk6snih6kg8vivcejl6aauooo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

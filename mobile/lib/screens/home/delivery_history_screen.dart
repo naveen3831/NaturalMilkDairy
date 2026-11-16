@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import '../../core/utils/ist_date_time.dart';
+import '../../data/services/realtime_service.dart';
 import '../../widgets/delivery_proof_dialog.dart';
 import '../../widgets/report_download_sheet.dart';
 
@@ -21,12 +23,39 @@ class DeliveryHistoryScreen extends StatefulWidget {
 
 class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
   String _searchQuery = '';
-  String _selectedFilter = 'all'; // 'all', 'proof', 'month', 'addons'
+  String _selectedFilter = 'all'; // 'all', 'proof', 'month', 'week', 'addons', 'custom'
+  DateTime _customStartDate = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+  DateTime _customEndDate = IstDateTime.toIst(DateTime.now());
   bool _isRefreshing = false;
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription? _wsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<CustomerProvider>().loadAllCustomerData(silent: true);
+      }
+    });
+    _wsSub = RealtimeService().eventStream.listen((event) {
+      final type = event['type']?.toString();
+      if (type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_CREATED' ||
+          type == 'CUSTOMER_UPDATED' ||
+          type == 'PAYMENT_RECORDED' ||
+          type == 'PAYMENT_UPDATED' ||
+          type == 'REPORT_UPDATED') {
+        if (mounted) {
+          context.read<CustomerProvider>().loadAllCustomerData(silent: true);
+        }
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _wsSub?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -91,7 +120,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     final proofImg = delivery['proofImage']?.toString();
     if (proofImg == null || proofImg.isEmpty) return;
 
-    final dateInfo = _parseDateParts(delivery['date']?.toString() ?? '');
+    final dateInfo = _parseDateParts((delivery['deliveryDate'] ?? delivery['date'] ?? '').toString());
     final fullDate = dateInfo['full'] ?? delivery['date']?.toString() ?? 'Morning Drop';
     final timeStr = delivery['timeSlot']?.toString() ?? '6:15 AM';
 
@@ -113,6 +142,8 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     final serverDeliveries = customerProvider.deliveries;
     final nowIst = IstDateTime.toIst(DateTime.now());
     final currentMonthYear = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}';
+    final weekAgoIst = nowIst.subtract(const Duration(days: 7));
+    final weekStartStr = '${weekAgoIst.year}-${weekAgoIst.month.toString().padLeft(2, '0')}-${weekAgoIst.day.toString().padLeft(2, '0')}';
 
     final sourceList = serverDeliveries.isNotEmpty
         ? serverDeliveries
@@ -120,7 +151,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
 
     // Transform raw server items into standardized delivery map
     final List<Map<String, dynamic>> allHistoryList = sourceList.map((item) {
-      final String rawDate = item['date']?.toString() ?? '';
+      final String rawDate = (item['deliveryDate'] ?? item['date'] ?? '').toString();
       final bool isDelivered = item['status'] == 'delivered' || item['isDelivered'] == true;
       final dateParts = _parseDateParts(rawDate);
       final rawAddons = item['addons'] is List
@@ -170,8 +201,8 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     }).toList()
       ..sort((a, b) => (b['date']?.toString() ?? '').compareTo(a['date']?.toString() ?? ''));
 
-    // Filter to only delivered or past records for Delivery History
-    final historyOnlyList = allHistoryList.where((d) => d['isDelivered'] == true || (d['date']?.toString() ?? '').isNotEmpty).toList();
+    // Show all records that have a date (delivered, not_delivered, pending, etc.)
+    final historyOnlyList = allHistoryList.where((d) => (d['date']?.toString() ?? '').isNotEmpty).toList();
 
     // Stats calculations
     num totalMilkDelivered = 0;
@@ -206,8 +237,16 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         final p = d['proofImage']?.toString() ?? '';
         return p.isNotEmpty;
       }
+      if (_selectedFilter == 'week') {
+        return dateStr.compareTo(weekStartStr) >= 0;
+      }
       if (_selectedFilter == 'month') {
         return dateStr.startsWith(currentMonthYear);
+      }
+      if (_selectedFilter == 'custom') {
+        final fStr = '${_customStartDate.year}-${_customStartDate.month.toString().padLeft(2, '0')}-${_customStartDate.day.toString().padLeft(2, '0')}';
+        final tStr = '${_customEndDate.year}-${_customEndDate.month.toString().padLeft(2, '0')}-${_customEndDate.day.toString().padLeft(2, '0')}';
+        return dateStr.compareTo(fStr) >= 0 && dateStr.compareTo(tStr) <= 0;
       }
       if (_selectedFilter == 'addons') {
         return (d['addonsText']?.toString() ?? '').isNotEmpty;
@@ -296,7 +335,16 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
             onPressed: () => ReportDownloadSheet.show(
               context,
               role: 'customer',
-              customerId: widget.user?.customerId ?? widget.user?.id ?? customerProvider.customerId,
+              initialPeriod: _selectedFilter == 'custom'
+                  ? 'custom'
+                  : _selectedFilter == 'week'
+                      ? 'weekly'
+                      : _selectedFilter == 'month'
+                          ? 'monthly'
+                          : 'all',
+              initialStartDate: _selectedFilter == 'custom' ? _customStartDate : null,
+              initialEndDate: _selectedFilter == 'custom' ? _customEndDate : null,
+              customerId: customerProvider.customerId.isNotEmpty ? customerProvider.customerId : (widget.user?.customerId ?? widget.user?.id),
               initialCustomers: customerProvider.customerData != null ? [customerProvider.customerData!] : null,
               initialDeliveries: customerProvider.deliveries,
             ),
@@ -318,13 +366,16 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
       body: RefreshIndicator(
         onRefresh: _handleRefresh,
         color: const Color(0xFF0D5C3A),
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. STAT SUMMARY CARDS (Total Drops, Milk, Photos)
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. STAT SUMMARY CARDS (Total Drops, Milk, Photos)
               Row(
                 children: [
                   Expanded(
@@ -406,9 +457,13 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _buildFilterChip('proof', 'With Photo Proof ($photoProofCount)'),
+                    _buildFilterChip('week', 'This Week'),
                     const SizedBox(width: 8),
                     _buildFilterChip('month', 'This Month'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('custom', 'Custom (From - To)'),
+                    const SizedBox(width: 8),
+                    _buildFilterChip('proof', 'With Photo Proof ($photoProofCount)'),
                     const SizedBox(width: 8),
                     _buildFilterChip('addons', 'With Add-ons'),
                     const SizedBox(width: 8),
@@ -416,6 +471,112 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                   ],
                 ),
               ),
+              if (_selectedFilter == 'custom') ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.3)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _customStartDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) {
+                              setState(() => _customStartDate = picked);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('From Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${_customStartDate.day}/${_customStartDate.month}/${_customStartDate.year}',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFF94A3B8)),
+                      ),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _customEndDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) {
+                              setState(() => _customEndDate = picked);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('To Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.event, size: 12, color: Color(0xFF0D5C3A)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${_customEndDate.day}/${_customEndDate.month}/${_customEndDate.year}',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
               // 4. SECTION HEADER & PDF SHORTCUT
@@ -442,7 +603,16 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                     onPressed: () => ReportDownloadSheet.show(
                       context,
                       role: 'customer',
-                      customerId: widget.user?.customerId ?? widget.user?.id ?? customerProvider.customerId,
+                      initialPeriod: _selectedFilter == 'custom'
+                          ? 'custom'
+                          : _selectedFilter == 'week'
+                              ? 'weekly'
+                              : _selectedFilter == 'month'
+                                  ? 'monthly'
+                                  : 'all',
+                      initialStartDate: _selectedFilter == 'custom' ? _customStartDate : null,
+                      initialEndDate: _selectedFilter == 'custom' ? _customEndDate : null,
+                      customerId: customerProvider.customerId.isNotEmpty ? customerProvider.customerId : (widget.user?.customerId ?? widget.user?.id),
                       initialCustomers: customerProvider.customerData != null ? [customerProvider.customerData!] : null,
                       initialDeliveries: customerProvider.deliveries,
                     ),
@@ -489,23 +659,25 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                       ),
                     ],
                   ),
-                )
-              else
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filteredDeliveries.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 14),
-                  itemBuilder: (ctx, idx) => _buildFullDeliveryCard(filteredDeliveries[idx]),
                 ),
-
-              const SizedBox(height: 30),
             ],
           ),
         ),
       ),
-    );
-  }
+      if (filteredDeliveries.isNotEmpty)
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 30),
+          sliver: SliverList.separated(
+            itemCount: filteredDeliveries.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 14),
+            itemBuilder: (ctx, idx) => _buildFullDeliveryCard(filteredDeliveries[idx]),
+          ),
+        ),
+    ],
+  ),
+),
+);
+}
 
   Widget _buildSummaryCard({
     required String label,

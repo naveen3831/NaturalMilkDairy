@@ -6,6 +6,7 @@ const { generateToken } = require('../middleware/authMiddleware');
 const { recordAudit } = require('../services/auditService');
 const { hashPassword, verifyPassword } = require('../security/password');
 const { sendCustomerCredentialsEmail } = require('../services/emailService');
+const { verifyFirebaseIdToken } = require('../security/firebaseVerifier');
 
 const escapeRegex = (text) => String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
@@ -585,4 +586,285 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-module.exports = { login, register, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers };
+/**
+ * Role-Based Google Sign-In
+ * POST /api/auth/google
+ */
+const googleLogin = async (req, res) => {
+  try {
+    const rawToken =
+      req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
+      req.body?.idToken ||
+      req.body?.token;
+
+    if (!rawToken || typeof rawToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Firebase ID token is required for Google Sign-In.',
+      });
+    }
+
+    // 1. Authoritatively verify Firebase ID token
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(rawToken);
+    } catch (verErr) {
+      return res.status(401).json({
+        success: false,
+        message: `Google authentication failed: ${verErr.message}`,
+      });
+    }
+
+    const { uid: firebaseUid, email: googleEmail, name: googleName, picture: googlePicture } = decoded;
+    const emailRegex = new RegExp(`^${escapeRegex(googleEmail)}$`, 'i');
+    const requestedPortal = (req.body?.portal || req.query?.portal || '').toLowerCase();
+
+    // 2. STRICT SECURITY: ADMIN accounts CANNOT use Google Sign-In
+    const existingAdmin = await User.findOne({
+      $or: [
+        { email: emailRegex, role: 'admin' },
+        { firebaseUid, role: 'admin' },
+      ],
+    }).lean();
+
+    if (existingAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Google Sign-In is not permitted for administrator accounts. Please use your secure admin password.',
+      });
+    }
+
+    // 3. PARTNER / DELIVERY BOY Flow
+    const isPartnerPortal = requestedPortal === 'partner' || requestedPortal === 'delivery';
+
+    const [deliveryBoyDoc, userDriverDoc] = await Promise.all([
+      DeliveryBoy.findOne({ $or: [{ email: emailRegex }, { firebaseUid }] }),
+      User.findOne({ $or: [{ email: emailRegex }, { firebaseUid }], role: 'delivery_boy' }),
+    ]);
+
+    const partnerRecord = deliveryBoyDoc || userDriverDoc;
+
+    if (isPartnerPortal) {
+      if (!partnerRecord) {
+        // Check if account exists as a customer
+        const isCustomerAccount = await Customer.findOne({ $or: [{ email: emailRegex }, { firebaseUid }] });
+        if (isCustomerAccount) {
+          return res.status(403).json({
+            success: false,
+            message: 'This Google account is registered as a customer, not an approved delivery partner. Please contact the administrator.',
+          });
+        }
+
+        // DO NOT CREATE PARTNER AUTOMATICALLY
+        return res.status(403).json({
+          success: false,
+          message: 'Your partner account has not been created or approved yet. Please contact the administrator.',
+        });
+      }
+
+      // Partner exists - enforce active status
+      const partnerStatus = (deliveryBoyDoc?.status || userDriverDoc?.status || 'active').toLowerCase();
+      if (partnerStatus !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: `Delivery partner account "${partnerRecord.name}" is currently marked as INACTIVE. Please contact the administrator.`,
+        });
+      }
+
+      // Enforce email match: partner registered email must match Google email
+      if (partnerRecord.email && partnerRecord.email.trim().toLowerCase() !== googleEmail.toLowerCase()) {
+        return res.status(403).json({
+          success: false,
+          message: `Please sign in using the Google account associated with your partner account (${partnerRecord.email}).`,
+        });
+      }
+
+      // Link firebaseUid if not set
+      const linkUpdates = [];
+      if (deliveryBoyDoc && (!deliveryBoyDoc.firebaseUid || deliveryBoyDoc.firebaseUid !== firebaseUid)) {
+        deliveryBoyDoc.firebaseUid = firebaseUid;
+        deliveryBoyDoc.authProvider = 'google';
+        linkUpdates.push(deliveryBoyDoc.save());
+      }
+      if (userDriverDoc && (!userDriverDoc.firebaseUid || userDriverDoc.firebaseUid !== firebaseUid)) {
+        userDriverDoc.firebaseUid = firebaseUid;
+        userDriverDoc.authProvider = 'google';
+        linkUpdates.push(userDriverDoc.save());
+      }
+      await Promise.all(linkUpdates);
+
+      const partnerPayload = {
+        id: partnerRecord._id.toString(),
+        boyId: partnerRecord._id.toString(),
+        name: partnerRecord.name,
+        email: partnerRecord.email || googleEmail,
+        mobile: partnerRecord.mobile,
+        role: 'delivery_boy',
+        status: partnerStatus,
+        assignedArea: partnerRecord.assignedArea || 'Andheri West',
+        vehicleNumber: partnerRecord.vehicleNumber || '',
+        isOnline: partnerRecord.isOnline ?? true,
+        avatar: googlePicture || partnerRecord.avatar || '',
+      };
+      const token = generateToken(partnerPayload);
+
+      await recordAudit('Partner Google Login', partnerRecord.name, `Google Sign-In successful (${googleEmail})`, 'partner');
+
+      return res.json({
+        success: true,
+        user: partnerPayload,
+        token,
+      });
+    }
+
+    // 4. If partner logs in via general login, authenticate them as partner
+    if (partnerRecord) {
+      const partnerStatus = (deliveryBoyDoc?.status || userDriverDoc?.status || 'active').toLowerCase();
+      if (partnerStatus !== 'active') {
+        return res.status(403).json({
+          success: false,
+          message: 'Delivery partner account is currently marked as INACTIVE. Please contact the administrator.',
+        });
+      }
+      const partnerPayload = {
+        id: partnerRecord._id.toString(),
+        boyId: partnerRecord._id.toString(),
+        name: partnerRecord.name,
+        email: partnerRecord.email || googleEmail,
+        mobile: partnerRecord.mobile,
+        role: 'delivery_boy',
+        status: partnerStatus,
+        assignedArea: partnerRecord.assignedArea || 'Andheri West',
+        vehicleNumber: partnerRecord.vehicleNumber || '',
+        isOnline: partnerRecord.isOnline ?? true,
+        avatar: googlePicture || partnerRecord.avatar || '',
+      };
+      const token = generateToken(partnerPayload);
+      return res.json({ success: true, user: partnerPayload, token });
+    }
+
+    // 5. USER / CUSTOMER Flow
+    let foundCustomer = await Customer.findOne({
+      $or: [{ email: emailRegex }, { firebaseUid }],
+    });
+
+    let foundUser = await User.findOne({
+      $or: [{ email: emailRegex }, { firebaseUid }],
+      role: { $in: ['customer', 'user'] },
+    });
+
+    if (foundCustomer || foundUser) {
+      const activeDoc = foundCustomer || foundUser;
+      const status = (activeDoc.status || 'active').toLowerCase();
+      if (status === 'inactive') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your customer account is currently inactive. Please contact customer support.',
+        });
+      }
+
+      // Link firebaseUid
+      if (foundCustomer && (!foundCustomer.firebaseUid || foundCustomer.firebaseUid !== firebaseUid)) {
+        foundCustomer.firebaseUid = firebaseUid;
+        foundCustomer.authProvider = 'google';
+        if (!foundCustomer.email) foundCustomer.email = googleEmail;
+        await foundCustomer.save();
+      }
+      if (foundUser && (!foundUser.firebaseUid || foundUser.firebaseUid !== firebaseUid)) {
+        foundUser.firebaseUid = firebaseUid;
+        foundUser.authProvider = 'google';
+        if (!foundUser.email) foundUser.email = googleEmail;
+        if (googlePicture && !foundUser.avatar) foundUser.avatar = googlePicture;
+        await foundUser.save();
+      }
+
+      const custPayload = {
+        id: (foundCustomer?._id || foundUser?._id).toString(),
+        name: foundCustomer?.name || foundUser?.name || googleName,
+        email: googleEmail,
+        mobile: foundCustomer?.mobile || foundUser?.mobile || '',
+        role: 'customer',
+        status: 'active',
+        customerId: foundCustomer?.customerId || foundUser?.customerId || '',
+        area: foundCustomer?.area || foundUser?.assignedArea || 'Madhapur',
+        avatar: googlePicture || foundUser?.avatar || '',
+      };
+      const token = generateToken(custPayload);
+
+      return res.json({
+        success: true,
+        user: custPayload,
+        token,
+      });
+    }
+
+    // 6. NEW USER: Auto-create Customer account (role = 'customer')
+    let newCustId = '';
+    for (let attempts = 0; attempts < 5; attempts++) {
+      const candidate = `CUST-${Math.floor(1000 + Math.random() * 9000)}`;
+      const exists = await Customer.findOne({ customerId: candidate });
+      if (!exists) {
+        newCustId = candidate;
+        break;
+      }
+    }
+    if (!newCustId) newCustId = `CUST-${Date.now().toString().slice(-4)}`;
+
+    const displayName = (googleName || '').trim() || 'Valued Customer';
+    const tempMobile = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+
+    const newCustomer = await Customer.create({
+      customerId: newCustId,
+      name: displayName,
+      email: googleEmail,
+      mobile: tempMobile,
+      address: 'Doorstep Address, Hyderabad',
+      area: 'Madhapur',
+      status: 'active',
+      firebaseUid,
+      authProvider: 'google',
+    });
+
+    await User.create({
+      name: displayName,
+      email: googleEmail,
+      mobile: tempMobile,
+      role: 'customer',
+      status: 'active',
+      customerId: newCustId,
+      firebaseUid,
+      authProvider: 'google',
+      avatar: googlePicture || '',
+    });
+
+    const userPayload = {
+      id: newCustomer._id.toString(),
+      name: displayName,
+      email: googleEmail,
+      mobile: tempMobile,
+      role: 'customer',
+      status: 'active',
+      customerId: newCustId,
+      area: 'Madhapur',
+      avatar: googlePicture || '',
+    };
+    const token = generateToken(userPayload);
+
+    await recordAudit('Google Account Created', displayName, `New customer created via Google (${googleEmail})`, 'customer');
+
+    return res.status(201).json({
+      success: true,
+      user: userPayload,
+      token,
+      isNewUser: true,
+    });
+  } catch (err) {
+    console.error('Google Sign-In failed:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to complete Google Sign-In. Please try again.',
+    });
+  }
+};
+
+module.exports = { login, register, googleLogin, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers };

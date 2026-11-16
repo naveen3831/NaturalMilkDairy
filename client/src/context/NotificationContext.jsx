@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { Bell, X, ExternalLink } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useWebSocket } from './WebSocketContext';
 
@@ -11,7 +12,7 @@ const isSameId = (n, id) => {
 };
 
 export function NotificationProvider({ children }) {
-  const { user, getAuthHeaders } = useAuth();
+  const { user, token, getAuthHeaders } = useAuth();
   const { subscribe: wsSubscribe } = useWebSocket();
   // Intelligently identify current active portal / role
   const currentRole = (() => {
@@ -48,6 +49,48 @@ export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [latestToast, setLatestToast] = useState(null);
+
+  // Register Firebase Service Worker and setup Web Push Notifications
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker
+      .register('/firebase-messaging-sw.js')
+      .then((reg) => {
+        // SW registered
+      })
+      .catch((err) => {
+        console.warn('Firebase Service Worker registration notice:', err.message);
+      });
+
+    // Request notification permission if user is logged in and not yet prompted
+    if ('Notification' in window && Notification.permission === 'default' && token) {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, [token]);
+
+  // Display native OS browser push notification
+  const showNativeNotification = useCallback((title, body) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body: body || 'New update from Natural Milk Dairy',
+          icon: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
+          badge: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
+        });
+      } catch (_) {}
+    }
+  }, []);
+
+  // Auto-dismiss floating push toast after 7 seconds
+  useEffect(() => {
+    if (!latestToast) return;
+    const timer = setTimeout(() => {
+      setLatestToast(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [latestToast]);
 
   // Initial seed fallback if backend is offline or empty
   const getInitialFallbackNotifications = useCallback((role) => {
@@ -116,6 +159,15 @@ export function NotificationProvider({ children }) {
       return [];
     }
   }, []);
+
+  // Auto-dismiss floating push toast after 7 seconds
+  useEffect(() => {
+    if (!latestToast) return;
+    const timer = setTimeout(() => {
+      setLatestToast(null);
+    }, 7000);
+    return () => clearTimeout(timer);
+  }, [latestToast]);
 
   // Compute user-scoped storage key so Customer A never inherits Customer B's notifications
   const getStorageKey = useCallback(() => {
@@ -186,6 +238,8 @@ export function NotificationProvider({ children }) {
 
   // Fetch notifications for active user role
   const fetchNotifications = useCallback(async () => {
+    const activeToken = token || (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('nmd_jwt_token') : null);
+    if (!activeToken) return;
     try {
       const res = await fetch(`/api/notifications?role=${currentRole}&userId=${currentUserId}`, {
         headers: getAuthHeaders ? getAuthHeaders() : {},
@@ -221,7 +275,7 @@ export function NotificationProvider({ children }) {
     const initial = getInitialFallbackNotifications(currentRole).filter(isNotificationForUser);
     setNotifications(initial);
     setUnreadCount(initial.filter((n) => !n.isRead).length);
-  }, [currentRole, currentUserId, getInitialFallbackNotifications, getAuthHeaders, getStorageKey, isNotificationForUser]);
+  }, [currentRole, currentUserId, getInitialFallbackNotifications, getAuthHeaders, getStorageKey, isNotificationForUser, token]);
 
   useEffect(() => {
     fetchNotifications();
@@ -231,6 +285,7 @@ export function NotificationProvider({ children }) {
       fetchNotifications();
       if (payload && payload.title && isNotificationForUser(payload)) {
         setLatestToast(payload);
+        showNativeNotification(payload.title, payload.message);
       }
     });
     const unsubUpdated = wsSubscribe('NOTIFICATION_UPDATED', () => {
@@ -441,6 +496,77 @@ export function NotificationProvider({ children }) {
       }}
     >
       {children}
+
+      {/* Real-time Push Notification Floating Banner */}
+      {latestToast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            maxWidth: '380px',
+            width: 'calc(100% - 40px)',
+            zIndex: 999999,
+            backgroundColor: '#ffffff',
+            borderRadius: '16px',
+            boxShadow: '0 16px 40px rgba(5, 150, 105, 0.22), 0 4px 14px rgba(0,0,0,0.08)',
+            border: '2px solid #059669',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '12px',
+            animation: 'fadeIn 0.25s ease-out',
+            cursor: 'pointer',
+          }}
+          onClick={() => {
+            setIsNotificationOpen(true);
+            setLatestToast(null);
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '12px',
+              backgroundColor: '#ecfdf5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Bell size={20} color="#059669" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>
+                {latestToast.title}
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLatestToast(null);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#94a3b8',
+                  padding: '2px',
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '4px', lineHeight: 1.4 }}>
+              {latestToast.message}
+            </div>
+            <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700, marginTop: '6px' }}>
+              Tap to view details →
+            </div>
+          </div>
+        </div>
+      )}
     </NotificationContext.Provider>
   );
 }

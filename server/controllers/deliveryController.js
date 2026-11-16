@@ -7,7 +7,7 @@ const Payment = require('../models/Payment');
 const Notification = require('../models/Notification');
 const Subscription = require('../models/Subscription');
 const { recordAudit } = require('../services/auditService');
-const { ensureDeliveriesForDate, ensureDeliveriesForRange, formatDate } = require('../services/deliveryService');
+const { ensureDeliveriesForDate, ensureDeliveriesForRange, ensureDeliveriesForCustomer, ensureAllDeliveries, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
 const { isCloudinaryUrl, ensureCloudinaryUrl } = require('../config/cloudinary');
 
@@ -107,6 +107,7 @@ const getDeliveries = async (req, res) => {
 
     // Apply date range filters
     if (range === 'all' || requestedDate === 'all') {
+      await ensureAllDeliveries();
       // Show all deliveries across entire system
     } else if (range === 'weekly') {
       const now = new Date();
@@ -130,9 +131,11 @@ const getDeliveries = async (req, res) => {
       const endStr = formatDate(lastDay);
       await ensureDeliveriesForRange(startStr, endStr);
       filter.deliveryDate = { $gte: startStr, $lte: endStr };
-    } else if (startDate && endDate) {
-      await ensureDeliveriesForRange(startDate, endDate);
-      filter.deliveryDate = { $gte: startDate, $lte: endDate };
+    } else if (range === 'custom' || startDate || endDate) {
+      const s = startDate || endDate || targetDate;
+      const e = endDate || startDate || targetDate;
+      await ensureDeliveriesForRange(s, e);
+      filter.deliveryDate = { $gte: s, $lte: e };
     } else {
       filter.deliveryDate = targetDate;
     }
@@ -459,6 +462,13 @@ const markDelivered = async (req, res) => {
       }
     }
 
+    if (proofUrl && !isCloudinaryUrl(proofUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery proof photo must be stored in Cloudinary.',
+      });
+    }
+
     const isAdmin = req.user?.role === 'admin';
     if (!isAdmin && process.env.REQUIRE_DELIVERY_PROOF === 'true' && !isPersistedProof(proofUrl)) {
       return res.status(400).json({
@@ -718,6 +728,7 @@ const markDelivered = async (req, res) => {
       broadcast('PAYMENT_UPDATED', { customerId: delivery.customerId, amount: totalPaidNow, method: paidMethod, addonsTotal });
       broadcast('DELIVERY_BOY_UPDATED', { id: delivery.deliveryBoyId || '', name: delivery.deliveryBoyName || actor || '' });
     }
+    broadcast('REPORT_UPDATED', { customerId: delivery.customerId });
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
@@ -786,6 +797,8 @@ const markNotDelivered = async (req, res) => {
     }
 
     broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
+    broadcast('CUSTOMER_UPDATED', { id: delivery.customerId, customerId: delivery.customerId });
+    broadcast('REPORT_UPDATED', { customerId: delivery.customerId });
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({

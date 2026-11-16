@@ -1,5 +1,6 @@
 const ContactInfo = require('../models/ContactInfo');
 const { broadcast } = require('../config/websocket');
+const { ensureCloudinaryUrl } = require('../config/cloudinary');
 
 const DEFAULT_CONTACT_INFO = {
   companyName: 'NATURAL MILK DAIRY PRIVATE LIMITED',
@@ -130,6 +131,19 @@ exports.createContactInfo = async (req, res) => {
     const payload = req.body || {};
     const cleanPhone = payload.cleanPhone || sanitizeCleanPhone(payload.phone || payload.whatsapp);
 
+    const footerBgImage = payload.footerBgImage
+      ? await ensureCloudinaryUrl(payload.footerBgImage, { folder: 'natural-milk-dairy/branding' })
+      : DEFAULT_CONTACT_INFO.footerBgImage;
+    const footerLogo = payload.footerLogo
+      ? await ensureCloudinaryUrl(payload.footerLogo, { folder: 'natural-milk-dairy/branding' })
+      : DEFAULT_CONTACT_INFO.footerLogo;
+    const footerFarmLandscape = payload.footerFarmLandscape
+      ? await ensureCloudinaryUrl(payload.footerFarmLandscape, { folder: 'natural-milk-dairy/branding' })
+      : DEFAULT_CONTACT_INFO.footerFarmLandscape;
+    const logoUrl = payload.logoUrl
+      ? await ensureCloudinaryUrl(payload.logoUrl, { folder: 'natural-milk-dairy/branding' })
+      : DEFAULT_CONTACT_INFO.logoUrl;
+
     const record = new ContactInfo({
       companyName: payload.companyName || DEFAULT_CONTACT_INFO.companyName,
       tagline: payload.tagline || DEFAULT_CONTACT_INFO.tagline,
@@ -144,6 +158,10 @@ exports.createContactInfo = async (req, res) => {
       whatsapp: payload.whatsapp || payload.phone || DEFAULT_CONTACT_INFO.whatsapp,
       workingHours: payload.workingHours || DEFAULT_CONTACT_INFO.workingHours,
       deliveryHours: payload.deliveryHours || DEFAULT_CONTACT_INFO.deliveryHours,
+      footerBgImage,
+      footerLogo,
+      footerFarmLandscape,
+      logoUrl,
       socialLinks: {
         facebook: payload.socialLinks?.facebook ?? DEFAULT_CONTACT_INFO.socialLinks.facebook,
         twitter: payload.socialLinks?.twitter ?? DEFAULT_CONTACT_INFO.socialLinks.twitter,
@@ -204,10 +222,26 @@ exports.updatePrimaryContactInfo = async (req, res) => {
     if (payload.whatsapp !== undefined) contactInfo.whatsapp = payload.whatsapp;
     if (payload.workingHours !== undefined) contactInfo.workingHours = payload.workingHours;
     if (payload.deliveryHours !== undefined) contactInfo.deliveryHours = payload.deliveryHours;
-    if (payload.footerBgImage !== undefined) contactInfo.footerBgImage = payload.footerBgImage;
-    if (payload.footerLogo !== undefined) contactInfo.footerLogo = payload.footerLogo;
-    if (payload.footerFarmLandscape !== undefined) contactInfo.footerFarmLandscape = payload.footerFarmLandscape;
-    if (payload.logoUrl !== undefined) contactInfo.logoUrl = payload.logoUrl;
+    if (payload.footerBgImage !== undefined) {
+      contactInfo.footerBgImage = await ensureCloudinaryUrl(payload.footerBgImage, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.footerLogo !== undefined) {
+      contactInfo.footerLogo = await ensureCloudinaryUrl(payload.footerLogo, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.footerFarmLandscape !== undefined) {
+      contactInfo.footerFarmLandscape = await ensureCloudinaryUrl(payload.footerFarmLandscape, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.logoUrl !== undefined) {
+      contactInfo.logoUrl = await ensureCloudinaryUrl(payload.logoUrl, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
 
     if (payload.socialLinks && typeof payload.socialLinks === 'object') {
       contactInfo.socialLinks = {
@@ -265,10 +299,26 @@ exports.updateContactInfoById = async (req, res) => {
     if (payload.whatsapp !== undefined) contactInfo.whatsapp = payload.whatsapp;
     if (payload.workingHours !== undefined) contactInfo.workingHours = payload.workingHours;
     if (payload.deliveryHours !== undefined) contactInfo.deliveryHours = payload.deliveryHours;
-    if (payload.footerBgImage !== undefined) contactInfo.footerBgImage = payload.footerBgImage;
-    if (payload.footerLogo !== undefined) contactInfo.footerLogo = payload.footerLogo;
-    if (payload.footerFarmLandscape !== undefined) contactInfo.footerFarmLandscape = payload.footerFarmLandscape;
-    if (payload.logoUrl !== undefined) contactInfo.logoUrl = payload.logoUrl;
+    if (payload.footerBgImage !== undefined) {
+      contactInfo.footerBgImage = await ensureCloudinaryUrl(payload.footerBgImage, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.footerLogo !== undefined) {
+      contactInfo.footerLogo = await ensureCloudinaryUrl(payload.footerLogo, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.footerFarmLandscape !== undefined) {
+      contactInfo.footerFarmLandscape = await ensureCloudinaryUrl(payload.footerFarmLandscape, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
+    if (payload.logoUrl !== undefined) {
+      contactInfo.logoUrl = await ensureCloudinaryUrl(payload.logoUrl, {
+        folder: 'natural-milk-dairy/branding',
+      });
+    }
     if (payload.isActive !== undefined) contactInfo.isActive = Boolean(payload.isActive);
 
     if (payload.isPrimary !== undefined) {

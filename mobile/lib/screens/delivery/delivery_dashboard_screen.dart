@@ -104,9 +104,13 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   List<Map<String, dynamic>> _assignedCustomers = [];
   bool _isLoading = false;
   String _filterStatus = 'pending'; // 'pending', 'delivered', 'not_delivered', 'all'
-  String _deliverySectionTab = 'today'; // 'today', 'upcoming', 'history', 'all'
+  String _deliverySectionTab = 'today'; // 'today', 'upcoming', 'history', 'custom', 'all'
+  DateTime _partnerCustomStart = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+  DateTime _partnerCustomEnd = IstDateTime.toIst(DateTime.now());
   String _searchQuery = '';
   StreamSubscription? _wsSub;
+  Timer? _wsDebounceTimer;
+  bool _isDataSyncing = false;
 
   // Driver Profile States
   String _profileName = 'naveen';
@@ -136,7 +140,9 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   List<Map<String, dynamic>> _handovers = [];
   double _serverBoyCash = 0.0;
   double _serverBoyUpi = 0.0;
-  String _cashPeriod = 'today'; // 'today' | 'all'
+  String _cashPeriod = 'today'; // 'today' | 'weekly' | 'monthly' | 'all' | 'custom'
+  DateTime _cashCustomStartDate = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
+  DateTime _cashCustomEndDate = IstDateTime.toIst(DateTime.now());
   String _cashFilter = 'all'; // 'all' | 'cash' | 'upi' | 'addons'
   bool _isSubmittingHandover = false;
   int _unreadNotifCount = 2;
@@ -354,6 +360,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           type == 'DELIVERY_CREATED' ||
           type == 'PAYMENT_UPDATED' ||
           type == 'PAYMENT_RECORDED' ||
+          type == 'REPORT_UPDATED' ||
           type == 'CASH_HANDOVER_UPDATED' ||
           type == 'CASH_HANDOVER_SUBMITTED' ||
           type == 'CUSTOMER_CREATED' ||
@@ -395,8 +402,11 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             }
           }
         }
-        _loadData(silent: true);
-        _loadNotifications(silent: true);
+        _wsDebounceTimer?.cancel();
+        _wsDebounceTimer = Timer(const Duration(milliseconds: 600), () {
+          _loadData(silent: true);
+          _loadNotifications(silent: true);
+        });
       }
     });
   }
@@ -510,6 +520,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
   @override
   void dispose() {
+    _wsDebounceTimer?.cancel();
     _wsSub?.cancel();
     _delSubSearchCtrl.dispose();
     _subHistSearchCtrl.dispose();
@@ -518,6 +529,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   Future<void> _loadData({bool silent = false}) async {
+    if (_isDataSyncing) return;
+    _isDataSyncing = true;
     if (!silent) setState(() => _isLoading = true);
 
     try {
@@ -646,6 +659,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     } catch (e) {
       debugPrint('Error loading delivery partner data: $e');
     } finally {
+      _isDataSyncing = false;
       if (mounted && !silent) setState(() => _isLoading = false);
     }
   }
@@ -1919,6 +1933,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                       onPressed: () => ReportDownloadSheet.show(
                         context,
                         role: 'partner',
+                        initialPeriod: _cashPeriod == 'today' ? 'weekly' : _cashPeriod,
                         initialCustomers: _assignedCustomers,
                         initialDeliveries: _deliveries,
                       ),
@@ -1979,127 +1994,129 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           ],
           const SizedBox(height: 16),
 
-          // 2. ROUTE PROGRESS CARD (WHITE CONTAINER WITH 2X2 GRID)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                // Top Progress Status
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF10B981),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'ROUTE PROGRESS',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF065F46),
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      '$_progressPercent% Complete',
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF059669),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: _totalCount > 0 ? _completedCount / _totalCount : 0,
-                    minHeight: 6,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    valueColor: const AlwaysStoppedAnimation(Color(0xFF059669)),
+          // 2. ROUTE PROGRESS CARD (WHITE CONTAINER WITH 2X2 GRID - Hidden when Custom is selected)
+          if (_deliverySectionTab != 'custom') ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
                   ),
-                ),
-                const SizedBox(height: 14),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Top Progress Status
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'ROUTE PROGRESS',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF065F46),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '$_progressPercent% Complete',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF059669),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: _totalCount > 0 ? _completedCount / _totalCount : 0,
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFFF1F5F9),
+                      valueColor: const AlwaysStoppedAnimation(Color(0xFF059669)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
 
-                // 2x2 KPI GRID
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildKpiBox(
-                        title: 'DROPS',
-                        value: '$_totalCount',
-                        bgColor: const Color(0xFFF8FAFC),
-                        borderColor: const Color(0xFFE2E8F0),
-                        titleColor: const Color(0xFF64748B),
-                        valColor: const Color(0xFF0F172A),
+                  // 2x2 KPI GRID
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildKpiBox(
+                          title: 'DROPS',
+                          value: '$_totalCount',
+                          bgColor: const Color(0xFFF8FAFC),
+                          borderColor: const Color(0xFFE2E8F0),
+                          titleColor: const Color(0xFF64748B),
+                          valColor: const Color(0xFF0F172A),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildKpiBox(
-                        title: 'DONE',
-                        value: '$_completedCount',
-                        bgColor: const Color(0xFFECFDF5),
-                        borderColor: const Color(0xFFBBF7D0),
-                        titleColor: const Color(0xFF065F46),
-                        valColor: const Color(0xFF059669),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildKpiBox(
+                          title: 'DONE',
+                          value: '$_completedCount',
+                          bgColor: const Color(0xFFECFDF5),
+                          borderColor: const Color(0xFFBBF7D0),
+                          titleColor: const Color(0xFF065F46),
+                          valColor: const Color(0xFF059669),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildKpiBox(
-                        title: 'PENDING',
-                        value: '$_pendingCount',
-                        bgColor: const Color(0xFFFFFBEB),
-                        borderColor: const Color(0xFFFDE68A),
-                        titleColor: const Color(0xFF92400E),
-                        valColor: const Color(0xFFB45309),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildKpiBox(
+                          title: 'PENDING',
+                          value: '$_pendingCount',
+                          bgColor: const Color(0xFFFFFBEB),
+                          borderColor: const Color(0xFFFDE68A),
+                          titleColor: const Color(0xFF92400E),
+                          valColor: const Color(0xFFB45309),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildKpiBox(
-                        title: 'CASH',
-                        value: '₹${_todayCash.toInt()}',
-                        bgColor: const Color(0xFFF0FDF4),
-                        borderColor: const Color(0xFFBBF7D0),
-                        titleColor: const Color(0xFF065F46),
-                        valColor: const Color(0xFF0F172A),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildKpiBox(
+                          title: 'CASH',
+                          value: '₹${_todayCash.toInt()}',
+                          bgColor: const Color(0xFFF0FDF4),
+                          borderColor: const Color(0xFFBBF7D0),
+                          titleColor: const Color(0xFF065F46),
+                          valColor: const Color(0xFF0F172A),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
+          ],
 
           // PRIMARY SECTION FILTER PILLS: Today (First), Upcoming, Delivery History, All Deliveries (Last)
           Builder(builder: (ctx) {
@@ -2120,6 +2137,16 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               return k.compareTo(todayStr) < 0 || d['status'] == 'delivered';
             }).toList()..sort((a, b) => _toIstDateKey(b['deliveryDate'] ?? b['date']).compareTo(_toIstDateKey(a['deliveryDate'] ?? a['date'])));
 
+            final startStr = '${_partnerCustomStart.year}-${_partnerCustomStart.month.toString().padLeft(2, '0')}-${_partnerCustomStart.day.toString().padLeft(2, '0')}';
+            final endStr = '${_partnerCustomEnd.year}-${_partnerCustomEnd.month.toString().padLeft(2, '0')}-${_partnerCustomEnd.day.toString().padLeft(2, '0')}';
+            final customList = allList.where((d) {
+              final k = _toIstDateKey(d['deliveryDate'] ?? d['date']);
+              if (k.isEmpty) return false;
+              if (k.compareTo(startStr) < 0) return false;
+              if (k.compareTo(endStr) > 0) return false;
+              return true;
+            }).toList()..sort((a, b) => _toIstDateKey(b['deliveryDate'] ?? b['date']).compareTo(_toIstDateKey(a['deliveryDate'] ?? a['date'])));
+
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2132,6 +2159,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                       _buildSectionPillTab('upcoming', 'Upcoming', upcomingList.length),
                       const SizedBox(width: 8),
                       _buildSectionPillTab('history', 'Delivery History', historyList.length),
+                      const SizedBox(width: 8),
+                      _buildSectionPillTab('custom', 'Custom Range', customList.length),
                       const SizedBox(width: 8),
                       _buildSectionPillTab('all', 'All Deliveries', allList.length),
                     ],
@@ -2318,6 +2347,146 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                       itemCount: historyList.length,
                       separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (ctx, idx) => _buildDeliveryCard(historyList[idx], idx),
+                    ),
+                  const SizedBox(height: 16),
+                ],
+
+                // SECTION 4: CUSTOM RANGE DELIVERIES ONLY
+                if (_deliverySectionTab == 'custom') ...[
+                  Builder(builder: (c) {
+                    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.3)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _partnerCustomStart,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  setState(() => _partnerCustomStart = picked);
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('From Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${_partnerCustomStart.day} ${months[_partnerCustomStart.month - 1]} ${_partnerCustomStart.year}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFF94A3B8)),
+                          ),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _partnerCustomEnd,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  setState(() => _partnerCustomEnd = picked);
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('To Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${_partnerCustomEnd.day} ${months[_partnerCustomEnd.month - 1]} ${_partnerCustomEnd.year}',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 14),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Custom Range Deliveries', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: const Color(0xFFEDE9FE), borderRadius: BorderRadius.circular(10)),
+                        child: Text('${customList.length} Records', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF6D28D9))),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  if (customList.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No deliveries found for this custom date range.', style: TextStyle(color: Color(0xFF64748B), fontSize: 12))),
+                    )
+                  else
+                    ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: customList.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (ctx, idx) => _buildDeliveryCard(customList[idx], idx),
                     ),
                   const SizedBox(height: 16),
                 ],
@@ -3837,8 +4006,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               ),
               ElevatedButton.icon(
                 onPressed: () => _showAddCustomerModal(),
-                icon: const Icon(Icons.add, size: 16, color: Colors.white),
-                label: const Text('Add to Route', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white)),
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 16, color: Colors.white),
+                label: const Text('Add Customer', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white)),
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669), padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
               ),
             ],
@@ -4120,17 +4289,51 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   // =========================================================
   Widget _buildCashTab() {
     final bool isToday = _cashPeriod == 'today';
-    final List<Map<String, dynamic>> periodDrops = (isToday
-            ? _deliveries
-            : (_allDeliveries.isNotEmpty ? _allDeliveries : _deliveries))
-        .where((d) => d['status'] == 'delivered')
-        .toList();
+    final nowIst = IstDateTime.toIst(DateTime.now());
+    final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
+    final weekAgoIst = nowIst.subtract(const Duration(days: 7));
+    final weekStartStr = '${weekAgoIst.year}-${weekAgoIst.month.toString().padLeft(2, '0')}-${weekAgoIst.day.toString().padLeft(2, '0')}';
+    final monthAgoIst = nowIst.subtract(const Duration(days: 30));
+    final monthStartStr = '${monthAgoIst.year}-${monthAgoIst.month.toString().padLeft(2, '0')}-${monthAgoIst.day.toString().padLeft(2, '0')}';
+    final customStartStr = '${_cashCustomStartDate.year}-${_cashCustomStartDate.month.toString().padLeft(2, '0')}-${_cashCustomStartDate.day.toString().padLeft(2, '0')}';
+    final customEndStr = '${_cashCustomEndDate.year}-${_cashCustomEndDate.month.toString().padLeft(2, '0')}-${_cashCustomEndDate.day.toString().padLeft(2, '0')}';
 
-    final List<Map<String, dynamic>> periodNonDelPayments = isToday
-        ? _todayNonDeliveryPayments
-        : _payments
-            .where((p) => !(p['referenceNumber'] ?? '').toString().toUpperCase().contains('DELIVERY-'))
-            .toList();
+    final allList = _allDeliveries.isNotEmpty ? _allDeliveries : _deliveries;
+    final List<Map<String, dynamic>> periodDrops = allList.where((d) {
+      if (d['status'] != 'delivered') return false;
+      final dKey = _toIstDateKey(d['deliveryDate'] ?? d['date']);
+      if (_cashPeriod == 'today') {
+        return dKey == todayStr;
+      } else if (_cashPeriod == 'weekly') {
+        return dKey.compareTo(weekStartStr) >= 0;
+      } else if (_cashPeriod == 'monthly') {
+        return dKey.compareTo(monthStartStr) >= 0;
+      } else if (_cashPeriod == 'custom') {
+        return dKey.compareTo(customStartStr) >= 0 && dKey.compareTo(customEndStr) <= 0;
+      }
+      return true; // 'all'
+    }).toList();
+
+    final nonDelList = _payments
+        .where((p) => !(p['referenceNumber'] ?? '').toString().toUpperCase().contains('DELIVERY-'))
+        .toList();
+    final List<Map<String, dynamic>> periodNonDelPayments = nonDelList.where((p) {
+      final rawDt = (p['paymentDate'] ?? p['createdAt'] ?? '').toString();
+      final dt = DateTime.tryParse(rawDt);
+      if (dt == null) return _cashPeriod == 'all';
+      final istDt = IstDateTime.toIst(dt);
+      final pStr = '${istDt.year}-${istDt.month.toString().padLeft(2, '0')}-${istDt.day.toString().padLeft(2, '0')}';
+      if (_cashPeriod == 'today') {
+        return pStr == todayStr;
+      } else if (_cashPeriod == 'weekly') {
+        return pStr.compareTo(weekStartStr) >= 0;
+      } else if (_cashPeriod == 'monthly') {
+        return pStr.compareTo(monthStartStr) >= 0;
+      } else if (_cashPeriod == 'custom') {
+        return pStr.compareTo(customStartStr) >= 0 && pStr.compareTo(customEndStr) <= 0;
+      }
+      return true;
+    }).toList();
 
     final double delCash = periodDrops.fold(0.0, (s, d) => s + _cashCollectedFor(d));
     final double delUpi = periodDrops.fold(0.0, (s, d) => s + _upiCollectedFor(d));
@@ -4146,12 +4349,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'upi')
         .fold(0.0, (s, p) => s + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
 
-    final double totalCash = isToday ? _todayCash : (delCash + custCash);
-    final double totalUpi = isToday ? _todayUpi : (delUpi + custUpi);
+    final double totalCash = delCash + custCash;
+    final double totalUpi = delUpi + custUpi;
     final double grandTotal = totalCash + totalUpi;
 
-    final nowIst = IstDateTime.toIst(DateTime.now());
-    final todayStr = '${nowIst.year}-${nowIst.month.toString().padLeft(2, '0')}-${nowIst.day.toString().padLeft(2, '0')}';
     final List<Map<String, dynamic>> todayHandovers = _handovers.where((h) {
       final rawDt = (h['handoverDate'] ?? h['createdAt'] ?? '').toString();
       final dt = DateTime.tryParse(rawDt);
@@ -4219,6 +4420,9 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   onTap: () => ReportDownloadSheet.show(
                     context,
                     role: 'partner',
+                    initialPeriod: _cashPeriod,
+                    initialStartDate: _cashPeriod == 'custom' ? _cashCustomStartDate : null,
+                    initialEndDate: _cashPeriod == 'custom' ? _cashCustomEndDate : null,
                     initialCustomers: _assignedCustomers,
                     initialDeliveries: periodDrops.isNotEmpty ? periodDrops : _deliveries,
                   ),
@@ -4242,56 +4446,130 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             ),
             const SizedBox(height: 12),
 
-            // Period Switcher: Today vs All Time
+            // Period Switcher: Today, Weekly, Monthly, All Time, Custom
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(() => _cashPeriod = 'today'),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: isToday ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: isToday ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)] : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          'Today Collections',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: isToday ? const Color(0xFF059669) : const Color(0xFF64748B)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(() => _cashPeriod = 'all'),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: !isToday ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: !isToday ? [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)] : null,
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          'All History',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: !isToday ? const Color(0xFF059669) : const Color(0xFF64748B)),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildCashPeriodTab('today', 'Today'),
+                  _buildCashPeriodTab('weekly', 'Weekly'),
+                  _buildCashPeriodTab('monthly', 'Monthly'),
+                  _buildCashPeriodTab('all', 'All Time'),
+                  _buildCashPeriodTab('custom', 'Custom'),
                 ],
               ),
             ),
+            if (_cashPeriod == 'custom') ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF0D5C3A).withValues(alpha: 0.3)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _cashCustomStartDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() => _cashCustomStartDate = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('From Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 12, color: Color(0xFF0D5C3A)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_cashCustomStartDate.day}/${_cashCustomStartDate.month}/${_cashCustomStartDate.year}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(Icons.arrow_forward, size: 16, color: Color(0xFF94A3B8)),
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _cashCustomEndDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 365)),
+                          );
+                          if (picked != null) {
+                            setState(() => _cashCustomEndDate = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('To Date', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  const Icon(Icons.event, size: 12, color: Color(0xFF0D5C3A)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '${_cashCustomEndDate.day}/${_cashCustomEndDate.month}/${_cashCustomEndDate.year}',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
 
             // Hero Summary Card: Total + Cash + UPI + Cash In Hand
@@ -4305,7 +4583,15 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isToday ? 'TOTAL COLLECTED TODAY (CASH + UPI)' : 'ALL-TIME COLLECTED (CASH + UPI)',
+                    _cashPeriod == 'today'
+                        ? 'TOTAL COLLECTED TODAY (CASH + UPI)'
+                        : _cashPeriod == 'weekly'
+                            ? 'LAST 7 DAYS COLLECTED (CASH + UPI)'
+                            : _cashPeriod == 'monthly'
+                                ? 'LAST 30 DAYS COLLECTED (CASH + UPI)'
+                                : _cashPeriod == 'custom'
+                                    ? 'CUSTOM RANGE COLLECTED (${_cashCustomStartDate.day}/${_cashCustomStartDate.month} - ${_cashCustomEndDate.day}/${_cashCustomEndDate.month})'
+                                    : 'ALL-TIME COLLECTED (CASH + UPI)',
                     style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
@@ -4721,6 +5007,35 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 },
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCashPeriodTab(String id, String label) {
+    final bool isSelected = _cashPeriod == id;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _cashPeriod = id),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 1))]
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              color: isSelected ? const Color(0xFF059669) : const Color(0xFF64748B),
+            ),
+          ),
         ),
       ),
     );
@@ -11524,6 +11839,133 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
     return '${dt.day.toString().padLeft(2, '0')} ${months[dt.month - 1]} ${dt.year}';
   }
 
+  Future<void> _togglePauseCustomer() async {
+    final custId = (_cust['id'] ?? _cust['_id'] ?? _cust['customerId'] ?? '').toString();
+    if (custId.isEmpty) return;
+    final isCurrentlyPaused = _cust['status'] == 'paused';
+    final endpoint = isCurrentlyPaused ? 'resume' : 'pause';
+    final now = DateTime.now();
+    final nextMonth = now.add(const Duration(days: 30));
+    String fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+    try {
+      final res = await widget.api.post(
+        '/api/customers/$custId/$endpoint',
+        isCurrentlyPaused
+            ? {'actor': 'Delivery Partner'}
+            : {
+                'pauseFrom': fmt(now),
+                'pauseUntil': fmt(nextMonth),
+                'reason': 'Paused by delivery partner',
+                'actor': 'Delivery Partner',
+              },
+      );
+      if (mounted && res['success'] == true) {
+        setState(() {
+          _cust['status'] = isCurrentlyPaused ? 'active' : 'paused';
+        });
+        widget.onCustomerUpdated();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(isCurrentlyPaused ? 'Delivery resumed successfully' : 'Delivery paused for 30 days'),
+            backgroundColor: const Color(0xFF059669),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildQuickActionCard({
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+    required Color bgColor,
+    required Color borderColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 6),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 3,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 16, color: iconColor),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: iconColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMetricMiniCard(String label, String value, Color textColor, Color bgColor, Color borderColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B), letterSpacing: 0.3),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: textColor),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showExtendSubscriptionSheet() {
     int selectedDays = 30;
     String selectedPayMode = 'cash';
@@ -12047,114 +12489,91 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
             ),
             const SizedBox(height: 14),
 
-            // 2. Quick Action Buttons Row
+            // 2. Quick Action Cards (3 Cards Per Row)
             Row(
               children: [
-                if (mobile.isNotEmpty)
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.phone, size: 16, color: Color(0xFF059669)),
-                      label: const Text('Call', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800, fontSize: 12)),
-                      onPressed: () => widget.onCall(mobile),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: const Color(0xFFECFDF5),
-                        side: const BorderSide(color: Color(0xFFBBF7D0)),
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                if (mobile.isNotEmpty) const SizedBox(width: 8),
                 Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.navigation, size: 16, color: Color(0xFF2563EB)),
-                    label: const Text('Map', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.w800, fontSize: 12)),
-                    onPressed: () => widget.onMap(address),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: const Color(0xFFEFF6FF),
-                      side: const BorderSide(color: Color(0xFFBFDBFE)),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
+                  child: _buildQuickActionCard(
+                    icon: Icons.phone_rounded,
+                    label: 'Call',
+                    iconColor: const Color(0xFF15803D),
+                    bgColor: const Color(0xFFF0FDF4),
+                    borderColor: const Color(0xFFBBF7D0),
+                    onTap: () => widget.onCall(mobile),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.update_rounded, size: 16, color: Colors.white),
-                    label: const Text('Extend', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
-                    onPressed: _showExtendSubscriptionSheet,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF059669),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
+                  child: _buildQuickActionCard(
+                    icon: Icons.chat_bubble_rounded,
+                    label: 'WhatsApp',
+                    iconColor: const Color(0xFF047857),
+                    bgColor: const Color(0xFFECFDF5),
+                    borderColor: const Color(0xFFA7F3D0),
+                    onTap: () {
+                      final clean = mobile.replaceAll(RegExp(r'\D'), '');
+                      LauncherService.openUrl('https://wa.me/91$clean');
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildQuickActionCard(
+                    icon: Icons.navigation_rounded,
+                    label: 'Map',
+                    iconColor: const Color(0xFF1D4ED8),
+                    bgColor: const Color(0xFFEFF6FF),
+                    borderColor: const Color(0xFFBFDBFE),
+                    onTap: () => widget.onMap(address),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-
-            // 2b. Download Customer Statement PDF Card
-            InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                ReportDownloadSheet.show(
-                  context,
-                  role: 'customer',
-                  customerId: customerId,
-                  customTitle: '$name Statement',
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF0D5C3A), Color(0xFF059669)],
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
+                    icon: Icons.calendar_month_rounded,
+                    label: 'Extend',
+                    iconColor: const Color(0xFF7C3AED),
+                    bgColor: const Color(0xFFF5F3FF),
+                    borderColor: const Color(0xFFDDD6FE),
+                    onTap: _showExtendSubscriptionSheet,
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF059669).withValues(alpha: 0.22),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(Icons.picture_as_pdf_rounded, color: Colors.white, size: 20),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Download Customer Statement PDF',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
-                          ),
-                          SizedBox(height: 1),
-                          Text(
-                            'Weekly, monthly & entire delivery history statement',
-                            style: TextStyle(color: Color(0xFFD1FAE5), fontSize: 11),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
-                  ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildQuickActionCard(
+                    icon: Icons.picture_as_pdf_rounded,
+                    label: 'Statement',
+                    iconColor: const Color(0xFF0D5C3A),
+                    bgColor: const Color(0xFFF0FDF4),
+                    borderColor: const Color(0xFFBBF7D0),
+                    onTap: () {
+                      ReportDownloadSheet.show(
+                        context,
+                        role: 'customer',
+                        customerId: customerId,
+                        customTitle: '$name Statement',
+                      );
+                    },
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildQuickActionCard(
+                    icon: isPaused ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded,
+                    label: isPaused ? 'Resume' : 'Pause',
+                    iconColor: isPaused ? const Color(0xFF047857) : const Color(0xFFB45309),
+                    bgColor: isPaused ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                    borderColor: isPaused ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A),
+                    onTap: _togglePauseCustomer,
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
             const SizedBox(height: 16),
 
             // 3. Subscription & Expiry Date Card
@@ -12282,9 +12701,22 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                   ),
                   const SizedBox(height: 14),
 
-                  _buildCustomerRow('Daily Milk Volume', '${milk}L Farm Fresh Milk'),
-                  const Divider(height: 18, color: Color(0xFFF1F5F9)),
-                  _buildCustomerRow('Daily Curd Volume', curd > 0 ? '${curd}g Fresh Curd' : 'None'),
+                  // 3 Cards for the Row: Delivery Plan Metrics
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMetricMiniCard('Daily Milk', '${milk}L Milk', const Color(0xFF0F172A), const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMetricMiniCard('Curd Qty', curd > 0 ? '${curd}g' : 'None', const Color(0xFF0F172A), const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMetricMiniCard('Frequency', frequency.toString().toUpperCase(), const Color(0xFF059669), const Color(0xFFF0FDF4), const Color(0xFFBBF7D0)),
+                      ),
+                    ],
+                  ),
                   if (plan['extraProducts'] is List && (plan['extraProducts'] as List).isNotEmpty) ...[
                     for (final ep in (plan['extraProducts'] as List)) ...[
                       const Divider(height: 18, color: Color(0xFFF1F5F9)),
@@ -12294,8 +12726,6 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                       ),
                     ],
                   ],
-                  const Divider(height: 18, color: Color(0xFFF1F5F9)),
-                  _buildCustomerRow('Delivery Frequency', frequency.toString().toUpperCase()),
                   if (startDate != null) ...[
                     const Divider(height: 18, color: Color(0xFFF1F5F9)),
                     _buildCustomerRow('Plan Started On', _formatDate(startDate)),
@@ -12424,9 +12854,35 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                     final paySum = custPays.fold<double>(0.0, (s, p) => s + (num.tryParse((p['amount'] ?? '0').toString()) ?? 0).toDouble());
                     final allTimePaid = [paySum, _ledgerTotalPaid.toDouble(), todayTotal].reduce((a, b) => a > b ? a : b);
 
-                    return Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 3 Cards for the Row: Ledger Metrics
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildMetricMiniCard('Today', '₹${todayTotal.toInt()}', const Color(0xFF059669), const Color(0xFFF0FDF4), const Color(0xFFBBF7D0)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricMiniCard('Total Paid', '₹${allTimePaid.toInt()}', const Color(0xFF0F172A), const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildMetricMiniCard(
+                                'Due Balance',
+                                balance > 0 ? '₹${balance.toInt()}' : '₹0',
+                                balance > 0 ? const Color(0xFFDC2626) : const Color(0xFF15803D),
+                                balance > 0 ? const Color(0xFFFEF2F2) : const Color(0xFFF0FDF4),
+                                balance > 0 ? const Color(0xFFFECACA) : const Color(0xFFBBF7D0),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: const Color(0xFFECFDF5),
                         borderRadius: BorderRadius.circular(10),
@@ -12481,8 +12937,10 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                           ],
                         ],
                       ),
-                    );
-                  }),
+                    ),
+                  ],
+                );
+              }),
                 ],
               ),
             ),

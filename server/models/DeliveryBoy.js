@@ -21,6 +21,8 @@ const deliveryBoySchema = new mongoose.Schema({
   todayPending: { type: Number, default: 0 },
   todayCashCollected: { type: Number, default: 0 },
   todayUpiCollected: { type: Number, default: 0 },
+  firebaseUid: { type: String, default: null, sparse: true, index: true },
+  authProvider: { type: String, enum: ['local', 'google'], default: 'local' },
   createdAt: { type: Date, default: Date.now },
 });
 

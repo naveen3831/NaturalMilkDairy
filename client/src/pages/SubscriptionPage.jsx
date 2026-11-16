@@ -628,7 +628,7 @@ export default function SubscriptionPage({ setActiveTab }) {
         >
           <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
             <img
-              src="/sub_active_thumb.png"
+              src={CLOUDINARY_MEDIA.subActiveThumb}
               onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
               alt="Farm Pure Milk"
               style={{
@@ -740,50 +740,7 @@ export default function SubscriptionPage({ setActiveTab }) {
         {/* Dedicated Subscription Expiry Card */}
         {renderExpiryCard(false)}
 
-        {/* 2. Order Schedule */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: '20px',
-            border: '1px solid #e2ebe5',
-            padding: '16px',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.03)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CalendarDays size={18} color="#0d5c3a" />
-              <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Order Schedule</strong>
-            </div>
-            <span style={{ color: '#0d5c3a', fontSize: '0.78rem', fontWeight: 800 }}>Change →</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-            {weekdays.map((day, idx) => {
-              const isSelected = selectedWeekdayIndex === idx;
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  onClick={() => setSelectedWeekdayIndex(idx)}
-                  style={{
-                    height: '38px',
-                    borderRadius: '10px',
-                    border: isSelected ? '1px solid #0d5c3a' : '1px solid #e2ebe5',
-                    background: isSelected ? '#0d5c3a' : '#f3f7f4',
-                    color: isSelected ? '#ffffff' : '#4b5563',
-                    fontSize: '0.74rem',
-                    fontWeight: isSelected ? 900 : 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 3. Delivery Address */}
+        {/* 2. Delivery Address */}
         <div
           style={{
             background: '#ffffff',
@@ -1192,7 +1149,7 @@ export default function SubscriptionPage({ setActiveTab }) {
               }}
             >
               <img
-                src={CLOUDINARY_MEDIA.subHeroMilk || '/sub_hero_milk.png'}
+                src={CLOUDINARY_MEDIA.subHeroMilk}
                 onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                 alt="Fresh Farm Milk"
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -1232,7 +1189,7 @@ export default function SubscriptionPage({ setActiveTab }) {
               >
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   <img
-                    src="/sub_active_thumb.png"
+                    src={CLOUDINARY_MEDIA.subActiveThumb}
                     onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                     alt="Plan Thumbnail"
                     style={{ width: '50px', height: '50px', borderRadius: '12px', objectFit: 'cover', flexShrink: 0, border: '1px solid #e2ebe5' }}
@@ -2051,7 +2008,7 @@ export default function SubscriptionPage({ setActiveTab }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <img
-                  src="/sub_active_thumb.png"
+                  src={CLOUDINARY_MEDIA.subActiveThumb}
                   onError={(e) => { e.currentTarget.src = CLOUDINARY_MEDIA.cowMilk; }}
                   alt="Active Subscription"
                   style={{ width: '60px', height: '60px', borderRadius: '16px', objectFit: 'cover', border: '1px solid #e2ebe5' }}

@@ -39,6 +39,18 @@ class HtmlReportService {
       .brand-bar { height: 8px; background: #0d5c3a; }
       .brand-subbar { height: 3px; background: #f59e0b; margin-bottom: 14px; }
       .header-container { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+      .dairy-brand-group { display: flex; align-items: center; gap: 12px; }
+      .dairy-logo {
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        padding: 2px;
+        flex-shrink: 0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
       .dairy-title { font-size: 18px; font-weight: 900; color: #0d5c3a; letter-spacing: -0.3px; margin: 0; }
       .dairy-tagline { font-size: 9.5px; color: #475569; margin: 2px 0 0 0; }
       .dairy-contacts { font-size: 8.5px; color: #64748b; margin-top: 2px; }
@@ -112,6 +124,7 @@ class HtmlReportService {
     required List<Map<String, dynamic>> deliveries,
     required List<Map<String, dynamic>> payments,
     required String periodLabel,
+    String? logoDataUri,
   }) {
     final nowStr = DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now());
 
@@ -231,10 +244,13 @@ class HtmlReportService {
         <div class="brand-subbar"></div>
 
         <div class="header-container">
-          <div>
-            <h1 class="dairy-title">NATURAL MILK DAIRY</h1>
-            <div class="dairy-tagline">100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery</div>
-            <div class="dairy-contacts">Helpline: +91 97018 78789 | Email: contact@naturalmilkdairy.com | Hyderabad, Telangana</div>
+          <div class="dairy-brand-group">
+            <img src="${logoDataUri ?? 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg'}" alt="Natural Milk Dairy" class="dairy-logo" onerror="this.onerror=null;this.src='https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg';" />
+            <div>
+              <h1 class="dairy-title">NATURAL MILK DAIRY</h1>
+              <div class="dairy-tagline">100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery</div>
+              <div class="dairy-contacts">Helpline: +91 97018 78789 | Email: contact@naturalmilkdairy.com | Hyderabad, Telangana</div>
+            </div>
           </div>
           <div class="date-meta">
             <strong>Statement Date:</strong><br>$nowStr<br>
@@ -322,6 +338,7 @@ class HtmlReportService {
     required List<Map<String, dynamic>> deliveries,
     required List<Map<String, dynamic>> payments,
     required String periodLabel,
+    String? logoDataUri,
   }) {
     final nowStr = DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.now());
 
@@ -427,10 +444,13 @@ class HtmlReportService {
         <div class="brand-subbar"></div>
 
         <div class="header-container">
-          <div>
-            <h1 class="dairy-title">NATURAL MILK DAIRY</h1>
-            <div class="dairy-tagline">100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery</div>
-            <div class="dairy-contacts">Helpline: +91 97018 78789 | Email: contact@naturalmilkdairy.com | Hyderabad, Telangana</div>
+          <div class="dairy-brand-group">
+            <img src="${logoDataUri ?? 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg'}" alt="Natural Milk Dairy" class="dairy-logo" onerror="this.onerror=null;this.src='https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg';" />
+            <div>
+              <h1 class="dairy-title">NATURAL MILK DAIRY</h1>
+              <div class="dairy-tagline">100% Pure Organic Farm Milk • Chilled to 4°C • Doorstep Daily Delivery</div>
+              <div class="dairy-contacts">Helpline: +91 97018 78789 | Email: contact@naturalmilkdairy.com | Hyderabad, Telangana</div>
+            </div>
           </div>
           <div class="date-meta">
             <strong>Statement Date:</strong><br>$nowStr<br>
