@@ -2,8 +2,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class GoogleAuthService {
+  static const String serverClientId =
+      '402055824353-rbjkemrlk6snih6kg8vivcejl6aauooo.apps.googleusercontent.com';
+
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: serverClientId,
     scopes: ['email', 'profile'],
   );
 

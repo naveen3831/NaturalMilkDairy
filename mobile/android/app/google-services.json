@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "402055824353-v59320681dh55heof576hb83foulq95d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.naturalmilk.dairy.natural_milk_dairy",
+            "certificate_hash": "b40d62cd046dd757a939ea86aba4a8cf4fd6b1f7"
+          }
+        },
+        {
           "client_id": "402055824353-rbjkemrlk6snih6kg8vivcejl6aauooo.apps.googleusercontent.com",
           "client_type": 3
         }
