@@ -61,18 +61,175 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<String?> _showMobileNumberPrompt({required String name, required String email}) async {
+    final mobileController = TextEditingController();
+    String? localError;
+
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        color: AppColors.primaryGreenSoft,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.phone_iphone_rounded, color: AppColors.primaryGreen, size: 24),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.isNotEmpty ? 'Welcome, $name' : 'Enter Mobile Number',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textMain),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            email,
+                            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Please enter your 10-digit mobile number for doorstep morning milk deliveries & updates.',
+                  style: TextStyle(fontSize: 13, color: AppColors.textMuted, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                if (localError != null) ...[
+                  Text(
+                    localError!,
+                    style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                TextField(
+                  controller: mobileController,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    prefixText: '+91 ',
+                    prefixStyle: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textMain, fontSize: 15),
+                    hintText: 'Enter 10-digit mobile number',
+                    counterText: '',
+                    prefixIcon: const Icon(Icons.phone_rounded, size: 20, color: AppColors.primaryGreen),
+                    filled: true,
+                    fillColor: AppColors.creamBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final digits = mobileController.text.trim().replaceAll(RegExp(r'\D'), '');
+                      if (digits.length != 10) {
+                        setSheetState(() => localError = 'Please enter a valid 10-digit mobile number.');
+                        return;
+                      }
+                      Navigator.pop(ctx, digits);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primaryGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text('Confirm & Continue', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _handleGoogleSignIn() async {
     try {
-      final idToken = await GoogleAuthService.signInWithGoogle();
-      if (idToken == null || idToken.isEmpty) return;
+      final googleResult = await GoogleAuthService.signInWithGoogle();
+      if (googleResult == null) return;
 
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
-      final success = await auth.loginWithGoogleToken(idToken, portal: 'customer');
+
+      // Check if user already entered a mobile number in the identifier field
+      String? enteredMobile;
+      final rawText = _identifierController.text.trim();
+      final digits = rawText.replaceAll(RegExp(r'\D'), '');
+      if (digits.length == 10) {
+        enteredMobile = digits;
+      }
+
+      var res = await auth.loginWithGoogleToken(
+        googleResult.idToken,
+        portal: 'customer',
+        mobile: enteredMobile,
+      );
 
       if (!mounted) return;
 
-      if (success) {
+      // If new account requires a real mobile number
+      if (res['requiresMobile'] == true) {
+        final realMobile = await _showMobileNumberPrompt(
+          name: googleResult.displayName,
+          email: googleResult.email,
+        );
+        if (realMobile == null || realMobile.isEmpty) return;
+
+        if (!mounted) return;
+        res = await auth.loginWithGoogleToken(
+          googleResult.idToken,
+          portal: 'customer',
+          mobile: realMobile,
+        );
+      }
+
+      if (!mounted) return;
+
+      if (res['success'] == true && res['requiresMobile'] != true) {
         if (mounted) {
           context.read<CustomerProvider>().clearCustomerData();
         }

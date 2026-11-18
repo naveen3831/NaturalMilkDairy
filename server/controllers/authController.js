@@ -744,6 +744,10 @@ const googleLogin = async (req, res) => {
     }
 
     // 5. USER / CUSTOMER Flow
+    const rawMobileInput = (req.body?.mobile || req.body?.identifier || '').toString().trim();
+    const cleanDigits = rawMobileInput.replace(/\D/g, '');
+    const mobileDigits = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : '';
+
     let foundCustomer = await Customer.findOne({
       $or: [{ email: emailRegex }, { firebaseUid }],
     });
@@ -752,6 +756,12 @@ const googleLogin = async (req, res) => {
       $or: [{ email: emailRegex }, { firebaseUid }],
       role: { $in: ['customer', 'user'] },
     });
+
+    // If not found by email/uid but client provided a phone number, check by mobile
+    if (!foundCustomer && !foundUser && mobileDigits) {
+      foundCustomer = await Customer.findOne({ mobile: new RegExp(mobileDigits + '$') });
+      foundUser = await User.findOne({ mobile: new RegExp(mobileDigits + '$'), role: { $in: ['customer', 'user'] } });
+    }
 
     if (foundCustomer || foundUser) {
       const activeDoc = foundCustomer || foundUser;
@@ -763,18 +773,28 @@ const googleLogin = async (req, res) => {
         });
       }
 
-      // Link firebaseUid
-      if (foundCustomer && (!foundCustomer.firebaseUid || foundCustomer.firebaseUid !== firebaseUid)) {
-        foundCustomer.firebaseUid = firebaseUid;
-        foundCustomer.authProvider = 'google';
+      // Link firebaseUid and real mobile if provided
+      if (foundCustomer) {
+        if (!foundCustomer.firebaseUid || foundCustomer.firebaseUid !== firebaseUid) {
+          foundCustomer.firebaseUid = firebaseUid;
+          foundCustomer.authProvider = 'google';
+        }
         if (!foundCustomer.email) foundCustomer.email = googleEmail;
+        if (mobileDigits && (!foundCustomer.mobile || foundCustomer.mobile.startsWith('temp_'))) {
+          foundCustomer.mobile = mobileDigits;
+        }
         await foundCustomer.save();
       }
-      if (foundUser && (!foundUser.firebaseUid || foundUser.firebaseUid !== firebaseUid)) {
-        foundUser.firebaseUid = firebaseUid;
-        foundUser.authProvider = 'google';
+      if (foundUser) {
+        if (!foundUser.firebaseUid || foundUser.firebaseUid !== firebaseUid) {
+          foundUser.firebaseUid = firebaseUid;
+          foundUser.authProvider = 'google';
+        }
         if (!foundUser.email) foundUser.email = googleEmail;
         if (googlePicture && !foundUser.avatar) foundUser.avatar = googlePicture;
+        if (mobileDigits && (!foundUser.mobile || foundUser.mobile.startsWith('temp_'))) {
+          foundUser.mobile = mobileDigits;
+        }
         await foundUser.save();
       }
 
@@ -782,7 +802,7 @@ const googleLogin = async (req, res) => {
         id: (foundCustomer?._id || foundUser?._id).toString(),
         name: foundCustomer?.name || foundUser?.name || googleName,
         email: googleEmail,
-        mobile: foundCustomer?.mobile || foundUser?.mobile || '',
+        mobile: foundCustomer?.mobile || foundUser?.mobile || mobileDigits || '',
         role: 'customer',
         status: 'active',
         customerId: foundCustomer?.customerId || foundUser?.customerId || '',
@@ -798,7 +818,20 @@ const googleLogin = async (req, res) => {
       });
     }
 
-    // 6. NEW USER: Auto-create Customer account (role = 'customer')
+    // 6. NEW USER: Require real mobile number, never generate fake random numbers
+    const displayName = (googleName || '').trim() || 'Valued Customer';
+
+    if (!mobileDigits) {
+      return res.status(200).json({
+        success: true,
+        requiresMobile: true,
+        email: googleEmail,
+        name: displayName,
+        firebaseUid,
+        message: 'Please provide your 10-digit mobile number to complete registration.',
+      });
+    }
+
     let newCustId = '';
     for (let attempts = 0; attempts < 5; attempts++) {
       const candidate = `CUST-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -810,14 +843,44 @@ const googleLogin = async (req, res) => {
     }
     if (!newCustId) newCustId = `CUST-${Date.now().toString().slice(-4)}`;
 
-    const displayName = (googleName || '').trim() || 'Valued Customer';
-    const tempMobile = `9${Math.floor(100000000 + Math.random() * 900000000)}`;
+    const realMobile = mobileDigits;
+
+    // Check if real mobile is already in User collection
+    const existingUserWithPhone = await User.findOne({ mobile: realMobile });
+    if (existingUserWithPhone) {
+      existingUserWithPhone.firebaseUid = firebaseUid;
+      existingUserWithPhone.authProvider = 'google';
+      if (!existingUserWithPhone.email) existingUserWithPhone.email = googleEmail;
+      await existingUserWithPhone.save();
+
+      const existingCustWithPhone = await Customer.findOne({ mobile: realMobile });
+      if (existingCustWithPhone) {
+        existingCustWithPhone.firebaseUid = firebaseUid;
+        existingCustWithPhone.authProvider = 'google';
+        if (!existingCustWithPhone.email) existingCustWithPhone.email = googleEmail;
+        await existingCustWithPhone.save();
+      }
+
+      const custPayload = {
+        id: (existingCustWithPhone?._id || existingUserWithPhone._id).toString(),
+        name: existingCustWithPhone?.name || existingUserWithPhone.name || displayName,
+        email: googleEmail,
+        mobile: realMobile,
+        role: 'customer',
+        status: 'active',
+        customerId: existingCustWithPhone?.customerId || existingUserWithPhone.customerId || '',
+        area: existingCustWithPhone?.area || existingUserWithPhone.assignedArea || 'Madhapur',
+        avatar: googlePicture || existingUserWithPhone.avatar || '',
+      };
+      const token = generateToken(custPayload);
+      return res.json({ success: true, user: custPayload, token });
+    }
 
     const newCustomer = await Customer.create({
       customerId: newCustId,
       name: displayName,
       email: googleEmail,
-      mobile: tempMobile,
+      mobile: realMobile,
       address: 'Doorstep Address, Hyderabad',
       area: 'Madhapur',
       status: 'active',
@@ -828,7 +891,7 @@ const googleLogin = async (req, res) => {
     await User.create({
       name: displayName,
       email: googleEmail,
-      mobile: tempMobile,
+      mobile: realMobile,
       role: 'customer',
       status: 'active',
       customerId: newCustId,
@@ -841,7 +904,7 @@ const googleLogin = async (req, res) => {
       id: newCustomer._id.toString(),
       name: displayName,
       email: googleEmail,
-      mobile: tempMobile,
+      mobile: realMobile,
       role: 'customer',
       status: 'active',
       customerId: newCustId,
@@ -850,7 +913,7 @@ const googleLogin = async (req, res) => {
     };
     const token = generateToken(userPayload);
 
-    await recordAudit('Google Account Created', displayName, `New customer created via Google (${googleEmail})`, 'customer');
+    await recordAudit('Google Account Created', displayName, `New customer created via Google (${googleEmail}, Mobile: ${realMobile})`, 'customer');
 
     return res.status(201).json({
       success: true,

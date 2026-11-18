@@ -308,24 +308,37 @@ class ApiService {
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
     String portal = 'customer',
+    String? mobile,
+    bool retryIfFailed = true,
   }) async {
     final url = Uri.parse('$baseUrl/api/auth/google');
     try {
+      final payload = <String, dynamic>{
+        'idToken': idToken,
+        'portal': portal,
+      };
+      if (mobile != null && mobile.trim().isNotEmpty) {
+        payload['mobile'] = mobile.trim();
+      }
+
       final response = await http
           .post(
             url,
             headers: _getHeaders(requiresAuth: false),
-            body: jsonEncode({
-              'idToken': idToken,
-              'portal': portal,
-            }),
+            body: jsonEncode(payload),
           )
           .timeout(const Duration(seconds: 25));
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      Map<String, dynamic> data = {};
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          data = decoded;
+        }
+      } catch (_) {}
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (data['success'] == true) {
+        if (data['success'] == true && data['requiresMobile'] != true) {
           final t = data['token']?.toString();
           if (t != null) {
             await setToken(t);
@@ -337,13 +350,27 @@ class ApiService {
           }
         }
         return data;
-      } else {
-        return {
-          'success': false,
-          'message': data['message'] ?? 'Google Sign-In failed (${response.statusCode})',
-        };
+      } else if (response.statusCode == 404 && retryIfFailed) {
+        for (final candidate in AppConstants.candidateBaseUrls) {
+          if (candidate != baseUrl && await testConnection(candidate)) {
+            _activeBaseUrl = candidate;
+            return await loginWithGoogle(idToken: idToken, portal: portal, mobile: mobile, retryIfFailed: false);
+          }
+        }
       }
+      return {
+        'success': false,
+        'message': data['message'] ?? 'Google Sign-In failed (${response.statusCode})',
+      };
     } catch (e) {
+      if (retryIfFailed) {
+        for (final candidate in AppConstants.candidateBaseUrls) {
+          if (candidate != baseUrl && await testConnection(candidate)) {
+            _activeBaseUrl = candidate;
+            return await loginWithGoogle(idToken: idToken, portal: portal, mobile: mobile, retryIfFailed: false);
+          }
+        }
+      }
       return {
         'success': false,
         'message': 'Cannot reach server at $baseUrl. Please verify connection.',

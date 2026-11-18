@@ -94,15 +94,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   /// Sign in with Google / Firebase ID token
-  Future<bool> loginWithGoogleToken(String idToken, {String portal = 'customer'}) async {
+  Future<Map<String, dynamic>> loginWithGoogleToken(String idToken, {String portal = 'customer', String? mobile}) async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
-    final res = await _apiService.loginWithGoogle(idToken: idToken, portal: portal);
+    final res = await _apiService.loginWithGoogle(idToken: idToken, portal: portal, mobile: mobile);
 
     _isLoading = false;
-    if (res['success'] == true) {
+    if (res['success'] == true && res['requiresMobile'] != true) {
       _isGuest = false;
       _token = res['token']?.toString();
       if (res['user'] is Map<String, dynamic>) {
@@ -110,11 +110,14 @@ class AuthProvider extends ChangeNotifier {
       }
       _realtimeService.updateToken(_token);
       notifyListeners();
-      return true;
+      return {'success': true};
+    } else if (res['requiresMobile'] == true) {
+      notifyListeners();
+      return {'success': true, 'requiresMobile': true, 'message': res['message']};
     } else {
       _errorMessage = res['message']?.toString() ?? 'Google Sign-In failed.';
       notifyListeners();
-      return false;
+      return {'success': false, 'message': _errorMessage};
     }
   }
 

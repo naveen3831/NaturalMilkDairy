@@ -102,16 +102,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _handleGoogleSignIn() async {
     try {
-      final idToken = await GoogleAuthService.signInWithGoogle();
-      if (idToken == null || idToken.isEmpty) return;
+      final googleResult = await GoogleAuthService.signInWithGoogle();
+      if (googleResult == null) return;
 
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
-      final success = await auth.loginWithGoogleToken(idToken, portal: 'customer');
+
+      final rawMobile = _mobileController.text.trim();
+      final digits = rawMobile.replaceAll(RegExp(r'\D'), '');
+      final enteredMobile = digits.length == 10 ? digits : null;
+
+      var res = await auth.loginWithGoogleToken(
+        googleResult.idToken,
+        portal: 'customer',
+        mobile: enteredMobile,
+      );
 
       if (!mounted) return;
 
-      if (success) {
+      if (res['success'] == true && res['requiresMobile'] != true) {
         if (mounted) {
           context.read<CustomerProvider>().clearCustomerData();
         }
