@@ -153,6 +153,38 @@ class ApiService {
     return headers;
   }
 
+  String _cleanErrorMessage(dynamic e) {
+    final str = e.toString();
+    if (str.contains('SocketException') ||
+        str.contains('Connection refused') ||
+        str.contains('ClientException') ||
+        str.contains('Failed host lookup')) {
+      return 'Unable to reach dairy server at $baseUrl. Please verify your connection.';
+    }
+    if (str.contains('TimeoutException')) {
+      return 'Server response timed out. Please check your network and try again.';
+    }
+    return str;
+  }
+
+  /// Automatically switch to another responding candidate backend if current one dropped
+  Future<bool> _trySwitchToWorkingBackend() async {
+    for (final candidate in AppConstants.candidateBaseUrls) {
+      if (candidate != _activeBaseUrl && await testConnection(candidate)) {
+        _activeBaseUrl = candidate;
+        debugPrint('🌐 ApiService: Switched active backend to: $candidate');
+        return true;
+      }
+    }
+    // Also try live server if local candidates are not responding
+    if (await testConnection(AppConfig.liveBaseUrl)) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      debugPrint('🌐 ApiService: Switched active backend to live server: ${AppConfig.liveBaseUrl}');
+      return true;
+    }
+    return false;
+  }
+
   /// Generic GET request with auto authentication and fallback retry
   Future<Map<String, dynamic>> get(String endpoint, [bool retry = true]) async {
     final cleanPath = endpoint.startsWith('/') ? endpoint : '/$endpoint';
@@ -165,10 +197,12 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService GET error on $url: $e');
       if (retry) {
-        await resolveActiveBaseUrl();
-        return get(endpoint, false);
+        final switched = await _trySwitchToWorkingBackend();
+        if (switched) {
+          return get(endpoint, false);
+        }
       }
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': _cleanErrorMessage(e)};
     }
   }
 
@@ -188,10 +222,12 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService POST error on $url: $e');
       if (retry) {
-        await resolveActiveBaseUrl();
-        return post(endpoint, body, false);
+        final switched = await _trySwitchToWorkingBackend();
+        if (switched) {
+          return post(endpoint, body, false);
+        }
       }
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': _cleanErrorMessage(e)};
     }
   }
 
@@ -211,10 +247,12 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService PUT error on $url: $e');
       if (retry) {
-        await resolveActiveBaseUrl();
-        return put(endpoint, body, false);
+        final switched = await _trySwitchToWorkingBackend();
+        if (switched) {
+          return put(endpoint, body, false);
+        }
       }
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': _cleanErrorMessage(e)};
     }
   }
 
@@ -230,10 +268,12 @@ class ApiService {
     } catch (e) {
       debugPrint('ApiService DELETE error on $url: $e');
       if (retry) {
-        await resolveActiveBaseUrl();
-        return delete(endpoint, false);
+        final switched = await _trySwitchToWorkingBackend();
+        if (switched) {
+          return delete(endpoint, false);
+        }
       }
-      return {'success': false, 'message': e.toString()};
+      return {'success': false, 'message': _cleanErrorMessage(e)};
     }
   }
 
