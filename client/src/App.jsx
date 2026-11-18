@@ -106,6 +106,11 @@ export default function App() {
         return 'dashboard';
       }
 
+      // 0b. Once the driver is logged in: NEVER show public pages! Only show driver dashboard
+      if (savedUser?.role === 'delivery_boy') {
+        return 'delivery-boy-app';
+      }
+
       // If user is NOT logged in, NEVER allow admin/internal portal tabs!
       const internalTabs = [
         ...adminTabs,
@@ -286,6 +291,16 @@ export default function App() {
         return;
       }
 
+      // Once driver logs in, NEVER show public pages under any circumstances — strictly show driver dashboard!
+      if (user?.role === 'delivery_boy') {
+        setActiveTab('delivery-boy-app');
+        if (!window.location.pathname.startsWith('/delivery')) {
+          const savedDriverPage = localStorage.getItem('nmd_driver_tab') || 'deliveries';
+          window.history.replaceState({ nmdDeliveryPage: true }, '', `/delivery/${savedDriverPage}`);
+        }
+        return;
+      }
+
       // If user is logged out (no user session), NEVER allow admin or internal portal tabs!
       if (!user) {
         const pathTab = pathParts[0] || 'home';
@@ -383,6 +398,9 @@ export default function App() {
         targetTab = localStorage.getItem('nmd_admin_tab') || 'dashboard';
         if (!adminTabs.includes(targetTab)) targetTab = 'dashboard';
       }
+    } else if (user?.role === 'delivery_boy') {
+      // Once driver logs in, block navigation to public pages and strictly retain driver dashboard
+      targetTab = 'delivery-boy-app';
     } else if (user?.role === 'customer') {
       if (adminTabs.includes(tab) || (!isMobile && tab === 'customer-portal')) {
         targetTab = (tab === 'dashboard' || tab === 'home' || tab === 'customer-portal') ? 'home' : (isMobile ? 'customer-portal' : 'home');
@@ -472,11 +490,15 @@ export default function App() {
     }
   }, [user, activeTab]);
 
-  // Delivery boy isolation: Delivery partner does not access admin tabs
+  // Delivery boy isolation: Delivery partner strictly sees ONLY driver dashboard, NEVER public pages
   useEffect(() => {
     if (user?.role === 'delivery_boy') {
-      if (adminTabs.includes(activeTab)) {
+      if (activeTab !== 'delivery-boy-app') {
         setActiveTab('delivery-boy-app');
+      }
+      if (!window.location.pathname.startsWith('/delivery')) {
+        const savedDriverPage = localStorage.getItem('nmd_driver_tab') || 'deliveries';
+        window.history.replaceState({ nmdDeliveryPage: true }, '', `/delivery/${savedDriverPage}`);
       }
     }
   }, [user, activeTab]);
@@ -547,8 +569,9 @@ export default function App() {
   };
 
   const publicTabsList = ['home', 'landing', 'products', 'story', 'faqs', 'contact', 'subscription', 'register'];
-  // Once the admin logins, NEVER show public pages! Always keep admin strictly in AdminLayout
+  // Once admin or driver logs in, NEVER show public pages!
   const isAdminView = user?.role === 'admin';
+  const isDriverView = user?.role === 'delivery_boy';
 
   return (
     <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -713,7 +736,7 @@ export default function App() {
 
           {activeTab === 'profile' && <AdminProfileView setActiveTab={navigateToTab} />}
         </AdminLayout>
-      ) : activeTab === 'delivery-boy-app' ? (
+      ) : (isDriverView || activeTab === 'delivery-boy-app') ? (
         /* Dedicated Driver Portal Layout (Sidebar on Web, Bottom Bar on Mobile) */
         <DeliveryBoyApp setActiveTab={navigateToTab} />
       ) : (
