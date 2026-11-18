@@ -10,6 +10,8 @@ import '../auth/login_screen.dart';
 import '../../widgets/report_download_sheet.dart';
 import '../../widgets/delivery_proof_dialog.dart';
 import '../../core/utils/ist_date_time.dart';
+import '../home/widgets/notification_modal.dart';
+import '../../data/services/fcm_service.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -38,11 +40,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Timer? _adminWsDebounce;
   bool _isAdminDataSyncing = false;
 
+  int _unreadNotificationsCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadAllData();
     _initRealtime();
+    _fetchUnreadNotificationsCount();
+    FcmService().syncToken();
+  }
+
+  Future<void> _fetchUnreadNotificationsCount() async {
+    try {
+      final res = await _api.get('/api/notifications');
+      if (res['success'] == true && res['notifications'] is List && mounted) {
+        final list = res['notifications'] as List;
+        final unread = list.where((n) => n is Map && n['isRead'] != true).length;
+        setState(() {
+          _unreadNotificationsCount = unread;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching unread notifs count: $e');
+    }
+  }
+
+  void _openNotificationsSheet() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => NotificationModal(
+          isAdmin: true,
+          onViewProof: (date, proofUrl, driverName) {
+            _showProofPhotoDialog(date, proofUrl, driverName);
+          },
+          onOpenDeliveries: () {
+            setState(() => _selectedTabIndex = 1);
+          },
+          onNotificationChanged: () {
+            _fetchUnreadNotificationsCount();
+          },
+        ),
+      ),
+    );
+    _fetchUnreadNotificationsCount();
   }
 
   void _initRealtime() {
@@ -74,8 +116,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           });
         }
       }
+      if (type == 'NOTIFICATION_CREATED' ||
+          type == 'NOTIFICATION_UPDATED' ||
+          type == 'NOTIFICATION_DELETED' ||
+          type == 'NOTIFICATIONS_CLEARED') {
+        _fetchUnreadNotificationsCount();
+      }
       _adminWsDebounce?.cancel();
-      _adminWsDebounce = Timer(const Duration(milliseconds: 600), () {
+      _adminWsDebounce = Timer(const Duration(milliseconds: 2500), () {
         _loadAllData(silent: true);
       });
     });
@@ -101,21 +149,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     try {
       await Future.wait([
-        _loadDashboardSummary(),
-        _loadDeliveries(),
-        _loadDeliveryBoys(),
-        _loadCustomers(),
-        _loadAuditLogs(),
+        _loadDashboardSummary(null, null, null, false),
+        _loadDeliveries(null, null, null, false),
+        _loadDeliveryBoys(notify: false),
+        _loadCustomers(notify: false),
+        _loadAuditLogs(notify: false),
       ]);
     } catch (e) {
       debugPrint('Admin load error: $e');
     } finally {
       _isAdminDataSyncing = false;
-      if (mounted && !silent) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          if (!silent) _isLoading = false;
+        });
+      }
     }
   }
 
-  Future<void> _loadDashboardSummary([String? period, DateTime? fromDate, DateTime? toDate]) async {
+  Future<void> _loadDashboardSummary([String? period, DateTime? fromDate, DateTime? toDate, bool notify = true]) async {
     try {
       final p = period ?? _reportPeriod;
       String url = '/api/reports/dashboard?period=$p';
@@ -128,14 +180,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
       final res = await _api.get(url);
       if (res['success'] == true && res['summary'] is Map) {
-        if (mounted) setState(() => _summary = Map<String, dynamic>.from(res['summary']));
+        final data = Map<String, dynamic>.from(res['summary']);
+        if (mounted) {
+          if (notify) {
+            setState(() => _summary = data);
+          } else {
+            _summary = data;
+          }
+        }
       }
     } catch (e) {
       debugPrint('Error loading dashboard summary: $e');
     }
   }
 
-  Future<void> _loadDeliveries([String? range, DateTime? fromDate, DateTime? toDate]) async {
+  Future<void> _loadDeliveries([String? range, DateTime? fromDate, DateTime? toDate, bool notify = true]) async {
     try {
       final r = range ?? (_reportPeriod == 'custom' ? 'custom' : _reportPeriod);
       String url = '/api/deliveries?range=$r';
@@ -148,12 +207,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
       final res = await _api.get(url);
       if (res['success'] == true && res['deliveries'] is List) {
+        final list = (res['deliveries'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
         if (mounted) {
-          setState(() {
-            _deliveries = (res['deliveries'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          });
+          if (notify) {
+            setState(() => _deliveries = list);
+          } else {
+            _deliveries = list;
+          }
         }
       }
     } catch (e) {
@@ -161,16 +223,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _loadDeliveryBoys() async {
+  Future<void> _loadDeliveryBoys({bool notify = true}) async {
     try {
       final res = await _api.get('/api/delivery-boys');
       if (res['success'] == true && res['deliveryBoys'] is List) {
+        final list = (res['deliveryBoys'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
         if (mounted) {
-          setState(() {
-            _deliveryBoys = (res['deliveryBoys'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          });
+          if (notify) {
+            setState(() => _deliveryBoys = list);
+          } else {
+            _deliveryBoys = list;
+          }
         }
       }
     } catch (e) {
@@ -178,16 +243,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _loadCustomers() async {
+  Future<void> _loadCustomers({bool notify = true}) async {
     try {
       final res = await _api.get('/api/customers');
       if (res['success'] == true && res['customers'] is List) {
+        final list = (res['customers'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
         if (mounted) {
-          setState(() {
-            _customers = (res['customers'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          });
+          if (notify) {
+            setState(() => _customers = list);
+          } else {
+            _customers = list;
+          }
         }
       }
     } catch (e) {
@@ -195,16 +263,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
   }
 
-  Future<void> _loadAuditLogs() async {
+  Future<void> _loadAuditLogs({bool notify = true}) async {
     try {
       final res = await _api.get('/api/reports/audit-logs');
       if (res['success'] == true && res['logs'] is List) {
+        final list = (res['logs'] as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
         if (mounted) {
-          setState(() {
-            _auditLogs = (res['logs'] as List)
-                .map((e) => Map<String, dynamic>.from(e as Map))
-                .toList();
-          });
+          if (notify) {
+            setState(() => _auditLogs = list);
+          } else {
+            _auditLogs = list;
+          }
         }
       }
     } catch (e) {
@@ -304,47 +375,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildRealtimeBadge() {
-    return Consumer<RealtimeService>(
-      builder: (_, realtime, _) {
-        final isConnected = realtime.isConnected;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isConnected ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isConnected ? const Color(0xFFA5D6A7) : const Color(0xFFFFCC80),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                isConnected ? 'Live' : 'Syncing',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: isConnected ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -393,7 +423,52 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               initialDeliveries: _deliveries,
             ),
           ),
-          Center(child: _buildRealtimeBadge()),
+          Center(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.notifications_outlined, color: Color(0xFF0D5C3A), size: 20),
+                    tooltip: 'Notifications',
+                    onPressed: _openNotificationsSheet,
+                  ),
+                ),
+                if (_unreadNotificationsCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE11D48),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                      child: Text(
+                        _unreadNotificationsCount > 99 ? '99+' : '$_unreadNotificationsCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           const SizedBox(width: 12),
         ],
       ),
@@ -506,20 +581,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         );
       case 1:
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: _buildOperationsView(),
-        );
+        return _buildOperationsView(isTab: true);
       case 2:
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: _buildPartnersView(),
-        );
+        return _buildPartnersView();
       case 3:
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: _buildCustomersView(),
-        );
+        return _buildCustomersView();
       case 4:
         return _buildProfileView();
       default:
@@ -1419,7 +1485,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Widget _buildOperationsView() {
+  Widget _buildOperationsView({bool isTab = false}) {
     List<Map<String, dynamic>> filtered = _deliveries;
     if (_deliveryFilter == 'delivered') {
       filtered = filtered.where((d) => d['status'] == 'delivered').toList();
@@ -1427,35 +1493,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       filtered = filtered.where((d) => d['status'] == 'pending').toList();
     }
 
-    return Column(
-      children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _buildFilterChip('all', 'All Drops (${_deliveries.length})'),
-              const SizedBox(width: 8),
-              _buildFilterChip('delivered', 'Delivered (${_deliveries.where((d) => d['status'] == 'delivered').length})'),
-              const SizedBox(width: 8),
-              _buildFilterChip('pending', 'Pending (${_deliveries.where((d) => d['status'] == 'pending').length})'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        if (filtered.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
-            child: const Center(child: Text('No drops match this filter')),
-          )
-        else
-          ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: filtered.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 12),
-            itemBuilder: (ctx, i) {
-              final d = filtered[i];
+    final filterWidget = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _buildFilterChip('all', 'All Drops (${_deliveries.length})'),
+          const SizedBox(width: 8),
+          _buildFilterChip('delivered', 'Delivered (${_deliveries.where((d) => d['status'] == 'delivered').length})'),
+          const SizedBox(width: 8),
+          _buildFilterChip('pending', 'Pending (${_deliveries.where((d) => d['status'] == 'pending').length})'),
+        ],
+      ),
+    );
+
+    Widget buildCard(Map<String, dynamic> d) {
               final isDelivered = d['status'] == 'delivered';
               final isPending = d['status'] == 'pending';
               final proofUrl = d['proofImage']?.toString();
@@ -1589,8 +1640,72 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                 ),
               );
-            },
+    }
+
+    if (isTab) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: filterWidget,
           ),
+          Expanded(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Text('No drops match this filter'),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
+                    itemBuilder: (ctx, i) => buildCard(filtered[i]),
+                  ),
+          ),
+        ],
+      );
+    }
+
+    final displayed = filtered.take(6).toList();
+    return Column(
+      children: [
+        filterWidget,
+        const SizedBox(height: 14),
+        if (displayed.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+            child: const Center(child: Text('No drops match this filter')),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: displayed.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 12),
+            itemBuilder: (ctx, i) => buildCard(displayed[i]),
+          ),
+        if (filtered.length > 6) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => setState(() => _selectedTabIndex = 1),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF059669),
+                side: const BorderSide(color: Color(0xFF059669)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text('View All ${filtered.length} Deliveries →', style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -1686,9 +1801,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildPartnersView() {
+    if (_deliveryBoys.isEmpty) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+          child: const Text('No delivery partners assigned', style: TextStyle(color: Color(0xFF64748B))),
+        ),
+      );
+    }
     return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: _deliveryBoys.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (ctx, i) {
@@ -1889,41 +2014,53 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                onChanged: (v) => setState(() => _customerSearch = v.trim()),
-                decoration: InputDecoration(
-                  hintText: 'Search customer name or phone...',
-                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                  isDense: true,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (v) => setState(() => _customerSearch = v.trim()),
+                  decoration: InputDecoration(
+                    hintText: 'Search customer name or phone...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                    isDense: true,
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: () => _openAddCustomerModal(),
-              icon: const Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
-              label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF059669),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () => _openAddCustomerModal(),
+                icon: const Icon(Icons.person_add_rounded, size: 16, color: Colors.white),
+                label: const Text('Add', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 12),
-        ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: filtered.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (ctx, i) {
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0xFFE2E8F0))),
+                    child: const Text('No customers found', style: TextStyle(color: Color(0xFF64748B))),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (ctx, i) {
             final c = filtered[i];
             final name = c['name'] ?? 'Customer';
             final mobile = c['mobile'] ?? '';
@@ -2014,6 +2151,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
             );
           },
+        ),
         ),
       ],
     );

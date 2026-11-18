@@ -97,15 +97,22 @@ async function sendPushNotification({ recipientRole = 'all', recipientId = '', t
   if (!title || !body) return { sentCount: 0, failedCount: 0 };
 
   try {
-    const query = {};
-    if (recipientRole && recipientRole !== 'all') {
-      query.role = recipientRole;
+    let deviceRecords = [];
+    if (!recipientRole || recipientRole === 'all') {
+      deviceRecords = await DeviceToken.find({}).lean();
+    } else {
+      const targetQuery = { role: recipientRole };
+      if (recipientId && String(recipientId).trim()) {
+        targetQuery.userId = String(recipientId).trim();
+      }
+      // Deliver to targeted recipient AND always include admin devices so admin receives all push notifications
+      deviceRecords = await DeviceToken.find({
+        $or: [
+          targetQuery,
+          { role: 'admin' },
+        ],
+      }).lean();
     }
-    if (recipientId && String(recipientId).trim()) {
-      query.userId = String(recipientId).trim();
-    }
-
-    const deviceRecords = await DeviceToken.find(query).lean();
     if (!deviceRecords || deviceRecords.length === 0) {
       return { sentCount: 0, failedCount: 0, reason: 'No registered devices' };
     }

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_constants.dart';
 import '../data/models/user_model.dart';
 import '../data/services/api_service.dart';
+import '../data/services/fcm_service.dart';
 import '../data/services/realtime_service.dart';
 
 class AuthProvider extends ChangeNotifier {
@@ -59,6 +60,7 @@ class AuthProvider extends ChangeNotifier {
         await prefs.setString(AppConstants.keyUserData, jsonEncode(freshUser.toJson()));
       }
       _realtimeService.updateToken(_token);
+      FcmService().syncToken();
     } else {
       _realtimeService.updateToken('guest');
     }
@@ -84,6 +86,7 @@ class AuthProvider extends ChangeNotifier {
         _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
       }
       _realtimeService.updateToken(_token);
+      FcmService().syncToken();
       notifyListeners();
       return true;
     } else {
@@ -123,6 +126,7 @@ class AuthProvider extends ChangeNotifier {
         _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
       }
       _realtimeService.updateToken(_token);
+      FcmService().syncToken();
       notifyListeners();
       return {'success': true, 'user': res['user'], 'token': res['token']};
     } else if (needsCompletion) {
@@ -158,6 +162,7 @@ class AuthProvider extends ChangeNotifier {
         _user = UserModel.fromJson(res['user'] as Map<String, dynamic>);
       }
       _realtimeService.updateToken(_token);
+      FcmService().syncToken();
       notifyListeners();
       return true;
     } else {
@@ -214,6 +219,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Sign out
   Future<void> logout() async {
+    await FcmService().unregister();
     _user = null;
     _token = null;
     _isGuest = false;

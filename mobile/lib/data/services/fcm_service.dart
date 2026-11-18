@@ -107,6 +107,17 @@ class FcmService {
     } catch (_) {}
   }
 
+  /// Public sync method to register/refresh device token with backend for current active session
+  Future<void> syncToken() async {
+    try {
+      final token = _fcmToken ?? await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        _fcmToken = token;
+        await _syncTokenWithBackend(token);
+      }
+    } catch (_) {}
+  }
+
   /// Remove device token on logout
   Future<void> unregister() async {
     if (_fcmToken != null) {

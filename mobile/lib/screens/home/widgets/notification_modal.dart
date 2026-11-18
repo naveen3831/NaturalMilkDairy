@@ -10,12 +10,14 @@ class NotificationModal extends StatefulWidget {
   final Function(String date, String? proofUrl, String? driverName)? onViewProof;
   final VoidCallback? onNotificationChanged;
   final VoidCallback? onOpenDeliveries;
+  final bool isAdmin;
 
   const NotificationModal({
     super.key,
     this.onViewProof,
     this.onNotificationChanged,
     this.onOpenDeliveries,
+    this.isAdmin = false,
   });
 
   @override
@@ -81,7 +83,11 @@ class _NotificationModalState extends State<NotificationModal> {
   }
 
   bool _isNotificationForCurrentCustomer(Map<String, dynamic> item) {
+    if (widget.isAdmin) return true;
     try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.user?.role == 'admin' || auth.user?.isAdmin == true) return true;
+
       final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
       // Global broadcast notifications intended for all users
       if (role == 'all') return true;
@@ -92,7 +98,6 @@ class _NotificationModalState extends State<NotificationModal> {
       final recipId = (item['recipientId']?.toString() ?? '').toLowerCase().trim();
 
       // Collect all current user identifiers
-      final auth = Provider.of<AuthProvider>(context, listen: false);
       final customer = Provider.of<CustomerProvider>(context, listen: false);
       final currentUser = auth.user;
 

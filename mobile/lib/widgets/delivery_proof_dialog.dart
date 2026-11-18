@@ -1,7 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/config/app_config.dart';
 import '../core/utils/ist_date_time.dart';
+
+Uint8List _decodeBase64Worker(String input) {
+  try {
+    return base64Decode(input);
+  } catch (_) {
+    return Uint8List(0);
+  }
+}
 
 /// Centralized Delivery Proof Photo Renderer with Location Details Inside Image
 /// Uniformly used across Admin, Delivery Partner, and Customer mobile views.
@@ -38,23 +47,43 @@ class DeliveryProofHelper {
       return buildPlaceholder(width: width, height: height);
     }
 
-    // Handle base64 image data
+    // Handle base64 image data in a background isolate to keep UI thread completely responsive
     if (clean.startsWith('data:image/')) {
-      try {
-        final commaIdx = clean.indexOf(',');
-        final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
-        final bytes = base64Decode(cleanBase64);
-        return Image.memory(
-          bytes,
-          width: width,
-          height: height,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) =>
-              buildPlaceholder(width: width, height: height),
-        );
-      } catch (e) {
-        return buildPlaceholder(width: width, height: height);
-      }
+      final commaIdx = clean.indexOf(',');
+      final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
+      return FutureBuilder<Uint8List>(
+        future: compute(_decodeBase64Worker, cleanBase64),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              width: width,
+              height: height,
+              color: const Color(0xFF07160E),
+              child: const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF34D399),
+                  ),
+                ),
+              ),
+            );
+          }
+          if (snapshot.hasData && snapshot.data != null && snapshot.data!.isNotEmpty) {
+            return Image.memory(
+              snapshot.data!,
+              width: width,
+              height: height,
+              fit: fit,
+              errorBuilder: (context, error, stackTrace) =>
+                  buildPlaceholder(width: width, height: height),
+            );
+          }
+          return buildPlaceholder(width: width, height: height);
+        },
+      );
     }
 
     final resolved = resolveUrl(clean);
@@ -62,7 +91,6 @@ class DeliveryProofHelper {
       resolved,
       width: width,
       height: height,
-      cacheWidth: width != null ? (width * 2).toInt() : 600,
       fit: fit,
       errorBuilder: (context, error, stackTrace) {
         // Fallback to direct live cloud server if not already attempted
@@ -73,7 +101,6 @@ class DeliveryProofHelper {
             cloudUrl,
             width: width,
             height: height,
-            cacheWidth: width != null ? (width * 2).toInt() : 600,
             fit: fit,
             errorBuilder: (context, error, stackTrace) => buildPlaceholder(width: width, height: height),
           );

@@ -41,6 +41,13 @@ class InAppNotificationService {
           title: '💰 Payment Recorded',
           message: amount.isNotEmpty ? 'Payment of ₹$amount received.' : 'Payment successfully recorded.',
         );
+      } else if (type == 'DRIVER_DUTY_UPDATED' || type == 'DELIVERY_BOY_UPDATED') {
+        final boyName = payload['name']?.toString() ?? payload['boyName']?.toString() ?? 'Partner';
+        final isOnline = payload['isOnline'] == true;
+        showNotification(
+          title: isOnline ? '🟢 Partner On Duty' : '⏸ Partner Off Duty',
+          message: '$boyName is now ${isOnline ? "active on delivery route" : "off duty"}.',
+        );
       }
     });
   }

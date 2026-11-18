@@ -105,13 +105,8 @@ const resolveUserIdentifiers = async (user) => {
 // Build strictly user-scoped MongoDB query
 const getUserNotificationScope = async (user) => {
   if (user.role === 'admin') {
-    return {
-      $or: [
-        { recipientRole: 'admin' },
-        { recipientRole: 'all' },
-        { recipientRole: { $exists: false } },
-      ],
-    };
+    // Admin receives and manages ALL notifications across the platform
+    return {};
   }
 
   const ids = await resolveUserIdentifiers(user);
@@ -157,14 +152,8 @@ const getUserNotificationScope = async (user) => {
 };
 
 const canAccessNotification = (notification, user, ids = []) => {
+  if (user.role === 'admin') return true;
   if (notification.recipientRole === 'all') return true;
-
-  const targetId = String(notification.recipientId || '').trim();
-
-  if (user.role === 'admin') {
-    if (notification.recipientRole === 'admin' || !notification.recipientRole) return true;
-    return false;
-  }
 
   if (user.role === 'customer' || user.role === 'user') {
     if (notification.recipientRole !== 'customer') return false;
