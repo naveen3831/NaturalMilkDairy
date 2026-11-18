@@ -77,18 +77,9 @@ class ApiService {
       }
     }
 
-    // 4. Fallback to live server if local candidates were unreachable
-    if (!AppConfig.isLiveServerActive) {
-      final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
-      if (isLiveAlive) {
-        _activeBaseUrl = AppConfig.liveBaseUrl;
-        debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
-        return _activeBaseUrl!;
-      }
-    }
-
+    // 4. Fallback when local candidates were unreachable
     _activeBaseUrl = AppConfig.isLiveServerActive ? AppConfig.liveBaseUrl : AppConstants.defaultBaseUrl;
-    debugPrint('🌐 ApiService: Falling back to: $_activeBaseUrl');
+    debugPrint('🌐 ApiService: Active backend URL: $_activeBaseUrl');
     return _activeBaseUrl!;
   }
 
