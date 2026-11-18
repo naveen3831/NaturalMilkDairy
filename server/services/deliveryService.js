@@ -35,15 +35,12 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
       const plan = customer.deliveryPlan || {};
       const subscription = customer.subscription;
 
-      // Allow delivery if customer has assigned driver, active subscription, or area matches active locations
-      const hasAssignedDriver = Boolean(plan.deliveryBoyId || plan.deliveryBoyName);
-      const hasActiveSub = subscription?.status === 'active';
-      const areaMatches = !custArea || activeLocationSet.size === 0 || activeLocationSet.has(custArea) ||
-        [...activeLocationSet].some((loc) => custArea.includes(loc) || loc.includes(custArea));
-
-      if (!hasAssignedDriver && !hasActiveSub && !areaMatches) {
+      // STRICT REQUIREMENT: Only customers with an active subscription or explicit subscribed plan receive deliveries!
+      const hasActiveSub = subscription?.status === 'active' || plan.isSubscribed === true;
+      if (!hasActiveSub) {
         continue;
       }
+
       if (subscription?.status === 'pending_payment' || subscription?.status === 'expired' ||
           subscription?.status === 'cancelled') {
         continue;
@@ -232,6 +229,11 @@ let lastEnsureAllTime = 0;
 
 const ensureDeliveriesForCustomer = async (customer, force = false) => {
   if (!customer) return;
+  // If customer is not actively subscribed, DO NOT generate deliveries!
+  const hasActiveSub = customer.subscription?.status === 'active' || customer.deliveryPlan?.isSubscribed === true;
+  if (!hasActiveSub) {
+    return;
+  }
   try {
     const custId = customer.customerId || customer._id.toString();
     const now = Date.now();
@@ -356,10 +358,10 @@ const ensureDeliveriesForCustomer = async (customer, force = false) => {
           shouldDeliver = false;
         }
 
-        if (shouldDeliver) {
-          const isPast = dStr < todayStr;
-          const isPrepaid = paymentType === 'prepaid' || subscription?.status === 'active';
-          const status = (isPast && isPrepaid) ? 'delivered' : 'pending';
+        // Realtime data integrity: Only schedule pending deliveries for today or future dates.
+        // Never fabricate past deliveries as 'delivered' for dates that were not physically recorded.
+        if (shouldDeliver && dStr >= todayStr) {
+          const status = 'pending';
 
           toInsert.push({
             customerId: custId,
