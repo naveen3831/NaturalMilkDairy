@@ -308,17 +308,28 @@ class ApiService {
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
     String portal = 'customer',
+    String? name,
     String? mobile,
+    String? password,
     bool retryIfFailed = true,
   }) async {
+    if (!AppConfig.isLiveServerActive && retryIfFailed) {
+      await resolveActiveBaseUrl();
+    }
     final url = Uri.parse('$baseUrl/api/auth/google');
     try {
       final payload = <String, dynamic>{
         'idToken': idToken,
         'portal': portal,
       };
+      if (name != null && name.trim().isNotEmpty) {
+        payload['name'] = name.trim();
+      }
       if (mobile != null && mobile.trim().isNotEmpty) {
         payload['mobile'] = mobile.trim();
+      }
+      if (password != null && password.trim().isNotEmpty) {
+        payload['password'] = password.trim();
       }
 
       final response = await http
@@ -338,7 +349,7 @@ class ApiService {
       } catch (_) {}
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        if (data['success'] == true && data['requiresMobile'] != true) {
+        if (data['success'] == true && data['requiresMobile'] != true && data['requiresProfileCompletion'] != true) {
           final t = data['token']?.toString();
           if (t != null) {
             await setToken(t);
@@ -354,7 +365,14 @@ class ApiService {
         for (final candidate in AppConstants.candidateBaseUrls) {
           if (candidate != baseUrl && await testConnection(candidate)) {
             _activeBaseUrl = candidate;
-            return await loginWithGoogle(idToken: idToken, portal: portal, mobile: mobile, retryIfFailed: false);
+            return await loginWithGoogle(
+              idToken: idToken,
+              portal: portal,
+              name: name,
+              mobile: mobile,
+              password: password,
+              retryIfFailed: false,
+            );
           }
         }
       }
@@ -367,7 +385,14 @@ class ApiService {
         for (final candidate in AppConstants.candidateBaseUrls) {
           if (candidate != baseUrl && await testConnection(candidate)) {
             _activeBaseUrl = candidate;
-            return await loginWithGoogle(idToken: idToken, portal: portal, mobile: mobile, retryIfFailed: false);
+            return await loginWithGoogle(
+              idToken: idToken,
+              portal: portal,
+              name: name,
+              mobile: mobile,
+              password: password,
+              retryIfFailed: false,
+            );
           }
         }
       }

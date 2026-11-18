@@ -152,25 +152,75 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const loginWithGoogle = async (portal = 'customer') => {
+  const [pendingGoogleAuth, setPendingGoogleAuthState] = useState(() => {
     try {
-      const idToken = await triggerGoogleSignIn();
-      if (!idToken) {
+      const stored = sessionStorage.getItem('nmd_pending_google_auth');
+      return stored ? JSON.parse(stored) : null;
+    } catch (_) {
+      return null;
+    }
+  });
+
+  const savePendingGoogleAuth = (data) => {
+    setPendingGoogleAuthState(data);
+    if (data) {
+      sessionStorage.setItem('nmd_pending_google_auth', JSON.stringify(data));
+    } else {
+      sessionStorage.removeItem('nmd_pending_google_auth');
+    }
+  };
+
+  const loginWithGoogle = async (portal = 'customer', profileData = null) => {
+    try {
+      let authResult = profileData;
+      if (!authResult || !authResult.idToken) {
+        authResult = await triggerGoogleSignIn();
+      }
+      if (!authResult || (!authResult.idToken && typeof authResult !== 'string')) {
         return { success: false, message: 'Google Sign-In was cancelled.' };
       }
 
-      const res = await api.post('/api/auth/google', {
+      const idToken = typeof authResult === 'string' ? authResult : authResult.idToken;
+      const googleEmail = authResult.email || '';
+      const googleName = authResult.name || '';
+      const googlePicture = authResult.picture || '';
+
+      const payload = {
         idToken,
         portal,
-      });
+      };
+      if (profileData?.name) payload.name = profileData.name;
+      if (profileData?.mobile) payload.mobile = profileData.mobile;
+      if (profileData?.password) payload.password = profileData.password;
+
+      const res = await api.post('/api/auth/google', payload);
       const data = await res.json();
 
       if (res.ok && data.success && data.user && data.token) {
+        savePendingGoogleAuth(null);
         setUser(data.user);
         sessionStorage.setItem('nmd_user', JSON.stringify(data.user));
         setToken(data.token);
         sessionStorage.setItem('nmd_jwt_token', data.token);
         return { success: true, user: data.user, token: data.token, isNewUser: data.isNewUser };
+      } else if (data.requiresProfileCompletion || data.requiresMobile) {
+        const pending = {
+          idToken,
+          email: data.email || googleEmail,
+          name: data.name || googleName,
+          picture: googlePicture,
+          portal,
+        };
+        savePendingGoogleAuth(pending);
+        return {
+          success: true,
+          requiresProfileCompletion: true,
+          requiresMobile: true,
+          pendingGoogleAuth: pending,
+          email: pending.email,
+          name: pending.name,
+          message: data.message,
+        };
       } else {
         return {
           success: false,
@@ -184,6 +234,28 @@ export const AuthProvider = ({ children }) => {
         message: err.message || 'Unable to complete Google Sign-In.',
       };
     }
+  };
+
+  const completeGoogleProfile = async ({ name, mobile, password, portal = 'customer' }) => {
+    const currentPending = pendingGoogleAuth || (() => {
+      try {
+        return JSON.parse(sessionStorage.getItem('nmd_pending_google_auth') || 'null');
+      } catch (_) {
+        return null;
+      }
+    })();
+
+    if (!currentPending || !currentPending.idToken) {
+      return { success: false, message: 'Google session expired. Please sign in again with Google.' };
+    }
+
+    return loginWithGoogle(portal || currentPending.portal || 'customer', {
+      idToken: currentPending.idToken,
+      email: currentPending.email,
+      name,
+      mobile,
+      password,
+    });
   };
 
   const authFetch = async (url, options = {}) => {
@@ -246,6 +318,9 @@ export const AuthProvider = ({ children }) => {
         authFetch,
         login,
         loginWithGoogle,
+        completeGoogleProfile,
+        pendingGoogleAuth,
+        savePendingGoogleAuth,
         register,
         logout,
       }}

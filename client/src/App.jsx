@@ -10,6 +10,7 @@ import FaqsPage from './pages/FaqsPage';
 import ContactPage from './pages/ContactPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import GoogleCompleteProfilePage from './pages/GoogleCompleteProfilePage';
 import PublicSubscriptionPage from './pages/SubscriptionPage';
 import FloatingContactButton from './components/FloatingContactButton';
 
@@ -156,7 +157,7 @@ export default function App() {
       }
 
       const knownTabs = [
-        'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register',
+        'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register', 'google-complete-profile',
         'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'contact-settings', 'profile', 'add-delivery-boy',
@@ -764,6 +765,10 @@ export default function App() {
 
             {activeTab === 'register' && (
               <RegisterPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'google-complete-profile' && (
+              <GoogleCompleteProfilePage setActiveTab={navigateToTab} />
             )}
 
             {/* Customer Dedicated Full Pages on Website */}

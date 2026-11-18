@@ -7,6 +7,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
 import '../home/home_screen.dart';
 import 'login_screen.dart';
+import 'google_complete_profile_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -108,19 +109,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
 
-      final rawMobile = _mobileController.text.trim();
-      final digits = rawMobile.replaceAll(RegExp(r'\D'), '');
-      final enteredMobile = digits.length == 10 ? digits : null;
-
-      var res = await auth.loginWithGoogleToken(
+      final res = await auth.loginWithGoogleToken(
         googleResult.idToken,
         portal: 'customer',
-        mobile: enteredMobile,
       );
 
       if (!mounted) return;
 
-      if (res['success'] == true && res['requiresMobile'] != true) {
+      if (res['success'] == true && res['requiresMobile'] != true && res['requiresProfileCompletion'] != true) {
         if (mounted) {
           context.read<CustomerProvider>().clearCustomerData();
         }
@@ -134,7 +130,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           MaterialPageRoute(builder: (_) => const HomeScreen()),
           (route) => false,
         );
+        return;
       }
+
+      // New user or incomplete profile -> Navigate to Google Complete Profile screen
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => GoogleCompleteProfileScreen(googleResult: googleResult),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

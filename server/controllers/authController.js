@@ -748,6 +748,15 @@ const googleLogin = async (req, res) => {
     const cleanDigits = rawMobileInput.replace(/\D/g, '');
     const mobileDigits = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : '';
 
+    const inputName = (req.body?.name || '').toString().trim();
+    const displayName = inputName || (googleName || '').trim() || 'Valued Customer';
+
+    const inputPassword = (req.body?.password || '').toString().trim();
+    let passwordHash = '';
+    if (inputPassword) {
+      passwordHash = await hashPassword(inputPassword);
+    }
+
     let foundCustomer = await Customer.findOne({
       $or: [{ email: emailRegex }, { firebaseUid }],
     });
@@ -773,13 +782,14 @@ const googleLogin = async (req, res) => {
         });
       }
 
-      // Link firebaseUid and real mobile if provided
+      // Link firebaseUid, update name, real mobile and password if provided
       if (foundCustomer) {
         if (!foundCustomer.firebaseUid || foundCustomer.firebaseUid !== firebaseUid) {
           foundCustomer.firebaseUid = firebaseUid;
           foundCustomer.authProvider = 'google';
         }
         if (!foundCustomer.email) foundCustomer.email = googleEmail;
+        if (inputName) foundCustomer.name = inputName;
         if (mobileDigits && (!foundCustomer.mobile || foundCustomer.mobile.startsWith('temp_'))) {
           foundCustomer.mobile = mobileDigits;
         }
@@ -791,16 +801,20 @@ const googleLogin = async (req, res) => {
           foundUser.authProvider = 'google';
         }
         if (!foundUser.email) foundUser.email = googleEmail;
+        if (inputName) foundUser.name = inputName;
         if (googlePicture && !foundUser.avatar) foundUser.avatar = googlePicture;
         if (mobileDigits && (!foundUser.mobile || foundUser.mobile.startsWith('temp_'))) {
           foundUser.mobile = mobileDigits;
+        }
+        if (passwordHash) {
+          foundUser.password = passwordHash;
         }
         await foundUser.save();
       }
 
       const custPayload = {
         id: (foundCustomer?._id || foundUser?._id).toString(),
-        name: foundCustomer?.name || foundUser?.name || googleName,
+        name: foundCustomer?.name || foundUser?.name || displayName,
         email: googleEmail,
         mobile: foundCustomer?.mobile || foundUser?.mobile || mobileDigits || '',
         role: 'customer',
@@ -819,16 +833,15 @@ const googleLogin = async (req, res) => {
     }
 
     // 6. NEW USER: Require real mobile number, never generate fake random numbers
-    const displayName = (googleName || '').trim() || 'Valued Customer';
-
     if (!mobileDigits) {
       return res.status(200).json({
         success: true,
+        requiresProfileCompletion: true,
         requiresMobile: true,
         email: googleEmail,
         name: displayName,
         firebaseUid,
-        message: 'Please provide your 10-digit mobile number to complete registration.',
+        message: 'Please complete your profile with your phone number and password.',
       });
     }
 
@@ -851,6 +864,8 @@ const googleLogin = async (req, res) => {
       existingUserWithPhone.firebaseUid = firebaseUid;
       existingUserWithPhone.authProvider = 'google';
       if (!existingUserWithPhone.email) existingUserWithPhone.email = googleEmail;
+      if (inputName) existingUserWithPhone.name = inputName;
+      if (passwordHash) existingUserWithPhone.password = passwordHash;
       await existingUserWithPhone.save();
 
       const existingCustWithPhone = await Customer.findOne({ mobile: realMobile });
@@ -858,6 +873,7 @@ const googleLogin = async (req, res) => {
         existingCustWithPhone.firebaseUid = firebaseUid;
         existingCustWithPhone.authProvider = 'google';
         if (!existingCustWithPhone.email) existingCustWithPhone.email = googleEmail;
+        if (inputName) existingCustWithPhone.name = inputName;
         await existingCustWithPhone.save();
       }
 
@@ -892,6 +908,7 @@ const googleLogin = async (req, res) => {
       name: displayName,
       email: googleEmail,
       mobile: realMobile,
+      password: passwordHash || '',
       role: 'customer',
       status: 'active',
       customerId: newCustId,

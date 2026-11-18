@@ -42,7 +42,7 @@ function loadGsiScript() {
 
 /**
  * Trigger Google Sign-In popup flow
- * @returns {Promise<string>} Firebase / Google ID Token
+ * @returns {Promise<{idToken: string, email: string, name: string, picture: string}>}
  */
 export async function triggerGoogleSignIn() {
   await loadGsiScript();
@@ -60,11 +60,32 @@ export async function triggerGoogleSignIn() {
         const tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: 'email profile openid',
-          callback: (tokenResponse) => {
+          callback: async (tokenResponse) => {
             if (settled) return;
             settled = true;
             if (tokenResponse?.access_token) {
-              resolve(tokenResponse.access_token);
+              const accessToken = tokenResponse.access_token;
+              let email = '';
+              let name = '';
+              let picture = '';
+              try {
+                const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                if (userRes.ok) {
+                  const userInfo = await userRes.json();
+                  email = userInfo.email || '';
+                  name = userInfo.name || '';
+                  picture = userInfo.picture || '';
+                }
+              } catch (_) {}
+              resolve({
+                idToken: accessToken,
+                token: accessToken,
+                email,
+                name,
+                picture,
+              });
             } else if (tokenResponse?.error) {
               const err = tokenResponse.error_description || tokenResponse.error;
               if (err.includes('origin_mismatch') || err.includes('redirect_uri_mismatch')) {
@@ -103,7 +124,24 @@ export async function triggerGoogleSignIn() {
             if (settled) return;
             settled = true;
             if (response?.credential) {
-              resolve(response.credential);
+              const credential = response.credential;
+              let email = '';
+              let name = '';
+              let picture = '';
+              try {
+                const payloadBase64 = credential.split('.')[1];
+                const decodedJson = JSON.parse(atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/')));
+                email = decodedJson.email || '';
+                name = decodedJson.name || '';
+                picture = decodedJson.picture || '';
+              } catch (_) {}
+              resolve({
+                idToken: credential,
+                token: credential,
+                email,
+                name,
+                picture,
+              });
             } else {
               reject(new Error('No credential returned from Google.'));
             }

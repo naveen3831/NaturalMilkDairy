@@ -44,6 +44,13 @@ export default function RegisterPage({ setActiveTab }) {
     setIsLoading(true);
     const res = await loginWithGoogle('customer');
     setIsLoading(false);
+
+    if (res.requiresProfileCompletion || res.requiresMobile) {
+      localStorage.setItem('nmd_current_tab', 'google-complete-profile');
+      setActiveTab('google-complete-profile');
+      return;
+    }
+
     if (res.success && res.user) {
       if (res.user.role === 'delivery_boy') {
         localStorage.setItem('nmd_current_tab', 'delivery-boy-app');
