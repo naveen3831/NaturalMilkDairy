@@ -40,6 +40,7 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
     customDateRange,
     setCustomDateRange,
     isLoadingReports,
+    customers = [],
   } = useDairy();
 
   const [mobileFilter, setMobileFilter] = useState('all'); // 'all', 'delivered', 'pending'
