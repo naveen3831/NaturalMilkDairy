@@ -49,6 +49,13 @@ class FcmService {
         print('FCM Permission Status: ${settings.authorizationStatus}');
       }
 
+      // Set foreground notification presentation options for heads-up alert
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
       // Get device FCM token
       _fcmToken = await messaging.getToken();
       if (_fcmToken != null && _fcmToken!.isNotEmpty) {

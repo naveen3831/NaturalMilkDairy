@@ -19,6 +19,11 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Base64
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -28,6 +33,8 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.naturalmilk.dairy/app_launcher"
+    private val NOTIFICATION_CHANNEL_ID = "natural_milk_dairy_channel"
+    private val NOTIFICATION_CHANNEL_NAME = "Natural Milk Dairy Alerts"
     private val REQUEST_IMAGE_CAPTURE = 2024
     private val REQUEST_CAMERA_PERMISSION = 2025
     private val REQUEST_LOCATION_PERMISSION = 2026
@@ -36,10 +43,22 @@ class MainActivity : FlutterActivity() {
     private var currentPhotoPath: String? = null
     private var activePrintWebView: android.webkit.WebView? = null
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        createNotificationChannel()
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        createNotificationChannel()
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "showNativeNotification" -> {
+                    val title = call.argument<String>("title") ?: "Natural Milk Dairy"
+                    val body = call.argument<String>("body") ?: call.argument<String>("message") ?: "New notification"
+                    showPushUpNotification(title, body)
+                    result.success(true)
+                }
                 "openMap" -> {
                     val url = call.argument<String>("url")
                     if (url != null) {
@@ -413,6 +432,58 @@ class MainActivity : FlutterActivity() {
                 }
                 res?.success(null)
             }
+        }
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val importance = NotificationManager.IMPORTANCE_HIGH
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance).apply {
+                description = "Doorstep Delivery & Subscription Alerts"
+                enableLights(true)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 300, 200, 300)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showPushUpNotification(title: String, body: String) {
+        try {
+            createNotificationChannel()
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingIntent = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent, pendingIntentFlags)
+
+            val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+
+            val notificationManager = NotificationManagerCompat.from(this)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                val notificationId = (System.currentTimeMillis() % 100000).toInt()
+                notificationManager.notify(notificationId, builder.build())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

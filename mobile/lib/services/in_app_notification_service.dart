@@ -44,7 +44,17 @@ class InAppNotificationService {
     });
   }
 
+  static const MethodChannel _nativeChannel = MethodChannel('com.naturalmilk.dairy/app_launcher');
+
   static void showNotification({required String title, required String message}) {
+    // 1. Trigger System Push-Up Heads-Up Notification in Android Tray
+    try {
+      _nativeChannel.invokeMethod('showNativeNotification', {
+        'title': title,
+        'body': message,
+      });
+    } catch (_) {}
+
     try {
       HapticFeedback.mediumImpact();
     } catch (_) {}
