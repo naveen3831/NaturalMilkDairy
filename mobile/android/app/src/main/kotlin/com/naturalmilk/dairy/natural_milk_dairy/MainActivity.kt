@@ -46,6 +46,7 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createNotificationChannel()
+        requestNotificationPermission()
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -431,6 +432,14 @@ class MainActivity : FlutterActivity() {
                     try { File(path).delete() } catch (_: Exception) {}
                 }
                 res?.success(null)
+            }
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3001)
             }
         }
     }

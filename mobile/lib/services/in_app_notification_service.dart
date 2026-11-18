@@ -16,14 +16,15 @@ class InAppNotificationService {
 
     _realtimeSub = RealtimeService().eventStream.listen((event) {
       final type = event['type']?.toString() ?? '';
+      final payload = (event['payload'] as Map<String, dynamic>?) ?? event;
 
       if (type == 'NOTIFICATION_CREATED' || type == 'NOTIFICATION_RECEIVED') {
-        final title = event['title']?.toString() ?? 'Natural Milk Dairy';
-        final message = event['message']?.toString() ?? 'You have a new update';
+        final title = payload['title']?.toString() ?? event['title']?.toString() ?? 'Natural Milk Dairy';
+        final message = payload['message']?.toString() ?? event['message']?.toString() ?? 'You have a new update';
         showNotification(title: title, message: message);
       } else if (type == 'DELIVERY_COMPLETED') {
-        final delivery = event['delivery'];
-        final custName = delivery?['customerName']?.toString() ?? 'Customer';
+        final delivery = payload['delivery'] ?? event['delivery'] ?? payload;
+        final custName = delivery is Map ? (delivery['customerName']?.toString() ?? 'Customer') : 'Customer';
         showNotification(
           title: '✅ Delivery Completed',
           message: 'Delivery successfully completed for $custName',
@@ -33,9 +34,9 @@ class InAppNotificationService {
           title: '📦 Route Assigned',
           message: 'Your morning delivery route has been updated by dispatch.',
         );
-      } else if (type == 'PAYMENT_RECEIVED') {
-        final payment = event['payment'];
-        final amount = payment?['amount']?.toString() ?? '';
+      } else if (type == 'PAYMENT_RECEIVED' || type == 'PAYMENT_RECORDED' || type == 'PAYMENT_UPDATED') {
+        final payment = payload['payment'] ?? event['payment'] ?? payload;
+        final amount = payment is Map ? (payment['amount']?.toString() ?? '') : '';
         showNotification(
           title: '💰 Payment Recorded',
           message: amount.isNotEmpty ? 'Payment of ₹$amount received.' : 'Payment successfully recorded.',
