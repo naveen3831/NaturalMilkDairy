@@ -2,12 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const DeviceToken = require('../models/DeviceToken');
 
-let admin = null;
-let isInitialized = false;
+let firebaseApp = null;
+let messagingService = null;
+let hasCredentials = false;
 
 // Attempt to initialize Firebase Admin SDK
 try {
   const adminPkg = require('firebase-admin');
+  const { getMessaging } = require('firebase-admin/messaging');
   
   // Check if a service account file exists or env var is provided
   const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
@@ -16,37 +18,37 @@ try {
 
   if (fs.existsSync(serviceAccountPath)) {
     const serviceAccount = require(serviceAccountPath);
-    adminPkg.initializeApp({
+    firebaseApp = adminPkg.initializeApp({
       credential: adminPkg.credential.cert(serviceAccount),
       projectId: serviceAccount.project_id || 'milkdairy-2800e',
     });
-    admin = adminPkg;
-    isInitialized = true;
+    messagingService = getMessaging(firebaseApp);
+    hasCredentials = true;
     console.log('✅ Firebase Admin SDK initialized with service account:', serviceAccount.project_id);
   } else if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      adminPkg.initializeApp({
+      firebaseApp = adminPkg.initializeApp({
         credential: adminPkg.credential.cert(serviceAccount),
         projectId: serviceAccount.project_id || 'milkdairy-2800e',
       });
-      admin = adminPkg;
-      isInitialized = true;
+      messagingService = getMessaging(firebaseApp);
+      hasCredentials = true;
       console.log('✅ Firebase Admin SDK initialized from JSON environment variable');
     } catch (parseErr) {
       console.warn('⚠️ Could not parse FIREBASE_SERVICE_ACCOUNT_JSON:', parseErr.message);
     }
   } else {
-    // Initialize with project ID (can send via Google Cloud Application Default Credentials if present)
-    adminPkg.initializeApp({
+    // Initialized without service account key: will log instructions when push dispatch is attempted
+    firebaseApp = adminPkg.initializeApp({
       projectId: 'milkdairy-2800e',
     });
-    admin = adminPkg;
-    isInitialized = true;
-    console.log('ℹ️ Firebase Admin SDK initialized for project: milkdairy-2800e');
+    messagingService = getMessaging(firebaseApp);
+    hasCredentials = false;
+    console.log('ℹ️ Firebase Admin SDK initialized (Standby for service account credentials)');
   }
 } catch (err) {
-  console.warn('ℹ️ firebase-admin optional initialization notice:', err.message);
+  console.warn('ℹ️ firebase-admin initialization notice:', err.message);
 }
 
 /**
@@ -111,9 +113,14 @@ async function sendPushNotification({ recipientRole = 'all', recipientId = '', t
     const tokens = [...new Set(deviceRecords.map((d) => d.token).filter(Boolean))];
     if (tokens.length === 0) return { sentCount: 0, failedCount: 0 };
 
-    if (!admin || !isInitialized) {
-      console.log(`ℹ️ [FCM Queue] Would send push to ${tokens.length} devices: "${title}" (Waiting for Firebase Admin credentials)`);
-      return { sentCount: 0, pendingCount: tokens.length };
+    if (!messagingService || !hasCredentials) {
+      console.log(
+        `ℹ️ [FCM] Notification queued for ${tokens.length} device(s): "${title}"\n` +
+        `   👉 To deliver real push popups, place your Firebase service account key at:\n` +
+        `      server/config/firebase-service-account.json\n` +
+        `   (Download from: https://console.firebase.google.com/project/milkdairy-2800e/settings/serviceaccounts/adminsdk)`
+      );
+      return { sentCount: 0, pendingCount: tokens.length, waitingCredentials: true };
     }
 
     // Prepare stringified payload data for FCM
@@ -152,7 +159,7 @@ async function sendPushNotification({ recipientRole = 'all', recipientId = '', t
       },
     };
 
-    const response = await admin.messaging().sendEachForMulticast(message);
+    const response = await messagingService.sendEachForMulticast(message);
 
     // Clean up stale / unregistered tokens
     if (response.failureCount > 0) {

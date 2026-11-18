@@ -69,17 +69,30 @@ export function NotificationProvider({ children }) {
     }
   }, [token]);
 
-  // Display native OS browser push notification
+  // Display native OS browser push notification via ServiceWorker or Notification API
   const showNativeNotification = useCallback((title, body) => {
     if (typeof window === 'undefined' || !('Notification' in window)) return;
     if (Notification.permission === 'granted') {
-      try {
-        new Notification(title, {
-          body: body || 'New update from Natural Milk Dairy',
-          icon: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
-          badge: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
-        });
-      } catch (_) {}
+      const options = {
+        body: body || 'New update from Natural Milk Dairy',
+        icon: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
+        badge: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
+      };
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready
+          .then((reg) => {
+            reg.showNotification(title, options).catch(() => {
+              try { new Notification(title, options); } catch (_) {}
+            });
+          })
+          .catch(() => {
+            try { new Notification(title, options); } catch (_) {}
+          });
+      } else {
+        try {
+          new Notification(title, options);
+        } catch (_) {}
+      }
     }
   }, []);
 
