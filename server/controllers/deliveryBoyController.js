@@ -885,6 +885,119 @@ const toggleDutyStatus = async (req, res) => {
   }
 };
 
+/**
+ * Driver self-service profile update
+ * PUT /api/delivery-boys/me
+ */
+const updateMyProfile = async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid profile payload.' });
+    }
+
+    const userId = req.user?.id || req.user?._id;
+    const userMobile = req.user?.mobile;
+    const userEmail = req.user?.email;
+
+    const escapeRegex = (text) => (text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+
+    // Find DeliveryBoy by user id, mobile or email
+    const query = [];
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) query.push({ _id: userId });
+    if (userMobile) query.push({ mobile: userMobile });
+    if (userEmail) query.push({ email: userEmail.toLowerCase() });
+
+    let boy = query.length > 0 ? await DeliveryBoy.findOne({ $or: query }) : null;
+    if (!boy && req.user?.name) {
+      boy = await DeliveryBoy.findOne({ name: new RegExp(`^${escapeRegex(req.user.name)}$`, 'i') });
+    }
+
+    if (!boy) {
+      return res.status(404).json({ success: false, message: 'Delivery partner record not found.' });
+    }
+
+    const { name, email, mobile, assignedArea, vehicleNumber, password, bloodGroup, drivingLicense, emergencyContact } = req.body;
+
+    // Check duplicate mobile if changing mobile
+    if (mobile && mobile.trim() !== boy.mobile) {
+      const cleanMobile = mobile.trim();
+      const existing = (await DeliveryBoy.findOne({ mobile: cleanMobile, _id: { $ne: boy._id } })) ||
+                       (await User.findOne({ mobile: cleanMobile, _id: { $ne: userId } }));
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: `Phone number ${cleanMobile} is already in use by another account.`,
+        });
+      }
+      boy.mobile = cleanMobile;
+    }
+
+    if (name && name.trim()) boy.name = name.trim();
+    if (email !== undefined) boy.email = (email || '').trim().toLowerCase();
+    if (assignedArea !== undefined) boy.assignedArea = (assignedArea || '').trim();
+    if (vehicleNumber !== undefined) boy.vehicleNumber = (vehicleNumber || '').trim();
+    if (bloodGroup !== undefined) boy.bloodGroup = (bloodGroup || '').trim();
+    if (drivingLicense !== undefined) boy.drivingLicense = (drivingLicense || '').trim();
+    if (emergencyContact !== undefined) boy.emergencyContact = (emergencyContact || '').trim();
+
+    if (password && password.trim().length >= 6) {
+      const bcrypt = require('bcryptjs');
+      const salt = await bcrypt.genSalt(10);
+      const hashed = await bcrypt.hash(password.trim(), salt);
+      boy.password = hashed;
+    }
+
+    await boy.save();
+
+    // Also synchronize corresponding User account
+    const userUpdate = {};
+    if (name && name.trim()) userUpdate.name = name.trim();
+    if (mobile && mobile.trim()) userUpdate.mobile = mobile.trim();
+    if (email !== undefined) userUpdate.email = (email || '').trim().toLowerCase();
+    if (assignedArea !== undefined) userUpdate.assignedArea = (assignedArea || '').trim();
+    if (password && password.trim().length >= 6) userUpdate.password = boy.password;
+
+    let updatedUser = null;
+    if (userId) {
+      updatedUser = await User.findByIdAndUpdate(userId, userUpdate, { new: true });
+    } else {
+      updatedUser = await User.findOneAndUpdate({ mobile: boy.mobile }, userUpdate, { new: true });
+    }
+
+    const updatedData = {
+      id: boy._id.toString(),
+      name: boy.name,
+      mobile: boy.mobile,
+      email: boy.email || '',
+      assignedArea: boy.assignedArea || '',
+      vehicleNumber: boy.vehicleNumber || '',
+      bloodGroup: boy.bloodGroup || '',
+      drivingLicense: boy.drivingLicense || '',
+      emergencyContact: boy.emergencyContact || '',
+      role: 'delivery_boy',
+    };
+
+    broadcast('DELIVERY_BOY_UPDATED', updatedData);
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully!',
+      deliveryBoy: updatedData,
+      user: updatedUser ? {
+        id: updatedUser._id.toString(),
+        name: updatedUser.name,
+        mobile: updatedUser.mobile,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        assignedArea: updatedUser.assignedArea,
+      } : updatedData,
+    });
+  } catch (err) {
+    console.error('updateMyProfile error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getDeliveryBoys,
   addDeliveryBoy,
@@ -893,4 +1006,5 @@ module.exports = {
   reconcileCash,
   sendDeliveryBoyCredentials,
   toggleDutyStatus,
+  updateMyProfile,
 };

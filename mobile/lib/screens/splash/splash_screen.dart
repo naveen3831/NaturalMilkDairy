@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
+import '../../data/services/api_service.dart';
+import '../../data/services/fcm_service.dart';
+import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/product_provider.dart';
 import '../admin/admin_dashboard_screen.dart';
@@ -45,6 +49,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   Future<void> _initializeApp() async {
+    if (!mounted) return;
+
+    // Smoothly initialize services post-frame without stalling Android main thread
+    try {
+      await ApiService().init();
+      RealtimeService().connect();
+      unawaited(FcmService().init());
+    } catch (e) {
+      debugPrint('Startup service initialization notice: $e');
+    }
+
     if (!mounted) return;
     context.read<ProductProvider>().loadProducts();
 

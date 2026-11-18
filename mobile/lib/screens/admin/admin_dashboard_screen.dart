@@ -235,21 +235,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  Map<String, dynamic>? _findCustomerForDelivery(Map<String, dynamic> d) {
-    final custId = d['customerId'] ?? d['id'];
-    final custName = (d['customerName'] ?? '').toString().toLowerCase().trim();
-    for (final c in _customers) {
-      final cId = c['id'] ?? c['_id'] ?? c['customerId'];
-      if (custId != null && cId != null && cId.toString() == custId.toString()) {
-        return c;
-      }
-      if (custName.isNotEmpty && (c['name'] ?? '').toString().toLowerCase().trim() == custName) {
-        return c;
-      }
-    }
-    return null;
-  }
-
   List<Map<String, dynamic>> _findAssignedCustomersForPartner(Map<String, dynamic> b) {
     final partnerId = b['id'] ?? b['_id'] ?? b['boyId'];
     final partnerName = (b['name'] ?? '').toString().toLowerCase().trim();
@@ -267,620 +252,55 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }).toList();
   }
 
-  Map<String, dynamic> _findDeliveryForCustomer(Map<String, dynamic> c) {
-    final cId = c['id'] ?? c['_id'] ?? c['customerId'];
-    final cName = (c['name'] ?? '').toString().toLowerCase().trim();
-
-    for (final d in _deliveries) {
-      final dCustId = d['customerId'];
-      final dCustName = (d['customerName'] ?? '').toString().toLowerCase().trim();
-
-      if (cId != null && dCustId != null && cId.toString() == dCustId.toString()) {
-        return d;
-      }
-      if (cName.isNotEmpty && dCustName.isNotEmpty && cName == dCustName) {
-        return d;
-      }
-    }
-    return <String, dynamic>{};
-  }
-
-  Widget _buildDetailRow(String label, String value, {Color? valueColor}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-        const SizedBox(width: 12),
-        Flexible(
-          child: Text(
-            value,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: valueColor ?? const Color(0xFF0F172A)),
-            textAlign: TextAlign.end,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMiniStatBox(String label, String value, Color color) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF64748B), letterSpacing: 0.3)),
-        const SizedBox(height: 2),
-        Text(value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: color)),
-      ],
-    );
-  }
-
   void _showDeliveryAndUserDetails(Map<String, dynamic> d) {
-    final custName = d['customerName']?.toString() ?? 'Customer';
-    final custAddress = d['customerAddress']?.toString() ?? d['address']?.toString() ?? 'Doorstep Drop';
-    final dLat = num.tryParse((d['customerLatitude'] ?? d['latitude'])?.toString() ?? '');
-    final dLng = num.tryParse((d['customerLongitude'] ?? d['longitude'])?.toString() ?? '');
-    final isDelivered = d['status'] == 'delivered';
-    final isPending = d['status'] == 'pending';
-    final proofUrl = d['proofImage']?.toString();
-    final driverName = d['deliveryBoyName']?.toString() ?? 'Unassigned';
-    final actualMilk = d['actualMilk'] ?? d['plannedMilk'] ?? 1;
-    final actualCurd = d['actualCurd'] ?? d['plannedCurd'] ?? 0;
-    final totalAmount = d['totalAmount'] ?? 0;
-    final paymentMethod = (d['paymentMethod'] ?? 'credit').toString().toUpperCase();
-    final deliveryDate = d['deliveryDate']?.toString() ?? 'Today';
-
-    // Find customer details from _customers list
-    final c = _findCustomerForDelivery(d) ?? {};
-    final phone = (c['mobile'] ?? d['customerPhone'] ?? d['phone'] ?? '').toString();
-    final bal = c['currentBalance'] ?? 0;
-    final status = (c['status'] ?? 'active').toString().toUpperCase();
-    final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] as Map : {};
-    final milkQty = plan['milkQty'] ?? actualMilk;
-    final deliveryDays = plan['deliveryDays'] ?? 'Everyday';
-    final area = c['area'] ?? d['area'] ?? '';
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.85,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              // Header Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          custName,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          'Delivery Date: $deliveryDate',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isDelivered ? const Color(0xFFECFDF5) : (isPending ? const Color(0xFFFFF8E1) : const Color(0xFFFEF2F2)),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: isDelivered ? const Color(0xFF86EFAC) : (isPending ? const Color(0xFFFFD54F) : const Color(0xFFFCA5A5))),
-                    ),
-                    child: Text(
-                      isDelivered ? '✓ DELIVERED' : (isPending ? 'PENDING' : 'NOT DELIVERED'),
-                      style: TextStyle(
-                        color: isDelivered ? const Color(0xFF059669) : (isPending ? const Color(0xFFF57F17) : const Color(0xFFDC2626)),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Section 1: Customer Profile Details
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Row(
-                                  children: [
-                                    Icon(Icons.person_pin_rounded, size: 16, color: Color(0xFF059669)),
-                                    SizedBox(width: 6),
-                                    Text('Customer Profile Details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                                  ],
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: status == 'ACTIVE' ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(status, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: status == 'ACTIVE' ? const Color(0xFF059669) : const Color(0xFFB45309))),
-                                ),
-                              ],
-                            ),
-                            const Divider(height: 18),
-                            _buildDetailRow('Full Name', custName),
-                            if (phone.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Phone Number', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-                                  Row(
-                                    children: [
-                                      Text(phone, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                                      const SizedBox(width: 8),
-                                      InkWell(
-                                        onTap: () => LauncherService.openDialer(phone),
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFBFDBFE))),
-                                          child: const Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.phone_rounded, size: 11, color: Color(0xFF2563EB)),
-                                              SizedBox(width: 3),
-                                              Text('Call', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            _buildDetailRow('Doorstep Address', custAddress),
-                            if (area.toString().isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              _buildDetailRow('Delivery Route / Area', area.toString()),
-                            ],
-                            if (dLat != null && dLng != null) ...[
-                              const SizedBox(height: 8),
-                              InkWell(
-                                onTap: () => LauncherService.openMap(lat: dLat, lng: dLng, address: custAddress),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFBFDBFE))),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.navigation_rounded, size: 13, color: Color(0xFF2563EB)),
-                                      const SizedBox(width: 5),
-                                      Text('Navigate to GPS (${dLat.toStringAsFixed(3)}, ${dLng.toStringAsFixed(3)})', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            _buildDetailRow('Account Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
-                            const SizedBox(height: 6),
-                            _buildDetailRow('Subscription Plan', '${milkQty}L Daily Milk • $deliveryDays'),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Section 2: Delivery Details
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(Icons.local_shipping_rounded, size: 16, color: Color(0xFF2563EB)),
-                                SizedBox(width: 6),
-                                Text('Delivery & Fulfillment Details', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                              ],
-                            ),
-                            const Divider(height: 18),
-                            _buildDetailRow('Planned Products', '${actualMilk}L Pure Farm Milk${actualCurd > 0 ? " + ${actualCurd}g Curd" : ""}'),
-                            if (d['addons'] is List && (d['addons'] as List).isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              _buildDetailRow(
-                                'Doorstep Add-ons',
-                                (d['addons'] as List).map((a) => '${a['name']} ×${a['quantity']}').join(', '),
-                              ),
-                              const SizedBox(height: 6),
-                              _buildDetailRow(
-                                'Add-ons Amount',
-                                '₹${d['addonsTotal'] ?? 0}${(d['addonPaidAmount'] is num && (d['addonPaidAmount'] as num) > 0) ? " (Paid ₹${d['addonPaidAmount']} ${(d['addonPaymentMethod'] ?? '').toString().toUpperCase()})" : " (${(d['addonPaymentMethod'] ?? 'credit').toString().toUpperCase()})"}',
-                              ),
-                            ],
-                            const SizedBox(height: 6),
-                            _buildDetailRow('Billed Amount', '₹$totalAmount ($paymentMethod)'),
-                            const SizedBox(height: 6),
-                            _buildDetailRow('Assigned Partner', driverName),
-                            if (d['updatedAt'] != null) ...[
-                              const SizedBox(height: 6),
-                              _buildDetailRow('Last Updated', d['updatedAt'].toString().split('T').first),
-                            ],
-                            if (proofUrl != null && proofUrl.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              const Text('Doorstep Delivery Photo Proof', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
-                              const SizedBox(height: 6),
-                              InkWell(
-                                onTap: () => _showProofPhotoDialog(
-                                  deliveryDate,
-                                  proofUrl,
-                                  driverName,
-                                  customerName: d['customerName']?.toString(),
-                                  address: (d['customerAddress'] ?? d['deliveryAddress'] ?? d['area'])?.toString(),
-                                  time: d['deliveredAt']?.toString() ?? deliveryDate,
-                                  lat: dLat,
-                                  lng: dLng,
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: DeliveryProofHelper.buildImageFromSource(
-                                    proofUrl,
-                                    height: 140,
-                                    width: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Button: Jump to Customer in Directory
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(ctx);
-                            setState(() {
-                              _selectedTabIndex = 3;
-                              _customerSearch = custName;
-                            });
-                          },
-                          icon: const Icon(Icons.person_search_rounded, size: 16),
-                          label: const Text('View Full Customer Ledger in Directory'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminDeliveryDetailFullScreen(
+          delivery: d,
+          customers: _customers,
+          deliveryBoys: _deliveryBoys,
+          onSelectCustomer: (customerName) {
+            setState(() {
+              _selectedTabIndex = 3;
+              _customerSearch = customerName;
+            });
+          },
+          onShowProof: (proofUrl, date, driver, custName, addr, lat, lng) {
+            _showProofPhotoDialog(
+              date,
+              proofUrl,
+              driver,
+              customerName: custName,
+              address: addr,
+              time: date,
+              lat: lat,
+              lng: lng,
+            );
+          },
+        ),
+      ),
     );
   }
 
   void _showPartnerAndAssignedUsers(Map<String, dynamic> b) {
-    final name = b['name'] ?? 'Partner';
-    final phone = b['mobile'] ?? 'N/A';
-    final area = b['assignedArea'] ?? 'Madhapur';
-    final vehicle = b['vehicleNumber'] ?? 'Two-Wheeler';
-    final cash = b['todayCashCollected'] ?? 0;
-    final upi = b['todayUpiCollected'] ?? 0;
-    final bool isOnline = b['isOnline'] == true;
-    final partnerId = b['id'] ?? b['_id'] ?? b['boyId'];
-
-    // Find all assigned customers for this partner
-    final assignedCustomers = _findAssignedCustomersForPartner(b);
-    final completedDrops = _deliveries.where((d) =>
-      (d['deliveryBoyId']?.toString() == partnerId?.toString() ||
-       (d['deliveryBoyName'] ?? '').toString().toLowerCase() == name.toString().toLowerCase()) &&
-      d['status'] == 'delivered'
-    ).length;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (sheetCtx, setSheetState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.85,
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFCBD5E1),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  // Partner Profile Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFECFDF5),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.sports_motorsports_rounded, size: 24, color: Color(0xFF059669)),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(name.toString(), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-                              Text('Route: $area • $vehicle', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                            ],
-                          ),
-                        ],
-                      ),
-                      if (phone != 'N/A')
-                        InkWell(
-                          onTap: () => LauncherService.openDialer(phone.toString()),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFBFDBFE)),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
-                                SizedBox(width: 4),
-                                Text('Call', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
-                              ],
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Stats Banner
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildMiniStatBox('ASSIGNED', '${assignedCustomers.length} Users', const Color(0xFF0F172A)),
-                        _buildMiniStatBox('DELIVERED', '$completedDrops Drops', const Color(0xFF059669)),
-                        _buildMiniStatBox('COLLECTIONS', '₹${cash + upi}', const Color(0xFF0F766E)),
-                        _buildMiniStatBox('DUTY', isOnline ? 'ONLINE' : 'OFFLINE', isOnline ? const Color(0xFF059669) : const Color(0xFF64748B)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Assigned Customers (${assignedCustomers.length})',
-                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                      ),
-                      InkWell(
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _showPartnerDutyLogsSheet(b);
-                        },
-                        child: const Text('Shift Logs →', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Customer List
-                  Expanded(
-                    child: assignedCustomers.isEmpty
-                        ? Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: const Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.people_outline_rounded, size: 36, color: Color(0xFF94A3B8)),
-                                  SizedBox(height: 8),
-                                  Text(
-                                    'No customers assigned to this route yet',
-                                    style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Customers assigned to this partner or territory will appear here.',
-                                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: assignedCustomers.length,
-                            separatorBuilder: (_, _) => const SizedBox(height: 10),
-                            itemBuilder: (cCtx, i) {
-                              final c = assignedCustomers[i];
-                              final cName = c['name'] ?? 'Customer';
-                              final cPhone = (c['mobile'] ?? '').toString();
-                              final cAddress = c['address'] ?? c['doorstepId'] ?? area;
-                              final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] : {};
-                              final milkQty = plan['milkQty'] ?? 1;
-                              final cBal = c['currentBalance'] ?? 0;
-
-                              // Find today's delivery for this customer
-                              final custDeliv = _findDeliveryForCustomer(c);
-                              final bool hasDelivery = custDeliv.isNotEmpty;
-                              final bool isDone = custDeliv['status'] == 'delivered';
-                              final bool isPend = custDeliv['status'] == 'pending';
-
-                              return InkWell(
-                                onTap: () {
-                                  if (hasDelivery) {
-                                    _showDeliveryAndUserDetails(custDeliv);
-                                  } else {
-                                    Navigator.pop(ctx);
-                                    setState(() {
-                                      _selectedTabIndex = 3;
-                                      _customerSearch = cName;
-                                    });
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(12),
-                                child: Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              cName,
-                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A)),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                                            decoration: BoxDecoration(
-                                              color: isDone ? const Color(0xFFECFDF5) : (isPend ? const Color(0xFFFFF8E1) : const Color(0xFFF1F5F9)),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              isDone ? '✓ DELIVERED' : (isPend ? 'PENDING' : 'NO DROP'),
-                                              style: TextStyle(
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w800,
-                                                color: isDone ? const Color(0xFF059669) : (isPend ? const Color(0xFFF57F17) : const Color(0xFF64748B)),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        '$cAddress',
-                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text('${milkQty}L Daily Milk • Bal: ₹$cBal', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669))),
-                                          if (cPhone.isNotEmpty)
-                                            InkWell(
-                                              onTap: () => LauncherService.openDialer(cPhone),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFEFF6FF),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Row(
-                                                  children: [
-                                                    Icon(Icons.phone_rounded, size: 10, color: Color(0xFF2563EB)),
-                                                    SizedBox(width: 3),
-                                                    Text('Call', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            );
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminPartnerDetailsFullScreen(
+          partner: b,
+          deliveries: _deliveries,
+          customers: _customers,
+          deliveryBoys: _deliveryBoys,
+          onToggleDuty: () => _togglePartnerDuty(b),
+          onOpenDutyLogs: () => _showPartnerDutyLogsSheet(b),
+          onShowDeliveryDetails: (deliv) => _showDeliveryAndUserDetails(deliv),
+          onSelectCustomer: (custName) {
+            setState(() {
+              _selectedTabIndex = 3;
+              _customerSearch = custName;
+            });
           },
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -2115,7 +1535,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            '${d['actualMilk'] ?? d['plannedMilk'] ?? 1}L Milk${(d['actualCurd'] ?? d['plannedCurd'] ?? 0) > 0 ? " + ${(d['actualCurd'] ?? d['plannedCurd'])}g Curd" : ""}',
+                            '${d['actualMilk'] ?? d['plannedMilk'] ?? 1}L Milk${(num.tryParse((d['actualCurd'] ?? d['plannedCurd'] ?? 0).toString()) ?? 0) > 0 ? " + ${(d['actualCurd'] ?? d['plannedCurd'])}g Curd" : ""}',
                             style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF059669)),
                           ),
                           Text(
@@ -2255,184 +1675,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _showPartnerDutyLogsSheet(Map<String, dynamic> b) {
-    final name = b['name'] ?? 'Partner';
-    final area = b['assignedArea'] ?? 'Madhapur';
-    final bool isOnline = b['isOnline'] == true;
-    final lastOnline = b['lastOnlineAt'];
-    final lastOffline = b['lastOfflineAt'];
-    final List logs = (b['dutyLogs'] is List) ? (b['dutyLogs'] as List) : [];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.72,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$name Shift History',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                      ),
-                      Text('Route: $area', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                    ],
-                  ),
-                  InkWell(
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _togglePartnerDuty(b);
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1)),
-                      ),
-                      child: Text(
-                        isOnline ? '🟢 ONLINE (Tap to toggle)' : '⏸ OFFLINE (Tap to toggle)',
-                        style: TextStyle(
-                          color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('LAST ONLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatDutyTime(lastOnline),
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(width: 1, height: 30, color: const Color(0xFFCBD5E1)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('LAST OFFLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatDutyTime(lastOffline),
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF64748B)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'DUTY TRANSITION TIMELINE',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5),
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: logs.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No shift transitions logged yet for $name.',
-                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: logs.length,
-                        separatorBuilder: (_, _) => const Divider(height: 12, color: Color(0xFFF1F5F9)),
-                        itemBuilder: (context, idx) {
-                          final item = Map<String, dynamic>.from(logs[logs.length - 1 - idx] as Map);
-                          final status = (item['status'] ?? 'online').toString();
-                          final isLogOnline = status == 'online';
-                          final time = item['timestamp'];
-                          final logArea = item['area'] ?? area;
-
-                          return Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: isLogOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  isLogOnline ? '🟢 ONLINE' : '⏸ OFFLINE',
-                                  style: TextStyle(
-                                    color: isLogOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _formatDutyTime(time),
-                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)),
-                                    ),
-                                    Text(
-                                      'Territory: $logArea',
-                                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminPartnerDutyLogsFullScreen(
+          partner: b,
+          onToggleDuty: () => _togglePartnerDuty(b),
+        ),
+      ),
     );
   }
 
@@ -2771,82 +2020,145 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _showAdminCustomerCollectedSheet(Map<String, dynamic> c) {
-    final name = (c['name'] ?? 'Customer').toString();
-    final mobile = (c['mobile'] ?? '').toString();
-    final area = (c['area'] ?? '').toString();
-    final custId = (c['customerId'] ?? c['_id'] ?? c['id'] ?? '').toString();
-    final bal = num.tryParse((c['currentBalance'] ?? '0').toString()) ?? 0;
-    final deliv = _findDeliveryForCustomer(c);
-    final dm = (deliv['paymentMethod'] ?? '').toString().toLowerCase();
-    final dam = (deliv['addonPaymentMethod'] ?? '').toString().toLowerCase();
-    final todayCash = deliv['status'] == 'delivered'
-        ? (dm == 'cash'
-            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
-            : (dam == 'cash' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
-        : 0;
-    final todayUpi = deliv['status'] == 'delivered'
-        ? (dm == 'upi'
-            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
-            : (dam == 'upi' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
-        : 0;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AdminCustomerDetailsFullScreen(
+          customer: c,
+          deliveries: _deliveries,
+          api: _api,
+          onShowDeliveryDetails: (deliv) => _showDeliveryAndUserDetails(deliv),
+          onRecordPayment: (cust) => _showRecordPaymentModal(context, cust),
+        ),
+      ),
+    );
+  }
+
+  void _showRecordPaymentModal(BuildContext context, Map<String, dynamic> customer) {
+    final name = customer['name'] ?? 'Customer';
+    final custId = customer['id'] ?? customer['_id'] ?? customer['customerId'];
+    final currentBal = num.tryParse(customer['currentBalance']?.toString() ?? '0') ?? 0;
+    final amountController = TextEditingController(text: currentBal > 0 ? '$currentBal' : '100');
+    String paymentMethod = 'cash';
+    bool isSubmitting = false;
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-        child: FutureBuilder<Map<String, dynamic>>(
-          future: custId.isNotEmpty ? _api.get('/api/customers/$custId/ledger') : Future.value({}),
-          builder: (fCtx, snap) {
-            final ledgerData = snap.data ?? {};
-            final sumMap = ledgerData['summary'] is Map ? ledgerData['summary'] as Map : {};
-            final totalPaidAllTime = num.tryParse((sumMap['totalPaid'] ?? '0').toString()) ?? 0;
-            final addonsList = deliv['addons'] is List ? (deliv['addons'] as List) : const [];
-
-            return Column(
+      builder: (bCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-                Text('$mobile${area.isNotEmpty ? ' • $area' : ''}', style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B))),
-                const Divider(height: 22),
-                _buildDetailRow('Today Collected', '₹${todayCash + todayUpi} (Cash ₹$todayCash • UPI ₹$todayUpi)', valueColor: const Color(0xFF059669)),
-                const SizedBox(height: 8),
-                _buildDetailRow(
-                  'Total Collected (All Time)',
-                  snap.connectionState == ConnectionState.waiting ? 'Loading...' : '₹$totalPaidAllTime',
-                  valueColor: const Color(0xFF0F172A),
-                ),
-                if (addonsList.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  _buildDetailRow('Today Add-ons', addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')),
-                ],
-                const SizedBox(height: 8),
-                _buildDetailRow('Outstanding / Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
-                const SizedBox(height: 16),
-                if (deliv.isNotEmpty)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        _showDeliveryAndUserDetails(deliv);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF059669),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      child: const Text('View Today Delivery Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                    ),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2)),
                   ),
+                ),
+                const SizedBox(height: 16),
+                Text('Record Payment: $name', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                const SizedBox(height: 4),
+                Text('Pending Balance Due: ₹$currentBal', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFDC2626))),
+                const SizedBox(height: 16),
+                const Text('Payment Amount (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.currency_rupee_rounded, size: 18),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text('Payment Method', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF334155))),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Cash'),
+                      selected: paymentMethod == 'cash',
+                      onSelected: (val) => setModalState(() => paymentMethod = 'cash'),
+                    ),
+                    const SizedBox(width: 8),
+                    ChoiceChip(
+                      label: const Text('UPI / Online'),
+                      selected: paymentMethod == 'upi',
+                      onSelected: (val) => setModalState(() => paymentMethod = 'upi'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    onPressed: isSubmitting
+                        ? null
+                        : () async {
+                            final amt = num.tryParse(amountController.text.trim());
+                            if (amt == null || amt <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid amount')));
+                              return;
+                            }
+                            setModalState(() => isSubmitting = true);
+                            try {
+                              final res = await _api.post('/api/payments', {
+                                'customerId': custId.toString(),
+                                'amount': amt,
+                                'paymentMethod': paymentMethod,
+                                'notes': 'Collected via Admin Console Mobile App',
+                              });
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (res['success'] == true) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Payment of ₹$amt recorded successfully!'), backgroundColor: const Color(0xFF059669)),
+                                  );
+                                }
+                                _loadAllData(silent: true);
+                              } else {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text(res['message']?.toString() ?? 'Error recording payment'), backgroundColor: const Color(0xFFDC2626)),
+                                  );
+                                }
+                              }
+                            } catch (e) {
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: isSubmitting
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Confirm Payment', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+                  ),
+                ),
               ],
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -5797,6 +5109,1298 @@ class _OutstandingScreenState extends State<_OutstandingScreen> {
                 },
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL SCREEN 1: ADMIN DELIVERY DROP DETAILS
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminDeliveryDetailFullScreen extends StatelessWidget {
+  final Map<String, dynamic> delivery;
+  final List<Map<String, dynamic>> customers;
+  final List<Map<String, dynamic>> deliveryBoys;
+  final Function(String customerName)? onSelectCustomer;
+  final Function(String proofUrl, String date, String driver, String custName, String addr, num? lat, num? lng)? onShowProof;
+
+  const AdminDeliveryDetailFullScreen({
+    super.key,
+    required this.delivery,
+    required this.customers,
+    required this.deliveryBoys,
+    this.onSelectCustomer,
+    this.onShowProof,
+  });
+
+  Map<String, dynamic>? _findCustomer() {
+    final custId = delivery['customerId'] ?? delivery['id'];
+    final custName = (delivery['customerName'] ?? '').toString().toLowerCase().trim();
+    for (final c in customers) {
+      final cId = c['id'] ?? c['_id'] ?? c['customerId'];
+      if (custId != null && cId != null && cId.toString() == custId.toString()) {
+        return c;
+      }
+      if (custName.isNotEmpty && (c['name'] ?? '').toString().toLowerCase().trim() == custName) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _findDeliveryBoy() {
+    final boyId = delivery['deliveryBoyId'];
+    final boyName = (delivery['deliveryBoyName'] ?? '').toString().toLowerCase().trim();
+    for (final b in deliveryBoys) {
+      final bId = b['id'] ?? b['_id'] ?? b['boyId'];
+      if (boyId != null && bId != null && bId.toString() == boyId.toString()) {
+        return b;
+      }
+      if (boyName.isNotEmpty && (b['name'] ?? '').toString().toLowerCase().trim() == boyName) {
+        return b;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: valueColor ?? const Color(0xFF0F172A)),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final custName = delivery['customerName']?.toString() ?? 'Customer';
+    final custAddress = delivery['customerAddress']?.toString() ?? delivery['address']?.toString() ?? 'Doorstep Drop';
+    final dLat = num.tryParse((delivery['customerLatitude'] ?? delivery['latitude'])?.toString() ?? '');
+    final dLng = num.tryParse((delivery['customerLongitude'] ?? delivery['longitude'])?.toString() ?? '');
+    final isDelivered = delivery['status'] == 'delivered';
+    final isPending = delivery['status'] == 'pending';
+    final proofUrl = delivery['proofImage']?.toString();
+    final driverName = delivery['deliveryBoyName']?.toString() ?? 'Unassigned';
+    final actualMilk = delivery['actualMilk'] ?? delivery['plannedMilk'] ?? 1;
+    final actualCurd = num.tryParse((delivery['actualCurd'] ?? delivery['plannedCurd'] ?? 0).toString()) ?? 0;
+    final totalAmount = delivery['totalAmount'] ?? 0;
+    final paymentMethod = (delivery['paymentMethod'] ?? 'credit').toString().toUpperCase();
+    final deliveryDate = delivery['deliveryDate']?.toString() ?? 'Today';
+
+    final c = _findCustomer() ?? {};
+    final phone = (c['mobile'] ?? delivery['customerPhone'] ?? delivery['phone'] ?? '').toString();
+    final bal = num.tryParse((c['currentBalance'] ?? '0').toString()) ?? 0;
+    final status = (c['status'] ?? 'active').toString().toUpperCase();
+    final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] as Map : {};
+    final milkQty = plan['milkQty'] ?? actualMilk;
+    final deliveryDays = plan['deliveryDays'] ?? 'Everyday';
+    final area = c['area'] ?? delivery['area'] ?? '';
+
+    final b = _findDeliveryBoy();
+    final driverPhone = b?['mobile']?.toString() ?? '';
+
+    final addonsList = delivery['addons'] is List ? (delivery['addons'] as List) : const [];
+    final addonsTotal = num.tryParse((delivery['addonsTotal'] ?? '0').toString()) ?? 0;
+    final addonPaid = num.tryParse((delivery['addonPaidAmount'] ?? '0').toString()) ?? 0;
+    final addonMethod = (delivery['addonPaymentMethod'] ?? 'credit').toString().toUpperCase();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Delivery Drop Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+            Text('Admin Full Operations View', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF059669))),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isDelivered ? const Color(0xFFECFDF5) : (isPending ? const Color(0xFFFFF8E1) : const Color(0xFFFEF2F2)),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isDelivered ? const Color(0xFF86EFAC) : (isPending ? const Color(0xFFFFD54F) : const Color(0xFFFCA5A5))),
+                ),
+                child: Text(
+                  isDelivered ? '✓ DELIVERED' : (isPending ? 'PENDING' : 'NOT DELIVERED'),
+                  style: TextStyle(
+                    color: isDelivered ? const Color(0xFF059669) : (isPending ? const Color(0xFFF57F17) : const Color(0xFFDC2626)),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Customer Banner
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFECFDF5), Colors.white],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 48,
+                    height: 48,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF059669),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        custName.isNotEmpty ? custName[0].toUpperCase() : 'C',
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(custName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                        const SizedBox(height: 2),
+                        Text('Date: $deliveryDate • $deliveryDays', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Section 1: Customer Profile Details
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.person_pin_rounded, size: 18, color: Color(0xFF059669)),
+                          SizedBox(width: 6),
+                          Text('Customer Profile Details', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: status == 'ACTIVE' ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(status, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: status == 'ACTIVE' ? const Color(0xFF059669) : const Color(0xFFB45309))),
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+                  _buildRow('Full Name', custName),
+                  if (phone.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Phone Number', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                          Row(
+                            children: [
+                              Text(phone, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => LauncherService.openDialer(phone),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFBFDBFE))),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.phone_rounded, size: 11, color: Color(0xFF2563EB)),
+                                      SizedBox(width: 3),
+                                      Text('Call', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  _buildRow('Doorstep Address', custAddress),
+                  if (area.toString().isNotEmpty) _buildRow('Delivery Route / Area', area.toString()),
+                  if (dLat != null && dLng != null) ...[
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () => LauncherService.openMap(lat: dLat, lng: dLng, address: custAddress),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFBFDBFE))),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.navigation_rounded, size: 14, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 6),
+                            Text('Navigate to GPS (${dLat.toStringAsFixed(3)}, ${dLng.toStringAsFixed(3)})', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  _buildRow('Account Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
+                  _buildRow('Subscription Plan', '${milkQty}L Daily Milk • $deliveryDays'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Section 2: Delivery & Fulfillment Details
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.local_shipping_rounded, size: 18, color: Color(0xFF2563EB)),
+                      SizedBox(width: 6),
+                      Text('Delivery & Fulfillment Details', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    ],
+                  ),
+                  const Divider(height: 20),
+                  _buildRow('Planned Products', '${actualMilk}L Pure Farm Milk${actualCurd > 0 ? " + ${actualCurd}g Curd" : ""}'),
+                  if (addonsList.isNotEmpty) ...[
+                    _buildRow('Doorstep Add-ons', addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')),
+                    _buildRow(
+                      'Add-ons Amount',
+                      '₹$addonsTotal${addonPaid > 0 ? " (Paid ₹$addonPaid $addonMethod)" : " ($addonMethod)"}',
+                    ),
+                  ],
+                  _buildRow('Billed Amount', '₹$totalAmount ($paymentMethod)'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Assigned Partner', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                        Row(
+                          children: [
+                            Text(driverName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                            if (driverPhone.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => LauncherService.openDialer(driverPhone),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFA7F3D0))),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.phone_rounded, size: 10, color: Color(0xFF059669)),
+                                      SizedBox(width: 2),
+                                      Text('Call', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (delivery['updatedAt'] != null)
+                    _buildRow('Last Updated', delivery['updatedAt'].toString().split('T').first),
+                  if (proofUrl != null && proofUrl.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const Text('Doorstep Delivery Photo Proof', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () {
+                        if (onShowProof != null) {
+                          onShowProof!(
+                            proofUrl,
+                            deliveryDate,
+                            driverName,
+                            custName,
+                            custAddress,
+                            dLat,
+                            dLng,
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: DeliveryProofHelper.buildImageFromSource(
+                          proofUrl,
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Jump to Customer Directory Ledger
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  if (onSelectCustomer != null) {
+                    onSelectCustomer!(custName);
+                  }
+                },
+                icon: const Icon(Icons.person_search_rounded, size: 18),
+                label: const Text('View Full Customer Ledger in Directory', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL SCREEN 2: ADMIN PARTNER DETAILS & ASSIGNED CUSTOMERS
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminPartnerDetailsFullScreen extends StatefulWidget {
+  final Map<String, dynamic> partner;
+  final List<Map<String, dynamic>> deliveries;
+  final List<Map<String, dynamic>> customers;
+  final List<Map<String, dynamic>> deliveryBoys;
+  final VoidCallback onToggleDuty;
+  final VoidCallback onOpenDutyLogs;
+  final Function(Map<String, dynamic> delivery) onShowDeliveryDetails;
+  final Function(String customerName) onSelectCustomer;
+
+  const AdminPartnerDetailsFullScreen({
+    super.key,
+    required this.partner,
+    required this.deliveries,
+    required this.customers,
+    required this.deliveryBoys,
+    required this.onToggleDuty,
+    required this.onOpenDutyLogs,
+    required this.onShowDeliveryDetails,
+    required this.onSelectCustomer,
+  });
+
+  @override
+  State<AdminPartnerDetailsFullScreen> createState() => _AdminPartnerDetailsFullScreenState();
+}
+
+class _AdminPartnerDetailsFullScreenState extends State<AdminPartnerDetailsFullScreen> {
+  String _searchQuery = '';
+
+  List<Map<String, dynamic>> _findAssignedCustomers() {
+    final b = widget.partner;
+    final partnerId = b['id'] ?? b['_id'] ?? b['boyId'];
+    final partnerName = (b['name'] ?? '').toString().toLowerCase().trim();
+    final partnerArea = (b['assignedArea'] ?? '').toString().toLowerCase().trim();
+
+    return widget.customers.where((c) {
+      final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] : {};
+      final assignedBoyId = plan['deliveryBoyId']?.toString() ?? c['deliveryBoyId']?.toString();
+      final assignedBoyName = (plan['deliveryBoyName'] ?? c['deliveryBoyName'] ?? '').toString().toLowerCase().trim();
+      final custArea = (c['area'] ?? '').toString().toLowerCase().trim();
+
+      return (partnerId != null && assignedBoyId != null && assignedBoyId == partnerId.toString()) ||
+          (partnerName.isNotEmpty && assignedBoyName.isNotEmpty && assignedBoyName == partnerName) ||
+          (partnerArea.isNotEmpty && custArea.isNotEmpty && custArea == partnerArea);
+    }).toList();
+  }
+
+  Map<String, dynamic>? _findDeliveryForCustomer(Map<String, dynamic> c) {
+    final cId = c['id'] ?? c['_id'] ?? c['customerId'];
+    final cName = (c['name'] ?? '').toString().toLowerCase().trim();
+
+    for (final d in widget.deliveries) {
+      final dCustId = d['customerId'];
+      final dCustName = (d['customerName'] ?? '').toString().toLowerCase().trim();
+
+      if (cId != null && dCustId != null && cId.toString() == dCustId.toString()) {
+        return d;
+      }
+      if (cName.isNotEmpty && dCustName.isNotEmpty && cName == dCustName) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.partner;
+    final name = b['name'] ?? 'Partner';
+    final phone = b['mobile'] ?? 'N/A';
+    final area = b['assignedArea'] ?? 'Madhapur';
+    final vehicle = b['vehicleNumber'] ?? 'Two-Wheeler';
+    final cash = b['todayCashCollected'] ?? 0;
+    final upi = b['todayUpiCollected'] ?? 0;
+    final bool isOnline = b['isOnline'] == true;
+    final partnerId = b['id'] ?? b['_id'] ?? b['boyId'];
+
+    final assignedCustomers = _findAssignedCustomers();
+    final completedDrops = widget.deliveries.where((d) =>
+      (d['deliveryBoyId']?.toString() == partnerId?.toString() ||
+       (d['deliveryBoyName'] ?? '').toString().toLowerCase() == name.toString().toLowerCase()) &&
+      d['status'] == 'delivered'
+    ).length;
+
+    final filteredCustomers = _searchQuery.isEmpty
+        ? assignedCustomers
+        : assignedCustomers.where((c) {
+            final cName = (c['name'] ?? '').toString().toLowerCase();
+            final cAddr = (c['address'] ?? '').toString().toLowerCase();
+            final q = _searchQuery.toLowerCase();
+            return cName.contains(q) || cAddr.contains(q);
+          }).toList();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name.toString(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+            Text('Route: $area • $vehicle', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  isOnline ? '🟢 ONLINE' : '⏸ OFFLINE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Metrics Card
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFECFDF5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.sports_motorsports_rounded, size: 24, color: Color(0xFF059669)),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name.toString(), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                              Text('Mobile: $phone', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (phone != 'N/A')
+                        InkWell(
+                          onTap: () => LauncherService.openDialer(phone.toString()),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFBFDBFE)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.phone_rounded, size: 13, color: Color(0xFF2563EB)),
+                                SizedBox(width: 4),
+                                Text('Call Partner', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const Divider(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _metricCol('ASSIGNED', '${assignedCustomers.length}', const Color(0xFF0F172A)),
+                      Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+                      _metricCol('DELIVERED', '$completedDrops', const Color(0xFF059669)),
+                      Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+                      _metricCol('COLLECTED', '₹${cash + upi}', const Color(0xFF2563EB)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Shift status & Timeline Actions
+            Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: widget.onToggleDuty,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: isOnline ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isOnline ? const Color(0xFFFECACA) : const Color(0xFFA7F3D0)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          isOnline ? 'Set Partner Offline' : 'Set Partner Online',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: isOnline ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: InkWell(
+                    onTap: widget.onOpenDutyLogs,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                      ),
+                      child: const Center(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.history_rounded, size: 15, color: Color(0xFF2563EB)),
+                            SizedBox(width: 5),
+                            Text(
+                              'Shift Timeline',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+
+            // Assigned Route Header & Search
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Assigned Customers & Drops (${assignedCustomers.length})',
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+              decoration: InputDecoration(
+                hintText: 'Search customer name or address...',
+                hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
+                isDense: true,
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5)),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (filteredCustomers.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                child: const Center(
+                  child: Text('No assigned customers match this search.', style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredCustomers.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (ctx, i) {
+                  final c = filteredCustomers[i];
+                  final cName = c['name'] ?? 'Customer';
+                  final cAddress = c['address'] ?? 'Madhapur';
+                  final cPhone = (c['mobile'] ?? '').toString();
+                  final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] : {};
+                  final milkQty = plan['milkQty'] ?? 1;
+                  final cBal = num.tryParse((c['currentBalance'] ?? '0').toString()) ?? 0;
+                  final custDeliv = _findDeliveryForCustomer(c);
+                  final isCustDelivered = custDeliv != null && custDeliv['status'] == 'delivered';
+
+                  return InkWell(
+                    onTap: () {
+                      if (custDeliv != null) {
+                        widget.onShowDeliveryDetails(custDeliv);
+                      } else {
+                        widget.onSelectCustomer(cName.toString());
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isCustDelivered ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(cName.toString(), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF0F172A))),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isCustDelivered ? const Color(0xFFECFDF5) : const Color(0xFFFFF8E1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  isCustDelivered ? '✓ DELIVERED' : 'PENDING',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isCustDelivered ? const Color(0xFF059669) : const Color(0xFFF57F17),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(cAddress.toString(), style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text('${milkQty}L Milk • Bal: ₹$cBal', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cBal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669))),
+                              Row(
+                                children: [
+                                  if (cPhone.isNotEmpty) ...[
+                                    InkWell(
+                                      onTap: () => LauncherService.openDialer(cPhone),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                        decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(6), border: Border.all(color: const Color(0xFFBFDBFE))),
+                                        child: const Row(
+                                          children: [
+                                            Icon(Icons.phone_rounded, size: 10, color: Color(0xFF2563EB)),
+                                            SizedBox(width: 3),
+                                            Text('Call', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  const Text('View Details →', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF059669))),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metricCol(String title, String value, Color color) {
+    return Column(
+      children: [
+        Text(title, style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+        const SizedBox(height: 2),
+        Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: color)),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL SCREEN 3: ADMIN PARTNER SHIFT DUTY LOGS
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminPartnerDutyLogsFullScreen extends StatelessWidget {
+  final Map<String, dynamic> partner;
+  final VoidCallback onToggleDuty;
+
+  const AdminPartnerDutyLogsFullScreen({
+    super.key,
+    required this.partner,
+    required this.onToggleDuty,
+  });
+
+  String _formatTime(dynamic dateVal) {
+    if (dateVal == null || dateVal.toString().isEmpty) return '—';
+    try {
+      final dt = DateTime.parse(dateVal.toString()).toLocal();
+      final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+      final minute = dt.minute.toString().padLeft(2, '0');
+      final period = dt.hour >= 12 ? 'PM' : 'AM';
+      final day = dt.day.toString().padLeft(2, '0');
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[dt.month - 1];
+      return '$day $month, $hour:$minute $period';
+    } catch (_) {
+      return dateVal.toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = partner['name'] ?? 'Partner';
+    final area = partner['assignedArea'] ?? 'Madhapur';
+    final bool isOnline = partner['isOnline'] == true;
+    final lastOnline = partner['lastOnlineAt'];
+    final lastOffline = partner['lastOfflineAt'];
+    final List logs = (partner['dutyLogs'] is List) ? (partner['dutyLogs'] as List) : [];
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$name Shift History', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+            Text('Route: $area', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+          ],
+        ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 14),
+            child: Center(
+              child: InkWell(
+                onTap: () {
+                  onToggleDuty();
+                  Navigator.pop(context);
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: isOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1)),
+                  ),
+                  child: Text(
+                    isOnline ? '🟢 ONLINE (Tap)' : '⏸ OFFLINE (Tap)',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('LAST ONLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                        const SizedBox(height: 3),
+                        Text(
+                          _formatTime(lastOnline),
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(width: 1, height: 32, color: const Color(0xFFE2E8F0)),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('LAST OFFLINE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                        const SizedBox(height: 3),
+                        Text(
+                          _formatTime(lastOffline),
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'DUTY TRANSITION TIMELINE',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5),
+            ),
+            const SizedBox(height: 10),
+            if (logs.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                child: Center(
+                  child: Text('No shift transitions logged yet for $name.', style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13)),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: logs.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, idx) {
+                  final item = Map<String, dynamic>.from(logs[logs.length - 1 - idx] as Map);
+                  final status = (item['status'] ?? 'online').toString();
+                  final isLogOnline = status == 'online';
+                  final time = item['timestamp'];
+                  final logArea = item['area'] ?? area;
+
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isLogOnline ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            isLogOnline ? '🟢 ONLINE' : '⏸ OFFLINE',
+                            style: TextStyle(
+                              color: isLogOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _formatTime(time),
+                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0F172A)),
+                              ),
+                              Text(
+                                'Territory: $logArea',
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FULL SCREEN 4: ADMIN CUSTOMER DETAILS & FINANCIAL LEDGER
+// ─────────────────────────────────────────────────────────────────────────────
+class AdminCustomerDetailsFullScreen extends StatelessWidget {
+  final Map<String, dynamic> customer;
+  final List<Map<String, dynamic>> deliveries;
+  final ApiService api;
+  final Function(Map<String, dynamic> delivery) onShowDeliveryDetails;
+  final Function(Map<String, dynamic> customer) onRecordPayment;
+
+  const AdminCustomerDetailsFullScreen({
+    super.key,
+    required this.customer,
+    required this.deliveries,
+    required this.api,
+    required this.onShowDeliveryDetails,
+    required this.onRecordPayment,
+  });
+
+  Map<String, dynamic>? _findDelivery() {
+    final cId = customer['id'] ?? customer['_id'] ?? customer['customerId'];
+    final cName = (customer['name'] ?? '').toString().toLowerCase().trim();
+
+    for (final d in deliveries) {
+      final dCustId = d['customerId'];
+      final dCustName = (d['customerName'] ?? '').toString().toLowerCase().trim();
+
+      if (cId != null && dCustId != null && cId.toString() == dCustId.toString()) {
+        return d;
+      }
+      if (cName.isNotEmpty && dCustName.isNotEmpty && cName == dCustName) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildRow(String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: valueColor ?? const Color(0xFF0F172A)),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (customer['name'] ?? 'Customer').toString();
+    final mobile = (customer['mobile'] ?? '').toString();
+    final area = (customer['area'] ?? '').toString();
+    final address = (customer['address'] ?? '').toString();
+    final custId = (customer['customerId'] ?? customer['_id'] ?? customer['id'] ?? '').toString();
+    final bal = num.tryParse((customer['currentBalance'] ?? '0').toString()) ?? 0;
+
+    final deliv = _findDelivery();
+    final dm = (deliv?['paymentMethod'] ?? '').toString().toLowerCase();
+    final dam = (deliv?['addonPaymentMethod'] ?? '').toString().toLowerCase();
+    final todayCash = (deliv != null && deliv['status'] == 'delivered')
+        ? (dm == 'cash'
+            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
+            : (dam == 'cash' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
+        : 0;
+    final todayUpi = (deliv != null && deliv['status'] == 'delivered')
+        ? (dm == 'upi'
+            ? (num.tryParse((deliv['paymentAmount'] ?? deliv['totalAmount'] ?? '0').toString()) ?? 0)
+            : (dam == 'upi' ? (num.tryParse((deliv['addonPaidAmount'] ?? deliv['paymentAmount'] ?? '0').toString()) ?? 0) : 0))
+        : 0;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+            Text('$mobile${area.isNotEmpty ? ' • $area' : ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: custId.isNotEmpty ? api.get('/api/customers/$custId/ledger') : Future.value({}),
+          builder: (fCtx, snap) {
+            final ledgerData = snap.data ?? {};
+            final sumMap = ledgerData['summary'] is Map ? ledgerData['summary'] as Map : {};
+            final totalPaidAllTime = num.tryParse((sumMap['totalPaid'] ?? '0').toString()) ?? 0;
+            final addonsList = (deliv != null && deliv['addons'] is List) ? (deliv['addons'] as List) : const [];
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Profile & Contact Card
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                              if (address.isNotEmpty) Text(address, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                            ],
+                          ),
+                          if (mobile.isNotEmpty)
+                            InkWell(
+                              onTap: () => LauncherService.openDialer(mobile),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFBFDBFE))),
+                                child: const Row(
+                                  children: [
+                                    Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
+                                    SizedBox(width: 4),
+                                    Text('Call', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const Divider(height: 22),
+                      _buildRow('Today Collected', '₹${todayCash + todayUpi} (Cash ₹$todayCash • UPI ₹$todayUpi)', valueColor: const Color(0xFF059669)),
+                      _buildRow(
+                        'Total Collected (All Time)',
+                        snap.connectionState == ConnectionState.waiting ? 'Loading...' : '₹$totalPaidAllTime',
+                        valueColor: const Color(0xFF0F172A),
+                      ),
+                      if (addonsList.isNotEmpty)
+                        _buildRow('Today Add-ons', addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')),
+                      _buildRow('Outstanding / Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Record Payment Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => onRecordPayment(customer),
+                    icon: const Icon(Icons.payment_rounded, size: 16),
+                    label: const Text('Record Customer Payment', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Today Delivery Card
+                if (deliv != null) ...[
+                  const Text('TODAY DOORSTEP DROP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '${deliv['actualMilk'] ?? deliv['plannedMilk'] ?? 1}L Farm Milk',
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF059669)),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: deliv['status'] == 'delivered' ? const Color(0xFFECFDF5) : const Color(0xFFFFF8E1),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                (deliv['status'] ?? 'pending').toString().toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: deliv['status'] == 'delivered' ? const Color(0xFF059669) : const Color(0xFFF57F17),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text('Assigned Partner: ${deliv['deliveryBoyName'] ?? 'Unassigned'}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              onShowDeliveryDetails(deliv);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFF059669)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                            ),
+                            child: const Text('View Today Delivery Full Details →', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w800, fontSize: 12.5)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+              ],
+            );
+          },
         ),
       ),
     );

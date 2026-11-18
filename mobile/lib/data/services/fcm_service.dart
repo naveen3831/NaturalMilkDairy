@@ -25,12 +25,19 @@ class FcmService {
   /// Initialize Firebase & register FCM push notification handlers
   Future<void> init() async {
     if (_initialized) return;
+    _initialized = true;
 
     try {
       await Firebase.initializeApp();
 
-      // Register background message handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      // Register background message handler safely
+      try {
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      } catch (e) {
+        if (kDebugMode) {
+          print('FCM background handler notice: $e');
+        }
+      }
 
       final messaging = FirebaseMessaging.instance;
 

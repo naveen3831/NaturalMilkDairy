@@ -125,11 +125,25 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   String _drivingLicense = 'TS-09-2023-0091';
   String _bloodGroup = 'B+';
   bool _isEditingVehicle = false;
-  final String _emergencyContact = '+91 97018 78789';
+  String _emergencyContact = '+91 97018 78789';
   final String _supervisorHotline = '+91 98765 43210';
   final String _operatingHours = '5:00 AM – 7:30 AM';
   final String _depotAddress = 'Madhapur Central Hub, Pillar 24, Hyderabad';
   bool _isOnDuty = true;
+
+  // Edit Profile Form Controllers (Persistent across rebuilds)
+  late final TextEditingController _editNameCtrl;
+  late final TextEditingController _editPhoneCtrl;
+  late final TextEditingController _editEmailCtrl;
+  late final TextEditingController _editAreaCtrl;
+  late final TextEditingController _editVehiclePlateCtrl;
+  late final TextEditingController _editVehicleModelCtrl;
+  late final TextEditingController _editBloodCtrl;
+  late final TextEditingController _editLicenseCtrl;
+  late final TextEditingController _editEmergencyCtrl;
+  late final TextEditingController _editPasswordCtrl;
+  bool _isSavingProfile = false;
+  bool _obscureEditPassword = true;
 
   // Full-screen Sub-screens and Notifications
   String? _activeProfileSubScreen; // null, 'edit', 'personal', 'contact', 'territory', 'vehicle', 'support', 'deliveries_details', 'subscriptions_history'
@@ -320,6 +334,16 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   @override
   void initState() {
     super.initState();
+    _editNameCtrl = TextEditingController(text: _profileName);
+    _editPhoneCtrl = TextEditingController(text: _profilePhone);
+    _editEmailCtrl = TextEditingController(text: _profileEmail);
+    _editAreaCtrl = TextEditingController(text: _profileArea);
+    _editVehiclePlateCtrl = TextEditingController(text: _vehiclePlate);
+    _editVehicleModelCtrl = TextEditingController(text: _vehicleModel);
+    _editBloodCtrl = TextEditingController(text: _bloodGroup);
+    _editLicenseCtrl = TextEditingController(text: _drivingLicense);
+    _editEmergencyCtrl = TextEditingController(text: _emergencyContact);
+    _editPasswordCtrl = TextEditingController();
     _loadData();
     _loadServiceLocations();
     _detectPartnerLocation(requestPermission: false, silent: true);
@@ -525,6 +549,16 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     _delSubSearchCtrl.dispose();
     _subHistSearchCtrl.dispose();
     _routeSearchCtrl.dispose();
+    _editNameCtrl.dispose();
+    _editPhoneCtrl.dispose();
+    _editEmailCtrl.dispose();
+    _editAreaCtrl.dispose();
+    _editVehiclePlateCtrl.dispose();
+    _editVehicleModelCtrl.dispose();
+    _editBloodCtrl.dispose();
+    _editLicenseCtrl.dispose();
+    _editEmergencyCtrl.dispose();
+    _editPasswordCtrl.dispose();
     super.dispose();
   }
 
@@ -646,6 +680,21 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             if (matched.isNotEmpty) {
               _serverBoyCash = (num.tryParse((matched['todayCashCollected'] ?? '0').toString()) ?? 0).toDouble();
               _serverBoyUpi = (num.tryParse((matched['todayUpiCollected'] ?? '0').toString()) ?? 0).toDouble();
+              if ((matched['bloodGroup'] ?? '').toString().trim().isNotEmpty) {
+                _bloodGroup = matched['bloodGroup'].toString().trim();
+              }
+              if ((matched['drivingLicense'] ?? '').toString().trim().isNotEmpty) {
+                _drivingLicense = matched['drivingLicense'].toString().trim();
+              }
+              if ((matched['emergencyContact'] ?? '').toString().trim().isNotEmpty) {
+                _emergencyContact = matched['emergencyContact'].toString().trim();
+              }
+              if ((matched['vehicleNumber'] ?? '').toString().trim().isNotEmpty) {
+                _vehiclePlate = matched['vehicleNumber'].toString().trim();
+              }
+              if ((matched['vehicleModel'] ?? '').toString().trim().isNotEmpty) {
+                _vehicleModel = matched['vehicleModel'].toString().trim();
+              }
             }
           }
         });
@@ -5265,7 +5314,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           // 2. Partner Identity Card matching reference image
           InkWell(
             borderRadius: BorderRadius.circular(20),
-            onTap: () => setState(() => _activeProfileSubScreen = 'personal'),
+            onTap: _openEditProfile,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -5280,67 +5329,110 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
                 children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE2F1EA),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.person_outline_rounded,
-                      color: Color(0xFF0D5C3A),
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0C2340),
-                          ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFE2F1EA),
+                          shape: BoxShape.circle,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'ID: $partnerDisplayId',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: const Icon(
+                          Icons.person_outline_rounded,
+                          color: Color(0xFF0D5C3A),
+                          size: 28,
                         ),
-                        Text(
-                          _profilePhone,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2F1EA),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Text(
-                      'Active',
-                      style: TextStyle(
-                        color: Color(0xFF0D5C3A),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
                       ),
-                    ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF0C2340),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'ID: $partnerDisplayId',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF6B7280),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              _profilePhone,
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2F1EA),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Text(
+                          'Active',
+                          style: TextStyle(
+                            color: Color(0xFF0D5C3A),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.chevron_right_rounded, color: Color(0xFF9CA3AF), size: 20),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
+                          const SizedBox(width: 4),
+                          Text(
+                            _profileArea.isNotEmpty ? _profileArea : 'Assigned Territory',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF0FDF4),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFBBEFCA)),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.edit_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                            SizedBox(width: 5),
+                            Text(
+                              'Edit Profile',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0D5C3A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -5352,6 +5444,24 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             headerIcon: Icons.local_shipping_outlined,
             headerTitle: 'Deliveries & Operations',
             items: [
+              _buildPartnerProfileItemRow(
+                icon: Icons.edit_note_rounded,
+                title: 'Edit Profile & Details',
+                subtitle: 'Update phone, name, territory, vehicle & credentials',
+                badgeText: 'Edit',
+                badgeBg: const Color(0xFFE2F1EA),
+                badgeColor: const Color(0xFF0D5C3A),
+                onTap: _openEditProfile,
+              ),
+              _buildPartnerProfileItemRow(
+                icon: Icons.badge_outlined,
+                title: 'Personal Information',
+                subtitle: 'View full partner identity, license & shift status',
+                badgeText: 'Verified',
+                badgeBg: const Color(0xFFE2F1EA),
+                badgeColor: const Color(0xFF0D5C3A),
+                onTap: () => setState(() => _activeProfileSubScreen = 'personal'),
+              ),
               _buildPartnerProfileItemRow(
                 icon: Icons.local_shipping_outlined,
                 title: 'Deliveries',
@@ -5559,94 +5669,439 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   // =========================================================
   // FULL SCREEN 1: EDIT DRIVER PROFILE (WITH REALTIME SAVE)
   // =========================================================
-  Widget _buildEditProfileFullScreen() {
-    final nameCtrl = TextEditingController(text: _profileName);
-    final phoneCtrl = TextEditingController(text: _profilePhone);
-    final emailCtrl = TextEditingController(text: _profileEmail);
-    final areaCtrl = TextEditingController(text: _profileArea);
-    final vehiclePlateCtrl = TextEditingController(text: _vehiclePlate);
-    final bloodCtrl = TextEditingController(text: _bloodGroup);
+  void _openEditProfile() {
+    _editNameCtrl.text = _profileName;
+    _editPhoneCtrl.text = _profilePhone;
+    _editEmailCtrl.text = _profileEmail;
+    _editAreaCtrl.text = _profileArea;
+    _editVehiclePlateCtrl.text = _vehiclePlate;
+    _editVehicleModelCtrl.text = _vehicleModel;
+    _editBloodCtrl.text = _bloodGroup;
+    _editLicenseCtrl.text = _drivingLicense;
+    _editEmergencyCtrl.text = _emergencyContact;
+    _editPasswordCtrl.clear();
+    _obscureEditPassword = true;
+    setState(() {
+      _activeProfileSubScreen = 'edit';
+    });
+  }
 
+  Future<void> _saveDriverProfile() async {
+    final name = _editNameCtrl.text.trim();
+    final phone = _cleanPhone(_editPhoneCtrl.text);
+    final email = _editEmailCtrl.text.trim();
+    final area = _editAreaCtrl.text.trim();
+    final vehiclePlate = _editVehiclePlateCtrl.text.trim();
+    final vehicleModel = _editVehicleModelCtrl.text.trim();
+    final blood = _editBloodCtrl.text.trim();
+    final license = _editLicenseCtrl.text.trim();
+    final emergency = _editEmergencyCtrl.text.trim();
+    final password = _editPasswordCtrl.text.trim();
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your full name'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (phone.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a valid 10-digit mobile number'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    if (password.isNotEmpty && password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('New password must be at least 6 characters'),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSavingProfile = true);
+
+    try {
+      final payload = {
+        'name': name,
+        'mobile': phone,
+        'email': email,
+        'assignedArea': area,
+        'vehicleNumber': vehiclePlate,
+        'vehicleModel': vehicleModel,
+        'bloodGroup': blood,
+        'drivingLicense': license,
+        'emergencyContact': emergency,
+      };
+      if (password.isNotEmpty) {
+        payload['password'] = password;
+      }
+
+      final res = await _api.put('/api/delivery-boys/me', payload);
+
+      if (res['success'] == true) {
+        if (mounted) {
+          setState(() {
+            _profileName = name;
+            _profilePhone = phone;
+            _profileEmail = email;
+            _profileArea = area;
+            _vehiclePlate = vehiclePlate;
+            if (vehicleModel.isNotEmpty) _vehicleModel = vehicleModel;
+            if (blood.isNotEmpty) _bloodGroup = blood;
+            if (license.isNotEmpty) _drivingLicense = license;
+            if (emergency.isNotEmpty) _emergencyContact = emergency;
+            _activeProfileSubScreen = null;
+          });
+
+          // Sync with AuthProvider and local storage
+          try {
+            final auth = context.read<AuthProvider>();
+            auth.updateUserProfile(
+              name: name,
+              mobile: phone,
+              email: email.isNotEmpty ? email : null,
+              area: area.isNotEmpty ? area : null,
+            );
+          } catch (_) {}
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✓ Partner profile updated and synchronized successfully!'),
+              backgroundColor: Color(0xFF059669),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Failed to update profile'),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Network error: $e'),
+            backgroundColor: const Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingProfile = false);
+    }
+  }
+
+  Widget _buildEditProfileFullScreen() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSubScreenHeader('Edit Driver Profile', 'Update personal credentials, assigned territory, and vehicle details.'),
-          const SizedBox(height: 18),
+          _buildSubScreenHeader(
+            'Edit Driver Profile',
+            'Update your personal information, assigned territory, vehicle specs, and credentials.',
+          ),
+          const SizedBox(height: 16),
+
+          // Partner ID Badge
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFBBEFCA)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: [
-                const Text('Partner Information', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Color(0xFF0F172A))),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Full Name', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Mobile Phone Number', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email Address', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: areaCtrl,
-                  decoration: const InputDecoration(labelText: 'Assigned Route Territory', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: vehiclePlateCtrl,
-                  decoration: const InputDecoration(labelText: 'Assigned Vehicle / Plate', border: OutlineInputBorder(), isDense: true),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: bloodCtrl,
-                  decoration: const InputDecoration(labelText: 'Blood Group', border: OutlineInputBorder(), isDense: true),
+                const Icon(Icons.verified_user_rounded, color: Color(0xFF059669), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PARTNER ID: $_partnerId',
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: Color(0xFF0D5C3A), letterSpacing: 0.5),
+                      ),
+                      const Text(
+                        'Verified Natural Milk Dairy Fleet Partner',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF059669), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+
+          // Section 1: Personal & Contact Information
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.person_outline_rounded, color: Color(0xFF0D5C3A), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Personal & Contact Details',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editNameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name *',
+                    prefixIcon: Icon(Icons.badge_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editPhoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Primary Mobile Number *',
+                    prefixIcon: Icon(Icons.phone_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    helperText: '10-digit number used for login and customer alerts',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editEmailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email Address',
+                    prefixIcon: Icon(Icons.email_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _editBloodCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Blood Group',
+                          prefixIcon: Icon(Icons.bloodtype_outlined, size: 20, color: Color(0xFFDC2626)),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          hintText: 'e.g. B+, O+, A+',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _editEmergencyCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Emergency Contact',
+                          prefixIcon: Icon(Icons.emergency_outlined, size: 20, color: Color(0xFFDC2626)),
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          hintText: 'Phone number',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Section 2: Route & Vehicle Details
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.directions_bike_outlined, color: Color(0xFF0D5C3A), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Territory, Vehicle & License',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editAreaCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Assigned Route Territory',
+                    prefixIcon: Icon(Icons.location_on_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    hintText: 'e.g. Madhapur, Hitec City, Kondapur',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editVehiclePlateCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Vehicle Registration Plate / Number',
+                    prefixIcon: Icon(Icons.confirmation_number_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    hintText: 'e.g. TS-09-EV-4412',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editVehicleModelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Vehicle Model & Specification',
+                    prefixIcon: Icon(Icons.electric_moped_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    hintText: 'e.g. Commercial Cargo EV',
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editLicenseCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Driving License Number',
+                    prefixIcon: Icon(Icons.credit_card_outlined, size: 20, color: Color(0xFF64748B)),
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    hintText: 'e.g. TS-09-2023-0091',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Section 3: Password / Security
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.lock_outline_rounded, color: Color(0xFF0D5C3A), size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      'Account Security (Optional)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _editPasswordCtrl,
+                  obscureText: _obscureEditPassword,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    prefixIcon: const Icon(Icons.key_outlined, size: 20, color: Color(0xFF64748B)),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureEditPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        size: 20,
+                        color: const Color(0xFF64748B),
+                      ),
+                      onPressed: () => setState(() => _obscureEditPassword = !_obscureEditPassword),
+                    ),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                    helperText: 'Leave empty to keep your existing password (min. 6 characters)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 22),
+
+          // Submit & Cancel Buttons
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () async {
-                setState(() {
-                  _profileName = nameCtrl.text.trim();
-                  _profilePhone = phoneCtrl.text.trim();
-                  _profileEmail = emailCtrl.text.trim();
-                  _profileArea = areaCtrl.text.trim();
-                  _vehiclePlate = vehiclePlateCtrl.text.trim();
-                  _bloodGroup = bloodCtrl.text.trim();
-                  _activeProfileSubScreen = null;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✓ Driver profile details updated successfully!'),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              },
+              onPressed: _isSavingProfile ? null : _saveDriverProfile,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF059669),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Save Profile Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+              child: _isSavingProfile
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Text(
+                      'Save Profile Changes',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
             ),
           ),
           const SizedBox(height: 10),
@@ -5661,6 +6116,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
             ),
           ),
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -5753,6 +6209,8 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 const Divider(height: 24, color: Color(0xFFF1F5F9)),
                 _buildFullScreenRow('Driving License', _drivingLicense),
                 const Divider(height: 24, color: Color(0xFFF1F5F9)),
+                _buildFullScreenRow('Emergency Contact', _emergencyContact.isNotEmpty ? _emergencyContact : 'Not provided'),
+                const Divider(height: 24, color: Color(0xFFF1F5F9)),
                 _buildFullScreenRow('Dispatch Hub Depot', _depotAddress),
                 const Divider(height: 24, color: Color(0xFFF1F5F9)),
                 _buildFullScreenRow('Member Since', 'Active Partner (Verified)'),
@@ -5765,7 +6223,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             child: ElevatedButton.icon(
               icon: const Icon(Icons.edit_outlined, size: 18, color: Colors.white),
               label: const Text('Edit Personal Information', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-              onPressed: () => setState(() => _activeProfileSubScreen = 'edit'),
+              onPressed: _openEditProfile,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF059669),
                 padding: const EdgeInsets.symmetric(vertical: 14),

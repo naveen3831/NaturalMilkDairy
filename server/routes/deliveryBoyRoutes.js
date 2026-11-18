@@ -8,9 +8,12 @@ const {
   reconcileCash,
   sendDeliveryBoyCredentials,
   toggleDutyStatus,
+  updateMyProfile,
 } = require('../controllers/deliveryBoyController');
 const { verifyToken, optionalToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
+router.put('/me', verifyToken, requireDeliveryStaff, updateMyProfile);
+router.put('/profile', verifyToken, requireDeliveryStaff, updateMyProfile);
 router.post('/duty-status', optionalToken, toggleDutyStatus);
 router.post('/:id/duty-status', optionalToken, toggleDutyStatus);
 router.get('/', verifyToken, requireDeliveryStaff, getDeliveryBoys);
