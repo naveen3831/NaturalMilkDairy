@@ -3,10 +3,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../core/config/app_config.dart';
 import '../core/utils/ist_date_time.dart';
+import '../services/launcher_service.dart';
 
 Uint8List _decodeBase64Worker(String input) {
   try {
-    return base64Decode(input);
+    String clean = input.trim();
+    final commaIdx = clean.indexOf(',');
+    if (commaIdx != -1 && clean.startsWith('data:')) {
+      clean = clean.substring(commaIdx + 1).trim();
+    }
+    // Remove all whitespace/newlines that might corrupt base64
+    clean = clean.replaceAll(RegExp(r'\s+'), '');
+    return base64Decode(clean);
   } catch (_) {
     return Uint8List(0);
   }
@@ -15,10 +23,32 @@ Uint8List _decodeBase64Worker(String input) {
 /// Centralized Delivery Proof Photo Renderer with Location Details Inside Image
 /// Uniformly used across Admin, Delivery Partner, and Customer mobile views.
 class DeliveryProofHelper {
+  /// Robust check for any base64 image data (data URI or raw base64 bytes)
+  static bool isBase64Image(String raw) {
+    final clean = raw.trim();
+    if (clean.isEmpty) return false;
+    if (clean.startsWith('data:image/')) return true;
+    if (clean.startsWith('http://') || clean.startsWith('https://')) return false;
+
+    // Common raw base64 image signatures
+    if (clean.startsWith('/9j/') || // JPEG
+        clean.startsWith('iVBORw0KGgo') || // PNG
+        clean.startsWith('R0lGOD') || // GIF
+        clean.startsWith('UklGR')) { // WebP
+      return true;
+    }
+
+    // Any non-HTTP string exceeding typical URL length is payload data, NOT a relative path!
+    if (clean.length > 250) {
+      return true;
+    }
+    return false;
+  }
+
   static String resolveUrl(String rawUrl) {
     final clean = rawUrl.trim();
     if (clean.isEmpty) return '';
-    if (clean.startsWith('data:image/')) return clean;
+    if (isBase64Image(clean)) return clean;
 
     if (clean.startsWith('http://') || clean.startsWith('https://')) {
       if (clean.contains('localhost:') ||
@@ -31,28 +61,40 @@ class DeliveryProofHelper {
       return clean;
     }
 
-    // Relative path e.g. /uploads/proof_...
-    final cleanPath = clean.startsWith('/') ? clean : '/$clean';
-    return '${AppConfig.liveBaseUrl}$cleanPath';
+    // Only short relative paths e.g. /uploads/proof_...
+    if (clean.length < 300) {
+      final cleanPath = clean.startsWith('/') ? clean : '/$clean';
+      return '${AppConfig.liveBaseUrl}$cleanPath';
+    }
+
+    return clean;
   }
 
-  static final Map<int, Uint8List> _base64BytesCache = {};
+  static final Map<String, Uint8List> _base64BytesCache = {};
+
+  static String _cacheKey(String s) {
+    final len = s.length;
+    if (len < 60) return s;
+    return '${len}_${s.substring(0, 20)}_${s.substring(len - 20)}';
+  }
 
   static Future<Uint8List> _getCachedBase64Bytes(String cleanBase64) async {
-    final hash = cleanBase64.hashCode;
-    final cached = _base64BytesCache[hash];
+    final key = _cacheKey(cleanBase64);
+    final cached = _base64BytesCache[key];
     if (cached != null) return cached;
+
     final Uint8List bytes;
-    if (cleanBase64.length < 50000) {
+    if (cleanBase64.length < 30000) {
       bytes = _decodeBase64Worker(cleanBase64);
     } else {
       bytes = await compute(_decodeBase64Worker, cleanBase64);
     }
+
     if (bytes.isNotEmpty) {
-      if (_base64BytesCache.length > 40) {
+      if (_base64BytesCache.length > 30) {
         _base64BytesCache.remove(_base64BytesCache.keys.first);
       }
-      _base64BytesCache[hash] = bytes;
+      _base64BytesCache[key] = bytes;
     }
     return bytes;
   }
@@ -68,19 +110,18 @@ class DeliveryProofHelper {
       return buildPlaceholder(width: width, height: height);
     }
 
-    // Handle base64 image data with caching to keep UI thread completely responsive
-    if (clean.startsWith('data:image/')) {
+    // Handle base64 image data (both data URI and raw base64) with off-thread isolate decoding
+    if (isBase64Image(clean)) {
       final commaIdx = clean.indexOf(',');
-      final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
-      final cached = _base64BytesCache[cleanBase64.hashCode];
-      if (cached != null) {
+      final cleanBase64 = (commaIdx != -1 && clean.startsWith('data:')) ? clean.substring(commaIdx + 1).trim() : clean;
+      final cached = _base64BytesCache[_cacheKey(cleanBase64)];
+      if (cached != null && cached.isNotEmpty) {
         return Image.memory(
           cached,
           width: width,
           height: height,
           fit: fit,
-          errorBuilder: (context, error, stackTrace) =>
-              buildPlaceholder(width: width, height: height),
+          errorBuilder: (_, _, _) => buildPlaceholder(width: width, height: height),
         );
       }
       return FutureBuilder<Uint8List>(
@@ -109,8 +150,7 @@ class DeliveryProofHelper {
               width: width,
               height: height,
               fit: fit,
-              errorBuilder: (context, error, stackTrace) =>
-                  buildPlaceholder(width: width, height: height),
+              errorBuilder: (_, _, _) => buildPlaceholder(width: width, height: height),
             );
           }
           return buildPlaceholder(width: width, height: height);
@@ -118,7 +158,12 @@ class DeliveryProofHelper {
       );
     }
 
+    // Handle valid web/network image URLs
     final resolved = resolveUrl(clean);
+    if (!resolved.startsWith('http://') && !resolved.startsWith('https://')) {
+      return buildPlaceholder(width: width, height: height);
+    }
+
     return Image.network(
       resolved,
       width: width,
@@ -126,7 +171,6 @@ class DeliveryProofHelper {
       fit: fit,
       cacheWidth: 800,
       errorBuilder: (context, error, stackTrace) {
-        // Fallback to direct live cloud server if not already attempted
         final cleanPath = clean.startsWith('/') ? clean : '/$clean';
         final cloudUrl = '${AppConfig.liveBaseUrl}$cleanPath';
         if (resolved != cloudUrl) {
@@ -136,7 +180,7 @@ class DeliveryProofHelper {
             height: height,
             fit: fit,
             cacheWidth: 800,
-            errorBuilder: (context, error, stackTrace) => buildPlaceholder(width: width, height: height),
+            errorBuilder: (_, _, _) => buildPlaceholder(width: width, height: height),
           );
         }
         return buildPlaceholder(width: width, height: height);
@@ -187,6 +231,7 @@ class DeliveryProofHelper {
     );
   }
 
+  /// Opens the Doorstep Photo Proof in a full-screen, high-performance viewer
   static void showLightbox({
     required BuildContext context,
     required String proofStr,
@@ -197,30 +242,100 @@ class DeliveryProofHelper {
     String? timestamp,
     String? partnerName,
   }) {
-    // Format timestamp in Indian Standard Time (IST)
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) => DeliveryProofFullScreenViewer(
+          proofStr: proofStr,
+          customerName: customerName,
+          address: address,
+          lat: lat,
+          lng: lng,
+          timestamp: timestamp,
+          partnerName: partnerName,
+        ),
+      ),
+    );
+  }
+}
+
+/// Dedicated 100% Full-Screen Doorstep Proof Photo Viewer
+class DeliveryProofFullScreenViewer extends StatelessWidget {
+  final String proofStr;
+  final String customerName;
+  final String address;
+  final num? lat;
+  final num? lng;
+  final String? timestamp;
+  final String? partnerName;
+
+  const DeliveryProofFullScreenViewer({
+    super.key,
+    required this.proofStr,
+    required this.customerName,
+    required this.address,
+    this.lat,
+    this.lng,
+    this.timestamp,
+    this.partnerName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final formattedIstTime = IstDateTime.formatFull(timestamp);
 
-    showDialog(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            // 1. Full Screen Interactive Zoomable Photo
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.8,
+                maxScale: 5.0,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: DeliveryProofHelper.buildImageFromSource(
+                    proofStr,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+
+            // 2. Top Header Bar
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0F172A),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withValues(alpha: 0.85),
+                      Colors.black.withValues(alpha: 0.0),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.verified_rounded, color: Color(0xFF34D399), size: 20),
-                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 22),
+                        tooltip: 'Back',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -231,128 +346,157 @@ class DeliveryProofHelper {
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800,
-                              fontSize: 15,
+                              fontSize: 16,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          Text(
-                            address.isNotEmpty ? address : 'Doorstep Drop Verified',
-                            style: const TextStyle(
-                              color: Color(0xFF94A3B8),
-                              fontSize: 11,
+                          const Text(
+                            'Doorstep Delivery Photo Proof',
+                            style: TextStyle(
+                              color: Color(0xFF34D399),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
-                      onPressed: () => Navigator.of(ctx).pop(),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
                     ),
                   ],
                 ),
               ),
+            ),
 
-              // Main Viewport: Photo Proof with Location Watermark Inside the Image
-              Container(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.62,
-                  minHeight: 240,
+            // 3. Bottom Information Card with GPS Navigation
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withValues(alpha: 0.0),
+                      Colors.black.withValues(alpha: 0.92),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
-                width: double.infinity,
-                color: const Color(0xFF07160E),
-                child: InteractiveViewer(
-                  minScale: 0.8,
-                  maxScale: 4.0,
-                  child: buildImageFromSource(proofStr, fit: BoxFit.contain),
-                ),
-              ),
-
-              // Bottom IST Timestamp & Location Card
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0B1E14),
-                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-                  border: Border(top: BorderSide(color: Color(0xFF059669), width: 1.5)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF059669),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'DOORSTEP VERIFIED',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.4,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '🕒 $formattedIstTime',
-                            style: const TextStyle(
-                              color: Color(0xFFA7F3D0),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF34D399)),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '📍 Location: ${address.isNotEmpty ? address : 'Doorstep Drop Coordinates Verified'}',
-                            style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 11.5, height: 1.2),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (partnerName != null && partnerName.isNotEmpty) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          const Icon(Icons.two_wheeler_rounded, size: 14, color: Color(0xFF34D399)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              '🚚 Partner: $partnerName',
-                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                            ),
-                          ),
-                        ],
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A).withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF059669), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
                     ],
-                  ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF059669),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              '✓ DOORSTEP DROP VERIFIED',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            formattedIstTime,
+                            style: const TextStyle(
+                              color: Color(0xFFA7F3D0),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.location_on_rounded, size: 15, color: Color(0xFF34D399)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              address.isNotEmpty ? address : 'Doorstep Drop Location Verified',
+                              style: const TextStyle(color: Color(0xFFE2E8F0), fontSize: 12, height: 1.3),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (partnerName != null && partnerName!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(Icons.two_wheeler_rounded, size: 15, color: Color(0xFF34D399)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Delivered by: $partnerName',
+                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (lat != null && lng != null) ...[
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => LauncherService.openMap(lat: lat, lng: lng, address: address),
+                            icon: const Icon(Icons.navigation_rounded, size: 16),
+                            label: Text(
+                              'Open GPS in Google Maps (${lat!.toStringAsFixed(3)}, ${lng!.toStringAsFixed(3)})',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF2563EB),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
