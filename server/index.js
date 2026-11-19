@@ -1,5 +1,7 @@
 ﻿const path = require('path');
 const fs = require('fs');
+
+// Resolve .env from multiple candidate paths
 const envPaths = [
   path.join(__dirname, '.env'),
   path.join(__dirname, '../.env'),
@@ -13,38 +15,55 @@ for (const p of envPaths) {
   }
 }
 require('dotenv').config();
+
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
 const { connectDB, getMongoStatus } = require('./config/db');
-
-const authRoutes = require('./routes/authRoutes');
-const customerRoutes = require('./routes/customerRoutes');
-const deliveryRoutes = require('./routes/deliveryRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
-const productRoutes = require('./routes/productRoutes');
-const deliveryBoyRoutes = require('./routes/deliveryBoyRoutes');
-const reportRoutes = require('./routes/reportRoutes');
-const uploadRoutes = require('./routes/uploadRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const subscriptionRoutes = require('./routes/subscriptionRoutes');
-const locationRoutes = require('./routes/locationRoutes');
-const supportRoutes = require('./routes/supportRoutes');
-const bannerRoutes = require('./routes/bannerRoutes');
-const contactInfoRoutes = require('./routes/contactInfoRoutes');
-const mediaRoutes = require('./routes/mediaRoutes');
+const { initWebSocket } = require('./config/websocket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
-// Connect to Database
+const server = http.createServer(app);
+
+// Initialize WebSocket server
+initWebSocket(server);
+
+// 1. FAST HEALTH CHECK (Available immediately for CI/CD Docker and Nginx container probes)
+app.get('/api/health', (req, res) => {
+  const mongoStatus = getMongoStatus();
+  res.json({
+    status: 'healthy',
+    app: 'Natural Milk Dairy API',
+    tagline: 'Natural • Pure • Healthy',
+    mongodb: mongoStatus.connected ? 'connected' : 'connecting',
+    database: mongoStatus.info?.name || 'natural_milk_dairy',
+    cluster: mongoStatus.info?.host || 'MongoDB Atlas',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// 2. Start HTTP listener IMMEDIATELY so container health checks never encounter race-condition 502s
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n======================================================`);
+  console.log(`🥛 NATURAL MILK DAIRY — Server Running on Port ${PORT}`);
+  console.log(`🌿 Natural • Pure • Healthy`);
+  console.log(`📡 Health API: http://0.0.0.0:${PORT}/api/health`);
+  console.log(`⚡ WebSocket:  ws://0.0.0.0:${PORT}/ws`);
+  console.log(`======================================================\n`);
+});
+
+// 3. Connect to Database asynchronously in background
 connectDB();
 
-// Allowed Origins for CORS
+// 4. Allowed Origins for CORS
 const staticAllowedOrigins = [
   'https://natural-milk-dairy-naveen3831s-projects.vercel.app',
   'https://natural-milk-dairy.vercel.app',
+  'https://naturalmilkdairy.speshway.site',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
@@ -61,8 +80,8 @@ const allowedOrigins = new Set([...staticAllowedOrigins, ...envOrigins]);
 const isOriginAllowed = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.has(origin)) return true;
-  // Allow all Vercel deployment URLs for this project
   if (/^https:\/\/natural-milk-dairy.*\.vercel\.app$/i.test(origin)) return true;
+  if (/^https:\/\/.*\.speshway\.site$/i.test(origin)) return true;
   return false;
 };
 
@@ -79,6 +98,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 app.use(cors({
   origin(origin, callback) {
     if (isOriginAllowed(origin)) return callback(null, true);
@@ -89,42 +109,29 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   maxAge: 600,
 }));
+
 app.use(express.json({ limit: '15mb', strict: true }));
 app.use(morgan('dev'));
 
 // Static files (for manifest and fallback static web assets)
 app.use('/public', express.static(path.join(__dirname, '../client/public')));
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/customers', customerRoutes);
-app.use('/api/deliveries', deliveryRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/delivery-boys', deliveryBoyRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/locations', locationRoutes);
-app.use('/api/supports', supportRoutes);
-app.use('/api/banners', bannerRoutes);
-app.use('/api/contact-info', contactInfoRoutes);
-app.use('/api/media', mediaRoutes);
-
-// Health check
-app.get('/api/health', (req, res) => {
-  const mongoStatus = getMongoStatus();
-  res.json({
-    status: 'healthy',
-    app: 'Natural Milk Dairy API',
-    tagline: 'Natural • Pure • Healthy',
-    mongodb: mongoStatus.connected ? 'connected' : 'fallback-json',
-    database: mongoStatus.info?.name || 'natural_milk_dairy',
-    cluster: mongoStatus.info?.host || 'MongoDB Atlas',
-    timestamp: new Date().toISOString(),
-  });
-});
+// 5. Mount API Routes
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/customers', require('./routes/customerRoutes'));
+app.use('/api/deliveries', require('./routes/deliveryRoutes'));
+app.use('/api/payments', require('./routes/paymentRoutes'));
+app.use('/api/products', require('./routes/productRoutes'));
+app.use('/api/delivery-boys', require('./routes/deliveryBoyRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
+app.use('/api/upload', require('./routes/uploadRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
+app.use('/api/subscriptions', require('./routes/subscriptionRoutes'));
+app.use('/api/locations', require('./routes/locationRoutes'));
+app.use('/api/supports', require('./routes/supportRoutes'));
+app.use('/api/banners', require('./routes/bannerRoutes'));
+app.use('/api/contact-info', require('./routes/contactInfoRoutes'));
+app.use('/api/media', require('./routes/mediaRoutes'));
 
 // Static files for client build
 app.use(express.static(path.join(__dirname, '../client/dist')));
@@ -145,7 +152,7 @@ app.use((err, req, res, next) => {
 // SPA fallback
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, '../client/dist/index.html');
-  if (require('fs').existsSync(indexPath)) {
+  if (fs.existsSync(indexPath)) {
     return res.sendFile(indexPath);
   }
 
@@ -154,7 +161,7 @@ app.get('*', (req, res) => {
     const cp = require('child_process');
     console.log('⚠️ client/dist/index.html missing! Initiating automatic client build...');
     cp.execSync('npm --prefix client run build', { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
-    if (require('fs').existsSync(indexPath)) {
+    if (fs.existsSync(indexPath)) {
       return res.sendFile(indexPath);
     }
   } catch (buildErr) {
@@ -162,20 +169,4 @@ app.get('*', (req, res) => {
   }
 
   res.send('Natural Milk Dairy API is active. Please start client or build dist.');
-});
-
-const http = require('http');
-const { initWebSocket } = require('./config/websocket');
-
-const server = http.createServer(app);
-initWebSocket(server);
-
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n======================================================`);
-  console.log(`🥛 NATURAL MILK DAIRY — Server Running on Port ${PORT}`);
-  console.log(`🌿 Natural • Pure • Healthy`);
-  console.log(`📡 Local API:   http://localhost:${PORT}/api/health`);
-  console.log(`🌐 Network API: http://0.0.0.0:${PORT}/api/health`);
-  console.log(`⚡ WebSocket:   ws://0.0.0.0:${PORT}/ws`);
-  console.log(`======================================================\n`);
 });
