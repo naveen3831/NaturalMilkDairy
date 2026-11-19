@@ -474,29 +474,12 @@ class ApiService {
         }
 
         // Initial Google tap without mobile/password:
-        // First check if user's email already exists in the system:
-        final checkRes = await checkEmail(resolvedEmail);
-        if (checkRes['exists'] == true) {
-          // The email already exists -> do NOT ask for profile completion!
-          final matchedUser = checkRes['user'] as Map<String, dynamic>?;
-          return {
-            'success': false,
-            'emailExists': true,
-            'email': resolvedEmail,
-            'name': matchedUser?['name'] ?? resolvedName,
-            'mobile': matchedUser?['mobile'] ?? '',
-            'message': 'Welcome back! An account for $resolvedEmail already exists. Please enter your password to sign in.',
-          };
-        }
-
-        // Only genuine NEW users are asked to complete profile & set up credentials:
+        // Do NOT falsely assume an existing user is new!
         return {
-          'success': true,
-          'requiresProfileCompletion': true,
-          'requiresMobile': true,
+          'success': false,
           'email': resolvedEmail,
           'name': resolvedName,
-          'message': 'Please complete your profile to register your new account.',
+          'message': 'Google Sign-In endpoint is updating on the server. Please sign in with your password, or restart the Node.js App in Speshway cPanel.',
         };
       }
       return {
