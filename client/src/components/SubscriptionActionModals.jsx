@@ -518,6 +518,12 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
   const [selectedDays, setSelectedDays] = useState(30);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const hasActiveSub = Boolean(
+    user?.subscription?.status === 'active' &&
+    user?.subscription?.endDate &&
+    new Date(user.subscription.endDate) > new Date()
+  );
+
   const milkQty = user?.deliveryPlan?.milkQty || 1;
   const pricePerDay = milkQty * 60 + ((user?.deliveryPlan?.curdQty || 0) / 500) * 30;
   const totalCost = selectedDays * pricePerDay;
@@ -527,7 +533,7 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
     setIsSubmitting(true);
     try {
       await startSubscriptionPayment({
-        purpose: 'extend',
+        purpose: hasActiveSub ? 'extend' : 'new',
         days: selectedDays,
         milkQty,
         curdQty: user?.deliveryPlan?.curdQty || 0,
@@ -537,16 +543,20 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
         name: user?.name,
         onSuccess: (data) => {
           setIsSubmitting(false);
-          onSuccess(`Subscription extended by ${selectedDays} days! Payment verified via Razorpay.`);
+          onSuccess(
+            hasActiveSub
+              ? `Subscription extended by ${selectedDays} days! Payment verified via Razorpay.`
+              : `Subscription activated successfully for ${selectedDays} days! Welcome to Natural Milk Dairy.`
+          );
         },
         onError: (err) => {
           setIsSubmitting(false);
-          alert(err.message || 'Extension payment was cancelled or failed.');
+          alert(err.message || (hasActiveSub ? 'Extension payment was cancelled or failed.' : 'Subscription payment was cancelled or failed.'));
         },
       });
     } catch (err) {
       setIsSubmitting(false);
-      alert(err.message || 'Extension payment was cancelled or failed.');
+      alert(err.message || (hasActiveSub ? 'Extension payment was cancelled or failed.' : 'Subscription payment was cancelled or failed.'));
     }
   };
 
@@ -595,10 +605,10 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
         </button>
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
-            Extend Subscription Duration
+            {hasActiveSub ? 'Extend Subscription Duration' : 'Activate Subscription Plan'}
           </h2>
           <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748b' }}>
-            Zero-gap automatic morning delivery extension
+            {hasActiveSub ? 'Zero-gap automatic morning delivery extension' : 'Start your fresh farm milk morning deliveries'}
           </p>
         </div>
         <div style={{ width: '36px' }} />
@@ -607,8 +617,8 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
       <form onSubmit={handleSubmit} style={{ flex: 1, padding: '20px', maxWidth: '520px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <div
           style={{
-            background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
-            border: '1.5px solid #fde68a',
+            background: hasActiveSub ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)' : 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+            border: hasActiveSub ? '1.5px solid #fde68a' : '1.5px solid #a7f3d0',
             borderRadius: '16px',
             padding: '16px',
             marginBottom: '20px',
@@ -617,21 +627,25 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
             gap: '12px',
           }}
         >
-          <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: '#d97706', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: hasActiveSub ? '#d97706' : '#059669', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <CalendarDays size={22} />
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 900, color: '#92400e' }}>Keep Fresh Milk Coming</h3>
-            <p style={{ margin: 0, fontSize: '0.74rem', color: '#b45309' }}>Add extra days so you never run out of morning milk</p>
+            <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 900, color: hasActiveSub ? '#92400e' : '#065f46' }}>
+              {hasActiveSub ? 'Keep Fresh Milk Coming' : 'Welcome to Pure Farm Dairy'}
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.74rem', color: hasActiveSub ? '#b45309' : '#047857' }}>
+              {hasActiveSub ? 'Add extra days so you never run out of morning milk' : 'Subscribe today for fresh chilled morning deliveries right at your doorstep'}
+            </p>
           </div>
         </div>
 
         <label style={{ display: 'block', fontSize: '0.80rem', fontWeight: 800, color: '#334155', marginBottom: '10px' }}>
-          SELECT EXTENSION PERIOD
+          {hasActiveSub ? 'SELECT EXTENSION PERIOD' : 'SELECT SUBSCRIPTION PERIOD'}
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '22px' }}>
           {[
-            { days: 7, label: `+7 Days (₹${7 * pricePerDay})`, tag: 'Trial Extension' },
+            { days: 7, label: `+7 Days (₹${7 * pricePerDay})`, tag: 'Trial Boost' },
             { days: 15, label: `+15 Days (₹${15 * pricePerDay})`, tag: 'Half Month' },
             { days: 30, label: `+30 Days (₹${30 * pricePerDay})`, tag: 'Most Popular' },
             { days: 60, label: `+60 Days (₹${60 * pricePerDay})`, tag: 'Best Value' },
@@ -642,16 +656,16 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
               style={{
                 padding: '14px',
                 borderRadius: '14px',
-                border: selectedDays === item.days ? '2px solid #d97706' : '1.2px solid #e2ebe5',
-                background: selectedDays === item.days ? '#fffbeb' : '#ffffff',
+                border: selectedDays === item.days ? (hasActiveSub ? '2px solid #d97706' : '2px solid #059669') : '1.2px solid #e2ebe5',
+                background: selectedDays === item.days ? (hasActiveSub ? '#fffbeb' : '#ecfdf5') : '#ffffff',
                 cursor: 'pointer',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                 <strong style={{ fontSize: '0.94rem', color: '#0c2340', fontWeight: 900 }}>{item.label}</strong>
-                {selectedDays === item.days && <CheckCircle2 size={16} color="#d97706" />}
+                {selectedDays === item.days && <CheckCircle2 size={16} color={hasActiveSub ? '#d97706' : '#059669'} />}
               </div>
-              <span style={{ fontSize: '0.72rem', color: '#b45309', fontWeight: 700 }}>{item.tag}</span>
+              <span style={{ fontSize: '0.72rem', color: hasActiveSub ? '#b45309' : '#047857', fontWeight: 700 }}>{item.tag}</span>
               <div style={{ marginTop: '8px', fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>
                 ₹{item.days * pricePerDay}
               </div>
@@ -690,7 +704,11 @@ export function ExtendSubscriptionFullPage({ user, onClose, onSuccess }) {
           }}
         >
           <Lock size={18} />
-          {isSubmitting ? 'Processing Payment...' : `Pay ₹${totalCost} · Extend Subscription (${selectedDays} Days)`}
+          {isSubmitting
+            ? 'Processing Payment...'
+            : (hasActiveSub
+                ? `Pay ₹${totalCost.toLocaleString('en-IN')} · Extend Subscription (${selectedDays} Days)`
+                : `Pay ₹${totalCost.toLocaleString('en-IN')} · Activate Subscription (${selectedDays} Days)`)}
         </button>
       </form>
     </div>

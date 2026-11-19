@@ -69,14 +69,41 @@ export function NotificationProvider({ children }) {
     }
   }, [token]);
 
+  // Play pleasant notification sound chime via Web Audio API (zero external assets required)
+  const playNotificationChime = useCallback(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.1); // A5
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch (_) {}
+  }, []);
+
   // Display native OS browser push notification via ServiceWorker or Notification API
   const showNativeNotification = useCallback((title, body) => {
+    playNotificationChime();
     if (typeof window === 'undefined' || !('Notification' in window)) return;
-    if (Notification.permission === 'granted') {
+
+    const trigger = () => {
       const options = {
         body: body || 'New update from Natural Milk Dairy',
         icon: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
         badge: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg',
+        vibrate: [200, 100, 200],
       };
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.ready
@@ -93,8 +120,16 @@ export function NotificationProvider({ children }) {
           new Notification(title, options);
         } catch (_) {}
       }
+    };
+
+    if (Notification.permission === 'granted') {
+      trigger();
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission().then((perm) => {
+        if (perm === 'granted') trigger();
+      }).catch(() => {});
     }
-  }, []);
+  }, [playNotificationChime]);
 
   // Auto-dismiss floating push toast after 7 seconds
   useEffect(() => {
@@ -208,7 +243,7 @@ export function NotificationProvider({ children }) {
     if (currentRole === 'customer') {
       if (recipRole !== 'customer') return false;
       const recipId = String(n.recipientId || '').toLowerCase().trim();
-      if (!recipId) return false; // Never show unaddressed customer notifications
+      if (!recipId) return true; // General customer broadcast
       const myIds = new Set(
         [
           user?.id,
@@ -221,6 +256,7 @@ export function NotificationProvider({ children }) {
           .filter(Boolean)
           .map((s) => String(s).toLowerCase().trim())
       );
+      if (myIds.size === 0) return true; // If user profile is still hydrating, don't drop
       return myIds.has(recipId);
     }
 
@@ -318,11 +354,23 @@ export function NotificationProvider({ children }) {
       } catch (_) {}
       fetchNotifications();
     });
-    const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
+    const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', (payload) => {
       fetchNotifications();
+      if (payload && (payload.status === 'delivered' || payload.type === 'DELIVERY_COMPLETED')) {
+        const title = payload.title || '🥛 Delivery Completed!';
+        const msg = payload.message || 'Fresh morning milk delivered to doorstep. Photo proof verified.';
+        setLatestToast({ title, message: msg, type: 'delivery_completed', ...payload });
+        showNativeNotification(title, msg);
+      }
     });
-    const unsubCompleted = wsSubscribe('DELIVERY_COMPLETED', () => {
+    const unsubCompleted = wsSubscribe('DELIVERY_COMPLETED', (payload) => {
       fetchNotifications();
+      if (payload) {
+        const title = payload.title || '🥛 Delivery Completed!';
+        const msg = payload.message || 'Fresh morning milk delivered to doorstep. Photo proof verified.';
+        setLatestToast({ title, message: msg, type: 'delivery_completed', ...payload });
+        showNativeNotification(title, msg);
+      }
     });
     const unsubStatus = wsSubscribe('STATUS_CHANGED', () => {
       fetchNotifications();

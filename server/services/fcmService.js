@@ -101,14 +101,37 @@ async function sendPushNotification({ recipientRole = 'all', recipientId = '', t
     if (!recipientRole || recipientRole === 'all') {
       deviceRecords = await DeviceToken.find({}).lean();
     } else {
-      const targetQuery = { role: recipientRole };
+      const targetIds = [];
       if (recipientId && String(recipientId).trim()) {
-        targetQuery.userId = String(recipientId).trim();
+        const cleanId = String(recipientId).trim();
+        targetIds.push(cleanId);
+        try {
+          const Customer = require('../models/Customer');
+          const matchedCust = await Customer.findOne({
+            $or: [
+              ...(cleanId.length === 24 && /^[a-f\d]{24}$/i.test(cleanId) ? [{ _id: cleanId }] : []),
+              { customerId: cleanId },
+              { mobile: cleanId },
+              { userId: cleanId },
+            ],
+          }).lean();
+          if (matchedCust) {
+            if (matchedCust.userId) targetIds.push(matchedCust.userId.toString());
+            if (matchedCust.customerId) targetIds.push(matchedCust.customerId.toString());
+            if (matchedCust._id) targetIds.push(matchedCust._id.toString());
+            if (matchedCust.mobile) targetIds.push(matchedCust.mobile.toString());
+          }
+        } catch (_) {}
       }
+
+      const roleQuery = targetIds.length > 0
+        ? { role: recipientRole, userId: { $in: targetIds } }
+        : { role: recipientRole };
+
       // Deliver to targeted recipient AND always include admin devices so admin receives all push notifications
       deviceRecords = await DeviceToken.find({
         $or: [
-          targetQuery,
+          roleQuery,
           { role: 'admin' },
         ],
       }).lean();

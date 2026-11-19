@@ -11,6 +11,7 @@ import '../admin/admin_dashboard_screen.dart';
 import '../delivery/delivery_dashboard_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../home/home_screen.dart';
+import '../../services/launcher_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -56,6 +57,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       await ApiService().init();
       RealtimeService().connect();
       unawaited(FcmService().init());
+      unawaited(LauncherService.requestNotificationPermission());
     } catch (e) {
       debugPrint('Startup service initialization notice: $e');
     }

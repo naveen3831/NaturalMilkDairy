@@ -438,8 +438,13 @@ const markDelivered = async (req, res) => {
       });
     }
 
+    const cId = String(delivery.customerId || '').trim();
     const customer = await Customer.findOne({
-      $or: [{ customerId: delivery.customerId }, { _id: delivery.customerId.length === 24 ? delivery.customerId : null }],
+      $or: [
+        ...(cId ? [{ customerId: cId }] : []),
+        ...(cId.length === 24 && /^[a-f\d]{24}$/i.test(cId) ? [{ _id: cId }] : []),
+        ...(delivery.customerPhone ? [{ mobile: String(delivery.customerPhone).trim() }] : []),
+      ],
     });
 
     let proofUrl = (typeof proofImage === 'string' && proofImage.trim())
@@ -690,7 +695,7 @@ const markDelivered = async (req, res) => {
 
     // Send real-time notification to Admin & Customer
     try {
-      await Notification.create({
+      const adminCreated = await Notification.create({
         recipientRole: 'admin',
         title: sanitizedAddons.length > 0 ? '✅ Delivery + Add-ons Completed' : '✅ Delivery Completed',
         message: `${actor || delivery.deliveryBoyName || 'Driver'} delivered ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''}${addonsDesc} to ${delivery.customerName}. Order Total: ₹${totalAmount}${totalPaidNow > 0 ? ` • Collected ₹${totalPaidNow} (${paidMethod.toUpperCase()})` : ` (${method.toUpperCase()})`}.`,
@@ -706,23 +711,99 @@ const markDelivered = async (req, res) => {
           driverName: delivery.deliveryBoyName || actor,
         },
       });
-      if (customer) {
-        await Notification.create({
+      const adminNotifObj = adminCreated.toObject ? adminCreated.toObject() : adminCreated;
+      broadcast('NOTIFICATION_CREATED', {
+        ...adminNotifObj,
+        id: adminNotifObj._id ? adminNotifObj._id.toString() : adminNotifObj.id,
+      });
+
+      const targetUserId = customer
+        ? (customer.userId || customer.customerId || customer._id).toString()
+        : (delivery.customerId || delivery.customerPhone || '').toString();
+
+      if (targetUserId) {
+        const custTitle = '🥛 Delivery Completed!';
+        const custMessage = sanitizedAddons.length > 0
+          ? `Your delivery for ${delivery.deliveryDate}${addonsDesc} is complete. Add-on amount: ₹${addonsTotal}${totalPaidNow > 0 ? ` (Paid ₹${totalPaidNow} ${paidMethod.toUpperCase()})` : ''}. View the doorstep photo proof in your app.`
+          : `Your fresh milk delivery for ${delivery.deliveryDate} has arrived at your doorstep! View the doorstep photo proof in your app.`;
+
+        const custCreated = await Notification.create({
           recipientRole: 'customer',
-          recipientId: customer._id.toString(),
-          title: 'Delivery Completed',
-          message: sanitizedAddons.length > 0
-            ? `Your delivery for ${delivery.deliveryDate}${addonsDesc} is complete. Add-on amount: ₹${addonsTotal}${totalPaidNow > 0 ? ` (Paid ₹${totalPaidNow} ${paidMethod.toUpperCase()})` : ''}.`
-            : `Your delivery for ${delivery.deliveryDate} is complete. View the doorstep photo proof in your delivery history.`,
+          recipientId: targetUserId,
+          title: custTitle,
+          message: custMessage,
           type: 'delivery_completed',
-          data: { deliveryId: delivery._id.toString(), proofImage: delivery.proofImage, addons: sanitizedAddons, addonsTotal },
+          data: {
+            deliveryId: delivery._id.toString(),
+            customerId: delivery.customerId || (customer ? customer.customerId : ''),
+            customerMobile: delivery.customerPhone || (customer ? customer.mobile : ''),
+            customerName: delivery.customerName || (customer ? customer.name : ''),
+            proofImage: delivery.proofImage,
+            proofUrl: delivery.proofImage,
+            driverName: delivery.deliveryBoyName || actor || 'Delivery Partner',
+            deliveryBoyName: delivery.deliveryBoyName || actor || 'Delivery Partner',
+            date: delivery.deliveryDate || 'Today',
+            addons: sanitizedAddons,
+            addonsTotal,
+            status: 'delivered',
+          },
         });
+        const custNotifObj = custCreated.toObject ? custCreated.toObject() : custCreated;
+        broadcast('NOTIFICATION_CREATED', {
+          ...custNotifObj,
+          id: custNotifObj._id ? custNotifObj._id.toString() : custNotifObj.id,
+        });
+
+        // Dispatch background FCM push notification
+        try {
+          const { sendPushNotification } = require('../services/fcmService');
+          sendPushNotification({
+            recipientRole: 'customer',
+            recipientId: targetUserId,
+            title: custTitle,
+            body: custMessage,
+            data: {
+              type: 'delivery_completed',
+              deliveryId: delivery._id.toString(),
+              status: 'delivered',
+            },
+          }).catch((err) => console.warn('FCM dispatch note:', err.message));
+        } catch (_) {}
       }
     } catch (notifErr) {
       console.warn('Admin notification error:', notifErr.message);
     }
 
-    broadcast('DELIVERY_UPDATED', { id: delivery._id.toString(), customerId: delivery.customerId });
+    const deliveryCompletedPayload = {
+      id: delivery._id.toString(),
+      deliveryId: delivery._id.toString(),
+      customerId: delivery.customerId,
+      customerName: delivery.customerName,
+      customerPhone: delivery.customerPhone || customer?.mobile || '',
+      deliveryBoyName: delivery.deliveryBoyName || actor || 'Delivery Partner',
+      driverName: delivery.deliveryBoyName || actor || 'Delivery Partner',
+      milk,
+      curd,
+      addons: sanitizedAddons,
+      addonsTotal,
+      totalAmount,
+      status: 'delivered',
+      proofImage: delivery.proofImage,
+      proofUrl: delivery.proofImage,
+      deliveryDate: delivery.deliveryDate || 'Today',
+      date: delivery.deliveryDate || 'Today',
+      deliveredAt: delivery.deliveredAt,
+      title: '🥛 Delivery Completed!',
+      message: `${delivery.customerName}: ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''}${addonsDesc} delivered to doorstep.`,
+    };
+
+    broadcast('DELIVERY_COMPLETED', deliveryCompletedPayload);
+    broadcast('DELIVERY_UPDATED', {
+      id: delivery._id.toString(),
+      customerId: delivery.customerId,
+      status: 'delivered',
+      ...deliveryCompletedPayload,
+    });
     broadcast('CUSTOMER_UPDATED', { id: delivery.customerId, customerId: delivery.customerId });
     if (totalPaidNow > 0) {
       broadcast('PAYMENT_UPDATED', { customerId: delivery.customerId, amount: totalPaidNow, method: paidMethod, addonsTotal });
@@ -780,7 +861,7 @@ const markNotDelivered = async (req, res) => {
 
     // Send real-time notification to Admin
     try {
-      await Notification.create({
+      const missedCreated = await Notification.create({
         recipientRole: 'admin',
         title: '⚠️ Delivery Issue / Missed',
         message: `${actor || delivery.deliveryBoyName || 'Driver'} reported drop could not be completed for ${delivery.customerName}. Reason: ${delivery.notDeliveredReason}.`,
@@ -791,6 +872,11 @@ const markNotDelivered = async (req, res) => {
           reason: delivery.notDeliveredReason,
           driverName: delivery.deliveryBoyName || actor,
         },
+      });
+      const missedObj = missedCreated.toObject ? missedCreated.toObject() : missedCreated;
+      broadcast('NOTIFICATION_CREATED', {
+        ...missedObj,
+        id: missedObj._id ? missedObj._id.toString() : missedObj.id,
       });
     } catch (notifErr) {
       console.warn('Admin notification error:', notifErr.message);
@@ -927,7 +1013,7 @@ const assignDelivery = async (req, res) => {
 
     // Create notification for delivery partner
     try {
-      await Notification.create({
+      const assignedCreated = await Notification.create({
         recipientRole: 'delivery_boy',
         recipientId: deliveryBoyId || '',
         title: '📦 New Delivery Assigned',
@@ -939,6 +1025,11 @@ const assignDelivery = async (req, res) => {
           deliveryBoyId,
           deliveryBoyName,
         },
+      });
+      const assignedObj = assignedCreated.toObject ? assignedCreated.toObject() : assignedCreated;
+      broadcast('NOTIFICATION_CREATED', {
+        ...assignedObj,
+        id: assignedObj._id ? assignedObj._id.toString() : assignedObj.id,
       });
     } catch (notifErr) {
       console.warn('Driver notification error:', notifErr.message);

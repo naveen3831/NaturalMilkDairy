@@ -577,6 +577,8 @@ const verifyPayment = async (req, res) => {
     subscription.updatedAt = new Date();
     await subscription.save();
 
+    const isNew = subscription.purpose !== 'extend' && subscription.purpose !== 'upgrade';
+
     await Notification.create({
       recipientRole: 'admin',
       title: subscription.purpose === 'upgrade'
@@ -597,12 +599,45 @@ const verifyPayment = async (req, res) => {
       },
     });
 
+    // Customer Notification
+    try {
+      const custTitle = isNew
+        ? '🎉 Subscription Successful'
+        : subscription.purpose === 'upgrade'
+        ? '✨ Plan Upgraded Successfully!'
+        : '🎉 Subscription Extended';
+      const custMessage = isNew
+        ? `Your milk subscription has been activated successfully from ${toDateString(subscription.startDate)} to ${toDateString(subscription.endDate)}! Doorstep morning deliveries start at 5:00 AM.`
+        : subscription.purpose === 'upgrade'
+        ? `Your subscription plan has been upgraded to ${subscription.plan.milkQty}L ${subscription.plan.milkType || 'Milk'}.`
+        : `Your milk subscription has been extended until ${toDateString(subscription.endDate)}. Thank you for choosing Natural Milk Dairy!`;
+
+      await Notification.create({
+        recipientRole: 'customer',
+        recipientId: customer.customerId || customer._id.toString(),
+        title: custTitle,
+        message: custMessage,
+        type: isNew ? 'subscription_activated' : 'subscription_extended',
+        data: {
+          customerId: customer.customerId,
+          subscriptionId: subscription._id.toString(),
+          startDate: toDateString(subscription.startDate),
+          endDate: toDateString(subscription.endDate),
+          status: 'active',
+        },
+      });
+    } catch (_) {}
+
     const deliveryPartnerId = customer.deliveryPlan?.deliveryBoyId || '';
     try {
       await Notification.create({
         recipientRole: 'delivery_boy',
         recipientId: deliveryPartnerId,
-        title: subscription.purpose === 'upgrade' ? '✨ Customer Upgraded Plan' : '📅 Subscription Extended',
+        title: subscription.purpose === 'upgrade'
+          ? '✨ Customer Upgraded Plan'
+          : subscription.purpose === 'extend'
+          ? '📅 Subscription Extended'
+          : '🎉 New Customer Subscription',
         message: `${customer.name} (${customer.area || 'Doorstep'}): ${noteText}.`,
         type: 'subscription_created',
         data: {
@@ -633,7 +668,7 @@ const verifyPayment = async (req, res) => {
         ? 'Payment verified! Plan successfully upgraded.'
         : subscription.purpose === 'extend'
         ? `Payment verified! Subscription extended by ${subscription.extendDays || 30} days.`
-        : 'Payment verified and subscription activated.',
+        : 'Payment verified and subscription activated successfully! Welcome to Natural Milk Dairy.',
       subscription: {
         id: subscription._id.toString(),
         status: 'active',

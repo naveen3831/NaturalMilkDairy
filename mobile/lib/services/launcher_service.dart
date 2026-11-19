@@ -3,6 +3,49 @@ import 'package:flutter/services.dart';
 class LauncherService {
   static const MethodChannel _channel = MethodChannel('com.naturalmilk.dairy/app_launcher');
 
+  /// Trigger Android System Push-Up Heads-Up Tray Notification
+  static Future<bool> showNativeNotification({required String title, required String body}) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('showNativeNotification', {
+        'title': title,
+        'body': body,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Request runtime POST_NOTIFICATIONS permission on Android 13+
+  static Future<bool> requestNotificationPermission() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('requestNotificationPermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Check whether notification permissions and system channel notifications are enabled
+  static Future<Map<String, dynamic>> checkNotificationPermission() async {
+    try {
+      final res = await _channel.invokeMapMethod<String, dynamic>('checkNotificationPermission');
+      return res ?? {'granted': true, 'areNotificationsEnabled': true};
+    } catch (_) {
+      return {'granted': true, 'areNotificationsEnabled': true};
+    }
+  }
+
+  /// Open Android OS System Notification Settings for this app
+  static Future<bool> openNotificationSettings() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('openNotificationSettings');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Open Google Maps or navigation intent to the given lat/long or address query
   static Future<bool> openMap({num? lat, num? lng, String? address}) async {
     try {
@@ -30,6 +73,20 @@ class LauncherService {
       if (clean.isEmpty) return false;
       final bool? res = await _channel.invokeMethod<bool>('openDialer', {'phone': clean});
       return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Open WhatsApp chat
+  static Future<bool> openWhatsApp(String phone, [String message = '']) async {
+    try {
+      final clean = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (clean.isEmpty) return false;
+      final url = message.isNotEmpty
+          ? 'https://wa.me/$clean?text=${Uri.encodeComponent(message)}'
+          : 'https://wa.me/$clean';
+      return await openUrl(url);
     } catch (_) {
       return false;
     }

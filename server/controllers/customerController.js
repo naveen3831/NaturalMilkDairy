@@ -2545,7 +2545,11 @@ const extendSubscription = async (req, res) => {
 
     const numDays = Math.max(1, parseInt(days, 10) || 30);
     let baseDate = new Date();
-    if (customer.subscription?.endDate && new Date(customer.subscription.endDate) > baseDate) {
+    const hasExistingActive = customer.subscription?.status === 'active' &&
+      customer.subscription?.endDate &&
+      new Date(customer.subscription.endDate) > baseDate;
+
+    if (hasExistingActive) {
       baseDate = new Date(customer.subscription.endDate);
     }
     const newEndDate = new Date(baseDate.getTime() + numDays * 24 * 60 * 60 * 1000);
@@ -2576,10 +2580,12 @@ const extendSubscription = async (req, res) => {
         paymentDate: new Date(),
         collectedBy: actorName,
         deliveryBoyId: req.user?.id,
-        referenceNumber: `EXT-${method.toUpperCase()}-${Date.now().toString().slice(-6)}`,
+        referenceNumber: `${hasExistingActive ? 'EXT' : 'SUB'}-${method.toUpperCase()}-${Date.now().toString().slice(-6)}`,
         previousBalance: prevBal,
         newBalance: customer.currentBalance,
-        notes: notes || `Subscription extended by ${numDays} days until ${formatDate(newEndDate)}`,
+        notes: notes || (hasExistingActive
+          ? `Subscription extended by ${numDays} days until ${formatDate(newEndDate)}`
+          : `Subscription activated successfully for ${numDays} days until ${formatDate(newEndDate)}`),
         createdAt: new Date(),
       });
 
@@ -2614,9 +2620,11 @@ const extendSubscription = async (req, res) => {
 
     // Audit log
     await recordAudit(
-      'Subscription Extended',
+      hasExistingActive ? 'Subscription Extended' : 'Subscription Activated',
       actorName,
-      `Extended subscription for ${customer.name} (${customer.customerId}) by ${numDays} days until ${formatDate(newEndDate)}. Collected: ₹${numCollected} via ${method.toUpperCase()}`,
+      hasExistingActive
+        ? `Extended subscription for ${customer.name} (${customer.customerId}) by ${numDays} days until ${formatDate(newEndDate)}. Collected: ₹${numCollected} via ${method.toUpperCase()}`
+        : `Activated subscription for ${customer.name} (${customer.customerId}) for ${numDays} days until ${formatDate(newEndDate)}. Collected: ₹${numCollected} via ${method.toUpperCase()}`,
       'subscription'
     );
 
@@ -2625,9 +2633,11 @@ const extendSubscription = async (req, res) => {
       await Notification.create({
         recipientId: customer._id.toString(),
         recipientRole: 'customer',
-        title: '🎉 Subscription Extended',
-        message: `Your milk subscription has been extended by ${numDays} days until ${formatDate(newEndDate)}. Thank you for choosing Natural Milk Dairy!`,
-        type: 'subscription_extended',
+        title: hasExistingActive ? '🎉 Subscription Extended' : '🎉 Subscription Successful',
+        message: hasExistingActive
+          ? `Your milk subscription has been extended by ${numDays} days until ${formatDate(newEndDate)}. Thank you for choosing Natural Milk Dairy!`
+          : `Your milk subscription has been activated successfully for ${numDays} days until ${formatDate(newEndDate)}! Doorstep morning deliveries start at 5:00 AM.`,
+        type: hasExistingActive ? 'subscription_extended' : 'subscription_activated',
         data: { customerId: customer.customerId, newEndDate: newEndDate.toISOString(), days: numDays },
       });
     } catch (_) {}
@@ -2645,7 +2655,16 @@ const extendSubscription = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Subscription extended by ${numDays} days successfully until ${formatDate(newEndDate)}!`,
+      message: hasExistingActive
+        ? `Subscription extended by ${numDays} days successfully until ${formatDate(newEndDate)}!`
+        : `Subscription activated successfully for ${numDays} days until ${formatDate(newEndDate)}!`,
+      customer: {
+        ...customer.toObject(),
+        id: customer._id.toString(),
+      },
+      newEndDate: newEndDate.toISOString(),
+      newBalance: customer.currentBalance,
+    });
       customer: {
         ...customer.toObject(),
         id: customer._id.toString(),

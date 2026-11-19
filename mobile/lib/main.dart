@@ -43,6 +43,7 @@ class NaturalMilkDairyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: AppConstants.appName,
+        navigatorKey: InAppNotificationService.navigatorKey,
         scaffoldMessengerKey: InAppNotificationService.scaffoldMessengerKey,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,

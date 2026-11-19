@@ -21,6 +21,7 @@ import 'delivery_addresses_screen.dart';
 import 'faq_screen.dart';
 import '../../widgets/report_download_sheet.dart';
 import '../../widgets/delivery_proof_dialog.dart';
+import '../../services/launcher_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -91,6 +92,37 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    LauncherService.requestNotificationPermission().then((_) {
+      LauncherService.checkNotificationPermission().then((status) {
+        if (status['areNotificationsEnabled'] == false && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Row(
+                children: [
+                  Icon(Icons.notifications_off_rounded, color: Colors.amber, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Push notifications are turned off. Enable them for morning delivery alerts!',
+                      style: TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
+              action: SnackBarAction(
+                label: 'ENABLE',
+                textColor: const Color(0xFF34D399),
+                onPressed: () => LauncherService.openNotificationSettings(),
+              ),
+              duration: const Duration(seconds: 7),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: const Color(0xFF0C2340),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      });
+    });
     _fetchUnreadNotifCount();
     _initNotifRealtime();
     _banners = List.from(_defaultBanners);
@@ -109,7 +141,8 @@ class _HomeScreenState extends State<HomeScreen> {
           type == 'NOTIFICATION_UPDATED' ||
           type == 'NOTIFICATION_DELETED' ||
           type == 'NOTIFICATIONS_CLEARED' ||
-          type == 'DELIVERY_UPDATED') {
+          type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_COMPLETED') {
         _fetchUnreadNotifCount();
       }
     });
@@ -118,8 +151,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isNotificationForCurrentCustomer(Map<String, dynamic> item) {
     try {
       final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
-      if (role == 'all') return true;
       if (role == 'delivery_boy' || role == 'admin') return false;
+      if (role == 'all' || role == 'user') return true;
 
       final recipId = (item['recipientId']?.toString() ?? '').toLowerCase().trim();
 
@@ -149,12 +182,30 @@ class _HomeScreenState extends State<HomeScreen> {
         if (cMail.isNotEmpty) myIds.add(cMail);
       }
 
-      if (recipId.isNotEmpty) {
+      // Check item's data payload for matching customer identifiers
+      final data = item['data'] is Map ? Map<String, dynamic>.from(item['data'] as Map) : null;
+      if (data != null) {
+        final dCid = (data['customerId']?.toString() ?? '').toLowerCase().trim();
+        final dPhone = (data['customerMobile']?.toString() ?? data['customerPhone']?.toString() ?? '').toLowerCase().trim();
+        final dName = (data['customerName']?.toString() ?? '').toLowerCase().trim();
+        if (dCid.isNotEmpty && myIds.contains(dCid)) return true;
+        if (dPhone.isNotEmpty && myIds.contains(dPhone)) return true;
+        if (currentUser != null && dName.isNotEmpty && dName == currentUser.name.toLowerCase().trim()) return true;
+      }
+
+      final itemPhone = (item['customerPhone']?.toString() ?? item['customerMobile']?.toString() ?? '').toLowerCase().trim();
+      if (itemPhone.isNotEmpty && myIds.contains(itemPhone)) return true;
+      final itemCid = (item['customerId']?.toString() ?? '').toLowerCase().trim();
+      if (itemCid.isNotEmpty && myIds.contains(itemCid)) return true;
+
+      if (recipId.isEmpty) return true;
+
+      if (myIds.isNotEmpty) {
         return myIds.contains(recipId);
       }
-      return false;
+      return true;
     } catch (_) {
-      return false;
+      return true;
     }
   }
 

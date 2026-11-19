@@ -16,6 +16,7 @@ import '../../widgets/report_download_sheet.dart';
 import '../../services/delivery_proof_watermarker.dart';
 import '../../widgets/delivery_proof_dialog.dart';
 import '../../core/utils/ist_date_time.dart';
+import '../../services/in_app_notification_service.dart';
 
 String _todayIstCacheKey() {
   final nowIst = IstDateTime.toIst(DateTime.now());
@@ -9994,6 +9995,13 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
       if (!mounted) return;
       widget.onSuccess();
       Navigator.of(context).pop();
+
+      // Trigger native push-up notification in Android tray & in-app banner
+      InAppNotificationService.showNotification(
+        title: '✅ Delivery Completed',
+        message: 'Successfully delivered to ${widget.delivery['customerName']?.toString() ?? 'Customer'} (${widget.delivery['customerAddress']?.toString() ?? 'Doorstep'}). Photo proof saved.',
+      );
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -12441,6 +12449,9 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
     final currentEndStr = (sub['endDate'] ?? _cust['subscriptionEnd'] ?? '').toString();
     final currentEnd = DateTime.tryParse(currentEndStr);
     final now = DateTime.now();
+    final bool hasActiveSubscription = sub['status'] == 'active' &&
+        currentEnd != null &&
+        currentEnd.isAfter(now);
 
     DateTime calculateNewExpiry(int days) {
       final base = (currentEnd != null && currentEnd.isAfter(now)) ? currentEnd : now;
@@ -12482,9 +12493,9 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Extend Subscription',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            Text(
+                              hasActiveSubscription ? 'Extend Subscription' : 'Activate Subscription',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                             ),
                             Text(
                               _cust['name'] ?? 'Customer',
@@ -12528,10 +12539,10 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                     ),
                     const SizedBox(height: 16),
 
-                    // Extension Duration Pills
-                    const Text(
-                      'Select Extension Period',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    // Duration Pills
+                    Text(
+                      hasActiveSubscription ? 'Select Extension Period' : 'Select Subscription Period',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                     ),
                     const SizedBox(height: 8),
                     Wrap(
@@ -12558,7 +12569,7 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                     ),
                     const SizedBox(height: 16),
 
-                    // New Expiry Date Live Preview
+                    // Expiry Date Live Preview
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
@@ -12574,9 +12585,9 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'New Extended Expiry Date',
-                                style: TextStyle(fontSize: 11, color: Color(0xFF065F46), fontWeight: FontWeight.w700),
+                              Text(
+                                hasActiveSubscription ? 'New Extended Expiry Date' : 'Subscription Expiry Date',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF065F46), fontWeight: FontWeight.w700),
                               ),
                               Text(
                                 _formatDate(newExpiry),
@@ -12716,7 +12727,7 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
-                                          content: Text(res['message'] ?? '✓ Subscription extended successfully!'),
+                                          content: Text(res['message'] ?? (hasActiveSubscription ? '✓ Subscription extended successfully!' : '✓ Subscription activated successfully!')),
                                           backgroundColor: const Color(0xFF059669),
                                         ),
                                       );
@@ -12724,14 +12735,14 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                                   } else {
                                     if (mounted) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text(res['message'] ?? 'Failed to extend subscription')),
+                                        SnackBar(content: Text(res['message'] ?? (hasActiveSubscription ? 'Failed to extend subscription' : 'Failed to activate subscription'))),
                                       );
                                     }
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Error extending subscription: $e')),
+                                      SnackBar(content: Text('Error updating subscription: $e')),
                                     );
                                   }
                                 } finally {
@@ -12751,14 +12762,14 @@ class _FullScreenCustomerDetailsPageState extends State<_FullScreenCustomerDetai
                                 height: 22,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                               )
-                            : const Row(
+                            : Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                                  SizedBox(width: 8),
+                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                  const SizedBox(width: 8),
                                   Text(
-                                    'Confirm & Extend Subscription',
-                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
+                                    hasActiveSubscription ? 'Confirm & Extend Subscription' : 'Confirm & Activate Subscription',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14),
                                   ),
                                 ],
                               ),

@@ -11,9 +11,9 @@ const {
   unregisterFcmToken,
 } = require('../controllers/notificationController');
 
-const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, optionalToken, requireAdmin } = require('../middleware/authMiddleware');
 
-router.get('/', verifyToken, getNotifications);
+router.get('/', optionalToken, getNotifications);
 router.post('/', verifyToken, requireAdmin, createNotification);
 router.post('/fcm-token', verifyToken, registerFcmToken);
 router.delete('/fcm-token', verifyToken, unregisterFcmToken);

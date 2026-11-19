@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../data/services/api_service.dart';
 import '../data/services/realtime_service.dart';
+import '../services/in_app_notification_service.dart';
 
 class CustomerProvider extends ChangeNotifier {
   final ApiService _api = ApiService();
   final RealtimeService _realtime = RealtimeService();
+
+  final Set<String> _notifiedDeliveryIds = {};
+  bool _deliveryAlertsInitialized = false;
 
   Map<String, dynamic>? _customerData;
   List<Map<String, dynamic>> _deliveries = [];
@@ -238,8 +243,10 @@ class CustomerProvider extends ChangeNotifier {
     _realtimeSubscription = _realtime.eventStream.listen((event) {
       final type = event['type']?.toString();
       debugPrint('⚡ CustomerProvider received real-time event: $type');
-      if (type == 'DELIVERY_UPDATED' ||
+      if (type == 'DELIVERY_COMPLETED' ||
+          type == 'DELIVERY_UPDATED' ||
           type == 'DELIVERY_CREATED' ||
+          type == 'NOTIFICATION_CREATED' ||
           type == 'CUSTOMER_UPDATED' ||
           type == 'PAYMENT_RECORDED' ||
           type == 'PAYMENT_UPDATED' ||
@@ -248,7 +255,7 @@ class CustomerProvider extends ChangeNotifier {
           type == 'ORDER_CREATED' ||
           type == 'SUBSCRIPTION_UPDATED') {
         _debounceTimer?.cancel();
-        _debounceTimer = Timer(const Duration(milliseconds: 600), () {
+        _debounceTimer = Timer(const Duration(milliseconds: 300), () {
           loadAllCustomerData(silent: true);
         });
       }
@@ -339,6 +346,9 @@ class CustomerProvider extends ChangeNotifier {
         } else {
           _deliveries = [];
         }
+        if (_deliveries.isNotEmpty) {
+          _checkAndNotifyDeliveries(_deliveries);
+        }
 
         if (res['payments'] is List) {
           _payments = (res['payments'] as List)
@@ -371,6 +381,45 @@ class CustomerProvider extends ChangeNotifier {
       _deliveries = [];
       _payments = [];
     }
+  }
+
+  void _checkAndNotifyDeliveries(List<Map<String, dynamic>> items) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!_deliveryAlertsInitialized) {
+        final saved = prefs.getStringList('nmd_notified_deliv_ids') ?? [];
+        _notifiedDeliveryIds.addAll(saved);
+        _deliveryAlertsInitialized = true;
+        if (saved.isEmpty && items.length > 1) {
+          for (final item in items.skip(1)) {
+            final id = (item['id'] ?? item['_id'] ?? item['deliveryDate'] ?? '').toString();
+            if (id.isNotEmpty) _notifiedDeliveryIds.add(id);
+          }
+          await prefs.setStringList('nmd_notified_deliv_ids', _notifiedDeliveryIds.toList());
+        }
+      }
+
+      for (final item in items) {
+        final status = (item['status'] ?? '').toString().toLowerCase();
+        if (status != 'delivered') continue;
+        final delivId = (item['id'] ?? item['_id'] ?? item['deliveryDate'] ?? '').toString();
+        if (delivId.isEmpty || _notifiedDeliveryIds.contains(delivId)) continue;
+
+        _notifiedDeliveryIds.add(delivId);
+        await prefs.setStringList('nmd_notified_deliv_ids', _notifiedDeliveryIds.toList());
+
+        final date = (item['deliveryDate'] ?? item['date'] ?? 'Today').toString();
+        final milk = item['actualMilk'] ?? item['plannedMilk'] ?? item['milkQty'] ?? 1;
+        final curd = item['actualCurd'] ?? item['curdQty'] ?? 0;
+        final curdText = (curd is num && curd > 0) ? ' + ${curd}g Curd' : '';
+
+        InAppNotificationService.showNotification(
+          title: '🥛 Delivery Completed!',
+          message: 'Your farm-fresh milk ($milk L$curdText) for $date was delivered to your doorstep. Photo proof verified.',
+        );
+        break;
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadSubscriptions() async {

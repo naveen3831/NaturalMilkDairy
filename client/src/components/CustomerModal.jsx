@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useDairy } from '../context/DairyContext';
-import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles, Edit3, Navigation, CheckCircle2, ExternalLink } from 'lucide-react';
+import { User, Phone, MapPin, Calendar, CreditCard, Milk, Mail, Lock, Sparkles, Edit3, Navigation, CheckCircle2, ExternalLink, Truck, X, MessageSquare, Plus, Minus } from 'lucide-react';
 
 const parseCoordinatesFromInput = (input) => {
   if (!input || typeof input !== 'string') return null;
@@ -78,6 +78,21 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth <= 768;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const prevOpenRef = useRef(false);
   const prevTargetIdRef = useRef(null);
@@ -286,11 +301,11 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
     }
   };
 
-  return (
+  // ── DESKTOP MODAL VIEW (100% UNTOUCHED FOR DESKTOP WEBSITE) ──
+  const renderDesktopModal = () => (
     <div
       className="modal-overlay customer-modal-overlay"
       onMouseDown={(e) => {
-        // Prevent accidental closing on touch drag or text selection
         if (e.target === e.currentTarget) {
           onClose();
         }
@@ -427,7 +442,6 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
                     {l.name} {l.pincode ? `(PIN: ${l.pincode})` : ''} • {l.city}
                   </option>
                 ))}
-                {/* Fallback if editing older customer whose area is not in active locations */}
                 {area && !locations.some((l) => l.isActive && l.name.toLowerCase() === area.toLowerCase()) && (
                   <option value={area}>{area} (Current)</option>
                 )}
@@ -737,4 +751,702 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
       </div>
     </div>
   );
+
+  // ── MOBILE RESPONSIVE REDESIGN (TOUCH-OPTIMIZED EXECUTIVE SHEET) ──
+  const renderMobileModal = () => (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        background: 'rgba(15, 23, 42, 0.70)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'flex-end',
+      }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#ffffff',
+          borderRadius: '24px 24px 0 0',
+          maxHeight: '92vh',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 -10px 30px rgba(0,0,0,0.2)',
+          position: 'relative',
+        }}
+      >
+        {/* Drag handle */}
+        <div style={{ width: '38px', height: '4px', background: '#cbd5e1', borderRadius: '2px', margin: '10px auto 4px auto' }} />
+
+        {/* Top Header Bar */}
+        <div
+          style={{
+            padding: '10px 16px 12px 16px',
+            borderBottom: '1px solid #f1f5f9',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '10px',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '12px',
+                background: isEditMode ? '#eff6ff' : '#ecfdf5',
+                color: isEditMode ? '#2563eb' : '#059669',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                border: `1px solid ${isEditMode ? '#bfdbfe' : '#a7f3d0'}`,
+              }}
+            >
+              {isEditMode ? <Edit3 size={18} /> : <Sparkles size={18} />}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '1.02rem', fontWeight: 900, color: '#0f172a' }}>
+                  {isEditMode ? 'Edit Customer' : 'Add Customer'}
+                </span>
+                {targetCustomer && (
+                  <span style={{ background: '#f1f5f9', color: '#475569', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '6px', fontWeight: 800 }}>
+                    {targetCustomer.customerId || 'ID'}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {isEditMode ? `Update profile & subscription for ${targetCustomer.name}` : 'Create profile and send portal credentials'}
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close form"
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: '#f1f5f9',
+              border: 'none',
+              color: '#64748b',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Scrollable Form Body */}
+        <form
+          onSubmit={handleSubmit}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '14px 14px 20px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          {errorMessage && (
+            <div
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                padding: '10px 12px',
+                borderRadius: '12px',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>⚠️</span>
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* CARD 1: PERSONAL & CONTACT */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
+              <User size={13} color="#2563eb" />
+              <span>PERSONAL & CONTACT DETAILS</span>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                Customer Name *
+              </label>
+              <input
+                type="text"
+                placeholder="Full name (e.g. Ramesh Kulkarni)"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                required
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  Mobile Number *
+                </label>
+                <input
+                  type="tel"
+                  placeholder="10 digits"
+                  value={mobile}
+                  onChange={(e) => setMobile(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  WhatsApp Number
+                </label>
+                <input
+                  type="tel"
+                  placeholder="Defaults to mobile"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                <Mail size={12} />
+                <span>Customer Email (For App Login & Invoices)</span>
+              </label>
+              <input
+                type="email"
+                placeholder="customer@gmail.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #bbf7d0', background: '#f0fdf4', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                <Lock size={12} />
+                <span>{isEditMode ? 'Change Password (Optional)' : 'Portal Password (Optional)'}</span>
+              </label>
+              <input
+                type="text"
+                placeholder={isEditMode ? 'Leave blank to keep existing password' : 'Leave blank for auto-generated'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          {/* CARD 2: DELIVERY LOCATION & ADDRESS */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
+              <MapPin size={13} color="#059669" />
+              <span>DELIVERY LOCATION & GPS</span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  Service Area *
+                </label>
+                <select
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 10px', fontSize: '0.82rem', background: '#ffffff', boxSizing: 'border-box' }}
+                  required
+                >
+                  {locations.filter((l) => l.isActive).map((l) => (
+                    <option key={l.id || l._id} value={l.name}>
+                      {l.name} {l.pincode ? `(${l.pincode})` : ''}
+                    </option>
+                  ))}
+                  {area && !locations.some((l) => l.isActive && l.name.toLowerCase() === area.toLowerCase()) && (
+                    <option value={area}>{area} (Current)</option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  Landmark
+                </label>
+                <input
+                  type="text"
+                  placeholder="Near Metro / Bank"
+                  value={landmark}
+                  onChange={(e) => setLandmark(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 12px', fontSize: '0.84rem', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                Doorstep Delivery Address *
+              </label>
+              <textarea
+                rows={2}
+                placeholder="Flat / Wing, Society Name, Street Address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '8px 12px', fontSize: '0.84rem', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
+                required
+              />
+            </div>
+
+            {/* GPS Pin Box */}
+            <div
+              style={{
+                background: latitude && longitude ? '#f0fdf4' : '#f8fafc',
+                border: `1px solid ${latitude && longitude ? '#bbf7d0' : '#e2e8f0'}`,
+                borderRadius: '10px',
+                padding: '10px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
+                  Google Maps Link / GPS Pin
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGetCurrentLocation}
+                  style={{
+                    background: '#ecfdf5',
+                    border: '1px solid #a7f3d0',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.70rem',
+                    fontWeight: 800,
+                    color: '#047857',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  <Navigation size={10} />
+                  <span>Use Device GPS</span>
+                </button>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Paste maps link or lat, lng (e.g. 17.4483, 78.3915)"
+                value={googleMapsUrl}
+                onChange={(e) => handleGoogleMapsUrlChange(e.target.value)}
+                style={{ width: '100%', borderRadius: '8px', border: '1px solid #cbd5e1', padding: '7px 10px', fontSize: '0.80rem', background: '#ffffff', boxSizing: 'border-box' }}
+              />
+
+              {latitude !== null && longitude !== null && (
+                <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.70rem', fontWeight: 700, color: '#065f46' }}>
+                  <span>✓ GPS: {latitude}, {longitude}</span>
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: '#047857', textDecoration: 'underline' }}
+                  >
+                    Test Pin ↗
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CARD 3: SUBSCRIPTION PLAN & ASSIGNED PARTNER */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
+              <Milk size={13} color="#059669" />
+              <span>MORNING SUBSCRIPTION PLAN</span>
+            </div>
+
+            {/* Milk Stepper */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>Farm Milk Quantity (L)</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 900, color: '#059669' }}>{milkQty} L / Day</span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setMilkQty(Math.max(0.5, Number((Number(milkQty) - 0.5).toFixed(1))))}
+                  style={{ width: '38px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <Minus size={14} color="#475569" />
+                </button>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={milkQty}
+                  onChange={(e) => setMilkQty(e.target.value)}
+                  style={{ flex: 1, height: '36px', textAlign: 'center', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.90rem', fontWeight: 800, color: '#0f172a' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setMilkQty(Number((Number(milkQty) + 0.5).toFixed(1)))}
+                  style={{ width: '38px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <Plus size={14} color="#475569" />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '5px', marginTop: '6px' }}>
+                {[0.5, 1.0, 1.5, 2.0].map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setMilkQty(q)}
+                    style={{
+                      flex: 1,
+                      padding: '4px',
+                      borderRadius: '6px',
+                      border: Number(milkQty) === q ? '1px solid #059669' : '1px solid #e2e8f0',
+                      background: Number(milkQty) === q ? '#ecfdf5' : '#f8fafc',
+                      color: Number(milkQty) === q ? '#059669' : '#64748b',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {q} L
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Curd Stepper */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>Fresh Curd Quantity (Packs)</span>
+                <span style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0f172a' }}>{curdQty} Pk</span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurdQty(Math.max(0, Number(curdQty) - 1))}
+                  style={{ width: '38px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <Minus size={14} color="#475569" />
+                </button>
+                <input
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={curdQty}
+                  onChange={(e) => setCurdQty(e.target.value)}
+                  style={{ flex: 1, height: '36px', textAlign: 'center', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.90rem', fontWeight: 800, color: '#0f172a' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setCurdQty(Number(curdQty) + 1)}
+                  style={{ width: '38px', height: '36px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                >
+                  <Plus size={14} color="#475569" />
+                </button>
+              </div>
+              <div style={{ display: 'flex', gap: '5px', marginTop: '6px' }}>
+                {[0, 1, 2, 3].map((cq) => (
+                  <button
+                    key={cq}
+                    type="button"
+                    onClick={() => setCurdQty(cq)}
+                    style={{
+                      flex: 1,
+                      padding: '4px',
+                      borderRadius: '6px',
+                      border: Number(curdQty) === cq ? '1px solid #0f172a' : '1px solid #e2e8f0',
+                      background: Number(curdQty) === cq ? '#f1f5f9' : '#f8fafc',
+                      color: Number(curdQty) === cq ? '#0f172a' : '#64748b',
+                      fontSize: '0.70rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {cq === 0 ? 'None' : `${cq} Pk`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Frequency Segmented Buttons */}
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '5px' }}>
+                Delivery Schedule
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {[
+                  { id: 'daily', label: 'Daily' },
+                  { id: 'alternate', label: 'Alternate' },
+                  { id: 'selected', label: 'Selected Days' },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFrequency(f.id)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '8px',
+                      border: frequency === f.id ? '1px solid #059669' : '1px solid #cbd5e1',
+                      background: frequency === f.id ? '#ecfdf5' : '#ffffff',
+                      color: frequency === f.id ? '#059669' : '#475569',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Assigned Partner Dropdown */}
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                <Truck size={12} color="#2563eb" />
+                <span>Assigned Delivery Partner</span>
+              </label>
+              <select
+                value={deliveryBoyId}
+                onChange={(e) => setDeliveryBoyId(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '9px 10px', fontSize: '0.82rem', background: '#ffffff', boxSizing: 'border-box' }}
+              >
+                <option value="">Choose Delivery Partner (Unassigned)</option>
+                {(deliveryBoys || [])
+                  .filter((b) => b.status !== 'inactive')
+                  .map((b) => (
+                    <option key={b.id || b._id} value={b.id || b._id}>
+                      {b.name} ({b.assignedArea || 'Route'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {/* CARD 4: ACCOUNT STATUS & BILLING */}
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '14px',
+              border: '1px solid #e2e8f0',
+              padding: '14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: '#1e293b', letterSpacing: '0.04em' }}>
+              <CreditCard size={13} color="#64748b" />
+              <span>ACCOUNT STATUS & BILLING</span>
+            </div>
+
+            {/* Account Status Segmented */}
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '5px' }}>
+                Account Status
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {[
+                  { id: 'active', label: 'Active', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
+                  { id: 'paused', label: 'Paused', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+                  { id: 'inactive', label: 'Inactive', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setStatus(s.id)}
+                    style={{
+                      flex: 1,
+                      padding: '7px 4px',
+                      borderRadius: '8px',
+                      border: status === s.id ? `1px solid ${s.color}` : '1px solid #cbd5e1',
+                      background: status === s.id ? s.bg : '#ffffff',
+                      color: status === s.id ? s.color : '#64748b',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: s.color }} />
+                    <span>{s.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  Billing Type
+                </label>
+                <select
+                  value={paymentType}
+                  onChange={(e) => setPaymentType(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '8px 10px', fontSize: '0.80rem', background: '#ffffff', boxSizing: 'border-box' }}
+                >
+                  <option value="credit">Monthly Credit</option>
+                  <option value="prepaid">Prepaid Advance</option>
+                  <option value="cod">Daily Cash</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                  Settlement
+                </label>
+                <select
+                  value={paymentCycle}
+                  onChange={(e) => setPaymentCycle(e.target.value)}
+                  style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '8px 10px', fontSize: '0.80rem', background: '#ffffff', boxSizing: 'border-box' }}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="daily">Daily</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569', display: 'block', marginBottom: '3px' }}>
+                Delivery Instructions / Notes
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Ring bell once / leave on door shelf"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                style={{ width: '100%', borderRadius: '10px', border: '1px solid #cbd5e1', padding: '8px 12px', fontSize: '0.82rem', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+        </form>
+
+        {/* STICKY BOTTOM ACTION BAR */}
+        <div
+          style={{
+            borderTop: '1px solid #e2e8f0',
+            background: '#ffffff',
+            padding: '12px 16px',
+            display: 'flex',
+            gap: '10px',
+            boxShadow: '0 -4px 12px rgba(0,0,0,0.05)',
+            flexShrink: 0,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              flex: 1,
+              padding: '11px',
+              borderRadius: '12px',
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              color: '#475569',
+              fontWeight: 700,
+              fontSize: '0.84rem',
+              cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            style={{
+              flex: 2,
+              padding: '11px',
+              borderRadius: '12px',
+              border: 'none',
+              background: isEditMode ? '#2563eb' : '#059669',
+              color: '#ffffff',
+              fontWeight: 800,
+              fontSize: '0.88rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: isEditMode ? '0 2px 6px rgba(37,99,235,0.25)' : '0 2px 6px rgba(5,150,105,0.25)',
+            }}
+          >
+            {isSubmitting
+              ? (isEditMode ? 'Saving Changes...' : 'Adding Customer...')
+              : (isEditMode ? 'Save & Update Customer' : 'Add New Customer')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return isMobile ? renderMobileModal() : renderDesktopModal();
 }

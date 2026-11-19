@@ -89,6 +89,7 @@ export default function CustomerList({
   const [deletingCustomer, setDeletingCustomer] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [internalEditingCustomer, setInternalEditingCustomer] = useState(null);
+  const [isInternalAddOpen, setIsInternalAddOpen] = useState(false);
 
   // Customer 360 & Ledger state for active customer
   const [ledgerLoading, setLedgerLoading] = useState(false);
@@ -200,11 +201,41 @@ export default function CustomerList({
     }
   };
 
+  const handleAddClick = () => {
+    if (onOpenAddCustomer) {
+      onOpenAddCustomer();
+    } else {
+      setIsInternalAddOpen(true);
+    }
+  };
+
   const handleEditCustomer = (customer) => {
     if (onOpenEditCustomer) {
       onOpenEditCustomer(customer);
     } else {
       setInternalEditingCustomer(customer);
+    }
+  };
+
+  const handleTogglePauseResume = async (customer) => {
+    const isCurrentlyPaused = (customer.status || '').toLowerCase() === 'paused';
+    const custId = customer.id || customer._id || customer.customerId;
+    try {
+      if (isCurrentlyPaused) {
+        await resumeDelivery(custId);
+        setPartnerMsg(`Subscription resumed for "${customer.name || 'Customer'}".`);
+      } else {
+        if (onOpenPauseModal) {
+          onOpenPauseModal(customer);
+          return;
+        }
+        await pauseDelivery(custId);
+        setPartnerMsg(`Subscription paused for "${customer.name || 'Customer'}".`);
+      }
+      setTimeout(() => setPartnerMsg(''), 4000);
+      if (refreshAll) refreshAll();
+    } catch (err) {
+      console.error('Failed to toggle pause/resume:', err);
     }
   };
 
@@ -310,10 +341,578 @@ export default function CustomerList({
 
   const customerInitial = customerObj?.name ? customerObj.name.charAt(0).toUpperCase() : 'C';
 
+  // ── SCREEN: MOBILE RESPONSIVE CUSTOMER DETAILS (SIMPLE & PROFESSIONAL REDESIGN OF 2ND IMAGE) ──
+  const renderMobileCustomerDetailView = () => {
+    if (!customerObj) return null;
+    const isPaused = (customerObj.status || '').toLowerCase() === 'paused';
+    const isInactive = (customerObj.status || '').toLowerCase() === 'inactive';
+    const statusLabel = (customerObj.status || 'active').toUpperCase();
+    const plan = customerObj.deliveryPlan && typeof customerObj.deliveryPlan === 'object'
+      ? customerObj.deliveryPlan
+      : (customerObj.subscription || {});
+    const milkQty = plan.milkQty || plan.milkQuantity || 1.0;
+    const curdQty = plan.curdQty || plan.curdQuantity || 0;
+    const frequency = plan.frequency || 'Daily';
+    const balance = customerObj.currentBalance || 0;
+    const lat = Number(customerObj.latitude);
+    const lng = Number(customerObj.longitude);
+    const hasGps = !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingBottom: '24px' }}>
+        {/* Feedback Banners */}
+        {partnerMsg && (
+          <div
+            style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              color: '#065f46',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <CheckCircle2 size={16} color="#059669" />
+            <span>{partnerMsg}</span>
+          </div>
+        )}
+
+        {/* 1. Sleek Navigation Header Bar */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Back button & Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <button
+              type="button"
+              onClick={handleBackToDirectory}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                color: '#334155',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="Back to Customers"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {customerObj.name || 'Customer'}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
+                {customerObj.customerId || 'ID'}{customerObj.area ? ` • ${customerObj.area}` : ''}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Header Icon Actions: WhatsApp, Edit, Delete */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            {whatsappUrl && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  borderRadius: '10px',
+                  background: '#25d366',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textDecoration: 'none',
+                  boxShadow: '0 1px 3px rgba(37, 211, 102, 0.3)',
+                }}
+                title="Chat on WhatsApp"
+              >
+                <MessageSquare size={16} />
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={() => handleEditCustomer(customerObj)}
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                background: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                color: '#2563eb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+              title="Edit Customer"
+            >
+              <Edit size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeletingCustomer(customerObj)}
+              style={{
+                width: '34px',
+                height: '34px',
+                borderRadius: '10px',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+              title="Delete Customer"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Customer Profile Hero Card */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          {/* Identity Row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '14px',
+                  background: isPaused ? '#fffbeb' : isInactive ? '#f1f5f9' : '#ecfdf5',
+                  color: isPaused ? '#b45309' : isInactive ? '#64748b' : '#059669',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 900,
+                  fontSize: '1.15rem',
+                  border: `1px solid ${isPaused ? '#fde68a' : isInactive ? '#cbd5e1' : '#a7f3d0'}`,
+                }}
+              >
+                {customerInitial}
+              </div>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: '1.05rem', color: '#0f172a', lineHeight: 1.2 }}>
+                  {customerObj.name}
+                </div>
+                <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                  {customerObj.customerId || 'ID'}
+                </div>
+              </div>
+            </div>
+
+            {/* Status Pill */}
+            <div
+              style={{
+                padding: '4px 10px',
+                borderRadius: '20px',
+                background: isPaused ? '#fffbeb' : isInactive ? '#f1f5f9' : '#ecfdf5',
+                color: isPaused ? '#b45309' : isInactive ? '#64748b' : '#059669',
+                border: `1px solid ${isPaused ? '#fde68a' : isInactive ? '#cbd5e1' : '#a7f3d0'}`,
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                letterSpacing: '0.04em',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isPaused ? '#d97706' : isInactive ? '#94a3b8' : '#10b981' }} />
+              {statusLabel}
+            </div>
+          </div>
+
+          {/* Quick Contact & WhatsApp Action Pills */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {customerObj.mobile && (
+              <a
+                href={`tel:${customerObj.mobile}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  color: '#1d4ed8',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                <Phone size={13} />
+                <span>{customerObj.mobile}</span>
+              </a>
+            )}
+            {customerObj.whatsapp && (
+              <a
+                href={`https://wa.me/${(customerObj.whatsapp || '').replace(/\D/g, '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  color: '#15803d',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  textDecoration: 'none',
+                }}
+              >
+                <MessageSquare size={13} />
+                <span>WhatsApp</span>
+              </a>
+            )}
+          </div>
+
+          {/* Delivery Address */}
+          {customerObj.address && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.76rem', color: '#475569', lineHeight: 1.4, background: '#f8fafc', padding: '10px 12px', borderRadius: '10px', border: '1px solid #f1f5f9' }}>
+              <MapPin size={15} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ flex: 1 }}>
+                <div>{customerObj.address}</div>
+                {customerObj.landmark && <div style={{ fontSize: '0.70rem', color: '#64748b', marginTop: '2px' }}>Landmark: {customerObj.landmark}</div>}
+                {hasGps && (
+                  <div style={{ marginTop: '4px' }}>
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#2563eb', fontWeight: 700, fontSize: '0.72rem', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+                    >
+                      <Navigation size={11} />
+                      <span>GPS: {lat.toFixed(4)}, {lng.toFixed(4)} → Open Map</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 3. Financial Balance & Payment Card (Executive Style) */}
+        <div
+          style={{
+            background: balance > 0 ? '#fff5f5' : balance < 0 ? '#eff6ff' : '#f0fdf4',
+            borderRadius: '16px',
+            border: `1px solid ${balance > 0 ? '#fecaca' : balance < 0 ? '#bfdbfe' : '#bbf7d0'}`,
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 800, color: balance > 0 ? '#991b1b' : balance < 0 ? '#1e40af' : '#166534', letterSpacing: '0.05em' }}>
+                CURRENT BALANCE
+              </div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 900, color: balance > 0 ? '#dc2626' : balance < 0 ? '#2563eb' : '#059669', marginTop: '2px' }}>
+                ₹{Math.abs(balance)}
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, marginLeft: '6px', opacity: 0.85 }}>
+                  {balance > 0 ? '(Due)' : balance < 0 ? '(Advance)' : '(Settled)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Record Payment Button */}
+            <button
+              type="button"
+              onClick={() => onOpenPaymentModal && onOpenPaymentModal(customerObj)}
+              style={{
+                background: '#059669',
+                color: '#ffffff',
+                border: 'none',
+                padding: '9px 14px',
+                borderRadius: '10px',
+                fontWeight: 800,
+                fontSize: '0.78rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)',
+              }}
+            >
+              <DollarSign size={14} />
+              <span>Record Pay</span>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${balance > 0 ? '#fed7d7' : balance < 0 ? '#dbeafe' : '#dcfce7'}`, paddingTop: '8px', fontSize: '0.72rem', color: '#475569', fontWeight: 600 }}>
+            <span>Total Collected: <strong>₹{totalPaid || 0}</strong></span>
+            <span>Total Billed: <strong>₹{grossBill || 0}</strong></span>
+          </div>
+        </div>
+
+        {/* 4. Daily Subscription Plan Card */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Milk size={15} color="#059669" />
+              <span>DAILY SUBSCRIPTION PLAN</span>
+            </div>
+            {/* Pause / Resume Quick Button */}
+            <button
+              type="button"
+              onClick={() => handleTogglePauseResume(customerObj)}
+              style={{
+                background: isPaused ? '#ecfdf5' : '#fffbeb',
+                border: `1px solid ${isPaused ? '#a7f3d0' : '#fde68a'}`,
+                color: isPaused ? '#059669' : '#d97706',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                fontSize: '0.70rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              {isPaused ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
+              <span>{isPaused ? 'Resume Drop' : 'Pause Drop'}</span>
+            </button>
+          </div>
+
+          {/* Plan Info Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            <div style={{ background: '#f8fafc', padding: '10px 8px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '0.64rem', color: '#64748b', fontWeight: 700 }}>FARM MILK</div>
+              <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#059669', marginTop: '2px' }}>{milkQty} L</div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '10px 8px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '0.64rem', color: '#64748b', fontWeight: 700 }}>FRESH CURD</div>
+              <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{curdQty} Pk</div>
+            </div>
+            <div style={{ background: '#f8fafc', padding: '10px 8px', borderRadius: '10px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: '0.64rem', color: '#64748b', fontWeight: 700 }}>FREQUENCY</div>
+              <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a', marginTop: '4px', textTransform: 'capitalize' }}>{frequency}</div>
+            </div>
+          </div>
+
+          {/* Assigned Partner & Reassignment */}
+          <div
+            style={{
+              padding: '12px 14px',
+              background: '#f8fafc',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Truck size={15} color="#2563eb" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.66rem', color: '#64748b', fontWeight: 700 }}>ASSIGNED DELIVERY PARTNER</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#0f172a' }}>
+                    {customerObj.deliveryBoyName || 'Unassigned'}
+                  </div>
+                </div>
+              </div>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#059669', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '999px' }}>
+                Active Route
+              </span>
+            </div>
+
+            {/* Direct Partner Assignment Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '4px', borderTop: '1px dashed #e2e8f0' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>
+                Assign Partner:
+              </span>
+              <select
+                value={customerObj.deliveryBoyId || (customerObj.deliveryPlan && customerObj.deliveryPlan.deliveryBoyId) || ''}
+                onChange={(e) => {
+                  const boyId = e.target.value;
+                  const boy = (deliveryBoys || []).find((b) => (b.id || b._id) === boyId);
+                  handleAssignPartner(customerObj, boyId, boy ? boy.name : 'Unassigned');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '7px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Unassigned (Select Delivery Partner)</option>
+                {(deliveryBoys || [])
+                  .filter((b) => b.status !== 'inactive')
+                  .map((b) => (
+                    <option key={b.id || b._id} value={b.id || b._id}>
+                      {b.name} ({b.assignedArea || 'Route'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Mobile Ledger & Transactions List */}
+        <div
+          style={{
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <BookOpen size={15} color="#059669" />
+              <span>TRANSACTIONS & PASSBOOK</span>
+            </div>
+            <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700 }}>
+              {filteredLedgerEntries.length} entries
+            </div>
+          </div>
+
+          {/* Filter Pills */}
+          <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'delivery', label: 'Deliveries' },
+              { id: 'payment', label: 'Payments' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setLedgerFilterType(f.id)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '20px',
+                  fontSize: '0.70rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: ledgerFilterType === f.id ? '#059669' : '#f1f5f9',
+                  color: ledgerFilterType === f.id ? '#ffffff' : '#64748b',
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Entries Cards */}
+          {filteredLedgerEntries.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '24px 10px', color: '#94a3b8', fontSize: '0.78rem' }}>
+              No ledger transactions recorded yet.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {filteredLedgerEntries.slice(0, 20).map((entry, idx) => {
+                const isPay = entry.type === 'payment';
+                const isMissed = entry.status === 'missed';
+                return (
+                  <div
+                    key={entry.id || idx}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.80rem', color: '#0f172a' }}>
+                        {isPay ? `Payment (${(entry.paymentMethod || 'UPI').toUpperCase()})` : isMissed ? 'Missed Drop' : `Doorstep Drop (${entry.milkQuantity || 1}L)`}
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '2px' }}>
+                        {entry.date} • {entry.deliveryBoyName || 'Admin'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontWeight: 900, fontSize: '0.84rem', color: isPay ? '#059669' : isMissed ? '#94a3b8' : '#dc2626' }}>
+                        {isPay ? `- ₹${entry.paidAmount}` : isMissed ? '₹0' : `+ ₹${entry.amount}`}
+                      </div>
+                      <div style={{ fontSize: '0.66rem', color: '#64748b', marginTop: '2px' }}>
+                        Bal: ₹{entry.balance ?? 0}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ═══════════════════════════════════════════════════════════════════════════
   // VIEW A: DETAILED CUSTOMER 360 & LEDGER VIEW (When a customer is clicked)
   // ═══════════════════════════════════════════════════════════════════════════
   if (selectedCustomerId && customerObj) {
+    if (isMobile) {
+      return renderMobileCustomerDetailView();
+    }
     const isPaused = customerObj.status === 'paused';
     const sub = customerObj.subscription || {};
 
@@ -494,6 +1093,29 @@ export default function CustomerList({
             >
               <Edit size={13} />
               <span>Edit</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDeletingCustomer(customerObj)}
+              style={{
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                fontWeight: 600,
+                fontSize: '0.80rem',
+                padding: '7px 12px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+              }}
+              title="Delete Customer Account"
+            >
+              <Trash2 size={13} />
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -1339,11 +1961,51 @@ export default function CustomerList({
   // VIEW B: ALL CUSTOMERS DIRECTORY (The Default Directory View)
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── SCREEN: MOBILE RESPONSIVE CUSTOMERS (EXACT REPLICA OF MOBILE APP _buildCustomersView) ──
+  // ── SCREEN: MOBILE RESPONSIVE CUSTOMERS (EXACT REPLICA OF MOBILE APP _buildCustomersView + FULL CRUD) ──
   const renderMobileCustomersView = () => {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Search Bar matching Flutter TextField */}
+        {/* Feedback Banners for Mobile View */}
+        {deleteMsg && (
+          <div
+            style={{
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#991b1b',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <Trash2 size={16} color="#dc2626" />
+            <span>{deleteMsg}</span>
+          </div>
+        )}
+        {partnerMsg && (
+          <div
+            style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              color: '#065f46',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <CheckCircle2 size={16} color="#059669" />
+            <span>{partnerMsg}</span>
+          </div>
+        )}
+
+        {/* Search Bar & + Add Button matching Flutter TextField */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div
             style={{
@@ -1386,7 +2048,7 @@ export default function CustomerList({
 
           <button
             type="button"
-            onClick={() => onOpenAddCustomer && onOpenAddCustomer()}
+            onClick={handleAddClick}
             style={{
               background: '#059669',
               border: 'none',
@@ -1449,87 +2111,206 @@ export default function CustomerList({
                     borderRadius: '14px',
                     border: '1px solid #e2e8f0',
                     display: 'flex',
-                    alignItems: 'center',
+                    flexDirection: 'column',
+                    gap: '12px',
                     cursor: 'pointer',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
                     transition: 'all 0.15s ease',
                   }}
                 >
-                  {/* Left Initial Box 36x36 */}
+                  {/* Top Row: Initial + Details + Status/Balance */}
+                  <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                    {/* Left Initial Box 36x36 */}
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '10px',
+                        background: isPaused ? '#fffbeb' : '#ecfdf5',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: 900,
+                        fontSize: '0.94rem',
+                        color: isPaused ? '#b45309' : '#059669',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {name.length > 0 ? name[0].toUpperCase() : 'C'}
+                    </div>
+
+                    {/* Middle: Details */}
+                    <div style={{ flex: 1, marginLeft: '12px', minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {name}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {mobile} • {milkQty}L Daily{c.area ? ` • ${c.area}` : ''}
+                      </div>
+                      {hasGps && (
+                        <div style={{ marginTop: '2px' }}>
+                          <a
+                            href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '0.66rem',
+                              fontWeight: 700,
+                              color: '#2563eb',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <MapPin size={11} color="#2563eb" />
+                            <span>GPS: {lat.toFixed(3)}, {lng.toFixed(3)}</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Status Pill & Balance */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '8px' }}>
+                      <div
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: isPaused ? '#fffbeb' : '#ecfdf5',
+                          color: isPaused ? '#b45309' : '#059669',
+                          fontSize: '0.60rem',
+                          fontWeight: 800,
+                          letterSpacing: '0.02em',
+                        }}
+                      >
+                        {status}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
+                          color: bal < 0 ? '#ef4444' : '#059669',
+                        }}
+                      >
+                        Bal: ₹{bal}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Divider */}
+                  <div style={{ height: '1px', background: '#f1f5f9', width: '100%' }} />
+
+                  {/* Bottom Row: CRUD Action Buttons */}
                   <div
                     style={{
-                      width: '36px',
-                      height: '36px',
-                      borderRadius: '10px',
-                      background: isPaused ? '#fffbeb' : '#ecfdf5',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      fontWeight: 900,
-                      fontSize: '0.94rem',
-                      color: isPaused ? '#b45309' : '#059669',
-                      flexShrink: 0,
+                      justifyContent: 'space-between',
+                      gap: '6px',
+                      width: '100%',
                     }}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    {name.length > 0 ? name[0].toUpperCase() : 'C'}
-                  </div>
-
-                  {/* Middle: Details */}
-                  <div style={{ flex: 1, marginLeft: '12px', minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {name}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {mobile} • {milkQty}L Daily{c.area ? ` • ${c.area}` : ''}
-                    </div>
-                    {hasGps && (
-                      <div style={{ marginTop: '2px' }}>
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                            fontSize: '0.66rem',
-                            fontWeight: 700,
-                            color: '#2563eb',
-                            textDecoration: 'none',
-                          }}
-                        >
-                          <MapPin size={11} color="#2563eb" />
-                          <span>GPS: {lat.toFixed(3)}, {lng.toFixed(3)}</span>
-                        </a>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Right: Status Pill & Balance */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '8px' }}>
-                    <div
+                    {/* 1. Edit Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleEditCustomer(c)}
                       style={{
-                        padding: '2px 6px',
-                        borderRadius: '4px',
-                        background: isPaused ? '#fffbeb' : '#ecfdf5',
-                        color: isPaused ? '#b45309' : '#059669',
-                        fontSize: '0.60rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.02em',
+                        flex: 1,
+                        padding: '6px 8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '8px',
+                        color: '#1d4ed8',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
                       }}
+                      title="Edit Customer Details"
                     >
-                      {status}
-                    </div>
-                    <div
+                      <Edit size={12} />
+                      <span>Edit</span>
+                    </button>
+
+                    {/* 2. Record Payment */}
+                    <button
+                      type="button"
+                      onClick={() => onOpenPaymentModal && onOpenPaymentModal(c)}
                       style={{
-                        fontSize: '0.76rem',
-                        fontWeight: 800,
-                        color: bal < 0 ? '#ef4444' : '#059669',
+                        flex: 1,
+                        padding: '6px 8px',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '8px',
+                        color: '#047857',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
                       }}
+                      title="Record Payment"
                     >
-                      Bal: ₹{bal}
-                    </div>
+                      <DollarSign size={12} />
+                      <span>Pay</span>
+                    </button>
+
+                    {/* 3. Pause / Resume */}
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePauseResume(c)}
+                      style={{
+                        flex: 1,
+                        padding: '6px 8px',
+                        background: isPaused ? '#ecfdf5' : '#fffbeb',
+                        border: `1px solid ${isPaused ? '#a7f3d0' : '#fde68a'}`,
+                        borderRadius: '8px',
+                        color: isPaused ? '#047857' : '#b45309',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                      }}
+                      title={isPaused ? 'Resume Subscription' : 'Pause Subscription'}
+                    >
+                      {isPaused ? <PlayCircle size={12} /> : <PauseCircle size={12} />}
+                      <span>{isPaused ? 'Resume' : 'Pause'}</span>
+                    </button>
+
+                    {/* 4. Delete Customer */}
+                    <button
+                      type="button"
+                      onClick={() => setDeletingCustomer(c)}
+                      style={{
+                        flex: 1,
+                        padding: '6px 8px',
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '8px',
+                        color: '#b91c1c',
+                        fontWeight: 700,
+                        fontSize: '0.72rem',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px',
+                      }}
+                      title="Delete Customer Account"
+                    >
+                      <Trash2 size={12} />
+                      <span>Delete</span>
+                    </button>
                   </div>
                 </div>
               );
@@ -2526,6 +3307,15 @@ export default function CustomerList({
           isOpen={Boolean(internalEditingCustomer)}
           customerToEdit={internalEditingCustomer}
           onClose={() => setInternalEditingCustomer(null)}
+        />
+      )}
+
+      {/* Fallback Internal Add Modal */}
+      {isInternalAddOpen && (
+        <CustomerModal
+          isOpen={isInternalAddOpen}
+          customerToEdit={null}
+          onClose={() => setIsInternalAddOpen(false)}
         />
       )}
     </>

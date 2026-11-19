@@ -1084,16 +1084,18 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 10),
 
-                  // Option 2: Extend Subscription (Amber badge)
+                  // Option 2: Extend / Activate Subscription
                   _buildManageOptionRow(
                     context: context,
-                    icon: Icons.more_time_rounded,
-                    iconBg: const Color(0xFFFEF3C7),
-                    iconColor: const Color(0xFFD97706),
-                    cardBg: const Color(0xFFFFFBEB),
-                    cardBorder: const Color(0xFFFDE68A),
-                    title: 'Extend Subscription',
-                    subtitle: 'Add 7, 15, 30 or 60 days to current plan',
+                    icon: hasActiveSubscription ? Icons.more_time_rounded : Icons.card_membership_rounded,
+                    iconBg: hasActiveSubscription ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5),
+                    iconColor: hasActiveSubscription ? const Color(0xFFD97706) : const Color(0xFF059669),
+                    cardBg: hasActiveSubscription ? const Color(0xFFFFFBEB) : const Color(0xFFF0FDF4),
+                    cardBorder: hasActiveSubscription ? const Color(0xFFFDE68A) : const Color(0xFFBBF7D0),
+                    title: hasActiveSubscription ? 'Extend Subscription' : 'Activate Subscription',
+                    subtitle: hasActiveSubscription
+                        ? 'Add 7, 15, 30 or 60 days to current plan'
+                        : 'Choose 7, 15, 30 or 60 days delivery plan',
                     onTap: () {
                       _showExtendSubscriptionSheet(context, customerProvider);
                     },
@@ -2663,10 +2665,12 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
   int selectedDays = 30;
   bool isSubmitting = false;
 
+  bool get hasActiveSub => widget.customerProvider.hasActiveSubscription;
+
   final List<Map<String, Object>> options = [
-    {'days': 7, 'badge': 'Trial Boost', 'desc': 'Short extension to try before committing longer.'},
+    {'days': 7, 'badge': 'Trial Boost', 'desc': 'Short period to try fresh morning dairy.'},
     {'days': 15, 'badge': 'Popular', 'desc': 'Perfect for a mid-month top-up.'},
-    {'days': 30, 'badge': 'Most Popular', 'desc': 'Full monthly extension at best value.'},
+    {'days': 30, 'badge': 'Most Popular', 'desc': 'Full monthly subscription at best value.'},
     {'days': 60, 'badge': 'Best Value', 'desc': 'Maximum savings with longest commitment.'},
   ];
 
@@ -2711,8 +2715,9 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
         : widget.customerProvider.mobile;
 
     final dynamic cp = widget.customerProvider;
+    final bool hasActive = hasActiveSub;
     final dynamic orderRes = await cp.createSubscriptionOrder(
-      purpose: 'extend',
+      purpose: hasActive ? 'extend' : 'new',
       days: selectedDays,
       milkQty: milkQty,
       curdQty: curdQty,
@@ -2732,11 +2737,13 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
         orderId: orderId,
         amount: totalCost,
         mobile: mobile,
-        cancelReason: 'Customer cancelled extension payment',
+        cancelReason: hasActive ? 'Customer cancelled extension payment' : 'Customer cancelled subscription payment',
         onPaymentSuccess: () {
           if (mounted) {
             Navigator.pop(context);
-            widget.onSuccess('Subscription extended by $selectedDays days! Payment verified via Razorpay.');
+            widget.onSuccess(hasActive
+                ? 'Subscription extended by $selectedDays days! Payment verified via Razorpay.'
+                : 'Subscription activated successfully for $selectedDays days! Welcome to Natural Milk Dairy.');
           }
         },
         onRetry: _handleExtendWithRazorpay,
@@ -2745,7 +2752,7 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(widget.customerProvider.errorMessage ?? 'Could not create extension order. Please try again.'),
+            content: Text(widget.customerProvider.errorMessage ?? (hasActive ? 'Could not create extension order. Please try again.' : 'Could not create subscription order. Please try again.')),
             backgroundColor: const Color(0xFFDC2626),
           ),
         );
@@ -2755,6 +2762,7 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasActive = hasActiveSub;
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -2764,13 +2772,17 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
           icon: const Icon(Icons.close_rounded, color: Color(0xFF0C2340)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.more_time_rounded, color: Color(0xFFD97706), size: 22),
-            SizedBox(width: 8),
+            Icon(
+              hasActive ? Icons.more_time_rounded : Icons.verified_rounded,
+              color: hasActive ? const Color(0xFFD97706) : const Color(0xFF0D5C3A),
+              size: 22,
+            ),
+            const SizedBox(width: 8),
             Text(
-              'Extend Subscription',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+              hasActive ? 'Extend Subscription' : 'Activate Subscription',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
             ),
           ],
         ),
@@ -2781,13 +2793,17 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Add more days to your subscription. Your delivery schedule continues seamlessly. Changes sync in real time.',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280), height: 1.4),
+              Text(
+                hasActive
+                    ? 'Add more days to your subscription. Your delivery schedule continues seamlessly. Changes sync in real time.'
+                    : 'Activate your pure farm milk subscription. Morning doorstep deliveries start 5:00 AM – 6:30 AM.',
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFF6B7280), height: 1.4),
               ),
               const SizedBox(height: 20),
-              const Text('SELECT EXTENSION PERIOD',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF6B7280), letterSpacing: 0.5)),
+              Text(
+                hasActive ? 'SELECT EXTENSION PERIOD' : 'SELECT SUBSCRIPTION PERIOD',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF6B7280), letterSpacing: 0.5),
+              ),
               const SizedBox(height: 10),
               ...options.map((opt) {
                 final int days = opt['days'] as int;
@@ -2889,18 +2905,28 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
+                  color: hasActive ? const Color(0xFFFFFBEB) : const Color(0xFFF0FDF4),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFDE68A)),
+                  border: Border.all(color: hasActive ? const Color(0xFFFDE68A) : const Color(0xFFBBF7D0)),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.bolt_rounded, color: Color(0xFFD97706), size: 18),
+                    Icon(
+                      hasActive ? Icons.bolt_rounded : Icons.verified_rounded,
+                      color: hasActive ? const Color(0xFFD97706) : const Color(0xFF059669),
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '⚡ Extended until $formattedEnd (+₹$totalCost). Saved in DB & auto-synced with delivery partner route.',
-                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF92400E), fontWeight: FontWeight.w700),
+                        hasActive
+                            ? '⚡ Extended until $formattedEnd (+₹$totalCost). Saved in DB & auto-synced with delivery partner route.'
+                            : '🎉 Subscription activated until $formattedEnd (₹$totalCost). Fresh morning deliveries start tomorrow 5:00 AM.',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: hasActive ? const Color(0xFF92400E) : const Color(0xFF166534),
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ],
@@ -2934,7 +2960,9 @@ class _ExtendSubscriptionPageState extends State<_ExtendSubscriptionPage> {
                       const Icon(Icons.lock_rounded, size: 16),
                       const SizedBox(width: 8),
                       Text(
-                        'Pay ₹$totalCost · Extend by $selectedDays Days',
+                        hasActive
+                            ? 'Pay ₹$totalCost · Extend by $selectedDays Days'
+                            : 'Pay ₹$totalCost · Activate $selectedDays Days Plan',
                         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5),
                       ),
                     ],

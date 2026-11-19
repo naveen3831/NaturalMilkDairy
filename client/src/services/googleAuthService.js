@@ -7,6 +7,36 @@ const GOOGLE_CLIENT_ID = '402055824353-rbjkemrlk6snih6kg8vivcejl6aauooo.apps.goo
 
 let gsiScriptLoaded = false;
 let gsiScriptPromise = null;
+let activeCredentialCallback = null;
+let isGsiInitialized = false;
+
+/**
+ * Access top-level window if accessible and same-origin (e.g. escaping simulator extension iframe)
+ */
+export function getActiveWindow() {
+  try {
+    if (
+      typeof window !== 'undefined' &&
+      window.top &&
+      window.top !== window &&
+      window.top.location?.origin === window.location.origin
+    ) {
+      return window.top;
+    }
+  } catch (_) {}
+  return window;
+}
+
+/**
+ * Access Google Identity Services instance from active or top-level window
+ */
+export function getActiveGoogleContext() {
+  const topWin = getActiveWindow();
+  if (topWin?.google?.accounts) {
+    return topWin.google;
+  }
+  return window.google || null;
+}
 
 /**
  * Dynamically load Google Identity Services script
@@ -41,42 +71,132 @@ export function loadGsiScript() {
 }
 
 /**
- * Check if the application is currently running inside an iframe (e.g. Chrome Mobile Simulator extension)
+ * Decode payload from Google JWT ID token
  */
-export function isRunningInIframe() {
+export function decodeJwtPayload(jwtToken) {
   try {
-    return typeof window !== 'undefined' && window.self !== window.top;
+    const parts = jwtToken.split('.');
+    if (parts.length !== 3) return {};
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
   } catch (_) {
-    return true;
+    return {};
   }
 }
 
 /**
- * Trigger Google Sign-In with Google Identity Services (OAuth2 Token Client / One Tap)
+ * Initialize Google Identity Services credential listener
+ */
+export async function initGoogleIdentityServices({ onCredential, onError } = {}) {
+  await loadGsiScript();
+
+  const googleCtx = getActiveGoogleContext() || window.google;
+  if (!googleCtx?.accounts?.id) return;
+
+  if (onCredential) {
+    activeCredentialCallback = onCredential;
+  }
+
+  // Prevent multiple initialize calls (fixes [GSI_LOGGER] multiple initialize warning)
+  if (isGsiInitialized) return;
+
+  try {
+    googleCtx.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (response) => {
+        if (response?.credential) {
+          const payload = decodeJwtPayload(response.credential);
+          const result = {
+            idToken: response.credential,
+            token: response.credential,
+            email: payload.email || '',
+            name: payload.name || '',
+            picture: payload.picture || '',
+          };
+          if (activeCredentialCallback) {
+            activeCredentialCallback(result);
+          }
+        } else if (onError) {
+          onError(new Error('No credential returned from Google.'));
+        }
+      },
+      auto_select: false,
+      cancel_on_tap_outside: true,
+      itp_support: true,
+    });
+    isGsiInitialized = true;
+  } catch (err) {
+    if (onError) onError(err);
+  }
+}
+
+/**
+ * Render Google's official Sign In button inside a DOM element
+ */
+export async function renderGoogleButton(container, options = {}) {
+  if (!container) return;
+  await loadGsiScript();
+  if (!window.google?.accounts?.id) return;
+
+  try {
+    const parentWidth = container.offsetWidth || container.parentElement?.offsetWidth || 320;
+    const defaultWidth = Math.min(Math.max(parentWidth, 240), 380);
+    window.google.accounts.id.renderButton(container, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'rectangular',
+      logo_alignment: 'left',
+      width: defaultWidth,
+      ...options,
+    });
+  } catch (err) {
+    console.warn('Failed to render Google button:', err);
+  }
+}
+
+/**
+ * Trigger Google One Tap prompt
+ */
+export async function promptOneTap() {
+  await loadGsiScript();
+  if (!window.google?.accounts?.id) return;
+  try {
+    window.google.accounts.id.prompt();
+  } catch (_) {}
+}
+
+/**
+ * Trigger Google Sign-In with Google Identity Services (OAuth2 Token Client + ID Token fallback)
  * @param {string} portal - 'customer' or 'partner'
  * @returns {Promise<{idToken: string, email: string, name: string, picture: string}>}
  */
 export async function triggerGoogleSignIn(portal = 'customer') {
-  // If running inside a third-party simulator extension iframe, popups are restricted by the extension's sandbox
-  if (isRunningInIframe()) {
-    throw new Error(
-      'Google Sign-In popups are blocked by the simulator iframe sandbox. Please open http://localhost:3000 directly in a browser tab (or press Ctrl+Shift+M in Chrome DevTools for mobile view).'
-    );
-  }
-
   await loadGsiScript();
 
-  if (!window.google?.accounts?.oauth2 && !window.google?.accounts?.id) {
+  const googleCtx = getActiveGoogleContext() || window.google;
+  const oauth2 = googleCtx?.accounts?.oauth2 || window.google?.accounts?.oauth2;
+  const idClient = googleCtx?.accounts?.id || window.google?.accounts?.id;
+
+  if (!oauth2 && !idClient) {
     throw new Error('Google Identity Services failed to initialize. Please check your internet connection.');
   }
 
   return new Promise((resolve, reject) => {
     let settled = false;
 
-    // 1. Prefer OAuth2 Token Client for interactive 1-click button sign-in
-    if (window.google.accounts?.oauth2) {
+    // 1. Try OAuth2 Token Client for 1-click account picker in active/top window
+    if (oauth2) {
       try {
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        const tokenClient = oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: 'email profile openid',
           callback: async (tokenResponse) => {
@@ -107,90 +227,70 @@ export async function triggerGoogleSignIn(portal = 'customer') {
               });
             } else if (tokenResponse?.error) {
               const err = tokenResponse.error_description || tokenResponse.error;
-              if (err.includes('origin_mismatch') || err.includes('redirect_uri_mismatch')) {
-                reject(
-                  new Error(
-                    `Google OAuth origin mismatch: please ensure ${window.location.origin} is added to Authorized JavaScript origins in Google Cloud Console.`
-                  )
-                );
-              } else {
-                reject(new Error(err));
-              }
+              reject(new Error(err || 'Authentication cancelled.'));
             } else {
               reject(new Error('No token returned from Google.'));
             }
           },
           error_callback: (err) => {
             if (settled) return;
+            // If popup was blocked (e.g. inside simulator iframe), try One Tap prompt immediately
+            if (idClient) {
+              try {
+                activeCredentialCallback = (cred) => {
+                  if (settled) return;
+                  settled = true;
+                  resolve(cred);
+                };
+                idClient.prompt((notification) => {
+                  if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+                    if (!settled) {
+                      settled = true;
+                      reject(
+                        new Error(
+                          'Google Sign-In popup was prevented by the Mobile Simulator extension sandbox. Please test directly in Chrome (press Ctrl+Shift+M for mobile view).'
+                        )
+                      );
+                    }
+                  }
+                });
+                return;
+              } catch (_) {}
+            }
             settled = true;
-            const errMsg = String(err?.message || err?.type || '');
-            if (
-              err?.type === 'popup_failed_to_open' ||
-              errMsg.toLowerCase().includes('popup') ||
-              errMsg.toLowerCase().includes('failed to open')
-            ) {
-              reject(
-                new Error(
-                  'Google Sign-In popup was blocked by your browser. Please allow popups for this site, or open directly in a standard browser tab.'
-                )
-              );
-              return;
-            }
-            if (err?.type === 'popup_closed') {
-              reject(new Error('Google Sign-In popup was closed before completing sign-in.'));
-              return;
-            }
-            reject(new Error(err?.message || 'Google Sign-In was closed or blocked.'));
+            reject(
+              new Error(
+                err?.message ||
+                  'Google Sign-In popup was prevented by the Mobile Simulator extension sandbox. Please test directly in Chrome (press Ctrl+Shift+M for mobile view).'
+              )
+            );
           },
         });
 
         tokenClient.requestAccessToken({ prompt: 'select_account' });
         return;
       } catch (err) {
-        console.warn('OAuth2 token client error, attempting fallback:', err);
+        console.warn('OAuth2 token client error, falling back to One Tap:', err);
       }
     }
 
-    // 2. Fallback to Google ID client
-    if (window.google.accounts?.id) {
+    // 2. Fallback to Google ID client prompt
+    if (idClient) {
       try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: (response) => {
-            if (settled) return;
-            settled = true;
-            if (response?.credential) {
-              const credential = response.credential;
-              let email = '';
-              let name = '';
-              let picture = '';
-              try {
-                const payloadBase64 = credential.split('.')[1];
-                const decodedJson = JSON.parse(atob(payloadBase64.replace(/-/g, '+').replace(/_/g, '/')));
-                email = decodedJson.email || '';
-                name = decodedJson.name || '';
-                picture = decodedJson.picture || '';
-              } catch (_) {}
-              resolve({
-                idToken: credential,
-                token: credential,
-                email,
-                name,
-                picture,
-              });
-            } else {
-              reject(new Error('No credential returned from Google.'));
-            }
-          },
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-
-        window.google.accounts.id.prompt((notification) => {
+        activeCredentialCallback = (cred) => {
+          if (settled) return;
+          settled = true;
+          resolve(cred);
+        };
+        idClient.prompt((notification) => {
           if (notification.isNotDisplayed()) {
             if (!settled) {
               settled = true;
-              reject(new Error('Google Sign-In prompt could not be displayed. Please check popup blockers.'));
+              reject(
+                new Error(
+                  'Google Sign-In prompt was prevented by the Mobile Simulator extension sandbox. Please test directly in Chrome (press Ctrl+Shift+M for mobile view).'
+                )
+              );
             }
           }
         });

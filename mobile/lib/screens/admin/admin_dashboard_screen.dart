@@ -2074,80 +2074,124 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               borderRadius: BorderRadius.circular(14),
               onTap: () => _showAdminCustomerCollectedSheet(c),
               child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: isPaused ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Center(
-                      child: Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                        style: TextStyle(fontWeight: FontWeight.w900, color: isPaused ? const Color(0xFFB45309) : const Color(0xFF059669)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
-                        Text('$mobile • ${milkQty}L Daily${(c['area'] ?? '').toString().isNotEmpty ? ' • ${c['area']}' : ''}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-                        if (num.tryParse(c['latitude']?.toString() ?? '') != null && num.tryParse(c['longitude']?.toString() ?? '') != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: InkWell(
-                              onTap: () {
-                                final lat = num.tryParse(c['latitude'].toString());
-                                final lng = num.tryParse(c['longitude'].toString());
-                                LauncherService.openMap(lat: lat, lng: lng, address: c['address']?.toString() ?? '');
-                              },
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.pin_drop_rounded, size: 11, color: Color(0xFF2563EB)),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    'GPS: ${num.tryParse(c['latitude'].toString())!.toStringAsFixed(3)}, ${num.tryParse(c['longitude'].toString())!.toStringAsFixed(3)}',
-                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
-                                  ),
-                                ],
-                              ),
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: isPaused ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                              style: TextStyle(fontWeight: FontWeight.w900, color: isPaused ? const Color(0xFFB45309) : const Color(0xFF059669)),
                             ),
                           ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
+                              Text('$mobile • ${milkQty}L Daily${(c['area'] ?? '').toString().isNotEmpty ? ' • ${c['area']}' : ''}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                              if (num.tryParse(c['latitude']?.toString() ?? '') != null && num.tryParse(c['longitude']?.toString() ?? '') != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: InkWell(
+                                    onTap: () {
+                                      final lat = num.tryParse(c['latitude'].toString());
+                                      final lng = num.tryParse(c['longitude'].toString());
+                                      LauncherService.openMap(lat: lat, lng: lng, address: c['address']?.toString() ?? '');
+                                    },
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.pin_drop_rounded, size: 11, color: Color(0xFF2563EB)),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          'GPS: ${num.tryParse(c['latitude'].toString())!.toStringAsFixed(3)}, ${num.tryParse(c['longitude'].toString())!.toStringAsFixed(3)}',
+                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isPaused ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: isPaused ? const Color(0xFFB45309) : const Color(0xFF059669)),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text('Bal: ₹$bal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: bal < 0 ? Colors.redAccent : const Color(0xFF059669))),
+                          ],
+                        ),
                       ],
                     ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isPaused ? const Color(0xFFFFFBEB) : const Color(0xFFECFDF5),
-                          borderRadius: BorderRadius.circular(4),
+                    const SizedBox(height: 10),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    const SizedBox(height: 8),
+                    // Action Buttons Row (Edit, Pay, Pause/Resume, Delete)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _buildCustomerQuickAction(
+                          label: 'Edit',
+                          icon: Icons.edit_rounded,
+                          color: const Color(0xFF2563EB),
+                          bgColor: const Color(0xFFEFF6FF),
+                          onTap: () => _openEditCustomerModal(c),
                         ),
-                        child: Text(
-                          status,
-                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: isPaused ? const Color(0xFFB45309) : const Color(0xFF059669)),
+                        const SizedBox(width: 6),
+                        _buildCustomerQuickAction(
+                          label: 'Pay',
+                          icon: Icons.payments_outlined,
+                          color: const Color(0xFF059669),
+                          bgColor: const Color(0xFFECFDF5),
+                          onTap: () => _showRecordPaymentModal(context, c),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text('Bal: ₹$bal', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: bal < 0 ? Colors.redAccent : const Color(0xFF059669))),
-                    ],
-                  ),
-                ],
-              ),
+                        const SizedBox(width: 6),
+                        _buildCustomerQuickAction(
+                          label: isPaused ? 'Resume' : 'Pause',
+                          icon: isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                          color: isPaused ? const Color(0xFF059669) : const Color(0xFFD97706),
+                          bgColor: isPaused ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                          onTap: () => _toggleCustomerPauseResume(c),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildCustomerQuickAction(
+                          label: 'Delete',
+                          icon: Icons.delete_outline_rounded,
+                          color: const Color(0xFFDC2626),
+                          bgColor: const Color(0xFFFEF2F2),
+                          onTap: () => _confirmDeleteCustomer(c),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             );
           },
@@ -2157,15 +2201,49 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  Widget _buildCustomerQuickAction({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 10.5, color: color),
+            const SizedBox(width: 3),
+            Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showAdminCustomerCollectedSheet(Map<String, dynamic> c) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AdminCustomerDetailsFullScreen(
           customer: c,
           deliveries: _deliveries,
+          deliveryBoys: _deliveryBoys,
           api: _api,
           onShowDeliveryDetails: (deliv) => _showDeliveryAndUserDetails(deliv),
           onRecordPayment: (cust) => _showRecordPaymentModal(context, cust),
+          onEditCustomer: (cust) => _openEditCustomerModal(cust),
+          onDeleteCustomer: (cust) => _confirmDeleteCustomer(cust),
+          onTogglePause: (cust) => _toggleCustomerPauseResume(cust),
+          onAssignPartner: (cust, boyId, boyName) => _assignPartner(cust, boyId, boyName),
         ),
       ),
     );
@@ -3015,6 +3093,183 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  Future<void> _assignPartner(Map<String, dynamic> customer, String boyId, String boyName) async {
+    final custId = (customer['id'] ?? customer['_id'] ?? customer['customerId'] ?? '').toString();
+    final name = customer['name'] ?? 'Customer';
+
+    try {
+      final res = await _api.put('/api/customers/$custId/assign-partner', {
+        'deliveryBoyId': boyId,
+        'deliveryBoyName': boyName,
+        'actor': 'Admin',
+      });
+      if (res['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Assigned partner "${boyName.isNotEmpty ? boyName : 'None'}" to $name.'),
+              backgroundColor: const Color(0xFF059669),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          _loadCustomers();
+          _loadDeliveries();
+          _loadDashboardSummary();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Failed to assign partner.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _openEditCustomerModal(Map<String, dynamic> customer) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _EditCustomerBottomSheet(
+        api: _api,
+        customer: customer,
+        deliveryBoys: _deliveryBoys,
+        onUpdated: () {
+          _loadCustomers();
+          _loadDashboardSummary();
+        },
+      ),
+    );
+  }
+
+  void _confirmDeleteCustomer(Map<String, dynamic> customer) {
+    final name = customer['name'] ?? 'Customer';
+    final custId = (customer['id'] ?? customer['_id'] ?? customer['customerId'] ?? '').toString();
+
+    showDialog(
+      context: context,
+      builder: (dCtx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 24),
+            SizedBox(width: 8),
+            Text('Delete Customer', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete "$name" ($custId)?\n\nThis will remove their profile, assigned deliveries, and active subscription. This action cannot be undone.',
+          style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(dCtx);
+              try {
+                final res = await _api.delete('/api/customers/$custId');
+                if (res['success'] == true) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Customer "$name" deleted successfully.'),
+                        backgroundColor: const Color(0xFFDC2626),
+                      ),
+                    );
+                    _loadCustomers();
+                    _loadDashboardSummary();
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(res['message']?.toString() ?? 'Failed to delete customer.'),
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    );
+                  }
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error: ${e.toString()}'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.delete_forever_rounded, size: 16, color: Colors.white),
+            label: const Text('Confirm Delete', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleCustomerPauseResume(Map<String, dynamic> customer) async {
+    final custId = (customer['id'] ?? customer['_id'] ?? customer['customerId'] ?? '').toString();
+    final name = customer['name'] ?? 'Customer';
+    final isPaused = (customer['status'] ?? '').toString().toLowerCase() == 'paused';
+
+    try {
+      final endpoint = isPaused ? '/api/customers/$custId/resume' : '/api/customers/$custId/pause';
+      final res = await _api.post(endpoint, {'actor': 'Admin'});
+      if (res['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isPaused ? 'Subscription resumed for "$name".' : 'Subscription paused for "$name".'),
+              backgroundColor: isPaused ? const Color(0xFF059669) : const Color(0xFFD97706),
+            ),
+          );
+          _loadCustomers();
+          _loadDashboardSummary();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(res['message']?.toString() ?? 'Action failed.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   void _openAddCustomerModal() {
     showModalBottomSheet(
       context: context,
@@ -3586,6 +3841,627 @@ class _AddCustomerBottomSheetState extends State<_AddCustomerBottomSheet> {
             hintText: hint,
             hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
             prefixIcon: Icon(icon, size: 18, color: const Color(0xFF64748B)),
+            isDense: true,
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EDIT CUSTOMER BOTTOM SHEET (REDESIGNED TOUCH-OPTIMIZED EXECUTIVE SHEET)
+// ─────────────────────────────────────────────────────────────────────────────
+class _EditCustomerBottomSheet extends StatefulWidget {
+  final ApiService api;
+  final Map<String, dynamic> customer;
+  final List<Map<String, dynamic>> deliveryBoys;
+  final VoidCallback onUpdated;
+
+  const _EditCustomerBottomSheet({
+    required this.api,
+    required this.customer,
+    required this.deliveryBoys,
+    required this.onUpdated,
+  });
+
+  @override
+  State<_EditCustomerBottomSheet> createState() => _EditCustomerBottomSheetState();
+}
+
+class _EditCustomerBottomSheetState extends State<_EditCustomerBottomSheet> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _mobileController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _whatsappController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _googleMapsUrlController;
+  late final TextEditingController _landmarkController;
+  late final TextEditingController _areaController;
+  late final TextEditingController _milkQtyController;
+  late final TextEditingController _curdQtyController;
+  late final TextEditingController _notesController;
+
+  double? _latitude;
+  double? _longitude;
+
+  String _status = 'active';
+  String _frequency = 'daily';
+  String? _selectedDeliveryBoyId;
+  bool _isSubmitting = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    final c = widget.customer;
+    final plan = c['deliveryPlan'] is Map ? c['deliveryPlan'] : (c['subscription'] is Map ? c['subscription'] : {});
+
+    _nameController = TextEditingController(text: (c['name'] ?? '').toString());
+    _mobileController = TextEditingController(text: (c['mobile'] ?? '').toString());
+    _emailController = TextEditingController(text: (c['email'] ?? '').toString());
+    _whatsappController = TextEditingController(text: (c['whatsapp'] ?? c['mobile'] ?? '').toString());
+    _addressController = TextEditingController(text: (c['address'] ?? '').toString());
+    _googleMapsUrlController = TextEditingController(text: (c['googleMapsUrl'] ?? '').toString());
+    _landmarkController = TextEditingController(text: (c['landmark'] ?? '').toString());
+    _areaController = TextEditingController(text: (c['area'] ?? 'Madhapur').toString());
+
+    final rawMilk = plan['milkQty'] ?? plan['milkQuantity'] ?? 1.0;
+    _milkQtyController = TextEditingController(text: rawMilk.toString());
+
+    final rawCurd = plan['curdQty'] ?? plan['curdQuantity'] ?? 0;
+    _curdQtyController = TextEditingController(text: rawCurd.toString());
+
+    _notesController = TextEditingController(text: (c['notes'] ?? '').toString());
+
+    _latitude = double.tryParse((c['latitude'] ?? '').toString());
+    _longitude = double.tryParse((c['longitude'] ?? '').toString());
+
+    final rawStat = (c['status'] ?? 'active').toString().toLowerCase();
+    _status = (rawStat == 'paused' || rawStat == 'inactive') ? rawStat : 'active';
+
+    final rawFreq = (plan['frequency'] ?? 'daily').toString().toLowerCase();
+    _frequency = (rawFreq == 'alternate' || rawFreq == 'weekdays') ? rawFreq : 'daily';
+
+    _selectedDeliveryBoyId = c['deliveryBoyId']?.toString();
+    if (_selectedDeliveryBoyId == null && widget.deliveryBoys.isNotEmpty) {
+      final first = widget.deliveryBoys.first;
+      _selectedDeliveryBoyId = first['id']?.toString() ?? first['_id']?.toString();
+    }
+  }
+
+  void _onMapsUrlChanged(String val) {
+    final str = val.trim();
+    if (str.isEmpty) {
+      setState(() {
+        _latitude = null;
+        _longitude = null;
+      });
+      return;
+    }
+
+    final rawRegex = RegExp(r'^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$');
+    final rawMatch = rawRegex.firstMatch(str);
+    if (rawMatch != null) {
+      final lat = double.tryParse(rawMatch.group(1)!);
+      final lng = double.tryParse(rawMatch.group(2)!);
+      if (lat != null && lng != null && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+
+    final atRegex = RegExp(r'@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)');
+    final atMatch = atRegex.firstMatch(str);
+    if (atMatch != null) {
+      final lat = double.tryParse(atMatch.group(1)!);
+      final lng = double.tryParse(atMatch.group(2)!);
+      if (lat != null && lng != null) {
+        setState(() {
+          _latitude = lat;
+          _longitude = lng;
+        });
+        return;
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _mobileController.dispose();
+    _emailController.dispose();
+    _whatsappController.dispose();
+    _addressController.dispose();
+    _googleMapsUrlController.dispose();
+    _landmarkController.dispose();
+    _areaController.dispose();
+    _milkQtyController.dispose();
+    _curdQtyController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final mobile = _mobileController.text.trim();
+    final address = _addressController.text.trim();
+
+    setState(() => _errorMessage = null);
+
+    if (name.length < 2) {
+      setState(() => _errorMessage = 'Please enter customer name (at least 2 characters).');
+      return;
+    }
+    if (!RegExp(r'^(?:\+?91[- ]?)?[6-9]\d{9}$').hasMatch(mobile)) {
+      setState(() => _errorMessage = 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (address.length < 4) {
+      setState(() => _errorMessage = 'Please enter a complete delivery address.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final custId = (widget.customer['id'] ?? widget.customer['_id'] ?? widget.customer['customerId'] ?? '').toString();
+
+      final payload = {
+        'name': name,
+        'mobile': mobile,
+        'email': _emailController.text.trim(),
+        'whatsapp': _whatsappController.text.trim().isNotEmpty ? _whatsappController.text.trim() : mobile,
+        'address': address,
+        'area': _areaController.text.trim().isNotEmpty ? _areaController.text.trim() : 'Madhapur',
+        'landmark': _landmarkController.text.trim(),
+        'googleMapsUrl': _googleMapsUrlController.text.trim(),
+        if (_latitude != null) 'latitude': _latitude,
+        if (_longitude != null) 'longitude': _longitude,
+        'status': _status,
+        'milkQty': double.tryParse(_milkQtyController.text.trim()) ?? 1.0,
+        'curdQty': int.tryParse(_curdQtyController.text.trim()) ?? 0,
+        'frequency': _frequency,
+        'deliveryBoyId': _selectedDeliveryBoyId,
+        'notes': _notesController.text.trim(),
+        'actor': 'Admin',
+      };
+
+      final res = await widget.api.put('/api/customers/$custId', payload);
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+
+      if (res['success'] == true) {
+        widget.onUpdated();
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Customer "$name" updated successfully!'),
+            backgroundColor: const Color(0xFF059669),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } else {
+        setState(() => _errorMessage = res['message']?.toString() ?? 'Failed to update customer. Please try again.');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = 'Error: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final custId = (widget.customer['customerId'] ?? widget.customer['id'] ?? widget.customer['_id'] ?? '').toString();
+
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.90,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 18,
+        right: 18,
+        top: 12,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 38,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFCBD5E1),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: const Icon(Icons.edit_note_rounded, color: Color(0xFF2563EB), size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            'Edit Customer',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(6)),
+                            child: Text(custId, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF475569))),
+                          ),
+                        ],
+                      ),
+                      const Text(
+                        'Update personal details, delivery quotas & route',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+
+          // Error banner
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 16, color: Color(0xFFDC2626)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Form fields
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionHeader('PERSONAL & CONTACT DETAILS', Icons.person_rounded),
+                  const SizedBox(height: 10),
+                  _buildTextField(_nameController, 'Customer Name *', 'e.g. Ramesh Kumar', Icons.person_outline_rounded),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(_mobileController, 'Mobile *', '10-digit number', Icons.phone_outlined, keyboardType: TextInputType.phone),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTextField(_whatsappController, 'WhatsApp', 'Optional number', Icons.chat_bubble_outline_rounded, keyboardType: TextInputType.phone),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTextField(_emailController, 'Email (For Credentials)', 'customer@example.com', Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+                  const SizedBox(height: 16),
+
+                  _buildSectionHeader('ACCOUNT STATUS', Icons.toggle_on_rounded),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildChoiceChip('Active', 'active', Icons.check_circle_rounded, const Color(0xFF059669), const Color(0xFFECFDF5)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildChoiceChip('Paused', 'paused', Icons.pause_circle_rounded, const Color(0xFFD97706), const Color(0xFFFFFBEB)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildChoiceChip('Inactive', 'inactive', Icons.cancel_rounded, const Color(0xFF64748B), const Color(0xFFF1F5F9)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  _buildSectionHeader('DELIVERY LOCATION', Icons.location_on_rounded),
+                  const SizedBox(height: 10),
+                  _buildTextField(_addressController, 'Delivery Address *', 'Flat / House No, Street, Building', Icons.home_outlined, maxLines: 2),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(_areaController, 'Route / Area', 'Madhapur', Icons.location_city_outlined),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTextField(_landmarkController, 'Landmark', 'Near Metro / Bank', Icons.flag_outlined),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  _buildTextField(
+                    _googleMapsUrlController,
+                    'Google Maps Location / Pin Link',
+                    'Paste URL or 17.4483, 78.3915',
+                    Icons.pin_drop_outlined,
+                    onChanged: _onMapsUrlChanged,
+                  ),
+                  if (_latitude != null && _longitude != null) ...[
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF059669)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'GPS Detected: ${_latitude!.toStringAsFixed(4)}, ${_longitude!.toStringAsFixed(4)}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+
+                  _buildSectionHeader('DAILY MILK SUBSCRIPTION PLAN', Icons.local_drink_rounded),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(_milkQtyController, 'Farm Milk (L)', '1.0', Icons.water_drop_outlined, keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildTextField(_curdQtyController, 'Curd Packs (Pk)', '0', Icons.inventory_2_outlined, keyboardType: TextInputType.number),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Text('Delivery Frequency', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _buildFrequencyChip('daily', 'Daily'),
+                      const SizedBox(width: 6),
+                      _buildFrequencyChip('alternate', 'Alternate'),
+                      const SizedBox(width: 6),
+                      _buildFrequencyChip('weekdays', 'Weekdays'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  _buildSectionHeader('ASSIGNED DELIVERY PARTNER', Icons.two_wheeler_rounded),
+                  const SizedBox(height: 8),
+                  if (widget.deliveryBoys.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Text('No delivery partners available.', style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+                    )
+                  else
+                    DropdownButtonFormField<String>(
+                      initialValue: widget.deliveryBoys.any((b) => (b['id']?.toString() ?? b['_id']?.toString()) == _selectedDeliveryBoyId)
+                          ? _selectedDeliveryBoyId
+                          : null,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.two_wheeler_rounded, size: 18, color: Color(0xFF64748B)),
+                        isDense: true,
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                      ),
+                      hint: const Text('Unassigned Partner', style: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8))),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('Unassigned Partner', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                        ),
+                        ...widget.deliveryBoys.map((b) {
+                          final id = (b['id'] ?? b['_id'] ?? '').toString();
+                          final name = (b['name'] ?? 'Partner').toString();
+                          final area = (b['assignedArea'] ?? 'Route').toString();
+                          return DropdownMenuItem<String>(
+                            value: id,
+                            child: Text('$name ($area)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                          );
+                        }),
+                      ],
+                      onChanged: (v) => setState(() => _selectedDeliveryBoyId = v),
+                    ),
+                  const SizedBox(height: 14),
+
+                  _buildTextField(_notesController, 'Delivery Instructions / Notes', 'e.g. Ring bell once / leave on door shelf', Icons.notes_rounded),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+
+          // Sticky bottom action buttons
+          Container(
+            padding: const EdgeInsets.only(top: 10),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF475569))),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      elevation: 0,
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : const Text('Save & Update Customer', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: const Color(0xFF059669)),
+        const SizedBox(width: 5),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 0.5),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChoiceChip(String label, String value, IconData icon, Color color, Color bgColor) {
+    final isSelected = _status == value;
+    return InkWell(
+      onTap: () => setState(() => _status = value),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? bgColor : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: isSelected ? color : const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 13, color: isSelected ? color : const Color(0xFF94A3B8)),
+            const SizedBox(width: 4),
+            Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: isSelected ? color : const Color(0xFF64748B))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFrequencyChip(String value, String label) {
+    final isSelected = _frequency == value;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _frequency = value),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isSelected ? const Color(0xFF059669) : const Color(0xFFE2E8F0)),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: isSelected ? const Color(0xFF059669) : const Color(0xFF64748B)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    String hint,
+    IconData icon, {
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          maxLines: maxLines,
+          onChanged: onChanged,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+            prefixIcon: Icon(icon, size: 17, color: const Color(0xFF64748B)),
             isDense: true,
             filled: true,
             fillColor: const Color(0xFFF8FAFC),
@@ -6302,17 +7178,27 @@ class AdminPartnerDutyLogsFullScreen extends StatelessWidget {
 class AdminCustomerDetailsFullScreen extends StatelessWidget {
   final Map<String, dynamic> customer;
   final List<Map<String, dynamic>> deliveries;
+  final List<Map<String, dynamic>> deliveryBoys;
   final ApiService api;
   final Function(Map<String, dynamic> delivery) onShowDeliveryDetails;
   final Function(Map<String, dynamic> customer) onRecordPayment;
+  final Function(Map<String, dynamic> customer)? onEditCustomer;
+  final Function(Map<String, dynamic> customer)? onDeleteCustomer;
+  final Function(Map<String, dynamic> customer)? onTogglePause;
+  final Function(Map<String, dynamic> customer, String boyId, String boyName)? onAssignPartner;
 
   const AdminCustomerDetailsFullScreen({
     super.key,
     required this.customer,
     required this.deliveries,
+    this.deliveryBoys = const [],
     required this.api,
     required this.onShowDeliveryDetails,
     required this.onRecordPayment,
+    this.onEditCustomer,
+    this.onDeleteCustomer,
+    this.onTogglePause,
+    this.onAssignPartner,
   });
 
   Map<String, dynamic>? _findDelivery() {
@@ -6331,25 +7217,6 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
       }
     }
     return null;
-  }
-
-  Widget _buildRow(String label, String value, {Color? valueColor}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-          Flexible(
-            child: Text(
-              value,
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: valueColor ?? const Color(0xFF0F172A)),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -6388,9 +7255,41 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-            Text('$mobile${area.isNotEmpty ? ' • $area' : ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
+            Text('$custId${area.isNotEmpty ? ' • $area' : ''}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B))),
           ],
         ),
+        actions: [
+          if (mobile.isNotEmpty) ...[
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF16A34A)),
+              tooltip: 'WhatsApp',
+              onPressed: () => LauncherService.openWhatsApp(mobile),
+            ),
+            IconButton(
+              icon: const Icon(Icons.phone_outlined, color: Color(0xFF2563EB)),
+              tooltip: 'Call Customer',
+              onPressed: () => LauncherService.openDialer(mobile),
+            ),
+          ],
+          if (onEditCustomer != null)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined, color: Color(0xFF2563EB)),
+              tooltip: 'Edit Customer',
+              onPressed: () {
+                Navigator.pop(context);
+                onEditCustomer!(customer);
+              },
+            ),
+          if (onDeleteCustomer != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFDC2626)),
+              tooltip: 'Delete Customer',
+              onPressed: () {
+                Navigator.pop(context);
+                onDeleteCustomer!(customer);
+              },
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -6400,12 +7299,18 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
             final ledgerData = snap.data ?? {};
             final sumMap = ledgerData['summary'] is Map ? ledgerData['summary'] as Map : {};
             final totalPaidAllTime = num.tryParse((sumMap['totalPaid'] ?? '0').toString()) ?? 0;
-            final addonsList = (deliv != null && deliv['addons'] is List) ? (deliv['addons'] as List) : const [];
+            final isPaused = (customer['status'] ?? '').toString().toLowerCase() == 'paused';
+            final isInactive = (customer['status'] ?? '').toString().toLowerCase() == 'inactive';
+            final statusStr = (customer['status'] ?? 'active').toString().toUpperCase();
+            final plan = customer['deliveryPlan'] is Map ? customer['deliveryPlan'] as Map : (customer['subscription'] is Map ? customer['subscription'] as Map : {});
+            final milkQty = plan['milkQty'] ?? plan['milkQuantity'] ?? 1.0;
+            final curdQty = plan['curdQty'] ?? plan['curdQuantity'] ?? 0;
+            final freq = (plan['frequency'] ?? 'Daily').toString();
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Profile & Contact Card
+                // 1. Profile Hero Card
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -6418,64 +7323,432 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Row(
                             children: [
-                              Text(name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-                              if (address.isNotEmpty) Text(address, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                              Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: isPaused ? const Color(0xFFFFFBEB) : isInactive ? const Color(0xFFF1F5F9) : const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: isPaused ? const Color(0xFFFDE68A) : isInactive ? const Color(0xFFCBD5E1) : const Color(0xFFA7F3D0)),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 18,
+                                      color: isPaused ? const Color(0xFFB45309) : isInactive ? const Color(0xFF64748B) : const Color(0xFF059669),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: Color(0xFF0F172A))),
+                                  const SizedBox(height: 2),
+                                  Text(custId, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                ],
+                              ),
                             ],
                           ),
-                          if (mobile.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isPaused ? const Color(0xFFFFFBEB) : isInactive ? const Color(0xFFF1F5F9) : const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: isPaused ? const Color(0xFFFDE68A) : isInactive ? const Color(0xFFCBD5E1) : const Color(0xFFA7F3D0)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 6,
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isPaused ? const Color(0xFFD97706) : isInactive ? const Color(0xFF94A3B8) : const Color(0xFF10B981),
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  statusStr,
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: isPaused ? const Color(0xFFB45309) : isInactive ? const Color(0xFF64748B) : const Color(0xFF059669),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (mobile.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
                             InkWell(
                               onTap: () => LauncherService.openDialer(mobile),
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFBFDBFE))),
-                                child: const Row(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
+                                    const Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
+                                    const SizedBox(width: 4),
+                                    Text(mobile, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            InkWell(
+                              onTap: () => LauncherService.openWhatsApp(mobile),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF0FDF4),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.chat_bubble_outline_rounded, size: 12, color: Color(0xFF16A34A)),
                                     SizedBox(width: 4),
-                                    Text('Call', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF2563EB))),
+                                    Text('WhatsApp', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF16A34A))),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (address.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFF1F5F9)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.location_on_rounded, size: 15, color: Color(0xFF059669)),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(address, style: const TextStyle(fontSize: 11.5, color: Color(0xFF334155), height: 1.3)),
+                                    if (num.tryParse(customer['latitude']?.toString() ?? '') != null && num.tryParse(customer['longitude']?.toString() ?? '') != null) ...[
+                                      const SizedBox(height: 4),
+                                      InkWell(
+                                        onTap: () {
+                                          final lat = num.tryParse(customer['latitude'].toString());
+                                          final lng = num.tryParse(customer['longitude'].toString());
+                                          LauncherService.openMap(lat: lat, lng: lng, address: address);
+                                        },
+                                        child: Text(
+                                          'GPS: ${num.tryParse(customer['latitude'].toString())!.toStringAsFixed(3)}, ${num.tryParse(customer['longitude'].toString())!.toStringAsFixed(3)} → Open Map',
+                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // 2. Financial Balance Card
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: bal > 0 ? const Color(0xFFFEF2F2) : bal < 0 ? const Color(0xFFEFF6FF) : const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: bal > 0 ? const Color(0xFFFECACA) : bal < 0 ? const Color(0xFFBFDBFE) : const Color(0xFFBBF7D0)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'CURRENT LEDGER BALANCE',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: bal > 0 ? const Color(0xFF991B1B) : bal < 0 ? const Color(0xFF1E40AF) : const Color(0xFF166534),
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '₹${bal.abs()}${bal > 0 ? ' (Due)' : bal < 0 ? ' (Adv)' : ' (Settled)'}',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: bal > 0 ? const Color(0xFFDC2626) : bal < 0 ? const Color(0xFF2563EB) : const Color(0xFF059669),
+                                ),
+                              ),
+                            ],
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () => onRecordPayment(customer),
+                            icon: const Icon(Icons.payment_rounded, size: 14),
+                            label: const Text('Record Pay', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF059669),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Divider(height: 1, color: bal > 0 ? const Color(0xFFFED7D7) : bal < 0 ? const Color(0xFFDBEAFE) : const Color(0xFFDCFCE7)),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total Collected: ₹$totalPaidAllTime',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                          ),
+                          Text(
+                            'Today Collected: ₹${todayCash + todayUpi}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF059669)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // 3. Subscription Plan & Delivery Partner Card
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.local_drink_rounded, size: 16, color: Color(0xFF059669)),
+                              SizedBox(width: 6),
+                              Text('SUBSCRIPTION PLAN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 0.5)),
+                            ],
+                          ),
+                          if (onTogglePause != null)
+                            InkWell(
+                              onTap: () {
+                                Navigator.pop(context);
+                                onTogglePause!(customer);
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isPaused ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: isPaused ? const Color(0xFFA7F3D0) : const Color(0xFFFDE68A)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 12, color: isPaused ? const Color(0xFF059669) : const Color(0xFFD97706)),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      isPaused ? 'Resume Drop' : 'Pause Drop',
+                                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: isPaused ? const Color(0xFF059669) : const Color(0xFFD97706)),
+                                    ),
                                   ],
                                 ),
                               ),
                             ),
                         ],
                       ),
-                      const Divider(height: 22),
-                      _buildRow('Today Collected', '₹${todayCash + todayUpi} (Cash ₹$todayCash • UPI ₹$todayUpi)', valueColor: const Color(0xFF059669)),
-                      _buildRow(
-                        'Total Collected (All Time)',
-                        snap.connectionState == ConnectionState.waiting ? 'Loading...' : '₹$totalPaidAllTime',
-                        valueColor: const Color(0xFF0F172A),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                              child: Column(
+                                children: [
+                                  const Text('FARM MILK', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                  const SizedBox(height: 2),
+                                  Text('${milkQty}L', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF059669))),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                              child: Column(
+                                children: [
+                                  const Text('CURD PACKS', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                  const SizedBox(height: 2),
+                                  Text('$curdQty Pk', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                              child: Column(
+                                children: [
+                                  const Text('SCHEDULE', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                  const SizedBox(height: 2),
+                                  Text(freq, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      if (addonsList.isNotEmpty)
-                        _buildRow('Today Add-ons', addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')),
-                      _buildRow('Outstanding / Balance', '₹$bal', valueColor: bal > 0 ? const Color(0xFFDC2626) : const Color(0xFF059669)),
+                      const SizedBox(height: 12),
+
+                      // Assigned Partner with 1-Tap Partner Assignment Action
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEFF6FF),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.two_wheeler_rounded, size: 18, color: Color(0xFF2563EB)),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('ASSIGNED DELIVERY PARTNER', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                    Text(
+                                      customer['deliveryBoyName']?.toString() ?? 'Unassigned',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            if (onAssignPartner != null)
+                              ElevatedButton.icon(
+                                onPressed: () => _showAssignPartnerSheet(context),
+                                icon: const Icon(Icons.swap_horiz_rounded, size: 14),
+                                label: const Text('Assign Partner', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2563EB),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
 
-                // Record Payment Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => onRecordPayment(customer),
-                    icon: const Icon(Icons.payment_rounded, size: 16),
-                    label: const Text('Record Customer Payment', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF059669),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
+                // 4. Quick Actions Toolbar (Edit, Delete)
+                Row(
+                  children: [
+                    if (onEditCustomer != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onEditCustomer!(customer);
+                          },
+                          icon: const Icon(Icons.edit_rounded, size: 14),
+                          label: const Text('Edit Details', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF2563EB),
+                            side: const BorderSide(color: Color(0xFF93C5FD)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    if (onEditCustomer != null && onDeleteCustomer != null)
+                      const SizedBox(width: 10),
+                    if (onDeleteCustomer != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            onDeleteCustomer!(customer);
+                          },
+                          icon: const Icon(Icons.delete_outline_rounded, size: 14),
+                          label: const Text('Delete', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFDC2626),
+                            side: const BorderSide(color: Color(0xFFFCA5A5)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
-                // Today Delivery Card
+                // 5. Today Delivery Card
                 if (deliv != null) ...[
                   const Text('TODAY DOORSTEP DROP', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF475569), letterSpacing: 0.5)),
                   const SizedBox(height: 8),
@@ -6539,6 +7812,108 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  void _showAssignPartnerSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (bCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(width: 36, height: 4, decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(2))),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Assign Delivery Partner', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  IconButton(
+                    onPressed: () => Navigator.pop(bCtx),
+                    icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text('Select a delivery partner for ${(customer['name'] ?? 'Customer').toString()}', style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+              const SizedBox(height: 14),
+              if (deliveryBoys.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: Text('No delivery partners available.', style: TextStyle(color: Color(0xFF94A3B8)))),
+                )
+              else
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: deliveryBoys.length + 1,
+                    separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    itemBuilder: (lCtx, idx) {
+                      if (idx == 0) {
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          leading: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10)),
+                            child: const Icon(Icons.person_off_rounded, size: 18, color: Color(0xFF64748B)),
+                          ),
+                          title: const Text('Unassigned', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                          subtitle: const Text('Remove current partner assignment', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                          onTap: () {
+                            Navigator.pop(bCtx);
+                            Navigator.pop(context);
+                            onAssignPartner?.call(customer, '', 'Unassigned');
+                          },
+                        );
+                      }
+                      final boy = deliveryBoys[idx - 1];
+                      final bId = (boy['id'] ?? boy['_id'] ?? '').toString();
+                      final bName = (boy['name'] ?? 'Partner').toString();
+                      final bArea = (boy['assignedArea'] ?? 'Route').toString();
+                      final currentId = (customer['deliveryBoyId'] ?? customer['deliveryPlan']?['deliveryBoyId'] ?? '').toString();
+                      final isSelected = currentId.isNotEmpty && currentId == bId;
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        leading: Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFECFDF5) : const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.two_wheeler_rounded, size: 18, color: isSelected ? const Color(0xFF059669) : const Color(0xFF2563EB)),
+                        ),
+                        title: Text(bName, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: isSelected ? const Color(0xFF059669) : const Color(0xFF0F172A))),
+                        subtitle: Text('Route: $bArea', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 20)
+                            : const Icon(Icons.chevron_right_rounded, color: Color(0xFFCBD5E1), size: 20),
+                        onTap: () {
+                          Navigator.pop(bCtx);
+                          Navigator.pop(context);
+                          onAssignPartner?.call(customer, bId, bName);
+                        },
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

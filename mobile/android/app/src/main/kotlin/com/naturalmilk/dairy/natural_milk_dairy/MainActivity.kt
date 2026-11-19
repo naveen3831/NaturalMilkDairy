@@ -33,7 +33,7 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.naturalmilk.dairy/app_launcher"
-    private val NOTIFICATION_CHANNEL_ID = "natural_milk_dairy_channel"
+    private val NOTIFICATION_CHANNEL_ID = "natural_milk_dairy_channel_v5"
     private val NOTIFICATION_CHANNEL_NAME = "Natural Milk Dairy Alerts"
     private val REQUEST_IMAGE_CAPTURE = 2024
     private val REQUEST_CAMERA_PERMISSION = 2025
@@ -59,6 +59,49 @@ class MainActivity : FlutterActivity() {
                     val body = call.argument<String>("body") ?: call.argument<String>("message") ?: "New notification"
                     showPushUpNotification(title, body)
                     result.success(true)
+                }
+                "requestNotificationPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                        if (!granted) {
+                            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3001)
+                        }
+                        result.success(granted)
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "checkNotificationPermission" -> {
+                    val manager = NotificationManagerCompat.from(this)
+                    val areEnabled = manager.areNotificationsEnabled()
+                    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        areEnabled
+                    }
+                    result.success(mapOf(
+                        "granted" to granted,
+                        "areNotificationsEnabled" to areEnabled
+                    ))
+                }
+                "openNotificationSettings" -> {
+                    try {
+                        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        } else {
+                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", packageName, null)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SETTINGS_ERROR", e.message, null)
+                    }
                 }
                 "openMap" -> {
                     val url = call.argument<String>("url")
@@ -446,16 +489,33 @@ class MainActivity : FlutterActivity() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            try {
+                notificationManager.deleteNotificationChannel("natural_milk_dairy_channel")
+                notificationManager.deleteNotificationChannel("natural_milk_dairy_channel_v2")
+                notificationManager.deleteNotificationChannel("natural_milk_dairy_channel_v3")
+                notificationManager.deleteNotificationChannel("natural_milk_dairy_channel_v4")
+            } catch (_: Exception) {}
+
             val importance = NotificationManager.IMPORTANCE_HIGH
             val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, NOTIFICATION_CHANNEL_NAME, importance).apply {
                 description = "Doorstep Delivery & Subscription Alerts"
                 enableLights(true)
+                lightColor = android.graphics.Color.GREEN
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 300, 200, 300)
+                vibrationPattern = longArrayOf(0, 350, 150, 350)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
+                setBypassDnd(true)
+                val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                val audioAttributes = android.media.AudioAttributes.Builder()
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                    .build()
+                setSound(soundUri, audioAttributes)
             }
-            val notificationManager: NotificationManager =
-                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
     }
@@ -471,10 +531,17 @@ class MainActivity : FlutterActivity() {
             } else {
                 PendingIntent.FLAG_UPDATE_CURRENT
             }
-            val pendingIntent = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent, pendingIntentFlags)
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                (System.currentTimeMillis() % 100000).toInt(),
+                intent,
+                pendingIntentFlags
+            )
+
+            val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
 
             val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -482,14 +549,24 @@ class MainActivity : FlutterActivity() {
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setContentIntent(pendingIntent)
+                .setFullScreenIntent(pendingIntent, false)
                 .setAutoCancel(true)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setSound(soundUri)
+                .setVibrate(longArrayOf(0, 350, 150, 350))
+                .setLights(android.graphics.Color.GREEN, 500, 1000)
+                .setTicker(title)
 
             val notificationManager = NotificationManagerCompat.from(this)
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                val notificationId = (System.currentTimeMillis() % 100000).toInt()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 3001)
+            }
+
+            val notificationId = (System.currentTimeMillis() % 100000).toInt()
+            try {
                 notificationManager.notify(notificationId, builder.build())
+            } catch (_: SecurityException) {
+                // If notification permission is still pending on Android 13+
             }
         } catch (e: Exception) {
             e.printStackTrace()

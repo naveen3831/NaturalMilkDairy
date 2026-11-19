@@ -48,10 +48,18 @@ let hasSeededDB = false;
 
 // Resolve all possible user identifiers (User _id, Customer _id, customerId, mobile, email)
 const resolveUserIdentifiers = async (user) => {
+  if (!user) return [];
   const rawId = (user.id || user._id || '').toString().trim();
   const ids = new Set();
-  if (rawId) ids.add(rawId);
-  if (user.customerId && String(user.customerId).trim()) ids.add(String(user.customerId).trim());
+  if (rawId) {
+    ids.add(rawId);
+    ids.add(rawId.toLowerCase());
+  }
+  if (user.customerId && String(user.customerId).trim()) {
+    ids.add(String(user.customerId).trim());
+    ids.add(String(user.customerId).trim().toUpperCase());
+    ids.add(String(user.customerId).trim().toLowerCase());
+  }
   if (user.boyId && String(user.boyId).trim()) ids.add(String(user.boyId).trim());
   if (user.mobile && String(user.mobile).trim()) ids.add(String(user.mobile).trim());
   if (user.email && String(user.email).trim()) ids.add(String(user.email).trim().toLowerCase());
@@ -69,8 +77,15 @@ const resolveUserIdentifiers = async (user) => {
       if (orClauses.length > 0) {
         const customer = await Customer.findOne({ $or: orClauses }).maxTimeMS(2000).lean();
         if (customer) {
-          if (customer._id) ids.add(customer._id.toString());
-          if (customer.customerId) ids.add(String(customer.customerId).trim());
+          if (customer._id) {
+            ids.add(customer._id.toString());
+            ids.add(customer._id.toString().toLowerCase());
+          }
+          if (customer.customerId) {
+            ids.add(String(customer.customerId).trim());
+            ids.add(String(customer.customerId).trim().toUpperCase());
+            ids.add(String(customer.customerId).trim().toLowerCase());
+          }
           if (customer.mobile) ids.add(String(customer.mobile).trim());
           if (customer.email) ids.add(String(customer.email).trim().toLowerCase());
         }
@@ -104,6 +119,7 @@ const resolveUserIdentifiers = async (user) => {
 
 // Build strictly user-scoped MongoDB query
 const getUserNotificationScope = async (user) => {
+  if (!user) return { recipientRole: 'all' };
   if (user.role === 'admin') {
     // Admin receives and manages ALL notifications across the platform
     return {};
@@ -120,7 +136,14 @@ const getUserNotificationScope = async (user) => {
       $or: [
         {
           recipientRole: 'customer',
-          recipientId: { $in: validIds },
+          $or: [
+            { recipientId: { $in: validIds } },
+            { 'data.customerId': { $in: validIds } },
+            { 'data.customerMobile': { $in: validIds } },
+            { recipientId: '' },
+            { recipientId: null },
+            { recipientId: { $exists: false } },
+          ],
         },
         {
           recipientRole: 'all',
@@ -148,23 +171,34 @@ const getUserNotificationScope = async (user) => {
     };
   }
 
-  return { recipientRole: 'none' };
+  return { recipientRole: 'all' };
 };
 
 const canAccessNotification = (notification, user, ids = []) => {
+  if (!user) return notification.recipientRole === 'all';
   if (user.role === 'admin') return true;
   if (notification.recipientRole === 'all') return true;
 
+  const targetId = (notification.recipientId || '').toString().trim().toLowerCase();
+  const lowerIds = ids.map((i) => String(i).toLowerCase().trim());
+
   if (user.role === 'customer' || user.role === 'user') {
     if (notification.recipientRole !== 'customer') return false;
-    if (!targetId) return false;
-    return ids.includes(targetId);
+    if (!targetId) return true; // broadcast to all customers
+    if (lowerIds.includes(targetId)) return true;
+
+    // Check data payload customerId or mobile
+    const notifCustId = (notification.data?.customerId || '').toString().toLowerCase().trim();
+    if (notifCustId && lowerIds.includes(notifCustId)) return true;
+    const notifMobile = (notification.data?.customerMobile || notification.data?.customerPhone || '').toString().toLowerCase().trim();
+    if (notifMobile && lowerIds.includes(notifMobile)) return true;
+    return false;
   }
 
   if (user.role === 'delivery_boy') {
     if (notification.recipientRole !== 'delivery_boy') return false;
     if (!targetId) return true; // General driver broadcast
-    return ids.includes(targetId);
+    return lowerIds.includes(targetId);
   }
 
   return false;
@@ -172,8 +206,9 @@ const canAccessNotification = (notification, user, ids = []) => {
 
 const getNotifications = async (req, res) => {
   try {
-    const ids = await resolveUserIdentifiers(req.user);
-    const filter = await getUserNotificationScope(req.user);
+    const user = req.user || { role: 'customer', id: 'guest' };
+    const ids = await resolveUserIdentifiers(user);
+    const filter = await getUserNotificationScope(user);
 
     let list = [];
     let isDbConnected = false;

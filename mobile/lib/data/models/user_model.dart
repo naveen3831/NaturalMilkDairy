@@ -1,5 +1,6 @@
 class UserModel {
   final String id;
+  final String? rawCustomerId;
   final String name;
   final String mobile;
   final String? email;
@@ -13,6 +14,7 @@ class UserModel {
 
   UserModel({
     required this.id,
+    this.rawCustomerId,
     required this.name,
     required this.mobile,
     this.email,
@@ -28,6 +30,7 @@ class UserModel {
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      rawCustomerId: json['customerId']?.toString() ?? json['customerCode']?.toString(),
       name: json['name']?.toString() ?? '',
       mobile: json['mobile']?.toString() ?? json['phone']?.toString() ?? '',
       email: json['email']?.toString(),
@@ -44,6 +47,9 @@ class UserModel {
   String get assignedArea => area ?? 'madhapur';
 
   String get customerId {
+    if (rawCustomerId != null && rawCustomerId!.trim().isNotEmpty) {
+      return rawCustomerId!.trim();
+    }
     if (id.isEmpty || isGuest) return 'CUST-101';
     final clean = id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     return clean.length > 4 ? 'CUST-${clean.substring(clean.length - 4).toUpperCase()}' : 'CUST-$clean';
@@ -82,6 +88,7 @@ class UserModel {
 
   UserModel copyWith({
     String? id,
+    String? rawCustomerId,
     String? name,
     String? mobile,
     String? email,
@@ -95,6 +102,7 @@ class UserModel {
   }) {
     return UserModel(
       id: id ?? this.id,
+      rawCustomerId: rawCustomerId ?? this.rawCustomerId,
       name: name ?? this.name,
       mobile: mobile ?? this.mobile,
       email: email ?? this.email,
@@ -111,6 +119,7 @@ class UserModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'customerId': customerId,
       'name': name,
       'mobile': mobile,
       'email': email,

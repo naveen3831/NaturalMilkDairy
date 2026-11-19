@@ -809,7 +809,16 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         };
       });
 
-      setCustomerSuccessBanner(`🎉 Subscription extended by ${days} days for ${selectedCustomer.name}! New expiry: ${new Date(newEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.`);
+      const hadActiveSub = selectedCustomer?.subscription?.status === 'active' &&
+        selectedCustomer?.subscription?.endDate &&
+        new Date(selectedCustomer.subscription.endDate) > new Date();
+
+      setCustomerSuccessBanner(
+        data.message ||
+        (hadActiveSub
+          ? `🎉 Subscription extended by ${days} days for ${selectedCustomer.name}! New expiry: ${new Date(newEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.`
+          : `🎉 Subscription activated successfully for ${selectedCustomer.name}! Valid until: ${new Date(newEndDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}.`)
+      );
       setTimeout(() => setCustomerSuccessBanner(''), 5500);
       setShowExtendModal(false);
 
@@ -12119,6 +12128,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         const rawEndDate = selectedCustomer.subscription?.endDate || selectedCustomer.subscriptionEnd || selectedCustomer.plan?.endDate;
         const currentEndDate = rawEndDate ? new Date(rawEndDate) : null;
         const isCurrentlyExpired = currentEndDate ? currentEndDate.getTime() < new Date().setHours(0, 0, 0, 0) : true;
+        const hasActivePlan = !isCurrentlyExpired && selectedCustomer.subscription?.status === 'active';
         const baseDate = (!currentEndDate || isCurrentlyExpired) ? new Date() : new Date(currentEndDate);
         const parsedDays = parseInt(extendDays, 10) || 0;
         const calculatedNewEndDate = new Date(baseDate);
@@ -12187,7 +12197,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                   <div>
                     <h3 style={{ fontSize: '1.12rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      Extend Subscription
+                      {hasActivePlan ? 'Extend Subscription' : 'Activate Subscription'}
                     </h3>
                     <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
                       {selectedCustomer.name} · {selectedCustomer.customerId || `#${(selectedCustomer.id || '').slice(-6)}`}
@@ -12463,12 +12473,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     {isSubmittingExtend ? (
                       <>
                         <RefreshCw size={16} className="driver-spin" />
-                        <span>Extending...</span>
+                        <span>{hasActivePlan ? 'Extending...' : 'Activating...'}</span>
                       </>
                     ) : (
                       <>
                         <Check size={16} />
-                        <span>Confirm & Extend</span>
+                        <span>{hasActivePlan ? 'Confirm & Extend' : 'Confirm & Activate'}</span>
                       </>
                     )}
                   </button>
