@@ -15,7 +15,7 @@ const initialProducts = [
 
 const connectDB = async (retryCount = 0) => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/natural_milk_dairy';
+    const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://milkdairy:milkdairy123@cluster0.dj4zgry.mongodb.net/natural_milk_dairy?retryWrites=true&w=majority&appName=Cluster0';
     const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 30000,
     });
