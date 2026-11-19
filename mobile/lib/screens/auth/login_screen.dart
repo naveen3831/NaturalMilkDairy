@@ -579,40 +579,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-
-                // Guest Mode Button
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      context.read<AuthProvider>().continueAsGuest();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const HomeScreen()),
-                        (route) => false,
-                      );
-                    },
-                    icon: const Icon(Icons.person_outline_rounded, color: AppColors.primaryGreen, size: 20),
-                    label: const Text(
-                      'Continue as Guest',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primaryGreen,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: const BorderSide(color: AppColors.primaryGreen, width: 1.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // Sign Up Footer
                 Row(
