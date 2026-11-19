@@ -395,41 +395,6 @@ export default function LoginPage({ setActiveTab }) {
 
         {/* Right Column: Sign In Form */}
         <div className="auth-right-col">
-          {/* Top Right Guest Account Action */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.setItem('nmd_is_guest', 'true');
-                localStorage.setItem('nmd_current_tab', 'home');
-                setActiveTab('home');
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 14px',
-                background: '#ffffff',
-                color: '#277438',
-                border: '1.5px solid #cce5d0',
-                borderRadius: '20px',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
-                transition: 'all 0.2s ease',
-                fontFamily: 'var(--font-main, sans-serif)',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#f0fdf4'; e.currentTarget.style.borderColor = '#277438'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#cce5d0'; }}
-              title="Browse as Guest"
-            >
-              <span>👤</span>
-              <span>Guest Account</span>
-              <span style={{ fontSize: '0.9rem', marginLeft: '2px' }}>→</span>
-            </button>
-          </div>
-
           {/* Delivery Portal Announcement Banner */}
           {isDeliveryPortal && (
             <div

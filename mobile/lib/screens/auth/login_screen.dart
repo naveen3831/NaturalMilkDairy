@@ -309,10 +309,8 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: AppColors.creamBg,
       body: SafeArea(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
               child: Form(
                 key: _formKey,
                 child: Column(
@@ -612,62 +610,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
-
-        // Top Right Option: Guest Account
-        Positioned(
-          top: 10,
-          right: 16,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                context.read<AuthProvider>().continueAsGuest();
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (_) => const HomeScreen()),
-                  (route) => false,
-                );
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.35), width: 1.2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.person_outline_rounded, size: 16, color: AppColors.primaryGreen),
-                    SizedBox(width: 5),
-                    Text(
-                      'Guest',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primaryGreen,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    SizedBox(width: 3),
-                    Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.primaryGreen),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  ),
-);
+      ),
+    );
   }
 }
