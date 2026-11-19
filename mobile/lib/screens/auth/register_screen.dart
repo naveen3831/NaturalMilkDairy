@@ -112,6 +112,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final res = await auth.loginWithGoogleToken(
         googleResult.idToken,
         portal: 'customer',
+        email: googleResult.email,
+        name: googleResult.displayName,
       );
 
       if (!mounted) return;

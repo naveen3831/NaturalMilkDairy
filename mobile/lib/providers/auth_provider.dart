@@ -100,6 +100,7 @@ class AuthProvider extends ChangeNotifier {
   Future<Map<String, dynamic>> loginWithGoogleToken(
     String idToken, {
     String portal = 'customer',
+    String? email,
     String? name,
     String? mobile,
     String? password,
@@ -111,6 +112,7 @@ class AuthProvider extends ChangeNotifier {
     final res = await _apiService.loginWithGoogle(
       idToken: idToken,
       portal: portal,
+      email: email,
       name: name,
       mobile: mobile,
       password: password,

@@ -4797,7 +4797,7 @@ class _CollectionsScreenState extends State<_CollectionsScreen> {
                         if (addonsList.isNotEmpty || addonsTotal > 0) ...[
                           const SizedBox(height: 4),
                           Text(
-                            '+ Add-ons: ${addonsList.map((a) => '${a['name']} ×${a['quantity']}').join(', ')} (₹${addonsTotal.toInt()})',
+                            '+ Add-ons: ${addonsList.map((a) => a is Map ? '${a["name"] ?? "Item"} ×${a["quantity"] ?? 1}' : a.toString()).join(', ')} (₹${addonsTotal.toInt()})',
                             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF92400E)),
                           ),
                         ],
@@ -5599,7 +5599,7 @@ class AdminDeliveryDetailFullScreen extends StatelessWidget {
                     ),
                   ),
                   if (delivery['updatedAt'] != null)
-                    _buildRow('Last Updated', delivery['updatedAt'].toString().split('T').first),
+                    _buildRow('Last Updated', delivery['updatedAt'].toString().contains('T') ? delivery['updatedAt'].toString().split('T').first : delivery['updatedAt'].toString()),
                   if (proofUrl != null && proofUrl.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     const Text('Doorstep Delivery Photo Proof', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),

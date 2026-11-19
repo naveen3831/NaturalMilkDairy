@@ -36,6 +36,27 @@ class DeliveryProofHelper {
     return '${AppConfig.liveBaseUrl}$cleanPath';
   }
 
+  static final Map<int, Uint8List> _base64BytesCache = {};
+
+  static Future<Uint8List> _getCachedBase64Bytes(String cleanBase64) async {
+    final hash = cleanBase64.hashCode;
+    final cached = _base64BytesCache[hash];
+    if (cached != null) return cached;
+    final Uint8List bytes;
+    if (cleanBase64.length < 50000) {
+      bytes = _decodeBase64Worker(cleanBase64);
+    } else {
+      bytes = await compute(_decodeBase64Worker, cleanBase64);
+    }
+    if (bytes.isNotEmpty) {
+      if (_base64BytesCache.length > 40) {
+        _base64BytesCache.remove(_base64BytesCache.keys.first);
+      }
+      _base64BytesCache[hash] = bytes;
+    }
+    return bytes;
+  }
+
   static Widget buildImageFromSource(
     String proofStr, {
     double? width,
@@ -47,12 +68,23 @@ class DeliveryProofHelper {
       return buildPlaceholder(width: width, height: height);
     }
 
-    // Handle base64 image data in a background isolate to keep UI thread completely responsive
+    // Handle base64 image data with caching to keep UI thread completely responsive
     if (clean.startsWith('data:image/')) {
       final commaIdx = clean.indexOf(',');
       final cleanBase64 = commaIdx != -1 ? clean.substring(commaIdx + 1) : clean;
+      final cached = _base64BytesCache[cleanBase64.hashCode];
+      if (cached != null) {
+        return Image.memory(
+          cached,
+          width: width,
+          height: height,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) =>
+              buildPlaceholder(width: width, height: height),
+        );
+      }
       return FutureBuilder<Uint8List>(
-        future: compute(_decodeBase64Worker, cleanBase64),
+        future: _getCachedBase64Bytes(cleanBase64),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Container(
@@ -92,6 +124,7 @@ class DeliveryProofHelper {
       width: width,
       height: height,
       fit: fit,
+      cacheWidth: 800,
       errorBuilder: (context, error, stackTrace) {
         // Fallback to direct live cloud server if not already attempted
         final cleanPath = clean.startsWith('/') ? clean : '/$clean';
@@ -102,6 +135,7 @@ class DeliveryProofHelper {
             width: width,
             height: height,
             fit: fit,
+            cacheWidth: 800,
             errorBuilder: (context, error, stackTrace) => buildPlaceholder(width: width, height: height),
           );
         }

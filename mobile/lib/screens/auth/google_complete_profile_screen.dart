@@ -70,6 +70,7 @@ class _GoogleCompleteProfileScreenState extends State<GoogleCompleteProfileScree
       final res = await auth.loginWithGoogleToken(
         widget.googleResult.idToken,
         portal: 'customer',
+        email: widget.googleResult.email,
         name: _nameController.text.trim(),
         mobile: phoneDigits,
         password: _passwordController.text,

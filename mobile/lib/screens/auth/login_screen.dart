@@ -81,6 +81,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final res = await auth.loginWithGoogleToken(
         googleResult.idToken,
         portal: 'customer',
+        email: googleResult.email,
+        name: googleResult.displayName,
         mobile: enteredMobile,
       );
 

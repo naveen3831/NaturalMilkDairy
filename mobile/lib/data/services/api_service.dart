@@ -335,10 +335,24 @@ class ApiService {
     }
   }
 
+  Map<String, dynamic> _decodeIdTokenPayload(String token) {
+    try {
+      final parts = token.split('.');
+      if (parts.length >= 2) {
+        final norm = base64Url.normalize(parts[1]);
+        final decoded = utf8.decode(base64Url.decode(norm));
+        final data = jsonDecode(decoded);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (_) {}
+    return {};
+  }
+
   /// Login via Google / Firebase ID token
   Future<Map<String, dynamic>> loginWithGoogle({
     required String idToken,
     String portal = 'customer',
+    String? email,
     String? name,
     String? mobile,
     String? password,
@@ -353,6 +367,9 @@ class ApiService {
         'idToken': idToken,
         'portal': portal,
       };
+      if (email != null && email.trim().isNotEmpty) {
+        payload['email'] = email.trim();
+      }
       if (name != null && name.trim().isNotEmpty) {
         payload['name'] = name.trim();
       }
@@ -392,20 +409,57 @@ class ApiService {
           }
         }
         return data;
-      } else if (response.statusCode == 404 && retryIfFailed) {
-        for (final candidate in AppConstants.candidateBaseUrls) {
-          if (candidate != baseUrl && await testConnection(candidate)) {
-            _activeBaseUrl = candidate;
-            return await loginWithGoogle(
-              idToken: idToken,
-              portal: portal,
-              name: name,
-              mobile: mobile,
-              password: password,
-              retryIfFailed: false,
-            );
+      } else if (response.statusCode == 404) {
+        // Fallback when remote backend does not have /api/auth/google mounted yet:
+        final tokenPayload = _decodeIdTokenPayload(idToken);
+        final resolvedEmail = (email != null && email.trim().isNotEmpty)
+            ? email.trim()
+            : (tokenPayload['email']?.toString() ?? '');
+        final resolvedName = (name != null && name.trim().isNotEmpty)
+            ? name.trim()
+            : (tokenPayload['name']?.toString() ?? tokenPayload['displayName']?.toString() ?? 'Customer');
+
+        final cleanMobile = mobile?.trim().replaceAll(RegExp(r'\D'), '');
+        final cleanPassword = password?.trim();
+
+        if (cleanMobile != null && cleanMobile.length == 10 && cleanPassword != null && cleanPassword.isNotEmpty) {
+          // Both mobile and password provided -> complete registration or login via active endpoints
+          final regRes = await register({
+            'name': resolvedName,
+            'email': resolvedEmail.isNotEmpty ? resolvedEmail : 'user_$cleanMobile@naturalmilkdairy.com',
+            'mobile': cleanMobile,
+            'password': cleanPassword,
+            'address': 'Doorstep Address, Hyderabad',
+            'area': 'Madhapur',
+          });
+
+          if (regRes['success'] == true) {
+            return regRes;
           }
+
+          // If already registered, log in directly
+          final loginRes = await login(
+            identifier: cleanMobile,
+            password: cleanPassword,
+          );
+          if (loginRes['success'] == true) {
+            return loginRes;
+          }
+          return {
+            'success': false,
+            'message': regRes['message'] ?? loginRes['message'] ?? 'Authentication failed.',
+          };
         }
+
+        // Initial Google tap without mobile/password -> smoothly direct to profile completion
+        return {
+          'success': true,
+          'requiresProfileCompletion': true,
+          'requiresMobile': true,
+          'email': resolvedEmail,
+          'name': resolvedName,
+          'message': 'Please complete your phone number to continue.',
+        };
       }
       return {
         'success': false,
@@ -419,6 +473,7 @@ class ApiService {
             return await loginWithGoogle(
               idToken: idToken,
               portal: portal,
+              email: email,
               name: name,
               mobile: mobile,
               password: password,
