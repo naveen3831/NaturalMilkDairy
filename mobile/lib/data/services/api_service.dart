@@ -20,16 +20,23 @@ class ApiService {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(AppConstants.keyAuthToken);
-    _customBaseUrl = prefs.getString(AppConstants.keyCustomBaseUrl);
-    await resolveActiveBaseUrl();
+    if (AppConfig.isLiveServerActive) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      debugPrint('🌐 ApiService: [LIVE PRODUCTION MODE] Locked to: ${AppConfig.liveBaseUrl}');
+    } else {
+      _customBaseUrl = prefs.getString(AppConstants.keyCustomBaseUrl);
+      await resolveActiveBaseUrl();
+    }
   }
 
-  String get baseUrl =>
-      _customBaseUrl ??
-      _activeBaseUrl ??
-      (AppConfig.isLiveServerActive
-          ? AppConfig.liveBaseUrl
-          : AppConstants.defaultBaseUrl);
+  String get baseUrl {
+    if (AppConfig.isLiveServerActive) {
+      return AppConfig.liveBaseUrl;
+    }
+    return _customBaseUrl ??
+        _activeBaseUrl ??
+        AppConstants.defaultBaseUrl;
+  }
 
   /// Quick ping to check if a backend server is live and responding
   Future<bool> testConnection([String? candidateUrl]) async {
@@ -38,7 +45,7 @@ class ApiService {
     try {
       final res = await http
           .get(Uri.parse('$target/api/health'))
-          .timeout(const Duration(milliseconds: 3000));
+          .timeout(const Duration(milliseconds: 8000));
       return res.statusCode >= 200 && res.statusCode < 400;
     } catch (_) {
       return false;
@@ -47,6 +54,11 @@ class ApiService {
 
   /// Probes candidate URLs or binds the production server depending on connectivity
   Future<String> resolveActiveBaseUrl() async {
+    if (AppConfig.isLiveServerActive) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      return AppConfig.liveBaseUrl;
+    }
+
     // 1. If custom developer URL was saved in shared preferences, check that first
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       final ok = await testConnection(_customBaseUrl);
@@ -57,17 +69,7 @@ class ApiService {
       }
     }
 
-    // 2. If Live Cloud Server is active, check it FIRST for instant connection
-    if (AppConfig.isLiveServerActive) {
-      final isLiveAlive = await testConnection(AppConfig.liveBaseUrl);
-      if (isLiveAlive) {
-        _activeBaseUrl = AppConfig.liveBaseUrl;
-        debugPrint('🌐 ApiService: [LIVE CLOUD SERVER] Active at: ${AppConfig.liveBaseUrl}');
-        return _activeBaseUrl!;
-      }
-    }
-
-    // 3. Scan all candidate local development backend addresses
+    // 2. Scan all candidate local development backend addresses
     for (final url in AppConstants.candidateBaseUrls) {
       final isAlive = await testConnection(url);
       if (isAlive) {
@@ -77,8 +79,8 @@ class ApiService {
       }
     }
 
-    // 4. Fallback when local candidates were unreachable
-    _activeBaseUrl = AppConfig.isLiveServerActive ? AppConfig.liveBaseUrl : AppConstants.defaultBaseUrl;
+    // 3. Fallback when local candidates were unreachable
+    _activeBaseUrl = AppConstants.defaultBaseUrl;
     debugPrint('🌐 ApiService: Active backend URL: $_activeBaseUrl');
     return _activeBaseUrl!;
   }
@@ -487,7 +489,7 @@ class ApiService {
         'message': data['message'] ?? 'Google Sign-In failed (${response.statusCode})',
       };
     } catch (e) {
-      if (retryIfFailed) {
+      if (!AppConfig.isLiveServerActive && retryIfFailed) {
         for (final candidate in AppConstants.candidateBaseUrls) {
           if (candidate != baseUrl && await testConnection(candidate)) {
             _activeBaseUrl = candidate;
@@ -505,7 +507,7 @@ class ApiService {
       }
       return {
         'success': false,
-        'message': 'Cannot reach server at $baseUrl. Please verify connection.',
+        'message': 'Cannot reach server at $baseUrl. Please verify your internet connection.',
       };
     }
   }

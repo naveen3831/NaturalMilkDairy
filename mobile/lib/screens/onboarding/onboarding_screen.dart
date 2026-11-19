@@ -20,27 +20,34 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       'type': 'logo',
       'image': 'assets/images/logo.png',
       'networkImage': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791460679/natural-milk-dairy/branding/logo.jpg',
+      'tag': '100% PURE & RAW',
+      'tagIcon': Icons.verified_rounded,
       'title': 'Pure Farm Fresh Milk',
-      'desc': '100% raw, unadulterated & harvested fresh daily.',
+      'desc': 'Direct from healthy grass-fed cows to your doorstep every morning. Unprocessed, pure, and rich in natural nutrients.',
       'accent': AppColors.primaryGreen,
+      'features': ['100% Raw Milk', 'Sterilized Glass Bottles', 'Chilled to 4°C'],
     },
     {
       'type': 'image',
       'image': 'assets/images/glass-bottles.jpg',
       'networkImage': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454810/natural-milk-dairy/glass-bottles.jpg',
+      'tag': 'DAILY MORNING DROP',
+      'tagIcon': Icons.wb_twilight_rounded,
       'title': 'Delivered by 6:30 AM',
-      'desc': 'Contactless doorstep drop with photo verification.',
+      'desc': 'Quiet doorstep drop before your day begins. Verified with doorstep photo proof and GPS tracking for complete peace of mind.',
       'accent': AppColors.dairyBlue,
-      'overlayTag': '🌅 Morning Drop',
+      'features': ['By 6:30 AM Daily', 'Doorstep Photo Proof', 'Contactless Drop'],
     },
     {
       'type': 'image',
       'image': 'assets/images/milk-pour.jpg',
       'networkImage': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454811/natural-milk-dairy/milk-pour.jpg',
-      'title': 'Flexible Subscriptions',
-      'desc': 'Pause, resume, or adjust quantities anytime with zero lock-in.',
+      'tag': 'SMART SUBSCRIPTION',
+      'tagIcon': Icons.bolt_rounded,
+      'title': 'Smart Subscriptions',
+      'desc': 'Going out of town or having guests over? Pause, resume, or modify your daily quantities anytime with zero commitments.',
       'accent': AppColors.primaryGreen,
-      'overlayTag': '✨ Zero Lock-in',
+      'features': ['Pause Anytime', 'Adjust Quantities', 'Zero Lock-in'],
     },
   ];
 
@@ -52,6 +59,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => targetScreen),
     );
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -93,32 +106,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
         ),
         actions: [
-          // Show 'Skip' only on first 2 screens (screens 1 & 2). Hidden on 3rd screen.
-          if (_currentPage < _slides.length - 1)
-            Padding(
-              padding: const EdgeInsets.only(right: 12.0),
-              child: TextButton(
-                onPressed: () => _completeOnboarding(const LoginScreen()),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    side: const BorderSide(color: Color(0xFFE2EBE5)),
-                  ),
+          // Skip button is visible on ALL screens (Screen 1, Screen 2, and Screen 3)
+          Padding(
+            padding: const EdgeInsets.only(right: 14.0),
+            child: TextButton(
+              onPressed: () => _completeOnboarding(const LoginScreen()),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: const BorderSide(color: Color(0xFFE2EBE5)),
                 ),
-                child: const Text(
-                  'Skip',
-                  style: TextStyle(
-                    color: Color(0xFF597361),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
+                elevation: 0,
               ),
-            )
-          else
-            const SizedBox.shrink(),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Skip',
+                    style: TextStyle(
+                      color: Color(0xFF597361),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  SizedBox(width: 2),
+                  Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF597361)),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       body: SafeArea(
@@ -134,6 +152,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemBuilder: (context, index) {
                   final slide = _slides[index];
                   final Color accentColor = slide['accent'] as Color;
+                  final List<String> features = List<String>.from(slide['features'] as List);
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -144,7 +163,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Slide Visual: Redesigned Logo for Screen 1, Dual-Source Farm & Milk Imagery for Screens 2 & 3
+                            // ── Visual Card: Logo for Screen 1, Clean Minimalist Media Cards for Screens 2 & 3 ──
                             if (slide['type'] == 'logo')
                               Stack(
                                 alignment: Alignment.center,
@@ -192,7 +211,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   Positioned(
                                     bottom: -8,
                                     child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                                       decoration: BoxDecoration(
                                         color: AppColors.primaryGreen,
                                         borderRadius: BorderRadius.circular(20),
@@ -204,17 +223,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                           ),
                                         ],
                                       ),
-                                      child: const Row(
+                                      child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Icon(Icons.verified_rounded, size: 13, color: Colors.white),
-                                          SizedBox(width: 4),
+                                          Icon(slide['tagIcon'] as IconData, size: 13, color: Colors.white),
+                                          const SizedBox(width: 4),
                                           Text(
-                                            '100% PURE & RAW',
-                                            style: TextStyle(
+                                            slide['tag'] as String,
+                                            style: const TextStyle(
                                               color: Colors.white,
                                               fontWeight: FontWeight.w800,
-                                              fontSize: 10,
+                                              fontSize: 10.5,
                                               letterSpacing: 0.6,
                                             ),
                                           ),
@@ -225,17 +244,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 ],
                               )
                             else
+                              // Professional, Simple & Elegant Card for Screens 2 & 3
                               Container(
-                                constraints: const BoxConstraints(maxWidth: 280, maxHeight: 155),
                                 width: 280,
-                                height: 155,
+                                height: 180,
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(22),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: accentColor.withValues(alpha: 0.14),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 6),
+                                      color: Colors.black.withValues(alpha: 0.08),
+                                      blurRadius: 22,
+                                      offset: const Offset(0, 8),
                                     ),
                                   ],
                                   border: Border.all(
@@ -244,11 +264,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   ),
                                 ),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(21),
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      // Dual-source image loading: Cloudinary hosted URL + local asset fallback
+                                      // Image with smooth loading and local fallback
                                       Image.network(
                                         slide['networkImage'] as String,
                                         fit: BoxFit.cover,
@@ -275,52 +295,132 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                           ),
                                         ),
                                       ),
-                                      // Floating tag pill
-                                      if (slide['overlayTag'] != null)
-                                        Positioned(
-                                          top: 12,
-                                          left: 12,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(alpha: 0.55),
-                                              borderRadius: BorderRadius.circular(16),
-                                            ),
-                                            child: Text(
-                                              slide['overlayTag'] as String,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                              ),
+
+                                      // Subtle bottom gradient for contrast
+                                      Positioned.fill(
+                                        child: DecoratedBox(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              begin: Alignment.topCenter,
+                                              end: Alignment.bottomCenter,
+                                              colors: [
+                                                Colors.transparent,
+                                                Colors.black.withValues(alpha: 0.35),
+                                              ],
                                             ),
                                           ),
                                         ),
+                                      ),
+
+                                      // Elegant floating badge pill
+                                      Positioned(
+                                        top: 12,
+                                        left: 12,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(alpha: 0.94),
+                                            borderRadius: BorderRadius.circular(16),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(alpha: 0.12),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(slide['tagIcon'] as IconData, size: 12, color: accentColor),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                slide['tag'] as String,
+                                                style: TextStyle(
+                                                  color: accentColor,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 0.4,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
                               ),
-                            const SizedBox(height: 18),
+
+                            const SizedBox(height: 22),
+
+                            // Headline
                             Text(
                               slide['title'] as String,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: AppColors.dairyBlue,
-                                fontSize: 20,
+                                fontSize: 22,
                                 fontWeight: FontWeight.w800,
-                                letterSpacing: -0.4,
+                                letterSpacing: -0.5,
                               ),
                             ),
-                            const SizedBox(height: 6),
-                            Text(
-                              slide['desc'] as String,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: AppColors.textMuted,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                height: 1.35,
+                            const SizedBox(height: 8),
+
+                            // Subtitle description
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                              child: Text(
+                                slide['desc'] as String,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.45,
+                                ),
                               ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Feature Pills for Clean & Professional Touch
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: features.map((f) {
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.02),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 1),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.check_circle_rounded, size: 12, color: AppColors.primaryGreen),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        f,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF334155),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
                             ),
                           ],
                         ),
@@ -348,79 +448,50 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 );
               }),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 20),
 
-            // Bottom Actions
+            // Bottom Action
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        if (_currentPage < _slides.length - 1) {
-                          _pageController.nextPage(
-                            duration: const Duration(milliseconds: 320),
-                            curve: Curves.easeOutCubic,
-                          );
-                        } else {
-                          _completeOnboarding(const LoginScreen());
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                        foregroundColor: Colors.white,
-                        elevation: 2,
-                        shadowColor: AppColors.primaryGreen.withValues(alpha: 0.3),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            _currentPage == _slides.length - 1 ? 'Get Started' : 'Next',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(Icons.arrow_forward_rounded, size: 19),
-                        ],
-                      ),
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (_currentPage < _slides.length - 1) {
+                      _pageController.nextPage(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                      );
+                    } else {
+                      _completeOnboarding(const LoginScreen());
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryGreen,
+                    foregroundColor: Colors.white,
+                    elevation: 2,
+                    shadowColor: AppColors.primaryGreen.withValues(alpha: 0.3),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-
-                  // Show Sign In shortcut and Guest explore on final screen
-                  if (_currentPage == _slides.length - 1) ...[
-                    const SizedBox(height: 10),
-                    TextButton(
-                      onPressed: () => _completeOnboarding(const LoginScreen()),
-                      child: RichText(
-                        text: const TextSpan(
-                          style: TextStyle(fontSize: 13.5, color: Color(0xFF597361)),
-                          children: [
-                            TextSpan(text: 'Already have an account? '),
-                            TextSpan(
-                              text: 'Sign In',
-                              style: TextStyle(
-                                color: AppColors.primaryGreen,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _currentPage == _slides.length - 1 ? 'Get Started' : 'Next',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
                         ),
                       ),
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 14),
-                  ],
-                ],
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 19),
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
