@@ -335,6 +335,28 @@ class ApiService {
     }
   }
 
+  /// Check if an email already exists in the system
+  Future<Map<String, dynamic>> checkEmail(String email) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty) return {'success': false, 'exists': false};
+    try {
+      final url = Uri.parse('$baseUrl/api/auth/check-email');
+      final response = await http
+          .post(
+            url,
+            headers: _getHeaders(requiresAuth: false),
+            body: jsonEncode({'email': cleanEmail}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) return data;
+      }
+    } catch (_) {}
+    return {'success': false, 'exists': false};
+  }
+
   Map<String, dynamic> _decodeIdTokenPayload(String token) {
     try {
       final parts = token.split('.');
@@ -451,14 +473,30 @@ class ApiService {
           };
         }
 
-        // Initial Google tap without mobile/password -> smoothly direct to profile completion
+        // Initial Google tap without mobile/password:
+        // First check if user's email already exists in the system:
+        final checkRes = await checkEmail(resolvedEmail);
+        if (checkRes['exists'] == true) {
+          // The email already exists -> do NOT ask for profile completion!
+          final matchedUser = checkRes['user'] as Map<String, dynamic>?;
+          return {
+            'success': false,
+            'emailExists': true,
+            'email': resolvedEmail,
+            'name': matchedUser?['name'] ?? resolvedName,
+            'mobile': matchedUser?['mobile'] ?? '',
+            'message': 'Welcome back! An account for $resolvedEmail already exists. Please enter your password to sign in.',
+          };
+        }
+
+        // Only genuine NEW users are asked to complete profile & set up credentials:
         return {
           'success': true,
           'requiresProfileCompletion': true,
           'requiresMobile': true,
           'email': resolvedEmail,
           'name': resolvedName,
-          'message': 'Please complete your phone number to continue.',
+          'message': 'Please complete your profile to register your new account.',
         };
       }
       return {

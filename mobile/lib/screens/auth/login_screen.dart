@@ -88,7 +88,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // If account requires profile completion / phone & password setup
+      // 1. If email already exists in system -> do NOT ask for profile completion!
+      if (res['emailExists'] == true) {
+        final existingMobile = res['mobile']?.toString();
+        _identifierController.text = (existingMobile != null && existingMobile.isNotEmpty)
+            ? existingMobile
+            : (res['email']?.toString() ?? googleResult.email);
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.primaryGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            content: Row(
+              children: [
+                const Icon(Icons.account_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Welcome back! Account found for ${googleResult.email}. Please enter your password.',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        return;
+      }
+
+      // 2. Only for a NEW user: open GoogleCompleteProfileScreen
       if (res['requiresMobile'] == true || res['requiresProfileCompletion'] == true) {
         Navigator.of(context).push(
           MaterialPageRoute(

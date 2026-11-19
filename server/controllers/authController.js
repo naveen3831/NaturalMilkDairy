@@ -947,4 +947,34 @@ const googleLogin = async (req, res) => {
   }
 };
 
-module.exports = { login, register, googleLogin, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers };
+const checkEmail = async (req, res) => {
+  try {
+    const rawEmail = (req.body?.email || req.query?.email || '').toString().trim().toLowerCase();
+    if (!rawEmail) {
+      return res.status(400).json({ success: false, message: 'Email is required.' });
+    }
+    const emailRegex = new RegExp(`^${escapeRegex(rawEmail)}$`, 'i');
+    const [existingUser, existingCustomer] = await Promise.all([
+      User.findOne({ email: emailRegex }).lean(),
+      Customer.findOne({ email: emailRegex }).lean(),
+    ]);
+
+    const exists = !!(existingUser || existingCustomer);
+    const matched = existingUser || existingCustomer;
+
+    return res.json({
+      success: true,
+      exists,
+      user: exists ? {
+        name: matched.name,
+        email: matched.email,
+        mobile: matched.mobile,
+        role: matched.role || (existingCustomer ? 'customer' : 'user'),
+      } : null,
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { login, register, googleLogin, checkEmail, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers };

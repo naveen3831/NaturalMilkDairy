@@ -131,6 +131,17 @@ class AuthProvider extends ChangeNotifier {
       FcmService().syncToken();
       notifyListeners();
       return {'success': true, 'user': res['user'], 'token': res['token']};
+    } else if (res['emailExists'] == true) {
+      _errorMessage = res['message']?.toString() ?? 'Account already exists for this email.';
+      notifyListeners();
+      return {
+        'success': false,
+        'emailExists': true,
+        'email': res['email'],
+        'name': res['name'],
+        'mobile': res['mobile'],
+        'message': _errorMessage,
+      };
     } else if (needsCompletion) {
       notifyListeners();
       return {

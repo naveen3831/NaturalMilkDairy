@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { login, register, googleLogin, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers } = require('../controllers/authController');
+const { login, register, googleLogin, checkEmail, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers } = require('../controllers/authController');
 const { verifyToken, requireAdmin } = require('../middleware/authMiddleware');
 const { createRateLimiter } = require('../middleware/rateLimitMiddleware');
 
@@ -18,6 +18,8 @@ const registerLimiter = createRateLimiter({
 router.post('/login', loginLimiter, login);
 router.post('/register', registerLimiter, register);
 router.post('/google', loginLimiter, googleLogin);
+router.post('/check-email', checkEmail);
+router.get('/check-email', checkEmail);
 router.get('/delivery-areas', getDeliveryAreas);
 router.get('/me', verifyToken, getMe);
 router.get('/verify', verifyToken, verifyTokenStatus);

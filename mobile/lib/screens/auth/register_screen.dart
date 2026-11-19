@@ -135,6 +135,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
+      // If account already exists with this Google email -> redirect to login
+      if (res['emailExists'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.primaryGreen,
+            content: Text('Account already exists for ${googleResult.email}. Please sign in.'),
+          ),
+        );
+        Navigator.of(context).pop();
+        return;
+      }
+
       // New user or incomplete profile -> Navigate to Google Complete Profile screen
       Navigator.of(context).push(
         MaterialPageRoute(
