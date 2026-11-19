@@ -21,6 +21,11 @@ export default function LoginPage({ setActiveTab }) {
     const res = await loginWithGoogle(portal);
     setIsLoading(false);
 
+    if (res?.pendingRedirect) {
+      // Browser is redirecting to Google OAuth
+      return;
+    }
+
     if (res.requiresProfileCompletion || res.requiresMobile) {
       localStorage.setItem('nmd_current_tab', 'google-complete-profile');
       setActiveTab('google-complete-profile');

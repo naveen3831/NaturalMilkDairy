@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getApiUrl, api } from '../services/api';
-import { triggerGoogleSignIn } from '../services/googleAuthService';
+import { triggerGoogleSignIn, checkAndHandleOAuthRedirect } from '../services/googleAuthService';
 
 const AuthContext = createContext();
 
@@ -93,6 +93,22 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
+  // Process Google OAuth redirect return (when popup was blocked by browser or in iframe)
+  useEffect(() => {
+    let isMounted = true;
+    const processOAuthRedirect = async () => {
+      const redirectAuth = await checkAndHandleOAuthRedirect();
+      if (redirectAuth && isMounted) {
+        const portal = redirectAuth.portal || 'customer';
+        await loginWithGoogle(portal, redirectAuth);
+      }
+    };
+    processOAuthRedirect();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const getAuthHeaders = useCallback((customHeaders = {}) => {
     const currentToken = token || sessionStorage.getItem('nmd_jwt_token');
     const auth = currentToken ? { Authorization: `Bearer ${currentToken}` } : {};
@@ -174,7 +190,10 @@ export const AuthProvider = ({ children }) => {
     try {
       let authResult = profileData;
       if (!authResult || !authResult.idToken) {
-        authResult = await triggerGoogleSignIn();
+        authResult = await triggerGoogleSignIn(portal);
+      }
+      if (authResult?.pendingRedirect) {
+        return { pendingRedirect: true };
       }
       if (!authResult || (!authResult.idToken && typeof authResult !== 'string')) {
         return { success: false, message: 'Google Sign-In was cancelled.' };
