@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getApiUrl, api } from '../services/api';
-import { triggerGoogleSignIn, checkAndHandleOAuthRedirect } from '../services/googleAuthService';
+import { triggerGoogleSignIn } from '../services/googleAuthService';
 
 const AuthContext = createContext();
 
@@ -88,22 +88,6 @@ export const AuthProvider = ({ children }) => {
     };
 
     verifySession();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Process Google OAuth redirect return (when popup was blocked by browser or in iframe)
-  useEffect(() => {
-    let isMounted = true;
-    const processOAuthRedirect = async () => {
-      const redirectAuth = await checkAndHandleOAuthRedirect();
-      if (redirectAuth && isMounted) {
-        const portal = redirectAuth.portal || 'customer';
-        await loginWithGoogle(portal, redirectAuth);
-      }
-    };
-    processOAuthRedirect();
     return () => {
       isMounted = false;
     };

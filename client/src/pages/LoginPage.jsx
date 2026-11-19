@@ -21,11 +21,6 @@ export default function LoginPage({ setActiveTab }) {
     const res = await loginWithGoogle(portal);
     setIsLoading(false);
 
-    if (res?.pendingRedirect) {
-      // Browser is redirecting to Google OAuth
-      return;
-    }
-
     if (res.requiresProfileCompletion || res.requiresMobile) {
       localStorage.setItem('nmd_current_tab', 'google-complete-profile');
       setActiveTab('google-complete-profile');
@@ -560,6 +555,12 @@ export default function LoginPage({ setActiveTab }) {
             </svg>
             <span>Continue with Google</span>
           </button>
+
+          {typeof window !== 'undefined' && window.self !== window.top && (
+            <div style={{ marginTop: '10px', fontSize: '0.78rem', color: '#64748b', textAlign: 'center', background: '#f8fafc', padding: '6px 10px', borderRadius: '8px', border: '1px dashed #cbd5e1' }}>
+              💡 Mobile Simulator iframe detected. For Google Sign-In, test in a standard browser tab or press <b>Ctrl+Shift+M</b> in Chrome.
+            </div>
+          )}
 
           {/* Forgot Password Link */}
           <button

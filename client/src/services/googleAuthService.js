@@ -41,118 +41,39 @@ export function loadGsiScript() {
 }
 
 /**
- * Initiates full-page OAuth redirect (works 100% in iframes, mobile simulators, and popup-blocked browsers)
+ * Check if the application is currently running inside an iframe (e.g. Chrome Mobile Simulator extension)
  */
-export function redirectToGoogleOAuth(portal = 'customer') {
-  if (typeof window === 'undefined') return { pendingRedirect: true };
-
+export function isRunningInIframe() {
   try {
-    sessionStorage.setItem('nmd_google_portal', portal);
-    sessionStorage.setItem('nmd_google_oauth_in_progress', 'true');
-  } catch (_) {}
-
-  const redirectUri = window.location.origin + window.location.pathname;
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: 'token',
-    scope: 'email profile openid',
-    prompt: 'select_account',
-  });
-
-  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-
-  // If running inside an iframe (like mobile responsive simulators), try navigating the top window
-  if (window.top && window.top !== window.self) {
-    try {
-      window.top.location.href = authUrl;
-      return { pendingRedirect: true };
-    } catch (_) {}
-  }
-
-  window.location.href = authUrl;
-  return { pendingRedirect: true };
-}
-
-/**
- * Checks for returned OAuth access token in URL hash after redirect
- */
-export async function checkAndHandleOAuthRedirect() {
-  if (typeof window === 'undefined') return null;
-  const hash = window.location.hash;
-  if (!hash || !hash.includes('access_token=')) return null;
-
-  try {
-    const cleanHash = hash.replace(/^#/, '');
-    const params = new URLSearchParams(cleanHash);
-    const accessToken = params.get('access_token');
-    if (!accessToken) return null;
-
-    // Clean hash from URL so it doesn't linger
-    window.history.replaceState(null, '', window.location.pathname + window.location.search);
-
-    const portal = sessionStorage.getItem('nmd_google_portal') || 'customer';
-    try {
-      sessionStorage.removeItem('nmd_google_portal');
-      sessionStorage.removeItem('nmd_google_oauth_in_progress');
-    } catch (_) {}
-
-    let email = '';
-    let name = '';
-    let picture = '';
-
-    try {
-      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (userRes.ok) {
-        const userInfo = await userRes.json();
-        email = userInfo.email || '';
-        name = userInfo.name || '';
-        picture = userInfo.picture || '';
-      }
-    } catch (e) {
-      console.warn('Could not fetch userinfo via access token:', e);
-    }
-
-    return {
-      idToken: accessToken,
-      token: accessToken,
-      email,
-      name,
-      picture,
-      portal,
-    };
-  } catch (err) {
-    console.error('Error handling OAuth redirect hash:', err);
-    return null;
+    return typeof window !== 'undefined' && window.self !== window.top;
+  } catch (_) {
+    return true;
   }
 }
 
 /**
- * Trigger Google Sign-In with automatic fallback from popup to redirect
+ * Trigger Google Sign-In with Google Identity Services (OAuth2 Token Client / One Tap)
  * @param {string} portal - 'customer' or 'partner'
- * @returns {Promise<{idToken: string, email: string, name: string, picture: string, pendingRedirect?: boolean}>}
+ * @returns {Promise<{idToken: string, email: string, name: string, picture: string}>}
  */
 export async function triggerGoogleSignIn(portal = 'customer') {
-  // If running inside an iframe (e.g. mobile responsive extension/simulator), popups are blocked by sandbox.
-  // Immediately use OAuth redirect for seamless authentication.
-  const isInIframe = typeof window !== 'undefined' && window.self !== window.top;
-  if (isInIframe) {
-    return redirectToGoogleOAuth(portal);
+  // If running inside a third-party simulator extension iframe, popups are restricted by the extension's sandbox
+  if (isRunningInIframe()) {
+    throw new Error(
+      'Google Sign-In popups are blocked by the simulator iframe sandbox. Please open http://localhost:3000 directly in a browser tab (or press Ctrl+Shift+M in Chrome DevTools for mobile view).'
+    );
   }
 
   await loadGsiScript();
 
   if (!window.google?.accounts?.oauth2 && !window.google?.accounts?.id) {
-    // If GIS fails to load, fallback directly to OAuth redirect URL
-    return redirectToGoogleOAuth(portal);
+    throw new Error('Google Identity Services failed to initialize. Please check your internet connection.');
   }
 
   return new Promise((resolve, reject) => {
     let settled = false;
 
-    // 1. Try OAuth2 Token Client for 1-click popup
+    // 1. Prefer OAuth2 Token Client for interactive 1-click button sign-in
     if (window.google.accounts?.oauth2) {
       try {
         const tokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -203,32 +124,34 @@ export async function triggerGoogleSignIn(portal = 'customer') {
             if (settled) return;
             settled = true;
             const errMsg = String(err?.message || err?.type || '');
-            // If popup was blocked or failed to open, automatically fall back to redirect
             if (
               err?.type === 'popup_failed_to_open' ||
-              err?.type === 'popup_closed' ||
               errMsg.toLowerCase().includes('popup') ||
               errMsg.toLowerCase().includes('failed to open')
             ) {
-              console.log('Google Sign-In popup was blocked or closed. Switching to redirect flow...');
-              resolve(redirectToGoogleOAuth(portal));
+              reject(
+                new Error(
+                  'Google Sign-In popup was blocked by your browser. Please allow popups for this site, or open directly in a standard browser tab.'
+                )
+              );
               return;
             }
-            reject(new Error(err?.message || 'Google Sign-In popup was closed or blocked.'));
+            if (err?.type === 'popup_closed') {
+              reject(new Error('Google Sign-In popup was closed before completing sign-in.'));
+              return;
+            }
+            reject(new Error(err?.message || 'Google Sign-In was closed or blocked.'));
           },
         });
 
         tokenClient.requestAccessToken({ prompt: 'select_account' });
         return;
       } catch (err) {
-        console.warn('OAuth2 token client error, attempting redirect fallback:', err);
-        settled = true;
-        resolve(redirectToGoogleOAuth(portal));
-        return;
+        console.warn('OAuth2 token client error, attempting fallback:', err);
       }
     }
 
-    // 2. Fallback to Google ID client if oauth2 is not available
+    // 2. Fallback to Google ID client
     if (window.google.accounts?.id) {
       try {
         window.google.accounts.id.initialize({
@@ -267,14 +190,14 @@ export async function triggerGoogleSignIn(portal = 'customer') {
           if (notification.isNotDisplayed()) {
             if (!settled) {
               settled = true;
-              resolve(redirectToGoogleOAuth(portal));
+              reject(new Error('Google Sign-In prompt could not be displayed. Please check popup blockers.'));
             }
           }
         });
       } catch (e) {
         if (!settled) {
           settled = true;
-          resolve(redirectToGoogleOAuth(portal));
+          reject(e);
         }
       }
     }
