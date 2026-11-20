@@ -201,13 +201,69 @@ function broadcast(event, payload = {}) {
       'SUPPORT_TICKET_UPDATED',
       'SUPPORT_TICKET_CREATED',
     ].includes(event);
-    if (
-      isAdmin ||
-      (client.user.role === 'delivery_boy' && isSafeForDelivery) ||
-      (['customer', 'user', 'guest'].includes(client.user.role) && isSafeForCustomer)
-    ) {
-      client.send(message);
+    // Strict user-level role isolation: never broadcast one user's private data to another user
+    if (!isAdmin) {
+      if (['customer', 'user', 'guest'].includes(client.user.role)) {
+        if (!isSafeForCustomer) return;
+
+        // Delivery completed/updated events must only reach the targeted customer
+        if (event === 'DELIVERY_COMPLETED' || event === 'DELIVERY_UPDATED') {
+          const clientCustId = (client.user.customerId || client.user.id || '').toString().toLowerCase().trim();
+          const clientMobile = (client.user.mobile || '').toString().replace(/\D/g, '').slice(-10);
+          const payloadCustId = (payload.customerId || payload.id || '').toString().toLowerCase().trim();
+          const payloadMobile = (payload.customerPhone || payload.customerMobile || '').toString().replace(/\D/g, '').slice(-10);
+
+          if (payloadCustId && clientCustId && payloadCustId !== clientCustId && (!clientMobile || !payloadMobile || clientMobile !== payloadMobile)) {
+            return; // Drop event: belongs to a different customer
+          }
+        }
+
+        // Targeted notifications must only reach the addressed recipient
+        if (event === 'NOTIFICATION_CREATED') {
+          const recipRole = (payload.recipientRole || '').toLowerCase().trim();
+          if (recipRole && recipRole !== 'all' && recipRole !== 'customer') {
+            return; // Not addressed to customers
+          }
+          const recipId = (payload.recipientId || '').toString().toLowerCase().trim();
+          if (recipId) {
+            const clientIds = [
+              client.user.id,
+              client.user.customerId,
+              client.user.mobile,
+              client.user.email,
+            ].filter(Boolean).map((s) => s.toString().toLowerCase().trim());
+
+            if (!clientIds.includes(recipId)) {
+              return; // Drop event: notification is targeted to another customer
+            }
+          }
+        }
+      } else if (client.user.role === 'delivery_boy') {
+        if (!isSafeForDelivery) return;
+
+        if (event === 'NOTIFICATION_CREATED') {
+          const recipRole = (payload.recipientRole || '').toLowerCase().trim();
+          if (recipRole && recipRole !== 'all' && recipRole !== 'delivery_boy') {
+            return; // Not addressed to delivery partners
+          }
+          const recipId = (payload.recipientId || '').toString().toLowerCase().trim();
+          if (recipId) {
+            const boyIds = [
+              client.user.id,
+              client.user.boyId,
+              client.user.mobile,
+              client.user.email,
+            ].filter(Boolean).map((s) => s.toString().toLowerCase().trim());
+
+            if (!boyIds.includes(recipId)) {
+              return; // Drop event: targeted to another delivery partner
+            }
+          }
+        }
+      }
     }
+
+    client.send(message);
   });
 }
 

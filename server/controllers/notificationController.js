@@ -140,9 +140,12 @@ const getUserNotificationScope = async (user) => {
             { recipientId: { $in: validIds } },
             { 'data.customerId': { $in: validIds } },
             { 'data.customerMobile': { $in: validIds } },
-            { recipientId: '' },
-            { recipientId: null },
-            { recipientId: { $exists: false } },
+            {
+              $and: [
+                { recipientId: { $in: ['', null] } },
+                { type: { $in: ['system', 'announcement', 'promo', 'general'] } },
+              ],
+            },
           ],
         },
         {
@@ -153,15 +156,21 @@ const getUserNotificationScope = async (user) => {
   }
 
   if (user.role === 'delivery_boy') {
+    const validIds = ids.filter((id) => id && typeof id === 'string' && id.trim().length > 0);
     return {
       $or: [
         {
           recipientRole: 'delivery_boy',
           $or: [
-            { recipientId: { $in: ids } },
-            { recipientId: '' },
-            { recipientId: null },
-            { recipientId: { $exists: false } },
+            { recipientId: { $in: validIds } },
+            { 'data.boyId': { $in: validIds } },
+            { 'data.deliveryBoyId': { $in: validIds } },
+            {
+              $and: [
+                { recipientId: { $in: ['', null] } },
+                { type: { $in: ['system', 'announcement', 'general'] } },
+              ],
+            },
           ],
         },
         {
@@ -184,21 +193,40 @@ const canAccessNotification = (notification, user, ids = []) => {
 
   if (user.role === 'customer' || user.role === 'user') {
     if (notification.recipientRole !== 'customer') return false;
-    if (!targetId) return true; // broadcast to all customers
-    if (lowerIds.includes(targetId)) return true;
+
+    // Check personal notification types (delivery, payment, order)
+    const type = (notification.type || '').toLowerCase().trim();
+    const isPersonal = ['delivery_completed', 'delivery_assigned', 'payment_recorded', 'order_updated', 'subscription_created', 'subscription_activated'].includes(type);
+
+    if (targetId && lowerIds.includes(targetId)) return true;
 
     // Check data payload customerId or mobile
     const notifCustId = (notification.data?.customerId || '').toString().toLowerCase().trim();
     if (notifCustId && lowerIds.includes(notifCustId)) return true;
     const notifMobile = (notification.data?.customerMobile || notification.data?.customerPhone || '').toString().toLowerCase().trim();
     if (notifMobile && lowerIds.includes(notifMobile)) return true;
+
+    // If it's a personal notification and no ID matched, NEVER permit access
+    if (isPersonal) return false;
+
+    // Only general system/announcement broadcasts without recipientId
+    if (!targetId) return true;
+
     return false;
   }
 
   if (user.role === 'delivery_boy') {
     if (notification.recipientRole !== 'delivery_boy') return false;
-    if (!targetId) return true; // General driver broadcast
-    return lowerIds.includes(targetId);
+    const type = (notification.type || '').toLowerCase().trim();
+    const isPersonal = ['delivery_assigned', 'delivery_completed', 'route_assigned', 'driver_duty'].includes(type);
+
+    if (targetId && lowerIds.includes(targetId)) return true;
+    const boyId = (notification.data?.boyId || notification.data?.deliveryBoyId || '').toString().toLowerCase().trim();
+    if (boyId && lowerIds.includes(boyId)) return true;
+
+    if (isPersonal) return false;
+    if (!targetId) return true;
+    return false;
   }
 
   return false;

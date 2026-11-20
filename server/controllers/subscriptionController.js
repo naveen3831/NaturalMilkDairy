@@ -34,6 +34,10 @@ const normalizePlan = (body) => {
   const curdQty = Number(body.curdQty);
   let frequency = body.frequency;
   if (frequency === 'weekdays') frequency = 'selected';
+  const isOneTime = frequency === 'once' || frequency === 'single' || body.purpose === 'one_time';
+  if (isOneTime) {
+    frequency = 'once';
+  }
   const deliveryDays = frequency === 'selected'
     ? (Array.isArray(body.deliveryDays) && body.deliveryDays.length
       ? body.deliveryDays.filter((day) => VALID_DAYS.includes(day))
@@ -42,15 +46,19 @@ const normalizePlan = (body) => {
 
   if (!Number.isFinite(milkQty) || !Number.isFinite(curdQty) ||
       milkQty < 0 || milkQty > 10 || curdQty < 0 || curdQty > 5000 ||
-      milkQty + curdQty === 0 || !['daily', 'alternate', 'selected'].includes(frequency) ||
+      milkQty + curdQty === 0 || !['daily', 'alternate', 'selected', 'once', 'single'].includes(frequency) ||
       (frequency === 'selected' && deliveryDays.length === 0)) {
     return null;
   }
 
-  return { milkQty, curdQty, frequency, deliveryDays };
+  return { milkQty, curdQty, frequency, deliveryDays, isOneTime };
 };
 
 const estimateSubscriptionAmount = (plan, startDate) => {
+  const dailyCost = plan.milkQty * 60 + (plan.curdQty / 500) * 30;
+  if (plan.frequency === 'once' || plan.frequency === 'single' || plan.isOneTime) {
+    return Math.round(dailyCost * 1 * 100);
+  }
   let scheduledDrops = 0;
   for (let offset = 0; offset < SUBSCRIPTION_DAYS; offset += 1) {
     const date = addDays(startDate, offset);
@@ -61,7 +69,6 @@ const estimateSubscriptionAmount = (plan, startDate) => {
       (plan.frequency === 'selected' && plan.deliveryDays.includes(dayName));
     if (shouldDeliver) scheduledDrops += 1;
   }
-  const dailyCost = plan.milkQty * 60 + (plan.curdQty / 500) * 30;
   return Math.round(dailyCost * scheduledDrops * 100);
 };
 
@@ -124,6 +131,8 @@ const createOrder = async (req, res) => {
       customerName: rawCustName,
       milkType: rawMilkType,
       planName: rawPlanName,
+      latitude,
+      longitude,
     } = req.body;
 
     const fallbackMobile = (rawMobile || '').trim();
@@ -346,7 +355,8 @@ const createOrder = async (req, res) => {
     if (req.user && req.user.mobile && customer.mobile !== req.user.mobile) {
       return res.status(403).json({ success: false, message: 'This subscription does not belong to the signed-in account.' });
     }
-    if (customer.subscription?.status === 'active' &&
+    const isOneTime = Boolean(plan.isOneTime || plan.frequency === 'once' || plan.frequency === 'single' || req.body.purpose === 'one_time');
+    if (!isOneTime && customer.subscription?.status === 'active' &&
         customer.subscription.endDate &&
         toDateString(customer.subscription.endDate) >= formatDate()) {
       return res.status(409).json({ success: false, message: 'Your subscription is already active.' });
@@ -360,11 +370,12 @@ const createOrder = async (req, res) => {
       await po.save();
     }
 
+    const totalDays = isOneTime ? 1 : SUBSCRIPTION_DAYS;
     const startDate = startOfLocalDay(new Date());
-    const endDate = startOfLocalDay(addDays(startDate, SUBSCRIPTION_DAYS - 1));
+    const endDate = isOneTime ? startDate : startOfLocalDay(addDays(startDate, totalDays - 1));
     const amount = estimateSubscriptionAmount(plan, startDate);
     if (amount <= 0) {
-      return res.status(400).json({ success: false, message: 'The selected plan has no scheduled deliveries in its first 30 days.' });
+      return res.status(400).json({ success: false, message: 'The selected plan has no scheduled deliveries.' });
     }
 
     let order;
@@ -373,7 +384,7 @@ const createOrder = async (req, res) => {
         amount,
         currency: 'INR',
         receipt: `sub_${customer._id.toString().slice(-18)}_${Date.now()}`,
-        notes: { customerId: customer.customerId, planDays: String(SUBSCRIPTION_DAYS) },
+        notes: { customerId: customer.customerId, planDays: String(totalDays), orderType: isOneTime ? 'one_time' : 'subscription' },
       });
     } catch (orderErr) {
       console.warn('Razorpay live order creation fallback:', orderErr.message);
@@ -391,18 +402,20 @@ const createOrder = async (req, res) => {
       customerId: customer.customerId,
       customerName: customer.name,
       status: 'pending',
-      purpose: 'new',
+      purpose: isOneTime ? 'one_time' : 'new',
       providerOrderId: order.id,
       amount,
       currency: 'INR',
       plan: {
         ...plan,
-        planName: rawPlanName || 'Daily Farm Pure Milk Plan',
+        planName: rawPlanName || (isOneTime ? 'One-Time Milk Order' : 'Daily Farm Pure Milk Plan'),
         milkType: rawMilkType || 'Pure A2 Cow Milk',
       },
       deliveryAddress: address.trim(),
       area: area.trim(),
       landmark: typeof landmark === 'string' ? landmark.trim() : '',
+      latitude: latitude ? Number(latitude) : (customer.latitude || null),
+      longitude: longitude ? Number(longitude) : (customer.longitude || null),
       whatsapp: typeof whatsapp === 'string' && whatsapp.trim() ? whatsapp.trim() : customer.mobile,
       startDate,
       endDate,
@@ -418,7 +431,7 @@ const createOrder = async (req, res) => {
       },
       subscription: {
         id: subscription._id.toString(),
-        purpose: 'new',
+        purpose: subscription.purpose,
         startDate: toDateString(startDate),
         endDate: toDateString(endDate),
       },
@@ -476,7 +489,40 @@ const verifyPayment = async (req, res) => {
     let purposeLabel = 'subscription';
     let noteText = `30-day prepaid subscription (${toDateString(subscription.startDate)} to ${toDateString(subscription.endDate)})`;
 
-    if (subscription.purpose === 'extend') {
+    if (subscription.purpose === 'one_time') {
+      purposeLabel = 'one_time_order';
+      const milkPart = subscription.plan.milkQty ? `${subscription.plan.milkQty}L ${subscription.plan.milkType || 'Milk'}` : '';
+      const curdPart = subscription.plan.curdQty ? `${subscription.plan.curdQty}g Curd` : '';
+      const itemsText = [milkPart, curdPart].filter(Boolean).join(' + ') || '1 Single Delivery Drop';
+      noteText = `One-time order (${toDateString(subscription.startDate)}): ${itemsText}`;
+
+      customer.address = subscription.deliveryAddress || customer.address;
+      customer.area = subscription.area || customer.area;
+      customer.landmark = subscription.landmark || customer.landmark;
+      customer.whatsapp = subscription.whatsapp || customer.whatsapp;
+      if (customer.status !== 'active') {
+        customer.status = 'active';
+      }
+      if (!customer.subscription || customer.subscription.status !== 'active') {
+        customer.subscription = {
+          status: 'active',
+          startDate: subscription.startDate,
+          endDate: subscription.endDate,
+          amount: subscription.amount / 100,
+          paymentId,
+        };
+        customer.deliveryPlan = {
+          milkQty: subscription.plan.milkQty,
+          milkUnit: 'L',
+          curdQty: subscription.plan.curdQty,
+          curdUnit: 'g',
+          frequency: 'once',
+          deliveryDays: [],
+          startDate: subscription.startDate,
+        };
+      }
+      await customer.save();
+    } else if (subscription.purpose === 'extend') {
       const numDays = subscription.extendDays || 30;
       let baseDate = new Date();
       if (customer.subscription?.endDate && new Date(customer.subscription.endDate) > baseDate) {
@@ -529,6 +575,12 @@ const verifyPayment = async (req, res) => {
       customer.area = subscription.area;
       customer.landmark = subscription.landmark;
       customer.whatsapp = subscription.whatsapp;
+      if (subscription.latitude && subscription.longitude) {
+        customer.latitude = subscription.latitude;
+        customer.longitude = subscription.longitude;
+        customer.customerLatitude = subscription.latitude;
+        customer.customerLongitude = subscription.longitude;
+      }
       customer.status = 'active';
       customer.subscription = {
         status: 'active',
@@ -577,11 +629,93 @@ const verifyPayment = async (req, res) => {
     subscription.updatedAt = new Date();
     await subscription.save();
 
-    const isNew = subscription.purpose !== 'extend' && subscription.purpose !== 'upgrade';
+    // For one-time order, ensure delivery record is immediately created/updated with paymentStatus: 'paid'
+    if (subscription.purpose === 'one_time') {
+      try {
+        const deliveryDateStr = formatDate(subscription.startDate);
+        const custId = customer.customerId || customer._id.toString();
+        const DeliveryBoy = require('../models/DeliveryBoy');
+        const allBoys = await DeliveryBoy.find({ status: 'active' });
+        const custArea = (customer.area || subscription.area || '').toLowerCase();
+        const matchedDriver = allBoys.find((b) =>
+          (b.area && custArea && (b.area.toLowerCase().includes(custArea) || custArea.includes(b.area.toLowerCase()))) ||
+          (b.area && b.area.toLowerCase() === 'madhapur') ||
+          (b.name && b.name.toLowerCase().includes('naveen'))
+        ) || allBoys[0];
+
+        const driverId = matchedDriver ? matchedDriver._id.toString() : '';
+        const driverName = matchedDriver ? matchedDriver.name : '';
+
+        const existingDelivery = await Delivery.findOne({
+          $or: [{ customerId: custId }, { customerId: customer._id.toString() }],
+          deliveryDate: deliveryDateStr,
+        });
+
+        if (existingDelivery) {
+          if (subscription.latitude && subscription.longitude) {
+            existingDelivery.latitude = subscription.latitude;
+            existingDelivery.longitude = subscription.longitude;
+            existingDelivery.customerLatitude = subscription.latitude;
+            existingDelivery.customerLongitude = subscription.longitude;
+          }
+          existingDelivery.plannedMilk = (existingDelivery.plannedMilk || 0) + (subscription.plan.milkQty || 0);
+          existingDelivery.plannedCurd = (existingDelivery.plannedCurd || 0) + (subscription.plan.curdQty || 0);
+          existingDelivery.actualMilk = existingDelivery.plannedMilk;
+          existingDelivery.actualCurd = existingDelivery.plannedCurd;
+          existingDelivery.paymentStatus = 'paid';
+          existingDelivery.paymentMethod = 'advance';
+          existingDelivery.totalAmount = (existingDelivery.totalAmount || 0) + (subscription.amount / 100);
+          if (!existingDelivery.deliveryBoyId && driverId) {
+            existingDelivery.deliveryBoyId = driverId;
+            existingDelivery.deliveryBoyName = driverName;
+          }
+          await existingDelivery.save();
+        } else {
+          await Delivery.create({
+            customerId: custId,
+            customerName: customer.name,
+            customerPhone: customer.mobile,
+            customerAddress: subscription.deliveryAddress || customer.address,
+            latitude: subscription.latitude || customer.latitude || null,
+            longitude: subscription.longitude || customer.longitude || null,
+            customerLatitude: subscription.latitude || customer.latitude || null,
+            customerLongitude: subscription.longitude || customer.longitude || null,
+            deliveryBoyId: driverId,
+            deliveryBoyName: driverName,
+            deliveryDate: deliveryDateStr,
+            plannedMilk: subscription.plan.milkQty || 0,
+            plannedCurd: subscription.plan.curdQty || 0,
+            actualMilk: subscription.plan.milkQty || 0,
+            actualCurd: subscription.plan.curdQty || 0,
+            extraItems: subscription.plan.extraProducts || [],
+            milkPrice: 60,
+            curdPrice: 30,
+            totalAmount: subscription.amount / 100,
+            status: 'pending',
+            notDeliveredReason: '',
+            paymentStatus: 'paid',
+            paymentAmount: subscription.amount / 100,
+            paymentMethod: 'advance',
+            subscriptionEndDate: subscription.endDate,
+            subscriptionPaymentAmount: subscription.amount / 100,
+            subscriptionPaymentMethod: 'razorpay',
+            subscriptionPaymentId: paymentId,
+            notes: `One-Time Order (${subscription.plan.milkType || 'Pure Milk'})`,
+            createdAt: new Date(),
+          });
+        }
+      } catch (delivErr) {
+        console.warn('One-time delivery upsert note:', delivErr.message);
+      }
+    }
+
+    const isNew = subscription.purpose !== 'extend' && subscription.purpose !== 'upgrade' && subscription.purpose !== 'one_time';
 
     await Notification.create({
       recipientRole: 'admin',
-      title: subscription.purpose === 'upgrade'
+      title: subscription.purpose === 'one_time'
+        ? '🎉 New One-Time Order (Paid via Razorpay)'
+        : subscription.purpose === 'upgrade'
         ? 'Plan Upgraded (Paid via Razorpay)'
         : subscription.purpose === 'extend'
         ? 'Subscription Extended (Paid via Razorpay)'
@@ -601,12 +735,16 @@ const verifyPayment = async (req, res) => {
 
     // Customer Notification
     try {
-      const custTitle = isNew
+      const custTitle = subscription.purpose === 'one_time'
+        ? '🎉 One-Time Order Placed Successfully!'
+        : isNew
         ? '🎉 Subscription Successful'
         : subscription.purpose === 'upgrade'
         ? '✨ Plan Upgraded Successfully!'
         : '🎉 Subscription Extended';
-      const custMessage = isNew
+      const custMessage = subscription.purpose === 'one_time'
+        ? `Your one-time order for ${subscription.plan.milkQty}L milk has been confirmed for ${toDateString(subscription.startDate)} morning delivery by 6:30 AM.`
+        : isNew
         ? `Your milk subscription has been activated successfully from ${toDateString(subscription.startDate)} to ${toDateString(subscription.endDate)}! Doorstep morning deliveries start at 5:00 AM.`
         : subscription.purpose === 'upgrade'
         ? `Your subscription plan has been upgraded to ${subscription.plan.milkQty}L ${subscription.plan.milkType || 'Milk'}.`
@@ -633,7 +771,9 @@ const verifyPayment = async (req, res) => {
       await Notification.create({
         recipientRole: 'delivery_boy',
         recipientId: deliveryPartnerId,
-        title: subscription.purpose === 'upgrade'
+        title: subscription.purpose === 'one_time'
+          ? '📦 New One-Time Morning Drop'
+          : subscription.purpose === 'upgrade'
           ? '✨ Customer Upgraded Plan'
           : subscription.purpose === 'extend'
           ? '📅 Subscription Extended'
@@ -660,11 +800,14 @@ const verifyPayment = async (req, res) => {
     broadcast('CUSTOMER_UPDATED', { id: customer._id.toString() });
     broadcast('SUBSCRIPTION_UPDATED', { id: subscription._id.toString(), status: 'active', purpose: subscription.purpose });
     broadcast('DELIVERY_UPDATED', {});
+    broadcast('PAYMENT_UPDATED', {});
     broadcast('NOTIFICATION_UPDATED', {});
 
     return res.json({
       success: true,
-      message: subscription.purpose === 'upgrade'
+      message: subscription.purpose === 'one_time'
+        ? 'Payment verified! One-time order placed successfully.'
+        : subscription.purpose === 'upgrade'
         ? 'Payment verified! Plan successfully upgraded.'
         : subscription.purpose === 'extend'
         ? `Payment verified! Subscription extended by ${subscription.extendDays || 30} days.`
@@ -739,7 +882,7 @@ const getAdminSubscriptions = async (req, res) => {
       Subscription.find({})
         .sort({ createdAt: -1 })
         .populate('customer', 'customerId name mobile email address area whatsapp'),
-      Payment.find({ purpose: { $in: ['subscription', 'subscription_upgrade', 'subscription_extension'] } })
+      Payment.find({ purpose: { $in: ['subscription', 'subscription_upgrade', 'subscription_extension', 'one_time_order'] } })
         .sort({ paymentDate: -1 })
         .lean(),
     ]);

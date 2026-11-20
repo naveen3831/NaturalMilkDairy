@@ -7,7 +7,7 @@ const PasswordResetOtp = require('../models/PasswordResetOtp');
 const { generateToken } = require('../middleware/authMiddleware');
 const { recordAudit } = require('../services/auditService');
 const { hashPassword, verifyPassword } = require('../security/password');
-const { sendCustomerCredentialsEmail, sendPasswordResetOtpEmail } = require('../services/emailService');
+const { sendCustomerCredentialsEmail, sendPasswordResetOtpEmail, sendPasswordResetSuccessEmail } = require('../services/emailService');
 const { verifyFirebaseIdToken } = require('../security/firebaseVerifier');
 
 const escapeRegex = (text) => String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
@@ -1034,9 +1034,14 @@ const forgotPasswordSendOtp = async (req, res) => {
 
     if (!emailResult.success) {
       console.error(`❌ [PASSWORD_RESET_OTP] Email delivery failed for ${rawEmail}:`, emailResult.error || emailResult.message);
+      const rawErr = emailResult.error || emailResult.message || '';
+      let errorResponse = `Failed to deliver verification email: ${rawErr}. Please check your email settings or try again.`;
+      if (rawErr.includes('535') || rawErr.includes('BadCredentials') || rawErr.includes('Invalid login')) {
+        errorResponse = 'Gmail SMTP authentication failed (535 BadCredentials): Google rejected the login credentials. Please ensure the 16-character App Password (ftvd aytu algc pjiz) is generated under naveenkumar970100@gmail.com with 2-Step Verification enabled.';
+      }
       return res.status(500).json({
         success: false,
-        message: `Failed to deliver verification email: ${emailResult.error || emailResult.message || 'SMTP delivery issue'}. Please check your email settings or try again.`,
+        message: errorResponse,
       });
     }
 
@@ -1155,6 +1160,16 @@ const forgotPasswordResetPassword = async (req, res) => {
     await PasswordResetOtp.deleteOne({ _id: record._id });
 
     await recordAudit('Password Reset via OTP', record.accountName || rawEmail, `Password changed successfully for ${rawEmail}`, record.role || 'customer');
+
+    // Send confirmation email to user with company logo
+    sendPasswordResetSuccessEmail({
+      to: rawEmail,
+      name: record.accountName,
+      role: record.role || 'customer',
+      changeType: 'reset',
+    }).catch((emailErr) => {
+      console.warn(`⚠️ Failed to deliver password reset confirmation email to ${rawEmail}:`, emailErr.message);
+    });
 
     return res.json({
       success: true,

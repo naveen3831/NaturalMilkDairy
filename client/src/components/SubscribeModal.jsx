@@ -15,9 +15,12 @@ import {
   ChevronDown,
   Truck,
   Check,
+  Crosshair,
+  Navigation,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { useAuth } from '../context/AuthContext';
+import LeafletMapPicker from './LeafletMapPicker';
 
 const AVAILABLE_AREAS = [
   'Andheri West',
@@ -61,7 +64,9 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     whatsapp: user?.mobile || '',
     address: user?.address || '',
     landmark: '',
-    area: user?.area || user?.assignedArea || 'Andheri West',
+    area: user?.area || user?.assignedArea || 'Madhapur',
+    latitude: user?.latitude || 17.4483,
+    longitude: user?.longitude || 78.3915,
     milkQty: preselectedProduct?.selectedQty || (preselectedProduct?.name?.includes('500ml') ? 0.5 : 1),
     curdQty: preselectedProduct?.category === 'curd' ? 500 : 0,
     frequency: preselectedProduct?.selectedFrequency || 'daily',
@@ -69,6 +74,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     paymentCycle: 'monthly',
   });
 
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdInfo, setCreatedInfo] = useState(null);
@@ -105,7 +111,9 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     const dailyCost = milk * 60 + (curd / 500) * 30;
 
     let dropsCount = 30;
-    if (formData.frequency === 'alternate') {
+    if (formData.frequency === 'once' || formData.frequency === 'single') {
+      dropsCount = 1;
+    } else if (formData.frequency === 'alternate') {
       dropsCount = 15;
     } else if (formData.frequency === 'selected' || formData.frequency === 'weekdays') {
       dropsCount = 22; // ~22 weekdays in 30 days
@@ -148,6 +156,9 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           milkQty: Number(formData.milkQty),
           curdQty: Number(formData.curdQty),
           frequency: formData.frequency,
+          purpose: formData.frequency === 'once' ? 'one_time' : 'new',
+          latitude: formData.latitude,
+          longitude: formData.longitude,
         }),
       });
       const orderData = await orderResponse.json();
@@ -160,7 +171,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
         amount: orderData.order.amount,
         currency: orderData.order.currency,
         name: 'Natural Milk Dairy',
-        description: '30-Day Fresh Morning Milk Delivery',
+        description: formData.frequency === 'once' ? 'One-Time Morning Milk Delivery' : '30-Day Fresh Morning Milk Delivery',
         order_id: orderData.order.id,
         prefill: { name: user.name, contact: user.mobile },
         theme: { color: '#0d5c3a' },
@@ -248,9 +259,11 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
               <div className="subscribe-success-icon">
                 <CheckCircle2 size={40} />
               </div>
-              <h3 className="subscribe-success-title">Subscription Active!</h3>
+              <h3 className="subscribe-success-title">
+                {formData.frequency === 'once' ? 'One-Time Order Placed!' : 'Subscription Active!'}
+              </h3>
               <p className="subscribe-success-intro">
-                Thank you, <strong>{formData.name}</strong>. Your pure farm milk delivery starts tomorrow morning.
+                Thank you, <strong>{formData.name}</strong>. {formData.frequency === 'once' ? 'Your one-time fresh farm delivery arrives tomorrow morning.' : 'Your pure farm milk delivery starts tomorrow morning.'}
               </p>
 
               <div className="subscribe-success-summary">
@@ -265,9 +278,9 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                   </div>
                 )}
                 <div className="subscribe-summary-row">
-                  <span>Daily Morning Plan</span>
+                  <span>{formData.frequency === 'once' ? 'One-Time Order' : 'Daily Morning Plan'}</span>
                   <strong>
-                    {formData.milkQty}L Fresh Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency === 'daily' ? 'Every Morning' : formData.frequency === 'alternate' ? 'Alternate Days' : 'Weekdays'})
+                    {formData.milkQty}L Fresh Milk {formData.curdQty > 0 ? `+ ${formData.curdQty}g Curd` : ''} ({formData.frequency === 'once' ? 'Single Drop (Tomorrow)' : formData.frequency === 'daily' ? 'Every Morning' : formData.frequency === 'alternate' ? 'Alternate Days' : 'Weekdays'})
                   </strong>
                 </div>
                 <div className="subscribe-summary-row">
@@ -277,7 +290,9 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 <div className="subscribe-summary-row">
                   <span>Valid Through</span>
                   <strong>
-                    {createdInfo?.endDate
+                    {formData.frequency === 'once'
+                      ? 'Tomorrow Morning (1 Drop)'
+                      : createdInfo?.endDate
                       ? new Date(`${createdInfo.endDate}T00:00:00`).toLocaleDateString('en-IN', {
                           day: 'numeric',
                           month: 'short',
@@ -355,6 +370,96 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 </span>
                 <span className="subscribe-section-hint">Doorstep Drop</span>
               </div>
+
+              {/* Leaflet GPS Action Bar */}
+              <div
+                onClick={() => setIsMapOpen(true)}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '14px',
+                  background: '#f0fdf4',
+                  border: '1.2px solid #b4e2ca',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  cursor: 'pointer',
+                  marginBottom: '12px',
+                }}
+              >
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Crosshair size={16} />
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0c2340' }}>
+                      Pinpoint on Leaflet Map
+                    </span>
+                    <ShieldCheck size={13} color="#10b981" />
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '10.5px', color: '#0d5c3a', fontWeight: 700 }}>
+                    {formData.latitude
+                      ? `GPS Pin: ${Number(formData.latitude).toFixed(4)}, ${Number(formData.longitude).toFixed(4)} (${formData.area})`
+                      : 'Tap to locate exact doorstep with Leaflet GPS'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMapOpen(true);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '10px',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Navigation size={12} />
+                  <span>{formData.latitude ? 'Change' : 'Use My Location'}</span>
+                </button>
+              </div>
+
+              {isMapOpen && (
+                <LeafletMapPicker
+                  initialLat={formData.latitude}
+                  initialLng={formData.longitude}
+                  initialArea={formData.area}
+                  onSelectLocation={(loc) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      latitude: loc.latitude,
+                      longitude: loc.longitude,
+                      address: loc.address || prev.address,
+                      area: loc.area || prev.area,
+                    }));
+                    setIsMapOpen(false);
+                  }}
+                  onClose={() => setIsMapOpen(false)}
+                />
+              )}
 
               <div className="subscribe-field-group">
                 <label className="subscribe-field-label">
@@ -474,6 +579,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 <div className="subscribe-freq-grid">
                   {[
                     { id: 'daily', title: 'Every Morning', desc: 'Daily · 30 Drops', tag: 'Best Value' },
+                    { id: 'once', title: 'One-Time Order', desc: 'Single Drop · 1 Day', tag: 'Try Once' },
                     { id: 'alternate', title: 'Alternate Days', desc: '1 Day Gap · 15 Drops', tag: null },
                     { id: 'selected', title: 'Weekdays Only', desc: 'Mon to Fri · 22 Drops', tag: null },
                   ].map((item) => {
@@ -495,6 +601,14 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                     );
                   })}
                 </div>
+                {formData.frequency === 'once' && (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#eff6ff', border: '1px solid #93c5fd', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Sparkles size={16} color="#2563eb" />
+                    <span style={{ fontSize: '0.78rem', color: '#1e40af', fontWeight: 700 }}>
+                      One-Time Single Order: 1 doorstep delivery tomorrow morning between 5:00 AM – 6:30 AM. No recurring commitment.
+                    </span>
+                  </div>
+                )}
                 {formData.frequency === 'alternate' && (
                   <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Sparkles size={16} color="#15803d" />
@@ -509,19 +623,21 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
             {/* Order Summary Breakdown & Transparency */}
             <div className="subscribe-summary-box">
               <div className="subscribe-summary-head">
-                <span>30-Day Plan Calculation</span>
-                <span className="subscribe-summary-pill">{planSummary.dropsCount} Morning Drops</span>
+                <span>{formData.frequency === 'once' ? 'Single Order Calculation' : '30-Day Plan Calculation'}</span>
+                <span className="subscribe-summary-pill">
+                  {formData.frequency === 'once' ? '1 Morning Drop' : `${planSummary.dropsCount} Morning Drops`}
+                </span>
               </div>
 
               <div className="subscribe-calc-list">
                 <div className="subscribe-calc-row">
                   <span>Milk ({formData.milkQty}L × ₹60/L)</span>
-                  <strong>₹{Number(formData.milkQty) * 60}/drop</strong>
+                  <strong>₹{Number(formData.milkQty) * 60}{formData.frequency === 'once' ? '' : '/drop'}</strong>
                 </div>
                 {Number(formData.curdQty) > 0 && (
                   <div className="subscribe-calc-row">
                     <span>Curd ({formData.curdQty}g)</span>
-                    <strong>₹{(Number(formData.curdQty) / 500) * 30}/drop</strong>
+                    <strong>₹{(Number(formData.curdQty) / 500) * 30}{formData.frequency === 'once' ? '' : '/drop'}</strong>
                   </div>
                 )}
                 <div className="subscribe-calc-row">
@@ -532,8 +648,14 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
 
               <div className="subscribe-total-row">
                 <div>
-                  <div className="subscribe-total-label">Total Prepaid Amount</div>
-                  <div className="subscribe-total-sub">₹{planSummary.dailyCost}/day × {planSummary.dropsCount} deliveries</div>
+                  <div className="subscribe-total-label">
+                    {formData.frequency === 'once' ? 'Total Order Amount' : 'Total Prepaid Amount'}
+                  </div>
+                  <div className="subscribe-total-sub">
+                    {formData.frequency === 'once'
+                      ? `₹${planSummary.totalAmount} for 1 single morning delivery`
+                      : `₹${planSummary.dailyCost}/day × ${planSummary.dropsCount} deliveries`}
+                  </div>
                 </div>
                 <div className="subscribe-total-price">₹{planSummary.totalAmount}</div>
               </div>
@@ -568,7 +690,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 ) : (
                   <>
                     <Lock size={17} />
-                    <span>Pay ₹{planSummary.totalAmount} · Activate Delivery</span>
+                    <span>Pay ₹{planSummary.totalAmount} · {formData.frequency === 'once' ? 'Place One-Time Order' : 'Activate Delivery'}</span>
                   </>
                 )}
               </button>

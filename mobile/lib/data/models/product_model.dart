@@ -32,9 +32,21 @@ class ProductModel {
   static String resolveImageUrl(String? raw, String name, String category) {
     final trimmed = (raw ?? '').trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      // Fix broken Unsplash URL for buffalo milk
-      if (trimmed.contains('photo-1527153857715-3908f2ae5e81')) {
-        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1793013264/natural-milk-dairy/product-buffalo-milk.jpg';
+      // Fix broken Unsplash URL or outdated Cloudinary URLs
+      if (trimmed.contains('photo-1527153857715-3908f2ae5e81') || trimmed.contains('v1793013264')) {
+        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545628/natural-milk-dairy/assets/product-buffalo-milk.jpg';
+      }
+      if (trimmed.contains('v1791454805')) {
+        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545630/natural-milk-dairy/assets/product-cow-milk.jpg';
+      }
+      if (trimmed.contains('v1791454807')) {
+        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545631/natural-milk-dairy/assets/product-curd.jpg';
+      }
+      if (trimmed.contains('v1791454808')) {
+        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545632/natural-milk-dairy/assets/product-ghee.jpg';
+      }
+      if (trimmed.contains('v1791454809')) {
+        return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545633/natural-milk-dairy/assets/product-paneer.jpg';
       }
       return trimmed;
     }
@@ -43,48 +55,48 @@ class ProductModel {
     final c = category.toLowerCase();
 
     if (n.contains('buffalo')) {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1793013264/natural-milk-dairy/product-buffalo-milk.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545628/natural-milk-dairy/assets/product-buffalo-milk.jpg';
     }
     if ((n.contains('500') || n.contains('half')) && (n.contains('cow') || c == 'milk')) {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545629/natural-milk-dairy/assets/product-cow-milk-500ml.jpg';
     }
     if (n.contains('cow') || c == 'milk') {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545630/natural-milk-dairy/assets/product-cow-milk.jpg';
     }
     if (c == 'curd' || n.contains('curd') || n.contains('dahi')) {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545631/natural-milk-dairy/assets/product-curd.jpg';
     }
     if (c == 'ghee' || n.contains('ghee')) {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454808/natural-milk-dairy/product-ghee.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545632/natural-milk-dairy/assets/product-ghee.jpg';
     }
     if (c == 'paneer' || n.contains('paneer')) {
-      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454809/natural-milk-dairy/product-paneer.jpg';
+      return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545633/natural-milk-dairy/assets/product-paneer.jpg';
     }
-    return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg';
+    return 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545630/natural-milk-dairy/assets/product-cow-milk.jpg';
   }
 
   static String resolveAssetFallback(String name, String category) {
     final n = name.toLowerCase();
     final c = category.toLowerCase();
     if (n.contains('buffalo')) {
-      return 'assets/images/prod_img_buffalo.png';
+      return 'assets/images/product-buffalo-milk.jpg';
     }
     if ((n.contains('500') || n.contains('half')) && (n.contains('cow') || c == 'milk')) {
       return 'assets/images/product-cow-milk-500ml.jpg';
     }
     if (n.contains('cow') || c == 'milk') {
-      return 'assets/images/prod_img_cow.png';
+      return 'assets/images/product-cow-milk.jpg';
     }
     if (c == 'curd' || n.contains('curd') || n.contains('dahi')) {
-      return 'assets/images/prod_img_curd.png';
+      return 'assets/images/product-curd.jpg';
     }
     if (c == 'ghee' || n.contains('ghee')) {
-      return 'assets/images/cat_img_ghee.png';
+      return 'assets/images/product-ghee.jpg';
     }
     if (c == 'paneer' || n.contains('paneer') || n.contains('sweet')) {
-      return 'assets/images/cat_img_sweets.png';
+      return 'assets/images/product-paneer.jpg';
     }
-    return 'assets/images/prod_img_cow.png';
+    return 'assets/images/product-cow-milk.jpg';
   }
 
   factory ProductModel.fromJson(Map<String, dynamic> json) {
@@ -195,7 +207,7 @@ class ProductModel {
           price: '₹65',
           numericPrice: 65.0,
           unit: '/ 1 L',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545630/natural-milk-dairy/assets/product-cow-milk.jpg',
           description: 'Freshly milked pure organic farm cow milk chilled to 4°C in sterilized glass bottles',
           highlights: ['Glass Bottle Packaging', 'Chilled to 4°C in 30 Mins'],
         ),
@@ -210,7 +222,7 @@ class ProductModel {
           price: '₹30',
           numericPrice: 30.0,
           unit: '/ 500 ml',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454805/natural-milk-dairy/product-cow-milk.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545629/natural-milk-dairy/assets/product-cow-milk-500ml.jpg',
           description: 'Convenient daily half-litre pack of pure farm cow milk, ideal for morning chai & coffee.',
           highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin'],
         ),
@@ -225,7 +237,7 @@ class ProductModel {
           price: '₹75',
           numericPrice: 75.0,
           unit: '/ 1 L',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1793013264/natural-milk-dairy/product-buffalo-milk.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545628/natural-milk-dairy/assets/product-buffalo-milk.jpg',
           description: 'Thick creamy high-fat pure buffalo milk with rich natural malai.',
           highlights: ['Heavy Natural Malai', 'Zero Dilution'],
         ),
@@ -240,7 +252,7 @@ class ProductModel {
           price: '₹65',
           numericPrice: 65.0,
           unit: '/ 1 kg',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545631/natural-milk-dairy/assets/product-curd.jpg',
           description: 'Traditional earthen pot set creamy dahi with natural gut probiotics.',
           highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin'],
         ),
@@ -255,7 +267,7 @@ class ProductModel {
           price: '₹35',
           numericPrice: 35.0,
           unit: '/ 500 g',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454807/natural-milk-dairy/product-curd.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545631/natural-milk-dairy/assets/product-curd.jpg',
           description: 'Traditional earthen pot set creamy dahi with natural gut probiotics.',
           highlights: ['Glass Bottle Packaging', 'No Hormones / Oxytocin'],
         ),
@@ -270,7 +282,7 @@ class ProductModel {
           price: '₹480',
           numericPrice: 480.0,
           unit: '/ 500 ml',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454808/natural-milk-dairy/product-ghee.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545632/natural-milk-dairy/assets/product-ghee.jpg',
           description: 'Traditional curd-churned wood-fired A2 Desi cow bilona ghee with heavenly nutty aroma.',
           highlights: ['Traditional Bilona Method', 'Granular Golden Grain'],
         ),
@@ -285,7 +297,7 @@ class ProductModel {
           price: '₹190',
           numericPrice: 190.0,
           unit: '/ 500 g',
-          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791454809/natural-milk-dairy/product-paneer.jpg',
+          imageUrl: 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545633/natural-milk-dairy/assets/product-paneer.jpg',
           description: 'Handcrafted fresh malai paneer, super soft and rich in pure dairy proteins.',
           highlights: ['Melt-in-mouth Malai', 'High Pure Protein'],
         ),

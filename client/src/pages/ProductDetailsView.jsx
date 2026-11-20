@@ -1,29 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
-  Check,
-  ShieldCheck,
-  Calendar,
-  Clock,
-  Sparkles,
-  Share2,
-  Maximize2,
   X,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Minus,
+  Sparkles,
+  User,
+  ShieldCheck,
   MapPin,
   CheckCircle2,
+  Check,
+  Lock,
+  ChevronDown,
+  Plus,
+  Minus,
+  Calendar,
+  PhoneCall,
+  Star,
   Truck,
   Leaf,
-  RotateCcw,
-  Star,
-  MessageCircle,
-  PackageCheck,
-  Heart,
-  Droplets,
+  Navigation,
+  Crosshair,
+  Share2,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useDairy } from '../context/DairyContext';
+import { startSubscriptionPayment } from '../services/subscriptionPayment';
+import LeafletMapPicker from '../components/LeafletMapPicker';
+import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+
+const AVAILABLE_AREAS = [
+  'Madhapur',
+  'Hitec City',
+  'Gachibowli',
+  'Kondapur',
+  'Jubilee Hills',
+  'Banjara Hills',
+  'Financial District',
+  'Kukatpally',
+  'Manikonda',
+  'Miyapur',
+  'Andheri West',
+  'Andheri East',
+  'Bandra',
+  'Juhu',
+  'Powai',
+];
 
 export default function ProductDetailsView({
   product,
@@ -33,123 +53,70 @@ export default function ProductDetailsView({
   onDirectPlaceOrder,
   onNavigateDashboard,
 }) {
-  if (!product) return null;
+  const { user } = useAuth();
+  const { refreshAll, notifyRealtimeSync } = useDairy();
 
-  // Extract all available product images
-  const rawImages = [
-    product.image || product.imageUrl,
-    ...(Array.isArray(product.images) ? product.images : []),
-    ...(Array.isArray(product.gallery) ? product.gallery : []),
-    ...(Array.isArray(product.additionalImages) ? product.additionalImages : []),
-  ].filter(Boolean);
+  const effectiveCustomer = customer || user || {};
 
-  const productImages = Array.from(new Set(rawImages));
-  if (productImages.length === 0 && product.image) {
-    productImages.push(product.image);
-  }
+  // Default initial values
+  const defaultMilkQty = product?.name?.toLowerCase().includes('500ml') ? 0.5 : 1.0;
+  const [milkQty, setMilkQty] = useState(defaultMilkQty);
+  const [curdQty, setCurdQty] = useState(product?.category === 'curd' ? 500 : 0);
+  const [orderFrequency, setOrderFrequency] = useState('subscription'); // 'one_time' or 'subscription'
+  const [subscriptionSchedule, setSubscriptionSchedule] = useState('daily'); // 'daily', 'alternate', 'selected'
 
-  const [activeImgIndex, setActiveImgIndex] = useState(0);
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
-  const [bookingQty, setBookingQty] = useState(1);
-  const [bookingFreq, setBookingFreq] = useState(
-    product?.initialFreq === 'one_time' ? 'one_time' : 'subscription'
-  );
+  // Contact and Address state
+  const [customerName, setCustomerName] = useState(effectiveCustomer.name || 'Valued Customer');
+  const [customerMobile, setCustomerMobile] = useState(effectiveCustomer.mobile || '');
+  const [address, setAddress] = useState(effectiveCustomer.address || '');
+  const [selectedArea, setSelectedArea] = useState(effectiveCustomer.area || effectiveCustomer.assignedArea || 'Madhapur');
+  const [landmark, setLandmark] = useState(effectiveCustomer.landmark || '');
+  const [selectedLat, setSelectedLat] = useState(effectiveCustomer.latitude || 17.4483);
+  const [selectedLng, setSelectedLng] = useState(effectiveCustomer.longitude || 78.3915);
 
-  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  const [orderDate, setOrderDate] = useState(tomorrowStr);
-  const [dropNotes, setDropNotes] = useState(
-    customer?.landmark ? `Near ${customer.landmark}` : 'Deliver at doorstep milk bag'
-  );
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderSuccessMsg, setOrderSuccessMsg] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [successInfo, setSuccessInfo] = useState(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
-    document.body.classList.add('product-details-page-active');
-    return () => {
-      document.body.classList.remove('product-details-page-active');
-    };
-  }, []);
-
-  useEffect(() => {
-    if (product?.initialFreq) {
-      setBookingFreq(product.initialFreq === 'one_time' ? 'one_time' : 'subscription');
+    if (effectiveCustomer) {
+      if (effectiveCustomer.name) setCustomerName(effectiveCustomer.name);
+      if (effectiveCustomer.mobile) setCustomerMobile(effectiveCustomer.mobile);
+      if (effectiveCustomer.address) setAddress(effectiveCustomer.address);
+      if (effectiveCustomer.area) setSelectedArea(effectiveCustomer.area);
+      if (effectiveCustomer.landmark) setLandmark(effectiveCustomer.landmark);
+      if (effectiveCustomer.latitude) setSelectedLat(effectiveCustomer.latitude);
+      if (effectiveCustomer.longitude) setSelectedLng(effectiveCustomer.longitude);
     }
-  }, [product?.initialFreq]);
+  }, [effectiveCustomer]);
 
-  useEffect(() => {
-    if (customer?.landmark) {
-      setDropNotes(`Near ${customer.landmark}`);
-    }
-  }, [customer?.landmark]);
+  // Pricing calculations
+  const unitPrice = useMemo(() => {
+    if (!product) return 60;
+    if (product.numericPrice && product.numericPrice > 0) return product.numericPrice;
+    const parsed = parseFloat(String(product.price || '').replace(/[^\d.]/g, ''));
+    return !isNaN(parsed) && parsed > 0 ? parsed : (product.category === 'curd' ? 35 : 60);
+  }, [product]);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (!isLightboxOpen) return;
-      if (e.key === 'Escape') setIsLightboxOpen(false);
-      if (e.key === 'ArrowRight') setActiveImgIndex((prev) => (prev + 1) % productImages.length);
-      if (e.key === 'ArrowLeft')
-        setActiveImgIndex((prev) => (prev - 1 + productImages.length) % productImages.length);
-    };
-    if (isLightboxOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isLightboxOpen, productImages.length]);
+  const dailyCost = useMemo(() => {
+    const milkCost = Math.round(milkQty * unitPrice);
+    const curdCost = Math.round((curdQty / 500) * 30);
+    return milkCost + curdCost;
+  }, [milkQty, unitPrice, curdQty]);
 
-  const activeImage =
-    productImages[activeImgIndex] ||
-    productImages[0] ||
-    product.image ||
-    'https://images.unsplash.com/photo-1528750997573-59b89d56f4f7?w=800&auto=format&fit=crop&q=80';
+  const dropsCount = useMemo(() => {
+    if (orderFrequency === 'one_time') return 1;
+    if (subscriptionSchedule === 'alternate') return 15;
+    if (subscriptionSchedule === 'selected') return 22; // Weekdays
+    return 30; // Daily
+  }, [orderFrequency, subscriptionSchedule]);
 
-  // Numerical unit price
-  const unitPrice =
-    product.numericPrice ||
-    parseInt(String(product.price || '').replace(/[^\d]/g, ''), 10) ||
-    (product.category === 'curd' ? 35 : 60);
+  const totalAmount = dailyCost * dropsCount;
 
-  const dailyTotal = unitPrice * bookingQty;
-  const monthlyTotal = dailyTotal * 30;
-
-  // Preset options tailored to product unit
-  const getPresetOptions = () => {
-    const u = (product.unit || '').toLowerCase();
-    const n = (product.name || '').toLowerCase();
-    if (u.includes('litre') || u.includes('1 l') || n.includes('1l') || n.includes('1 l')) {
-      return [
-        { qty: 1, label: '1 Litre' },
-        { qty: 2, label: '2 Litres' },
-        { qty: 3, label: '3 Litres' },
-      ];
-    }
-    if (u.includes('500') || n.includes('500')) {
-      return [
-        { qty: 1, label: '1 Pack (500g)' },
-        { qty: 2, label: '2 Packs (1 kg)' },
-        { qty: 3, label: '3 Packs (1.5 kg)' },
-      ];
-    }
-    if (u.includes('kg') || n.includes('kg')) {
-      return [
-        { qty: 1, label: '1 kg' },
-        { qty: 2, label: '2 kg' },
-        { qty: 3, label: '3 kg' },
-      ];
-    }
-    return [
-      { qty: 1, label: '1 Unit' },
-      { qty: 2, label: '2 Units' },
-      { qty: 3, label: '3 Units' },
-    ];
-  };
-
+  // Handle Share link
   const handleShare = () => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
@@ -158,1639 +125,1297 @@ export default function ProductDetailsView({
     }
   };
 
-  const handleConfirmOrder = async () => {
-    if (typeof onDirectPlaceOrder === 'function') {
-      setIsSubmitting(true);
-      try {
-        const res = await onDirectPlaceOrder({
-          product,
-          quantity: bookingQty,
-          bookingType: bookingFreq === 'one_time' ? 'one_time' : 'subscription',
-          date: orderDate,
-          dropNotes: dropNotes || 'Deliver at doorstep milk bag',
-        });
-        if (res?.success) {
-          setOrderSuccessMsg(
-            res.message ||
-              `Your ${bookingFreq === 'one_time' ? 'order' : 'subscription'} for ${bookingQty}x ${product.name} has been confirmed!`
-          );
-        } else {
-          alert(res?.message || 'Could not place order. Please try again.');
-        }
-      } catch (err) {
-        alert('Could not place order: ' + (err.message || 'Please try again.'));
-      } finally {
-        setIsSubmitting(false);
-      }
-    } else if (typeof onSubscribe === 'function') {
-      onSubscribe({
-        ...product,
-        selectedQty: bookingQty,
-        selectedFrequency: bookingFreq,
-        calculatedPrice: dailyTotal,
-        date: orderDate,
-        dropNotes,
+  // Handle Payment & Order Activation
+  const handleConfirmOrder = async (e) => {
+    if (e) e.preventDefault();
+
+    if (!user) {
+      alert('Please sign in or create an account to activate doorstep delivery.');
+      return;
+    }
+
+    if (!address.trim()) {
+      setErrorMessage('Please enter your complete doorstep delivery address.');
+      return;
+    }
+
+    setErrorMessage('');
+    setIsSubmitting(true);
+
+    try {
+      const isOneTime = orderFrequency === 'one_time';
+      const frequencyPayload = isOneTime ? 'once' : subscriptionSchedule;
+
+      await startSubscriptionPayment({
+        user,
+        purpose: isOneTime ? 'one_time' : 'new',
+        days: isOneTime ? 1 : 30,
+        milkQty,
+        curdQty,
+        milkType: product?.name || 'Farm Fresh Pure Milk',
+        frequency: frequencyPayload,
+        planName: isOneTime ? `One-Time ${product?.name || 'Milk Order'}` : `30-Day ${product?.name || 'Daily Drop'} Plan`,
+        address: address.trim(),
+        area: selectedArea,
+        landmark: landmark.trim(),
+        mobile: customerMobile || user.mobile,
+        whatsapp: customerMobile || user.mobile,
+        name: customerName || user.name,
+        latitude: selectedLat,
+        longitude: selectedLng,
+        onSuccess: (verifyData) => {
+          setIsSuccess(true);
+          setSuccessInfo(verifyData?.subscription || {
+            startDate: new Date().toISOString(),
+            endDate: new Date(Date.now() + (isOneTime ? 1 : 30) * 86400000).toISOString(),
+          });
+          refreshAll?.();
+          notifyRealtimeSync?.();
+          setIsSubmitting(false);
+        },
+        onFailure: (err) => {
+          setErrorMessage(err?.reason || err?.message || 'Payment was not completed. You can try again.');
+          setIsSubmitting(false);
+        },
+        onError: (err) => {
+          setErrorMessage(err?.message || 'Checkout encountered an error. Please try again.');
+          setIsSubmitting(false);
+        },
       });
+    } catch (err) {
+      setErrorMessage(err?.message || 'Unable to start payment. Please check your network and try again.');
+      setIsSubmitting(false);
     }
   };
 
-  const openWhatsAppBooking = () => {
-    const text = encodeURIComponent(
-      `Hello Natural Milk Dairy! I would like to book:\n` +
-        `🥛 Product: ${product.name}\n` +
-        `🔢 Quantity: ${bookingQty} (${product.unit || 'unit'})\n` +
-        `📅 Type: ${bookingFreq === 'one_time' ? 'One-Time Delivery' : 'Daily Morning Subscription'}\n` +
-        `🗓 Delivery Date: ${orderDate}\n` +
-        `⏰ Morning Slot: 5:30 AM - 6:30 AM\n` +
-        `💰 Total: ₹${dailyTotal}\n\n` +
-        `Please confirm my delivery schedule.`
-    );
-    window.open(`https://wa.me/919876543210?text=${text}`, '_blank');
-  };
+  if (!product) return null;
 
-  const cleanUnit = (product.unit || '').replace(/^per\s+/i, '').trim() || 'unit';
+  const displayImage =
+    product.image ||
+    product.imageUrl ||
+    (Array.isArray(product.images) && product.images[0]) ||
+    CLOUDINARY_MEDIA.cowMilk;
+
+  const userInitial = (customerName || user?.name || 'C').charAt(0).toUpperCase();
 
   return (
     <div
-      className="product-details-root"
+      className="unified-product-checkout-root"
       style={{
-        background: '#f6f9f6',
+        background: '#f8faf8',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-        color: '#13281c',
+        color: '#0c2340',
+        paddingBottom: '100px',
       }}
     >
-      {/* MOBILE TOP APP BAR (MOBILE ONLY) */}
-      <div className="pdp-mobile-top-bar">
-        <button
-          type="button"
-          onClick={onBack}
-          className="pdp-mobile-circle-btn"
-          aria-label="Back to products"
-        >
-          <ArrowLeft size={19} color="#0d5c3a" strokeWidth={2.2} />
-        </button>
-        <div className="pdp-mobile-header-title">
-          <span>{product.name}</span>
-        </div>
-        <button
-          type="button"
-          onClick={handleShare}
-          className="pdp-mobile-circle-btn"
-          aria-label="Share product"
-        >
-          {copiedLink ? <Check size={17} color="#0d5c3a" /> : <Share2 size={17} color="#0d5c3a" />}
-        </button>
-      </div>
-
-      {/* 1. TOP HEADER BAR (DESKTOP) */}
+      {/* ── 1. HEADER (Matching Mobile Screen 3) ── */}
       <header
-        className="pdp-desktop-header"
         style={{
           position: 'sticky',
           top: 0,
-          zIndex: 40,
-          background: 'rgba(255, 255, 255, 0.94)',
-          backdropFilter: 'blur(16px)',
-          borderBottom: '1px solid #e3ede5',
-          padding: '12px 24px',
+          zIndex: 50,
+          background: 'rgba(255, 255, 255, 0.96)',
+          backdropFilter: 'blur(10px)',
+          borderBottom: '1px solid #e2ebe5',
+          padding: '12px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
         }}
       >
-        <div
+        <button
+          type="button"
+          onClick={onBack}
           style={{
-            maxWidth: '1240px',
-            margin: '0 auto',
+            width: '38px',
+            height: '38px',
+            borderRadius: '50%',
+            background: '#f3f7f4',
+            border: '1px solid #e2ebe5',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: '#0d5c3a',
           }}
+          aria-label="Back"
         >
-          {/* Back Button & Breadcrumbs */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <ArrowLeft size={19} strokeWidth={2.4} />
+        </button>
+
+        <div style={{ textAlign: 'center', flex: 1, padding: '0 8px' }}>
+          <h1
+            style={{
+              fontSize: '15.5px',
+              fontWeight: 900,
+              color: '#0c2340',
+              margin: 0,
+              letterSpacing: '-0.2px',
+            }}
+          >
+            {orderFrequency === 'one_time' ? 'Single Milk Order' : 'Morning Milk Delivery'}
+          </h1>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              fontSize: '10.5px',
+              color: '#6b7280',
+              fontWeight: 600,
+              marginTop: '2px',
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#10b981',
+                display: 'inline-block',
+              }}
+            />
+            {orderFrequency === 'one_time'
+              ? 'Prepaid 1-day drop • Doorstep by 6:30 AM'
+              : 'Prepaid 30-day plan • Doorstep drop by 6:30 AM'}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '50%',
+            background: '#f3f7f4',
+            border: '1px solid #e2ebe5',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: '#0c2340',
+          }}
+          aria-label="Close"
+        >
+          <X size={18} strokeWidth={2.4} />
+        </button>
+      </header>
+
+      {/* ── LEAFLET MAP MODAL ── */}
+      {isMapOpen && (
+        <LeafletMapPicker
+          initialLat={selectedLat}
+          initialLng={selectedLng}
+          initialArea={selectedArea}
+          onSelectLocation={(loc) => {
+            if (loc.latitude) setSelectedLat(loc.latitude);
+            if (loc.longitude) setSelectedLng(loc.longitude);
+            if (loc.address) setAddress(loc.address);
+            if (loc.area) setSelectedArea(loc.area);
+            setIsMapOpen(false);
+          }}
+          onClose={() => setIsMapOpen(false)}
+        />
+      )}
+
+      {/* ── MAIN CONTENT CONTAINER ── */}
+      <main
+        style={{
+          width: '100%',
+          maxWidth: '560px',
+          margin: '0 auto',
+          padding: '14px 16px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+        }}
+      >
+        {/* Error Alert */}
+        {errorMessage && (
+          <div
+            style={{
+              background: '#fef2f2',
+              border: '1px solid #fca5a5',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              color: '#991b1b',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}
+          >
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* ── SUCCESS VIEW ── */}
+        {isSuccess ? (
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '20px',
+              border: '1px solid #e2ebe5',
+              padding: '28px 20px',
+              textAlign: 'center',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '16px',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div
+              style={{
+                width: '68px',
+                height: '68px',
+                borderRadius: '50%',
+                background: '#dcfce7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#15803d',
+              }}
+            >
+              <CheckCircle2 size={44} strokeWidth={2.4} />
+            </div>
+
+            <div>
+              <h2 style={{ fontSize: '22px', fontWeight: 900, color: '#0c2340', margin: '0 0 6px 0' }}>
+                {orderFrequency === 'one_time' ? 'One-Time Order Placed!' : 'Subscription Active!'}
+              </h2>
+              <p style={{ fontSize: '13px', color: '#4b5563', margin: 0, lineHeight: 1.45 }}>
+                Thank you, <strong>{customerName}</strong>.<br />
+                {orderFrequency === 'one_time'
+                  ? 'Your one-time doorstep delivery arrives tomorrow morning.'
+                  : 'Your pure farm milk delivery starts tomorrow morning.'}
+              </p>
+            </div>
+
+            <div
+              style={{
+                width: '100%',
+                background: '#f9fafb',
+                borderRadius: '16px',
+                border: '1px solid #e5e7eb',
+                padding: '14px 16px',
+                boxSizing: 'border-box',
+                textAlign: 'left',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                <span style={{ color: '#6b7280' }}>Delivery Address</span>
+                <strong style={{ color: '#0c2340', textAlign: 'right' }}>{address}, {selectedArea}</strong>
+              </div>
+              {selectedLat && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                  <span style={{ color: '#6b7280' }}>Leaflet GPS Pin</span>
+                  <strong style={{ color: '#0d5c3a' }}>{Number(selectedLat).toFixed(4)}, {Number(selectedLng).toFixed(4)}</strong>
+                </div>
+              )}
+              {landmark && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                  <span style={{ color: '#6b7280' }}>Landmark</span>
+                  <strong style={{ color: '#0c2340' }}>{landmark}</strong>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                <span style={{ color: '#6b7280' }}>Order Plan</span>
+                <strong style={{ color: '#0c2340' }}>
+                  {milkQty}L Milk {curdQty > 0 ? `+ ${curdQty}g Curd` : ''} ({orderFrequency === 'one_time' ? 'Single Drop' : subscriptionSchedule === 'daily' ? 'Every Morning' : subscriptionSchedule === 'alternate' ? 'Alternate Days' : 'Weekdays'})
+                </strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                <span style={{ color: '#6b7280' }}>Delivery Window</span>
+                <strong style={{ color: '#0d5c3a' }}>5:00 AM – 6:30 AM (Silent Doorstep Drop)</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px' }}>
+                <span style={{ color: '#6b7280' }}>Packaging</span>
+                <strong style={{ color: '#0c2340' }}>Sanitized Glass Bottles · Chilled at 4°C</strong>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={onBack}
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 16px',
-                borderRadius: '999px',
-                background: '#eef6f0',
-                border: '1px solid #cce2d3',
-                color: '#0d5c3a',
-                fontSize: '0.88rem',
-                fontWeight: 700,
+                width: '100%',
+                height: '48px',
+                borderRadius: '14px',
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 900,
+                fontSize: '14px',
                 cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#0d5c3a';
-                e.currentTarget.style.color = '#ffffff';
-                e.currentTarget.style.borderColor = '#0d5c3a';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#eef6f0';
-                e.currentTarget.style.color = '#0d5c3a';
-                e.currentTarget.style.borderColor = '#cce2d3';
               }}
             >
-              <ArrowLeft size={16} />
-              <span>Back to Products</span>
-            </button>
-
-          </div>
-
-          {/* Right Status Badges & Share */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '6px 14px',
-                borderRadius: '999px',
-                background: '#e8f5ec',
-                border: '1px solid #bde3c8',
-                color: '#0a633b',
-                fontSize: '0.78rem',
-                fontWeight: 700,
-                letterSpacing: '0.3px',
-              }}
-            >
-              <span
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#22c55e',
-                  boxShadow: '0 0 0 3px rgba(34, 197, 94, 0.25)',
-                }}
-              />
-              FRESH SUNRISE BATCH READY
-            </div>
-
-            <div
-              style={{
-                padding: '6px 12px',
-                borderRadius: '8px',
-                background: '#f1f5f2',
-                border: '1px solid #dce8df',
-                color: '#3d5947',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                letterSpacing: '0.6px',
-                textTransform: 'uppercase',
-              }}
-            >
-              {product.category || 'ORGANIC'}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleShare}
-              title="Share or Copy Link"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                background: copiedLink ? '#0d5c3a' : '#ffffff',
-                border: '1px solid #dce8df',
-                color: copiedLink ? '#ffffff' : '#3d5947',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {copiedLink ? <Check size={16} /> : <Share2 size={16} />}
+              Done & Return to App
             </button>
           </div>
-        </div>
-      </header>
-
-      {/* 2. MAIN SHOWCASE & BOOKING HERO */}
-      <main
-        style={{
-          maxWidth: '1240px',
-          width: '100%',
-          margin: '0 auto',
-          padding: '28px 24px 60px',
-          flex: 1,
-        }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.08fr) minmax(0, 1fr)',
-            gap: '32px',
-            alignItems: 'start',
-          }}
-          className="product-details-grid"
-        >
-          {/* ================= LEFT COLUMN: VISUAL EXPERIENCE & FARM GUARANTEES ================= */}
-          <div className="pdp-left-column" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div className="pdp-image-section" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {/* Main Stage Image */}
-              <div
+        ) : (
+          <>
+            {/* ── 2. TOP SLEEK PRODUCT BANNER (Matching Screenshot 3 & 2) ── */}
+            <div
               style={{
-                position: 'relative',
-                borderRadius: '24px',
-                overflow: 'hidden',
-                background: '#ffffff',
-                border: '1px solid #e1eee4',
-                boxShadow: '0 16px 40px -12px rgba(13, 92, 58, 0.1)',
-                aspectRatio: '4 / 3',
-                maxHeight: '460px',
+                background: '#f4faf6',
+                borderRadius: '18px',
+                border: '1.2px solid #dcfce7',
+                padding: '14px',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: '14px',
+                boxShadow: '0 3px 10px rgba(13, 92, 58, 0.04)',
               }}
             >
-              <img
-                src={activeImage}
-                alt={product.name}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block',
-                  transition: 'transform 0.5s ease',
-                }}
-              />
-
-              {/* Floating Top-Left Tag */}
               <div
                 style={{
-                  position: 'absolute',
-                  top: '16px',
-                  left: '16px',
-                  background: 'rgba(255, 255, 255, 0.92)',
-                  backdropFilter: 'blur(10px)',
-                  padding: '6px 14px',
-                  borderRadius: '999px',
-                  fontSize: '0.8rem',
-                  fontWeight: 800,
-                  color: '#0d5c3a',
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '14px',
+                  background: '#ffffff',
+                  border: '1px solid #e2ebe5',
+                  overflow: 'hidden',
+                  flexShrink: 0,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.8)',
+                  justifyContent: 'center',
                 }}
               >
-                <Leaf size={14} color="#16a34a" />
-                <span>100% FARM FRESH</span>
+                <img
+                  src={displayImage}
+                  alt={product.name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               </div>
 
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '10.5px',
+                    color: '#059669',
+                    fontWeight: 800,
+                  }}
+                >
+                  <Sparkles size={12} />
+                  <span>Farm Fresh · Morning Milked</span>
+                </div>
+                <h2
+                  style={{
+                    fontSize: '15px',
+                    fontWeight: 900,
+                    color: '#0c2340',
+                    margin: '3px 0 2px 0',
+                    letterSpacing: '-0.2px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {product.name}
+                </h2>
+                <p style={{ fontSize: '11px', color: '#6b7280', margin: 0, fontWeight: 600 }}>
+                  Milked 4:30 AM · Delivered within 3 hrs • ₹{unitPrice}/Litre
+                </p>
 
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '5px' }}>
+                  <div style={{ display: 'flex', color: '#f59e0b' }}>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <Star key={i} size={12} fill="#f59e0b" />
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '11.5px', fontWeight: 900, color: '#1f2937' }}>4.9</span>
+                  <span style={{ fontSize: '11px', color: '#6b7280' }}>(1,240+)</span>
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      padding: '2px 8px',
+                      borderRadius: '10px',
+                      background: '#e0f2e4',
+                      color: '#0a633b',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                    }}
+                  >
+                    Free Drop
+                  </span>
+                </div>
+              </div>
+            </div>
 
-              {/* Floating Bottom Ribbon */}
+            {/* ── 3. CUSTOMER CONTACT CARD (Matching Screenshot 3) ── */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '16px',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.03)',
+              }}
+            >
               <div
                 style={{
-                  position: 'absolute',
-                  bottom: '16px',
-                  left: '16px',
-                  right: '16px',
-                  background: 'rgba(13, 38, 24, 0.75)',
-                  backdropFilter: 'blur(10px)',
-                  padding: '10px 18px',
-                  borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  color: '#ffffff',
-                  fontSize: '0.84rem',
-                  fontWeight: 600,
+                  marginBottom: '12px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShieldCheck size={17} color="#4ade80" />
-                  <span>100% Raw & Unadulterated Pure Dairy</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                  <User size={17} color="#0d5c3a" />
+                  <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0c2340' }}>
+                    Customer Contact
+                  </span>
                 </div>
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    fontSize: '0.78rem',
-                    color: '#bbf7d0',
+                    gap: '4px',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: '#dcfce7',
+                    color: '#15803d',
+                    fontSize: '10.5px',
+                    fontWeight: 800,
                   }}
                 >
-                  <Clock size={14} />
-                  <span>Next Drop: 5:30 AM</span>
+                  <ShieldCheck size={12} />
+                  <span>Verified</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    background: '#e2f1ea',
+                    color: '#0d5c3a',
+                    fontSize: '17px',
+                    fontWeight: 900,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {userInitial}
+                </div>
+                <div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0c2340' }}>
+                    {customerName}
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: '#6b7280', fontWeight: 600 }}>
+                    {customerMobile ? `+91 ${customerMobile}` : 'Phone verified'}
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Gallery Thumbnails (if multiple images) */}
-            {productImages.length > 1 && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  overflowX: 'auto',
-                  paddingBottom: '4px',
-                }}
-              >
-                {productImages.map((thumbUrl, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setActiveImgIndex(idx)}
-                    style={{
-                      width: '74px',
-                      height: '74px',
-                      borderRadius: '14px',
-                      overflow: 'hidden',
-                      padding: 0,
-                      border:
-                        activeImgIndex === idx
-                          ? '2.5px solid #0d5c3a'
-                          : '1.5px solid #dbe8de',
-                      background: '#ffffff',
-                      cursor: 'pointer',
-                      flexShrink: 0,
-                      boxShadow:
-                        activeImgIndex === idx
-                          ? '0 4px 12px rgba(13, 92, 58, 0.25)'
-                          : 'none',
-                      transition: 'all 0.2s ease',
-                    }}
-                  >
-                    <img
-                      src={thumbUrl}
-                      alt={`Thumbnail ${idx + 1}`}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            </div>
-
-            {/* 4 Farm Fresh Quality Pillars (2x2 Matrix) */}
+            {/* ── 4. DELIVERY ADDRESS WITH LEAFLET GPS "USE MY LOCATION" (Screenshot 3 + Leaflet) ── */}
             <div
-              className="pdp-quality-pillars"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: '14px',
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '18px',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.03)',
               }}
             >
               <div
                 style={{
-                  background: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  border: '1px solid #e2ece3',
                   display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: '#e8f5ec',
-                    color: '#0d5c3a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Clock size={20} />
-                </div>
-                <div>
-                  <h4
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: '0.88rem',
-                      fontWeight: 800,
-                      color: '#0d5c3a',
-                    }}
-                  >
-                    Sunrise 6:30 AM Drop
-                  </h4>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '0.78rem',
-                      color: '#5b7564',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Placed fresh at your doorstep before your day begins.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  border: '1px solid #e2ece3',
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: '#e8f5ec',
-                    color: '#0d5c3a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Droplets size={20} />
-                </div>
-                <div>
-                  <h4
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: '0.88rem',
-                      fontWeight: 800,
-                      color: '#0d5c3a',
-                    }}
-                  >
-                    Chilled to 4°C at Sunrise
-                  </h4>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '0.78rem',
-                      color: '#5b7564',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Maintained through an unbroken cold chain from the farm.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  border: '1px solid #e2ece3',
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: '#e8f5ec',
-                    color: '#0d5c3a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <RotateCcw size={20} />
-                </div>
-                <div>
-                  <h4
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: '0.88rem',
-                      fontWeight: 800,
-                      color: '#0d5c3a',
-                    }}
-                  >
-                    Sterilized Eco Glass / Clay
-                  </h4>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '0.78rem',
-                      color: '#5b7564',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    Hygienic multi-stage heat sterilization. 100% chemical free.
-                  </p>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: '#ffffff',
-                  borderRadius: '16px',
-                  padding: '16px',
-                  border: '1px solid #e2ece3',
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'flex-start',
-                }}
-              >
-                <div
-                  style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '10px',
-                    background: '#e8f5ec',
-                    color: '#0d5c3a',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <ShieldCheck size={20} />
-                </div>
-                <div>
-                  <h4
-                    style={{
-                      margin: '0 0 3px',
-                      fontSize: '0.88rem',
-                      fontWeight: 800,
-                      color: '#0d5c3a',
-                    }}
-                  >
-                    Zero Preservatives
-                  </h4>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: '0.78rem',
-                      color: '#5b7564',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    No synthetic thickeners, stabilizers, or milk powders.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ================= RIGHT COLUMN: UNIFIED LUXURY BOOKING SUITE ================= */}
-          <div
-            className="pdp-booking-suite"
-            style={{
-              background: '#ffffff',
-              borderRadius: '24px',
-              padding: '28px',
-              border: '1px solid #e1eee4',
-              boxShadow: '0 20px 48px -12px rgba(13, 92, 58, 0.09)',
-              position: 'relative',
-            }}
-          >
-            {/* If Order was successfully placed, render Celebration Screen */}
-            {orderSuccessMsg ? (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
                   alignItems: 'center',
-                  textAlign: 'center',
-                  padding: '30px 10px',
+                  justifyContent: 'space-between',
+                  marginBottom: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={17} color="#0d5c3a" />
+                  <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0c2340' }}>
+                    Delivery Address
+                  </span>
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280' }}>
+                  Doorstep Drop
+                </span>
+              </div>
+
+              {/* LEAFLET GPS Action Bar (Matching Admin & Partner Live Maps) */}
+              <div
+                onClick={() => setIsMapOpen(true)}
+                style={{
+                  padding: '11px 14px',
+                  borderRadius: '14px',
+                  background: '#f0fdf4',
+                  border: '1.2px solid #b4e2ca',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  cursor: 'pointer',
+                  marginBottom: '12px',
                 }}
               >
                 <div
                   style={{
-                    width: '76px',
-                    height: '76px',
+                    width: '32px',
+                    height: '32px',
                     borderRadius: '50%',
-                    background: '#e8f5ec',
-                    color: '#0d5c3a',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    marginBottom: '18px',
-                    boxShadow: '0 8px 24px rgba(13, 92, 58, 0.15)',
+                    flexShrink: 0,
                   }}
                 >
-                  <CheckCircle2 size={44} />
+                  <Crosshair size={16} />
                 </div>
 
-                <h3
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: 900, color: '#0c2340' }}>
+                      Pinpoint on Leaflet Map
+                    </span>
+                    <ShieldCheck size={13} color="#10b981" />
+                  </div>
+                  <p style={{ margin: '2px 0 0 0', fontSize: '10.5px', color: '#0d5c3a', fontWeight: 800 }}>
+                    {selectedLat
+                      ? `GPS Pin: ${Number(selectedLat).toFixed(4)}, ${Number(selectedLng).toFixed(4)} (${selectedArea})`
+                      : 'Tap to locate exact doorstep with Leaflet GPS'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMapOpen(true);
+                  }}
                   style={{
-                    margin: '0 0 8px',
-                    fontSize: '1.6rem',
+                    padding: '6px 10px',
+                    borderRadius: '10px',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '11px',
                     fontWeight: 800,
-                    color: '#0d5c3a',
-                  }}
-                >
-                  Order Confirmed!
-                </h3>
-
-                <p
-                  style={{
-                    margin: '0 0 24px',
-                    fontSize: '0.96rem',
-                    color: '#4e6b57',
-                    maxWidth: '420px',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {orderSuccessMsg}
-                </p>
-
-                {/* Receipt Details Box */}
-                <div
-                  style={{
-                    width: '100%',
-                    background: '#f7faf8',
-                    border: '1px solid #e0ede3',
-                    borderRadius: '16px',
-                    padding: '18px 22px',
-                    marginBottom: '26px',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '10px',
-                      fontSize: '0.88rem',
-                    }}
-                  >
-                    <span style={{ color: '#688271' }}>Product:</span>
-                    <strong style={{ color: '#0d5c3a' }}>
-                      {bookingQty} × {product.name}
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '10px',
-                      fontSize: '0.88rem',
-                    }}
-                  >
-                    <span style={{ color: '#688271' }}>Schedule:</span>
-                    <strong style={{ color: '#13281c' }}>
-                      {bookingFreq === 'one_time'
-                        ? 'Single One-Time Delivery'
-                        : 'Daily Morning Subscription'}
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '10px',
-                      fontSize: '0.88rem',
-                    }}
-                  >
-                    <span style={{ color: '#688271' }}>Delivery Date:</span>
-                    <strong style={{ color: '#13281c' }}>{orderDate} (5:30 - 6:30 AM)</strong>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      paddingTop: '10px',
-                      borderTop: '1px dashed #d5e6d9',
-                      fontSize: '0.95rem',
-                    }}
-                  >
-                    <span style={{ color: '#13281c', fontWeight: 700 }}>Total Amount:</span>
-                    <strong style={{ color: '#0d5c3a', fontSize: '1.15rem' }}>
-                      ₹{dailyTotal}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* CTAs */}
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px',
-                    width: '100%',
-                  }}
-                >
-                  {typeof onNavigateDashboard === 'function' && (
-                    <button
-                      type="button"
-                      onClick={onNavigateDashboard}
-                      style={{
-                        padding: '14px 24px',
-                        borderRadius: '14px',
-                        background: 'linear-gradient(135deg, #0d5c3a 0%, #177a4f 100%)',
-                        color: '#ffffff',
-                        fontSize: '0.95rem',
-                        fontWeight: 800,
-                        border: 'none',
-                        cursor: 'pointer',
-                        boxShadow: '0 8px 20px rgba(13, 92, 58, 0.25)',
-                      }}
-                    >
-                      View in My Dashboard
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOrderSuccessMsg('');
-                      onBack?.();
-                    }}
-                    style={{
-                      padding: '12px 24px',
-                      borderRadius: '14px',
-                      background: '#eef6f0',
-                      color: '#0d5c3a',
-                      fontSize: '0.92rem',
-                      fontWeight: 700,
-                      border: '1px solid #cbe3d2',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Browse More Farm Products
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Product Eyebrow & Title */}
-                <div style={{ marginBottom: '16px' }}>
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '0.78rem',
-                      fontWeight: 800,
-                      color: '#0d5c3a',
-                      letterSpacing: '0.8px',
-                      textTransform: 'uppercase',
-                      marginBottom: '6px',
-                    }}
-                  >
-                    <Sparkles size={13} color="#16a34a" />
-                    <span>DIRECT FARM DOORSTEP FRESH</span>
-                  </div>
-
-                  <h1
-                    style={{
-                      margin: '0 0 8px',
-                      fontSize: '1.95rem',
-                      fontWeight: 800,
-                      color: '#0d3822',
-                      letterSpacing: '-0.02em',
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {product.name}
-                  </h1>
-
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      fontSize: '0.84rem',
-                      color: '#657e6c',
-                    }}
-                  >
-                    <div style={{ display: 'flex', color: '#f59e0b' }}>
-                      <Star size={15} fill="#f59e0b" />
-                      <Star size={15} fill="#f59e0b" />
-                      <Star size={15} fill="#f59e0b" />
-                      <Star size={15} fill="#f59e0b" />
-                      <Star size={15} fill="#f59e0b" />
-                    </div>
-                    <strong style={{ color: '#13281c' }}>4.9</strong>
-                    <span>(1,240+ morning subscribers)</span>
-                  </div>
-                </div>
-
-                {/* Price Display Strip */}
-                <div
-                  style={{
-                    background: '#f4f9f5',
-                    borderRadius: '16px',
-                    padding: '14px 18px',
-                    border: '1px solid #dcebdf',
-                    display: 'flex',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginBottom: '22px',
-                    flexWrap: 'wrap',
-                    gap: '12px',
+                    gap: '4px',
+                    flexShrink: 0,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                    <span
-                      style={{
-                        fontSize: '2.1rem',
-                        fontWeight: 900,
-                        color: '#0d5c3a',
-                        lineHeight: 1,
-                      }}
-                    >
-                      ₹{unitPrice}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: '0.92rem',
-                        fontWeight: 600,
-                        color: '#55725f',
-                      }}
-                    >
-                      / {cleanUnit}
-                    </span>
-                  </div>
+                  <Navigation size={12} />
+                  <span>{selectedLat ? 'Change' : 'Use My Location'}</span>
+                </button>
+              </div>
 
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      background: '#e0f2e4',
-                      padding: '6px 12px',
-                      borderRadius: '999px',
-                      color: '#0a633b',
-                      fontSize: '0.82rem',
-                      fontWeight: 700,
-                    }}
-                  >
-                    <Check size={14} strokeWidth={3} />
-                    <span>Free Doorstep Delivery</span>
-                  </div>
-                </div>
+              {/* Complete Address Textarea */}
+              <div style={{ marginBottom: '10px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '11.5px',
+                    color: '#6b7280',
+                    marginBottom: '4px',
+                    fontWeight: 600,
+                  }}
+                >
+                  Complete Address (Flat / House No., Society, Street) <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="e.g. Doorstep Address, Hyderabad"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '12px',
+                    border: '1px solid #e5e7eb',
+                    background: '#f9fafb',
+                    fontSize: '13px',
+                    color: '#0c2340',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    resize: 'none',
+                  }}
+                />
+              </div>
 
-                {/* Frequency Selector: One-Time vs Daily Subscription */}
-                <div style={{ marginBottom: '22px' }}>
+              {/* Locality & Landmark Row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
                   <label
                     style={{
                       display: 'block',
-                      fontSize: '0.78rem',
-                      fontWeight: 800,
-                      color: '#496653',
-                      letterSpacing: '0.6px',
-                      textTransform: 'uppercase',
-                      marginBottom: '10px',
+                      fontSize: '11.5px',
+                      color: '#6b7280',
+                      marginBottom: '4px',
+                      fontWeight: 600,
                     }}
                   >
-                    CHOOSE ORDER FREQUENCY
+                    Locality / Area <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, 1fr)',
-                      gap: '12px',
-                    }}
-                  >
-                    {/* One-Time Order */}
-                    <button
-                      type="button"
-                      onClick={() => setBookingFreq('one_time')}
-                      style={{
-                        padding: '14px',
-                        borderRadius: '16px',
-                        border:
-                          bookingFreq === 'one_time'
-                            ? '2px solid #0d5c3a'
-                            : '1.5px solid #dce8df',
-                        background:
-                          bookingFreq === 'one_time' ? '#0d5c3a' : '#ffffff',
-                        color: bookingFreq === 'one_time' ? '#ffffff' : '#13281c',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        boxShadow:
-                          bookingFreq === 'one_time'
-                            ? '0 6px 18px rgba(13, 92, 58, 0.2)'
-                            : 'none',
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        <PackageCheck
-                          size={18}
-                          color={bookingFreq === 'one_time' ? '#ffffff' : '#0d5c3a'}
-                        />
-                        <strong style={{ fontSize: '0.94rem' }}>One-Time Order</strong>
-                      </div>
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: '0.75rem',
-                          color:
-                            bookingFreq === 'one_time'
-                              ? 'rgba(255, 255, 255, 0.85)'
-                              : '#617b6a',
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Single doorstep delivery tomorrow morning
-                      </p>
-                    </button>
-
-                    {/* Daily Subscription */}
-                    <button
-                      type="button"
-                      onClick={() => setBookingFreq('subscription')}
-                      style={{
-                        padding: '14px',
-                        borderRadius: '16px',
-                        border:
-                          bookingFreq === 'subscription'
-                            ? '2px solid #0d5c3a'
-                            : '1.5px solid #dce8df',
-                        background:
-                          bookingFreq === 'subscription' ? '#0d5c3a' : '#ffffff',
-                        color:
-                          bookingFreq === 'subscription' ? '#ffffff' : '#13281c',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 0.2s ease',
-                        boxShadow:
-                          bookingFreq === 'subscription'
-                            ? '0 6px 18px rgba(13, 92, 58, 0.2)'
-                            : 'none',
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          marginBottom: '4px',
-                        }}
-                      >
-                        <Calendar
-                          size={18}
-                          color={
-                            bookingFreq === 'subscription' ? '#ffffff' : '#0d5c3a'
-                          }
-                        />
-                        <strong style={{ fontSize: '0.94rem' }}>
-                          Daily Subscription
-                        </strong>
-                      </div>
-                      <p
-                        style={{
-                          margin: 0,
-                          fontSize: '0.75rem',
-                          color:
-                            bookingFreq === 'subscription'
-                              ? 'rgba(255, 255, 255, 0.85)'
-                              : '#617b6a',
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        Every morning before 6:30 AM · Pause anytime
-                      </p>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Selected Product Pill Info */}
-                <div
-                  style={{
-                    background: '#f8faf8',
-                    border: '1px solid #e1eee4',
-                    borderRadius: '14px',
-                    padding: '12px 16px',
-                    marginBottom: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        overflow: 'hidden',
-                        background: '#e9f2eb',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <img
-                        src={activeImage}
-                        alt=""
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#13281c' }}>
-                        {product.name}
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: '#688272' }}>
-                        ₹{unitPrice} per {cleanUnit}
-                      </div>
-                    </div>
-                  </div>
-
-                  <span
-                    style={{
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      background: '#e8f5ec',
-                      color: '#0d5c3a',
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                    }}
-                  >
-                    Farm Fresh
-                  </span>
-                </div>
-
-                {/* Delivery Date & Quantity Grid */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: '14px',
-                    marginBottom: '16px',
-                  }}
-                >
-                  {/* Delivery Date */}
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.76rem',
-                        fontWeight: 800,
-                        color: '#496653',
-                        letterSpacing: '0.5px',
-                        textTransform: 'uppercase',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      DELIVERY DATE
-                    </label>
-                    <input
-                      type="date"
-                      min={tomorrowStr}
-                      value={orderDate}
-                      onChange={(e) => setOrderDate(e.target.value)}
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={selectedArea}
+                      onChange={(e) => setSelectedArea(e.target.value)}
                       style={{
                         width: '100%',
-                        padding: '10px 14px',
+                        padding: '10px 28px 10px 10px',
                         borderRadius: '12px',
-                        border: '1.5px solid #d6e4d9',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                        color: '#13281c',
-                        background: '#ffffff',
-                        outline: 'none',
-                        boxSizing: 'border-box',
-                      }}
-                    />
-                  </div>
-
-                  {/* Quantity Stepper */}
-                  <div>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '0.76rem',
-                        fontWeight: 800,
-                        color: '#496653',
-                        letterSpacing: '0.5px',
-                        textTransform: 'uppercase',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      ORDER QUANTITY
-                    </label>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '4px 6px',
-                        borderRadius: '12px',
-                        border: '1.5px solid #d6e4d9',
-                        background: '#ffffff',
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setBookingQty((prev) => Math.max(1, prev - 1))}
-                        disabled={bookingQty <= 1}
-                        style={{
-                          width: '34px',
-                          height: '34px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          background: bookingQty <= 1 ? '#f1f5f2' : '#eaf4ed',
-                          color: bookingQty <= 1 ? '#a0b4a7' : '#0d5c3a',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: bookingQty <= 1 ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        <Minus size={15} />
-                      </button>
-
-                      <span
-                        style={{
-                          fontSize: '1.15rem',
-                          fontWeight: 800,
-                          color: '#0d5c3a',
-                        }}
-                      >
-                        {bookingQty}
-                      </span>
-
-                      <button
-                        type="button"
-                        onClick={() => setBookingQty((prev) => Math.min(20, prev + 1))}
-                        style={{
-                          width: '34px',
-                          height: '34px',
-                          borderRadius: '8px',
-                          border: 'none',
-                          background: '#0d5c3a',
-                          color: '#ffffff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Plus size={15} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preset Chips (Fixed string concatenation bug) */}
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '8px',
-                    marginBottom: '20px',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  {getPresetOptions().map((preset) => {
-                    const isSelected = bookingQty === preset.qty;
-                    return (
-                      <button
-                        key={preset.qty}
-                        type="button"
-                        onClick={() => setBookingQty(preset.qty)}
-                        style={{
-                          padding: '7px 14px',
-                          borderRadius: '999px',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
-                          border: isSelected
-                            ? '1.5px solid #0d5c3a'
-                            : '1px solid #d4e3d7',
-                          background: isSelected ? '#0d5c3a' : '#f2f8f4',
-                          color: isSelected ? '#ffffff' : '#31543d',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Customer Delivery Details or Address Preview */}
-                {customer && (
-                  <div
-                    style={{
-                      background: '#f8faf8',
-                      borderRadius: '14px',
-                      padding: '12px 16px',
-                      border: '1px solid #e1eee4',
-                      marginBottom: '20px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '7px',
-                        fontSize: '0.76rem',
-                        fontWeight: 800,
-                        color: '#496653',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      <MapPin size={13} color="#0d5c3a" />
-                      <span>DOORSTEP DROP DESTINATION</span>
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: '0.86rem',
+                        border: '1px solid #e5e7eb',
+                        background: '#f9fafb',
+                        fontSize: '12px',
                         fontWeight: 700,
-                        color: '#13281c',
-                        marginBottom: '3px',
-                      }}
-                    >
-                      {customer.name} · {customer.phone || customer.mobile || ''}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: '0.8rem',
-                        color: '#5b7564',
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {customer.address ||
-                        customer.locality ||
-                        'Registered doorstep delivery route'}
-                    </div>
-
-                    <input
-                      type="text"
-                      value={dropNotes}
-                      onChange={(e) => setDropNotes(e.target.value)}
-                      placeholder="Drop instructions (e.g. Ring bell, leave in bag)"
-                      style={{
-                        width: '100%',
-                        marginTop: '10px',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #d4e3d7',
-                        fontSize: '0.8rem',
-                        background: '#ffffff',
+                        color: '#0c2340',
                         boxSizing: 'border-box',
-                        color: '#13281c',
+                        outline: 'none',
+                        appearance: 'none',
                       }}
+                    >
+                      {AVAILABLE_AREAS.map((a) => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                      {!AVAILABLE_AREAS.includes(selectedArea) && (
+                        <option value={selectedArea}>{selectedArea}</option>
+                      )}
+                    </select>
+                    <ChevronDown
+                      size={14}
+                      color="#6b7280"
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
                     />
                   </div>
-                )}
+                </div>
 
-                {/* Price Breakdown & Confirm CTA */}
-                <div
-                  style={{
-                    borderTop: '1px solid #e6f0e8',
-                    paddingTop: '18px',
-                  }}
-                >
-                  <div
+                <div>
+                  <label
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: '14px',
-                      fontSize: '0.92rem',
+                      display: 'block',
+                      fontSize: '11.5px',
+                      color: '#6b7280',
+                      marginBottom: '4px',
+                      fontWeight: 600,
                     }}
                   >
-                    <div>
-                      <span style={{ color: '#5b7564' }}>
-                        {bookingQty} × ₹{unitPrice} ({product.name})
-                      </span>
-                      {bookingFreq === 'subscription' && (
-                        <div style={{ fontSize: '0.78rem', color: '#0d5c3a', fontWeight: 600 }}>
-                          Est. Monthly: ₹{monthlyTotal} (30 morning drops)
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div
-                        style={{
-                          fontSize: '1.45rem',
-                          fontWeight: 900,
-                          color: '#0d5c3a',
-                          lineHeight: 1,
-                        }}
-                      >
-                        ₹{dailyTotal}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700 }}>
-                        FREE Doorstep Drop
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Primary CTA Button */}
-                  <button
-                    type="button"
-                    onClick={handleConfirmOrder}
-                    disabled={isSubmitting}
+                    Landmark / Gate Access
+                  </label>
+                  <input
+                    type="text"
+                    value={landmark}
+                    onChange={(e) => setLandmark(e.target.value)}
+                    placeholder="e.g. Near Gate 2"
                     style={{
                       width: '100%',
-                      padding: '16px 24px',
-                      borderRadius: '16px',
-                      background: 'linear-gradient(135deg, #0d5c3a 0%, #16804d 100%)',
-                      color: '#ffffff',
-                      fontSize: '1.05rem',
-                      fontWeight: 800,
-                      border: 'none',
-                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '10px',
-                      boxShadow: '0 10px 26px -6px rgba(13, 92, 58, 0.4)',
-                      transition: 'all 0.2s ease',
-                      opacity: isSubmitting ? 0.75 : 1,
+                      padding: '10px',
+                      borderRadius: '12px',
+                      border: '1px solid #e5e7eb',
+                      background: '#f9fafb',
+                      fontSize: '12px',
+                      color: '#0c2340',
+                      boxSizing: 'border-box',
+                      outline: 'none',
                     }}
-                    onMouseEnter={(e) => {
-                      if (!isSubmitting) {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow =
-                          '0 14px 30px -6px rgba(13, 92, 58, 0.5)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow =
-                        '0 10px 26px -6px rgba(13, 92, 58, 0.4)';
-                    }}
-                  >
-                    {isSubmitting ? (
-                      <span>Scheduling Drop...</span>
-                    ) : bookingFreq === 'one_time' ? (
-                      <>
-                        <PackageCheck size={20} />
-                        <span>Confirm & Place Order • ₹{dailyTotal}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Calendar size={20} />
-                        <span>Start Daily Subscription • ₹{dailyTotal}/day</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* WhatsApp Secondary Ordering Option */}
-                  <div
-                    style={{
-                      textAlign: 'center',
-                      marginTop: '14px',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={openWhatsAppBooking}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#0d5c3a',
-                        fontSize: '0.84rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '4px 8px',
-                      }}
-                    >
-                      <MessageCircle size={15} color="#22c55e" />
-                      <span>Prefer WhatsApp? Book via WhatsApp →</span>
-                    </button>
-                  </div>
+                  />
                 </div>
-              </>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* 2.5 STICKY BOTTOM ACTION BAR (MOBILE ONLY) */}
-      {!orderSuccessMsg && (
-        <div className="pdp-mobile-bottom-bar">
-          <div className="pdp-mobile-bottom-price">
-            <div className="pdp-mobile-price-val">₹{dailyTotal}</div>
-            <div className="pdp-mobile-price-sub">
-              {bookingFreq === 'subscription' ? 'Daily Morning Drop' : 'One-Time Delivery'}
+              </div>
             </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleConfirmOrder}
-            disabled={isSubmitting}
-            className="pdp-mobile-cta-btn"
-          >
-            {isSubmitting ? (
-              <span>Scheduling...</span>
-            ) : bookingFreq === 'subscription' ? (
-              <span>Start Subscription →</span>
-            ) : (
-              <span>Confirm Order →</span>
-            )}
-          </button>
-        </div>
-      )}
 
-      {/* 3. LIGHTBOX FULL VIEW MODAL */}
-      {isLightboxOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.92)',
-            backdropFilter: 'blur(10px)',
-            zIndex: 99999,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            padding: '24px',
-          }}
-          onClick={() => setIsLightboxOpen(false)}
-        >
-          {/* Top Bar inside Lightbox */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              color: '#ffffff',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>{product.name}</span>
-              <span
+            {/* ── 5. CHOOSE ORDER FREQUENCY (One-Time vs Daily Drop - Screenshot 2) ── */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '16px',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div
                 style={{
-                  fontSize: '0.82rem',
-                  padding: '4px 10px',
-                  borderRadius: '999px',
-                  background: 'rgba(255, 255, 255, 0.2)',
+                  fontSize: '11px',
+                  fontWeight: 900,
+                  color: '#496653',
+                  letterSpacing: '0.6px',
+                  marginBottom: '12px',
                 }}
               >
-                {activeImgIndex + 1} / {productImages.length}
-              </span>
+                CHOOSE ORDER FREQUENCY
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {/* One-Time Card */}
+                <div
+                  onClick={() => setOrderFrequency('one_time')}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '16px',
+                    border: `1.5px solid ${orderFrequency === 'one_time' ? '#0d5c3a' : '#dce8df'}`,
+                    background: orderFrequency === 'one_time' ? '#0d5c3a' : '#ffffff',
+                    color: orderFrequency === 'one_time' ? '#ffffff' : '#0c2340',
+                    cursor: 'pointer',
+                    boxShadow: orderFrequency === 'one_time' ? '0 3px 8px rgba(13, 92, 58, 0.22)' : 'none',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <Truck size={17} color={orderFrequency === 'one_time' ? '#ffffff' : '#0d5c3a'} />
+                    <span style={{ fontSize: '13.5px', fontWeight: 900 }}>One-Time</span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: '11px',
+                      margin: '6px 0 0 0',
+                      color: orderFrequency === 'one_time' ? 'rgba(255,255,255,0.9)' : '#6b7280',
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    Single delivery tomorrow morning
+                  </p>
+                </div>
+
+                {/* Daily Drop Card */}
+                <div
+                  onClick={() => setOrderFrequency('subscription')}
+                  style={{
+                    padding: '14px',
+                    borderRadius: '16px',
+                    border: `1.5px solid ${orderFrequency === 'subscription' ? '#0d5c3a' : '#dce8df'}`,
+                    background: orderFrequency === 'subscription' ? '#0d5c3a' : '#ffffff',
+                    color: orderFrequency === 'subscription' ? '#ffffff' : '#0c2340',
+                    cursor: 'pointer',
+                    boxShadow: orderFrequency === 'subscription' ? '0 3px 8px rgba(13, 92, 58, 0.22)' : 'none',
+                    transition: 'all 0.18s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                    <Calendar size={17} color={orderFrequency === 'subscription' ? '#ffffff' : '#0d5c3a'} />
+                    <span style={{ fontSize: '13.5px', fontWeight: 900 }}>Daily Drop</span>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: '11px',
+                      margin: '6px 0 0 0',
+                      color: orderFrequency === 'subscription' ? 'rgba(255,255,255,0.9)' : '#6b7280',
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    Every morning by 6:30 AM · Pause anytime
+                  </p>
+                </div>
+              </div>
             </div>
 
+            {/* ── 6. QUANTITY, CURD & DELIVERY SCHEDULE (Screenshot 1 & 3) ── */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '18px',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '14px' }}>
+                <Calendar size={16} color="#0d5c3a" />
+                <span style={{ fontSize: '14px', fontWeight: 900, color: '#0c2340' }}>
+                  {orderFrequency === 'one_time' ? 'Single Order Selection' : 'Daily Morning Plan'}
+                </span>
+              </div>
+
+              {/* Milk Quantity Label */}
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#4b5563', marginBottom: '10px' }}>
+                {orderFrequency === 'one_time' ? 'Milk' : 'Daily Cow Milk'} Quantity: <strong>{milkQty}L</strong>
+              </div>
+
+              {/* Stepper + Quick Presets Row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                {/* Stepper */}
+                <div
+                  style={{
+                    height: '42px',
+                    borderRadius: '12px',
+                    background: '#f3f7f4',
+                    border: '1px solid #dce8df',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: '0 4px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (milkQty > 0.5) setMilkQty((prev) => Math.max(0.5, prev - 0.5));
+                    }}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      color: '#0d5c3a',
+                      padding: '6px',
+                    }}
+                  >
+                    <Minus size={16} strokeWidth={2.4} />
+                  </button>
+                  <span style={{ fontSize: '14px', fontWeight: 900, color: '#0c2340', padding: '0 8px' }}>
+                    {milkQty}L
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setMilkQty((prev) => Math.min(10, prev + 0.5))}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer',
+                      color: '#0d5c3a',
+                      padding: '6px',
+                    }}
+                  >
+                    <Plus size={16} strokeWidth={2.4} />
+                  </button>
+                </div>
+
+                {/* Presets */}
+                {[
+                  { val: 0.5, label: '500 ml' },
+                  { val: 1.0, label: '1 Litre', isPopular: true },
+                  { val: 1.5, label: '1.5 L' },
+                  { val: 2.0, label: '2 Litres' },
+                  { val: 3.0, label: '3 Litres' },
+                ].map((item) => {
+                  const isSel = Math.abs(milkQty - item.val) < 0.01;
+                  return (
+                    <div
+                      key={item.val}
+                      onClick={() => setMilkQty(item.val)}
+                      style={{
+                        position: 'relative',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        border: `1.5px solid ${isSel ? '#0d5c3a' : '#dce8df'}`,
+                        background: isSel ? '#0d5c3a' : '#f3f7f4',
+                        color: isSel ? '#ffffff' : '#374151',
+                        fontSize: '12px',
+                        fontWeight: isSel ? 900 : 700,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        marginTop: item.isPopular ? '6px' : '0',
+                      }}
+                    >
+                      {item.isPopular && (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: '-8px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: isSel ? '#ffffff' : '#0d5c3a',
+                            color: isSel ? '#0d5c3a' : '#ffffff',
+                            border: '1px solid #0d5c3a',
+                            borderRadius: '8px',
+                            padding: '1px 6px',
+                            fontSize: '8.5px',
+                            fontWeight: 900,
+                          }}
+                        >
+                          Popular
+                        </span>
+                      )}
+                      <span>{item.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Curd Add-on Section (Screenshot 1) */}
+              <div style={{ fontSize: '12px', fontWeight: 700, color: '#4b5563', margin: '18px 0 10px 0' }}>
+                {orderFrequency === 'one_time' ? 'Farm' : 'Daily Farm'} Curd (Dahi) Add-on: <strong>{curdQty === 0 ? 'None' : curdQty === 1000 ? '1 Kg' : `${curdQty}g`}</strong>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                {[
+                  { val: 0, label: 'None', price: '' },
+                  { val: 250, label: '250g', price: '+₹15' },
+                  { val: 500, label: '500g', price: '+₹30' },
+                  { val: 1000, label: '1 Kg', price: '+₹60' },
+                ].map((item) => {
+                  const isSel = curdQty === item.val;
+                  return (
+                    <div
+                      key={item.val}
+                      onClick={() => setCurdQty(item.val)}
+                      style={{
+                        padding: '10px 4px',
+                        borderRadius: '12px',
+                        border: `1.5px solid ${isSel ? '#f59e0b' : '#e2ebe5'}`,
+                        background: isSel ? '#fffbeb' : '#ffffff',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: isSel ? 900 : 700,
+                          color: isSel ? '#b45309' : '#374151',
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                      {item.price && (
+                        <span style={{ fontSize: '9.5px', color: '#b45309', fontWeight: 700 }}>
+                          {item.price}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Delivery Schedule (When Daily Drop is active - Screenshot 1) */}
+              {orderFrequency === 'subscription' && (
+                <>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#4b5563', margin: '18px 0 10px 0' }}>
+                    Delivery Schedule
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {/* Every Morning */}
+                    <div
+                      onClick={() => setSubscriptionSchedule('daily')}
+                      style={{
+                        position: 'relative',
+                        padding: '12px 6px',
+                        borderRadius: '12px',
+                        border: `1.8px solid ${subscriptionSchedule === 'daily' ? '#0d5c3a' : '#e2ebe5'}`,
+                        background: subscriptionSchedule === 'daily' ? '#e2f1ea' : '#f9fafb',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        marginTop: '7px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          background: '#0d5c3a',
+                          color: '#ffffff',
+                          borderRadius: '8px',
+                          padding: '1.5px 7px',
+                          fontSize: '8.5px',
+                          fontWeight: 900,
+                        }}
+                      >
+                        Best Value
+                      </span>
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: subscriptionSchedule === 'daily' ? 900 : 700,
+                          color: subscriptionSchedule === 'daily' ? '#0d5c3a' : '#0c2340',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <span>Every Morning</span>
+                        {subscriptionSchedule === 'daily' && <Check size={13} color="#0d5c3a" />}
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#6b7280' }}>Daily · 30 Drops</span>
+                    </div>
+
+                    {/* Alternate Days */}
+                    <div
+                      onClick={() => setSubscriptionSchedule('alternate')}
+                      style={{
+                        padding: '12px 6px',
+                        borderRadius: '12px',
+                        border: `1.8px solid ${subscriptionSchedule === 'alternate' ? '#0d5c3a' : '#e2ebe5'}`,
+                        background: subscriptionSchedule === 'alternate' ? '#e2f1ea' : '#f9fafb',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        marginTop: '7px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: subscriptionSchedule === 'alternate' ? 900 : 700,
+                          color: subscriptionSchedule === 'alternate' ? '#0d5c3a' : '#0c2340',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <span>Alternate Days</span>
+                        {subscriptionSchedule === 'alternate' && <Check size={13} color="#0d5c3a" />}
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#6b7280' }}>1 Day Gap · 15 Drops</span>
+                    </div>
+
+                    {/* Weekdays Only */}
+                    <div
+                      onClick={() => setSubscriptionSchedule('selected')}
+                      style={{
+                        padding: '12px 6px',
+                        borderRadius: '12px',
+                        border: `1.8px solid ${subscriptionSchedule === 'selected' ? '#0d5c3a' : '#e2ebe5'}`,
+                        background: subscriptionSchedule === 'selected' ? '#e2f1ea' : '#f9fafb',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        marginTop: '7px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: subscriptionSchedule === 'selected' ? 900 : 700,
+                          color: subscriptionSchedule === 'selected' ? '#0d5c3a' : '#0c2340',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <span>Weekdays Only</span>
+                        {subscriptionSchedule === 'selected' && <Check size={13} color="#0d5c3a" />}
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#6b7280' }}>Mon-Fri · 22 Drops</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ── 7. FARM FRESH PROMISE (Screenshot 2) ── */}
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '18px',
+                boxShadow: '0 3px 10px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 900,
+                  color: '#496653',
+                  letterSpacing: '0.6px',
+                  marginBottom: '12px',
+                }}
+              >
+                FARM FRESH PROMISE
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  'Delivered chilled to 4°C directly from farm to doorstep',
+                  'Packaged in sterilized, reusable eco-glass bottles',
+                  'Zero preservatives, zero oxytocin, unadulterated pure milk',
+                  'Free early-morning delivery before 6:30 AM across Hyderabad',
+                ].map((item, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <CheckCircle2 size={16} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span style={{ fontSize: '12px', color: '#4b5563', fontWeight: 500, lineHeight: 1.35 }}>
+                      {item}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── 8. PLAN CALCULATION SUMMARY (Screenshot 1) ── */}
+            <div
+              style={{
+                background: '#f9fafb',
+                borderRadius: '20px',
+                border: '1px solid #e5e7eb',
+                padding: '16px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#374151' }}>
+                  {orderFrequency === 'one_time' ? 'Single Order Calculation' : '30-Day Plan Calculation'}
+                </span>
+                <span
+                  style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    background: '#e2f1ea',
+                    color: '#0d5c3a',
+                    fontSize: '10.5px',
+                    fontWeight: 800,
+                  }}
+                >
+                  {orderFrequency === 'one_time' ? '1 Morning Drop' : `${dropsCount} Morning Drops`}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                <span>Milk ({milkQty}L × ₹{unitPrice}/L)</span>
+                <strong style={{ color: '#0c2340', fontWeight: 800 }}>
+                  ₹{Math.round(milkQty * unitPrice)}{orderFrequency === 'one_time' ? '' : '/drop'}
+                </strong>
+              </div>
+
+              {curdQty > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                  <span>Curd ({curdQty === 1000 ? '1 Kg' : `${curdQty}g`})</span>
+                  <strong style={{ color: '#0c2340', fontWeight: 800 }}>
+                    ₹{Math.round((curdQty / 500) * 30)}{orderFrequency === 'one_time' ? '' : '/drop'}
+                  </strong>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '10px' }}>
+                <span>Doorstep Drop (Before 6:30 AM)</span>
+                <strong style={{ color: '#16a34a', fontWeight: 900 }}>FREE</strong>
+              </div>
+
+              <div style={{ height: '1px', background: '#e5e7eb', margin: '10px 0' }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '12.5px', fontWeight: 800, color: '#0c2340' }}>
+                    {orderFrequency === 'one_time' ? 'Total Order Amount' : 'Total Prepaid Amount'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#6b7280' }}>
+                    {orderFrequency === 'one_time'
+                      ? `₹${totalAmount} for 1 single morning delivery`
+                      : `₹${dailyCost}/day × ${dropsCount} deliveries`}
+                  </div>
+                </div>
+                <div style={{ fontSize: '22px', fontWeight: 900, color: '#0d5c3a' }}>
+                  ₹{totalAmount}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </main>
+
+      {/* ── 9. FLOATING CONTACT US BUTTON (Screenshot 2) ── */}
+      {!isSuccess && (
+        <a
+          href="https://wa.me/919876543210?text=Hello%20Natural%20Milk%20Dairy!%20I%20have%20an%20order%20inquiry."
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position: 'fixed',
+            right: '18px',
+            bottom: '96px',
+            zIndex: 40,
+            background: '#059669',
+            color: '#ffffff',
+            borderRadius: '30px',
+            padding: '9px 14px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            textDecoration: 'none',
+            fontSize: '12px',
+            fontWeight: 800,
+            boxShadow: '0 3px 10px rgba(5, 150, 105, 0.35)',
+          }}
+        >
+          <PhoneCall size={15} />
+          <span>Contact Us</span>
+        </a>
+      )}
+
+      {/* ── 10. STICKY BOTTOM ACTION BAR (Screenshot 1 & 3) ── */}
+      {!isSuccess && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 45,
+            background: '#ffffff',
+            borderTop: '1px solid #e5e7eb',
+            padding: '12px 16px 18px 16px',
+            boxShadow: '0 -4px 16px rgba(0,0,0,0.06)',
+            boxSizing: 'border-box',
+          }}
+        >
+          <div style={{ maxWidth: '560px', margin: '0 auto', width: '100%' }}>
             <button
               type="button"
-              onClick={() => setIsLightboxOpen(false)}
+              disabled={isSubmitting}
+              onClick={handleConfirmOrder}
               style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.15)',
-                border: 'none',
+                width: '100%',
+                height: '50px',
+                borderRadius: '14px',
+                background: '#0d5c3a',
                 color: '#ffffff',
+                border: 'none',
+                fontWeight: 900,
+                fontSize: '15px',
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer',
+                gap: '8px',
+                letterSpacing: '0.2px',
               }}
             >
-              <X size={22} />
+              {isSubmitting ? (
+                <span>Connecting Payment Gateway...</span>
+              ) : (
+                <>
+                  <Lock size={17} />
+                  <span>
+                    {orderFrequency === 'one_time'
+                      ? `Pay ₹${totalAmount} · Place Order`
+                      : `Pay ₹${totalAmount} · Activate Delivery`}
+                  </span>
+                </>
+              )}
             </button>
-          </div>
 
-          {/* Center Image Stage */}
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              position: 'relative',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {productImages.length > 1 && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveImgIndex(
-                    (prev) => (prev - 1 + productImages.length) % productImages.length
-                  );
-                }}
-                style={{
-                  position: 'absolute',
-                  left: '12px',
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '50%',
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  zIndex: 10,
-                }}
-              >
-                <ChevronLeft size={24} />
-              </button>
-            )}
-
-            <img
-              src={activeImage}
-              alt={product.name}
-              style={{
-                maxWidth: '92vw',
-                maxHeight: '76vh',
-                objectFit: 'contain',
-                borderRadius: '16px',
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
-              }}
-            />
-
-            {productImages.length > 1 && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveImgIndex((prev) => (prev + 1) % productImages.length);
-                }}
-                style={{
-                  position: 'absolute',
-                  right: '12px',
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '50%',
-                  background: 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  color: '#ffffff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  zIndex: 10,
-                }}
-              >
-                <ChevronRight size={24} />
-              </button>
-            )}
-          </div>
-
-          {/* Lightbox Thumbnails */}
-          {productImages.length > 1 && (
             <div
               style={{
-                display: 'flex',
-                justifyContent: 'center',
-                gap: '10px',
-                paddingTop: '10px',
+                textAlign: 'center',
+                fontSize: '10px',
+                color: '#9ca3af',
+                fontWeight: 600,
+                marginTop: '8px',
               }}
-              onClick={(e) => e.stopPropagation()}
             >
-              {productImages.map((thumbUrl, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setActiveImgIndex(idx)}
-                  style={{
-                    width: '52px',
-                    height: '52px',
-                    borderRadius: '10px',
-                    overflow: 'hidden',
-                    padding: 0,
-                    border:
-                      activeImgIndex === idx
-                        ? '2.5px solid #22c55e'
-                        : '1.5px solid rgba(255, 255, 255, 0.3)',
-                    background: '#000000',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <img
-                    src={thumbUrl}
-                    alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </button>
-              ))}
+              🔒 256-Bit SSL Encrypted • Secure Checkout • Money-back Guarantee
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

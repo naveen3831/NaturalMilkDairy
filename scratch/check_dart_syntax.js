@@ -32,3 +32,4 @@ console.log("home_screen.dart:", checkDartFile('mobile/lib/screens/home/home_scr
 console.log("subscription_details_screen.dart:", checkDartFile('mobile/lib/screens/home/subscription_details_screen.dart'));
 console.log("product_card.dart:", checkDartFile('mobile/lib/screens/home/widgets/product_card.dart'));
 console.log("product_details_screen.dart:", checkDartFile('mobile/lib/screens/home/product_details_screen.dart'));
+console.log("subscribe_checkout_screen.dart:", checkDartFile('mobile/lib/screens/home/subscribe_checkout_screen.dart'));

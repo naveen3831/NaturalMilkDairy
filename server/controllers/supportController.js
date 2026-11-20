@@ -10,7 +10,7 @@ const defaultSeedTickets = [
     senderId: 'usr_boy_1',
     senderName: 'Naveen Kumar',
     senderPhone: '9701878789',
-    senderEmail: 'naveenkumar970100@gmail.com',
+    senderEmail: 'partner@naturalmilkdairy.com',
     senderArea: 'Madhapur',
     senderAddress: 'Madhapur Farm Dispatch Depot',
     category: 'Route & Delivery',

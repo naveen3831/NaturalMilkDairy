@@ -755,6 +755,16 @@ const updateCustomer = async (req, res) => {
       );
     }
 
+    if (req.body.password && !isDriver && updated.email) {
+      const { sendPasswordResetSuccessEmail } = require('../services/emailService');
+      sendPasswordResetSuccessEmail({
+        to: updated.email,
+        name: updated.name,
+        role: 'customer',
+        changeType: 'change',
+      }).catch((err) => console.warn('Customer password change email failed:', err.message));
+    }
+
     await recordAudit(
       'Customer Updated',
       req.user.name || req.user.role,

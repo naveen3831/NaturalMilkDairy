@@ -64,22 +64,15 @@ class LuxuryProductCard extends StatelessWidget {
                 child: SizedBox(
                   height: 230,
                   width: double.infinity,
-                  child: Image.network(
-                    displayImageUrl,
+                  child: FadeInImage(
+                    placeholder: AssetImage(
+                      ProductModel.resolveAssetFallback(product.name, product.category),
+                    ),
+                    image: NetworkImage(displayImageUrl),
                     fit: BoxFit.cover,
-                    loadingBuilder: (ctx, child, progress) {
-                      if (progress == null) return child;
-                      return Container(
-                        color: const Color(0xFFF0F5F2),
-                        child: const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: Color(0xFF0D5C3A),
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (ctx, err, stack) => Image.asset(
+                    placeholderFit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    imageErrorBuilder: (ctx, err, stack) => Image.asset(
                       ProductModel.resolveAssetFallback(product.name, product.category),
                       fit: BoxFit.cover,
                       errorBuilder: (c, e, s) => Container(

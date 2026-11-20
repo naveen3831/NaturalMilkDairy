@@ -151,6 +151,11 @@ export async function startSubscriptionPayment(params = {}) {
   bodyPayload.name = finalName;
   if (finalEmail) bodyPayload.email = finalEmail;
 
+  const resolvedLat = params.latitude !== undefined ? params.latitude : (planPayload?.latitude !== undefined ? planPayload.latitude : user?.latitude);
+  const resolvedLng = params.longitude !== undefined ? params.longitude : (planPayload?.longitude !== undefined ? planPayload.longitude : user?.longitude);
+  if (resolvedLat !== undefined && resolvedLat !== null) bodyPayload.latitude = Number(resolvedLat);
+  if (resolvedLng !== undefined && resolvedLng !== null) bodyPayload.longitude = Number(resolvedLng);
+
   // 1. Create order on server
   const orderRes = await api.post('/api/customers/me/subscription/order', bodyPayload);
   const orderData = await orderRes.json();

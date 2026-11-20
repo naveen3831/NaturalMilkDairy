@@ -2,20 +2,51 @@ require('dotenv').config();
 const nodemailer = require('nodemailer');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 
-const COMPANY_LOGO_URL = 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1791460679/natural-milk-dairy/branding/logo.jpg';
-const localLogoPath = path.resolve(__dirname, '../../client/public/logo.png');
-const hasLocalLogo = fs.existsSync(localLogoPath);
+// Official Natural Milk Dairy Logo hosted on Cloudinary only (no local image files on disk)
+const CLOUDINARY_LOGO_URL =
+  'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545619/natural-milk-dairy/assets/logo.jpg';
 const LOGO_CID = 'company-logo@naturalmilkdairy';
+
+let cachedLogoBuffer = null;
+
+/**
+ * Fetch and memory-cache the official Cloudinary logo buffer
+ * Strictly NO files stored on local disk — all images stored in Cloudinary only.
+ */
+const getCloudinaryLogoBuffer = async () => {
+  if (cachedLogoBuffer) return cachedLogoBuffer;
+  return new Promise((resolve) => {
+    try {
+      https
+        .get(CLOUDINARY_LOGO_URL, (res) => {
+          if (res.statusCode !== 200) return resolve(null);
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            cachedLogoBuffer = Buffer.concat(chunks);
+            resolve(cachedLogoBuffer);
+          });
+        })
+        .on('error', () => resolve(null));
+    } catch (_) {
+      resolve(null);
+    }
+  });
+};
 
 /**
  * Configure Nodemailer transporter with dual-strategy fallback (Gmail service + Port 587)
  */
-const createTransporter = (useFallbackPort = false) => {
-  const user = process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
-  let pass = (process.env.SMTP_PASS || 'ftvdaytualgcpjiz').replace(/\s+/g, '');
-  if (!pass || pass === 'whflujkotaqkxtxe') {
-    pass = 'ftvdaytualgcpjiz';
+const createTransporter = (useFallbackPort = false, explicitPass = null) => {
+  const user = (process.env.SMTP_USER || 'naveenkumar970100@gmail.com').trim();
+  let pass = explicitPass;
+  if (!pass) {
+    const envPass = (process.env.SMTP_PASS || '').toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
+    pass = envPass && envPass !== 'whflujkotaqkxtxe' ? envPass : 'ftvdaytualgcpjiz';
+  } else {
+    pass = pass.toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
   }
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = useFallbackPort ? 587 : (Number(process.env.SMTP_PORT) || 465);
@@ -91,7 +122,7 @@ const buildCredentialsEmailHtml = ({
   ctaUrl,
   accentColor = '#0d5c3a',
 }) => {
-  const logoSrc = hasLocalLogo ? `cid:${LOGO_CID}` : COMPANY_LOGO_URL;
+  const logoSrc = `cid:${LOGO_CID}`;
 
   const rowsHtml = credentialRows
     .map(
@@ -193,9 +224,28 @@ const buildCredentialsEmailHtml = ({
   `;
 };
 
-const sendCredentialsMail = async ({ to, subject, text, html }) => {
+const sendCredentialsMail = async ({ to, subject, text, html, attachments = [] }) => {
   const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
   if (!to) return { success: false, message: 'No recipient email provided' };
+
+  const finalAttachments = Array.isArray(attachments) ? [...attachments] : [];
+
+  // Strictly source logo from Cloudinary into memory buffer (no local disk files)
+  const logoBuffer = await getCloudinaryLogoBuffer();
+  if (logoBuffer && !finalAttachments.some((a) => a.cid === LOGO_CID)) {
+    finalAttachments.push({
+      filename: 'logo.jpg',
+      content: logoBuffer,
+      cid: LOGO_CID,
+      contentDisposition: 'inline',
+    });
+  }
+
+  // Fallback to direct Cloudinary URL if buffer is unavailable
+  let finalHtml = html;
+  if (!logoBuffer) {
+    finalHtml = html.replace(new RegExp(`cid:${LOGO_CID}`, 'g'), CLOUDINARY_LOGO_URL);
+  }
 
   const mailOptions = {
     from: `"Natural Milk Dairy" <${fromEmail}>`,
@@ -203,33 +253,47 @@ const sendCredentialsMail = async ({ to, subject, text, html }) => {
     to,
     subject,
     text,
-    html,
+    html: finalHtml,
     headers: {
       'X-Priority': '1',
       Importance: 'high',
     },
+    attachments: finalAttachments,
   };
 
-  // Attempt 1: Default Gmail service connection
-  try {
-    const transporter = createTransporter(false);
-    if (!transporter) return { success: false, message: 'SMTP not configured' };
-    const info = await transporter.sendMail(mailOptions);
-    return { success: true, messageId: info.messageId };
-  } catch (primaryErr) {
-    console.warn(`⚠️ Primary SMTP delivery to ${to} failed (${primaryErr.message}). Retrying with STARTTLS port 587...`);
-    // Attempt 2: Fallback to Port 587 STARTTLS
-    try {
-      const fallbackTransporter = createTransporter(true);
-      if (!fallbackTransporter) return { success: false, message: 'Fallback SMTP not configured' };
-      const fallbackInfo = await fallbackTransporter.sendMail(mailOptions);
-      console.log(`✅ Fallback SMTP delivery succeeded for ${to} [ID: ${fallbackInfo.messageId}]`);
-      return { success: true, messageId: fallbackInfo.messageId };
-    } catch (fallbackErr) {
-      console.error(`❌ All SMTP delivery attempts failed to ${to}:`, fallbackErr.message);
-      return { success: false, error: fallbackErr.message };
+  // Build ordered list of candidate credentials to try:
+  // 1. Explicit active App Password ftvdaytualgcpjiz
+  // 2. process.env.SMTP_PASS from server environment
+  // 3. whflujkotaqkxtxe (legacy fallback)
+  const envPass = (process.env.SMTP_PASS || '').toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
+  const passwordCandidates = [
+    'ftvdaytualgcpjiz',
+    ...(envPass && envPass !== 'ftvdaytualgcpjiz' && envPass !== 'whflujkotaqkxtxe' ? [envPass] : []),
+    'whflujkotaqkxtxe',
+  ];
+
+  let lastError = null;
+
+  for (const candidatePass of passwordCandidates) {
+    for (const useFallbackPort of [false, true]) {
+      try {
+        const transporter = createTransporter(useFallbackPort, candidatePass);
+        if (!transporter) continue;
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`✅ SMTP email delivered successfully to ${to} [ID: ${info.messageId}, Port: ${useFallbackPort ? 587 : 465}]`);
+        return { success: true, messageId: info.messageId };
+      } catch (err) {
+        lastError = err;
+        console.warn(`⚠️ SMTP attempt failed (port: ${useFallbackPort ? 587 : 'gmail'}, pass: ${candidatePass.slice(0, 3)}***):`, err.message);
+        if (!err.message.includes('535') && !err.message.includes('BadCredentials') && !err.message.includes('Invalid login')) {
+          break;
+        }
+      }
     }
   }
+
+  console.error(`❌ All SMTP delivery attempts failed to ${to}:`, lastError?.message);
+  return { success: false, error: lastError?.message || 'SMTP delivery failed' };
 };
 
 /**
@@ -402,7 +466,7 @@ const sendPartnerCredentialsEmail = async (partner, password) => {
 const sendPasswordResetOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) => {
   if (!to) return { success: false, message: 'No recipient email provided' };
 
-  const logoSrc = hasLocalLogo ? `cid:${LOGO_CID}` : COMPANY_LOGO_URL;
+  const logoSrc = `cid:${LOGO_CID}`;
   const displayName = name ? escapeHtml(name) : 'Valued Customer';
   const cleanOtp = escapeHtml(otp);
 
@@ -513,10 +577,178 @@ const sendPasswordResetOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 
   return res;
 };
 
+/**
+ * Send confirmation email after password is successfully reset / changed
+ * @param {object} params - { to, name, role, changeType }
+ */
+const sendPasswordResetSuccessEmail = async ({ to, name, role = 'customer', changeType = 'reset' }) => {
+  if (!to) return { success: false, message: 'No recipient email provided' };
+
+  const logoSrc = `cid:${LOGO_CID}`;
+  const displayName = name ? escapeHtml(name) : 'Valued User';
+  const roleDisplay =
+    role === 'admin'
+      ? 'Administrator'
+      : role === 'delivery_boy'
+      ? 'Delivery Partner'
+      : 'Customer';
+
+  const now = new Date();
+  const formattedDate = now.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  const loginUrl = process.env.CLIENT_URL || 'https://naturalmilkdairy.speshway.site';
+  const actionWord = changeType === 'change' ? 'Updated' : 'Reset';
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Natural Milk Dairy - Password Successfully ${actionWord}</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f3; padding: 24px 12px;">
+        <tr>
+          <td align="center">
+            <table width="100%" style="max-width: 540px; background-color: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2ece5;">
+              
+              <!-- Brand Header with Logo -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%); padding: 26px 20px; text-align: center;">
+                  <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto 10px auto;">
+                    <tr>
+                      <td align="center" style="width: 72px; height: 72px; border-radius: 50%; background-color: #ffffff; border: 2px solid #bbf7d0; padding: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.18);">
+                        <img src="${logoSrc}" alt="Natural Milk Dairy" width="62" height="62" style="width: 62px; height: 62px; border-radius: 50%; display: block; object-fit: contain; margin: 0 auto;" />
+                      </td>
+                    </tr>
+                  </table>
+                  <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -0.3px;">Natural Milk Dairy</h1>
+                  <p style="color: #a7f3d0; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 0.8px;">Account Security Confirmation</p>
+                </td>
+              </tr>
+
+              <!-- Email Body -->
+              <tr>
+                <td style="padding: 28px 24px;">
+                  <!-- Success Banner -->
+                  <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 14px 16px; margin-bottom: 22px; text-align: center;">
+                    <div style="font-size: 15px; font-weight: 800; color: #065f46;">
+                      ✅ Password Successfully ${actionWord}
+                    </div>
+                  </div>
+
+                  <h2 style="font-size: 17px; font-weight: 800; color: #0f172a; margin: 0 0 12px 0;">Hello ${displayName},</h2>
+                  <p style="font-size: 14px; color: #475569; line-height: 1.55; margin: 0 0 20px 0;">
+                    This is an official security confirmation that the password for your <strong>Natural Milk Dairy</strong> account was successfully ${actionWord.toLowerCase()} on <strong>${formattedDate} (IST)</strong>.
+                  </p>
+
+                  <!-- Account Details Table -->
+                  <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e2ece5; border-radius: 10px; overflow: hidden; margin-bottom: 22px;">
+                    <tr style="background-color: #f8faf9; border-bottom: 1px solid #e2ece5;">
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #475569; width: 35%;">Account Email</td>
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #0f172a;">${escapeHtml(to)}</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #e2ece5;">
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #475569;">Account Role</td>
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 800; color: #0d5c3a;">${escapeHtml(roleDisplay)}</td>
+                    </tr>
+                    <tr style="background-color: #f8faf9;">
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 700; color: #475569;">Updated At</td>
+                      <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #334155;">${formattedDate} (IST)</td>
+                    </tr>
+                  </table>
+
+                  <!-- Security Advisory Card -->
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; margin-bottom: 24px;">
+                    <tr>
+                      <td style="padding: 14px 16px; font-size: 13px; color: #92400e; line-height: 1.55;">
+                        🛡️ <strong>Didn't make this change?</strong><br>
+                        If you did not change your password, please contact our customer care immediately at <strong>+91 98765 43210</strong> or reply directly to this email to lock and secure your account.
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Login CTA Button -->
+                  <div style="text-align: center; margin-bottom: 18px;">
+                    <a href="${loginUrl}" target="_blank" style="background-color: #0d5c3a; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 800; padding: 13px 32px; border-radius: 8px; display: inline-block;">
+                      Sign In to Your Account &rarr;
+                    </a>
+                  </div>
+
+                  <p style="font-size: 12.5px; color: #64748b; line-height: 1.5; margin: 0; text-align: center;">
+                    Your account security is our top priority.
+                  </p>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 24px; text-align: center;">
+                  <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                    Natural Milk Dairy — Pure • Fresh • Untampered
+                  </div>
+                  <div style="font-size: 11px; color: #64748b;">
+                    Need assistance? Call or WhatsApp our customer care at <strong>+91 98765 43210</strong>
+                  </div>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const plainText = [
+    `NATURAL MILK DAIRY - PASSWORD SUCCESSFULLY ${actionWord.toUpperCase()}`,
+    '==================================================',
+    `Hello ${name || 'Customer'},`,
+    '',
+    `This is confirmation that your Natural Milk Dairy account password was successfully ${actionWord.toLowerCase()} on ${formattedDate} (IST).`,
+    `Account: ${to}`,
+    `Role: ${roleDisplay}`,
+    '',
+    'If you made this change, no further action is required.',
+    'If you DID NOT make this change, please contact customer care immediately at +91 98765 43210.',
+    '',
+    `Sign In: ${loginUrl}`,
+    '',
+    'Natural Milk Dairy Support Team',
+    '+91 98765 43210',
+  ].join('\n');
+
+  const res = await sendCredentialsMail({
+    to,
+    subject: `Natural Milk Dairy — Your Password Has Been Successfully ${actionWord}`,
+    text: plainText,
+    html: htmlContent,
+  });
+
+  if (res.success) {
+    console.log(`✅ Password ${actionWord.toLowerCase()} confirmation email delivered to ${to} [ID: ${res.messageId}]`);
+  }
+  return res;
+};
+
 module.exports = {
   createTransporter,
   verifyEmailConnection,
+  getCloudinaryLogoBuffer,
+  CLOUDINARY_LOGO_URL,
   sendCustomerCredentialsEmail,
   sendPartnerCredentialsEmail,
   sendPasswordResetOtpEmail,
+  sendPasswordResetSuccessEmail,
+  sendPasswordUpdatedEmail: sendPasswordResetSuccessEmail,
 };

@@ -64,7 +64,7 @@ const customerSchema = new mongoose.Schema({
       unit: { type: String, default: 'pack' },
       price: { type: Number, default: 0 },
     }],
-    frequency: { type: String, enum: ['daily', 'alternate', 'selected', 'custom'], default: 'daily' },
+    frequency: { type: String, enum: ['daily', 'alternate', 'selected', 'custom', 'once', 'single'], default: 'daily' },
     deliveryDays: [{ type: String }], // ['Mon', 'Wed', 'Fri']
     deliveryBoyId: { type: String, default: '' },
     deliveryBoyName: { type: String, default: '' },
@@ -72,7 +72,7 @@ const customerSchema = new mongoose.Schema({
   },
   paymentInfo: {
     paymentType: { type: String, enum: ['credit', 'prepaid', 'cod'], default: 'credit' },
-    paymentCycle: { type: String, enum: ['daily', 'weekly', 'monthly'], default: 'monthly' },
+    paymentCycle: { type: String, enum: ['daily', 'weekly', 'monthly', 'once'], default: 'monthly' },
   },
   currentBalance: { type: Number, default: 0 }, // >0 pending credit, <0 advance
   createdBy: { type: String, enum: ['admin', 'driver', 'self'], default: 'admin' },

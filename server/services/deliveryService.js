@@ -103,6 +103,10 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
         shouldDeliver = dayNumber % 2 === 0;
       } else if (plan.frequency === 'selected' || plan.frequency === 'custom') {
         shouldDeliver = Array.isArray(plan.deliveryDays) && plan.deliveryDays.includes(dayName);
+      } else if (plan.frequency === 'once' || plan.frequency === 'single') {
+        const subStart = subscription?.startDate ? formatDate(new Date(subscription.startDate)) : '';
+        const subEnd = subscription?.endDate ? formatDate(new Date(subscription.endDate)) : '';
+        shouldDeliver = (dateStr === subStart) || (dateStr === subEnd) || (!subStart && dateStr === formatDate());
       }
 
       if (!shouldDeliver) continue;

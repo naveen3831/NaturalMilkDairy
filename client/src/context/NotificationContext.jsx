@@ -357,6 +357,7 @@ export function NotificationProvider({ children }) {
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', (payload) => {
       fetchNotifications();
       if (payload && (payload.status === 'delivered' || payload.type === 'DELIVERY_COMPLETED')) {
+        if (currentRole === 'customer' && !isNotificationForUser(payload)) return;
         const title = payload.title || '🥛 Delivery Completed!';
         const msg = payload.message || 'Fresh morning milk delivered to doorstep. Photo proof verified.';
         setLatestToast({ title, message: msg, type: 'delivery_completed', ...payload });
@@ -366,6 +367,7 @@ export function NotificationProvider({ children }) {
     const unsubCompleted = wsSubscribe('DELIVERY_COMPLETED', (payload) => {
       fetchNotifications();
       if (payload) {
+        if (currentRole === 'customer' && !isNotificationForUser(payload)) return;
         const title = payload.title || '🥛 Delivery Completed!';
         const msg = payload.message || 'Fresh morning milk delivered to doorstep. Photo proof verified.';
         setLatestToast({ title, message: msg, type: 'delivery_completed', ...payload });

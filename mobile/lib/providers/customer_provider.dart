@@ -29,6 +29,7 @@ class CustomerProvider extends ChangeNotifier {
 
   Map<String, dynamic>? get customerData => _customerData;
   Map<String, dynamic>? get customer => _customerData;
+  Map<String, dynamic>? get profile => _customerData;
   List<Map<String, dynamic>> get deliveries => _deliveries;
   List<Map<String, dynamic>> get payments => _payments;
   List<Map<String, dynamic>> get subscriptions => _subscriptions;
@@ -473,6 +474,8 @@ class CustomerProvider extends ChangeNotifier {
     String landmark = '',
     String mobile = '',
     String customerName = '',
+    num? latitude,
+    num? longitude,
     List<Map<String, dynamic>> extraProducts = const [],
   }) async {
     _isLoading = true;
@@ -493,6 +496,8 @@ class CustomerProvider extends ChangeNotifier {
         'address': address,
         'area': area,
         'landmark': landmark,
+        'latitude': ?latitude,
+        'longitude': ?longitude,
         if (effectiveMobile.isNotEmpty) 'mobile': effectiveMobile,
         if (effectiveName.isNotEmpty) 'customerName': effectiveName,
       };

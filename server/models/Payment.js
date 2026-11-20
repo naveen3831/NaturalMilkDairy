@@ -5,7 +5,7 @@ const paymentSchema = new mongoose.Schema({
   customerName: { type: String, required: true },
   amount: { type: Number, required: true },
   paymentMethod: { type: String, enum: ['cash', 'upi', 'bank_transfer', 'other', 'razorpay'], default: 'cash' },
-  purpose: { type: String, enum: ['ledger', 'subscription'], default: 'ledger' },
+  purpose: { type: String, enum: ['ledger', 'subscription', 'subscription_upgrade', 'subscription_extension', 'one_time_order'], default: 'ledger' },
   subscriptionId: { type: String, default: '' },
   gatewayOrderId: { type: String, default: '' },
   gatewayPaymentId: { type: String, default: undefined, unique: true, sparse: true },

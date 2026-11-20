@@ -328,6 +328,7 @@ export default function SubscriptionPage({ setActiveTab }) {
     const planMilkQty = isCombo ? 1 : (milkQuantity || 1);
     const planCurdQty = isCombo ? 500 : 0;
 
+    const isOnce = (selectedFrequency || 'daily') === 'once';
     const payload = {
       address: user?.address || 'Doorstep drop',
       area: user?.area || user?.assignedArea || 'Madhupur',
@@ -338,6 +339,7 @@ export default function SubscriptionPage({ setActiveTab }) {
       milkQty: planMilkQty,
       curdQty: planCurdQty,
       frequency: selectedFrequency || 'daily',
+      purpose: isOnce ? 'one_time' : 'new',
       deliveryDays: [],
     };
 
@@ -1030,7 +1032,7 @@ export default function SubscriptionPage({ setActiveTab }) {
 
   // Mobile Subscription Overview Screen (Redesigned Clean Mobile Experience)
   const renderMobileOverview = () => {
-    const monthlyDeliveries = selectedFrequency === 'alternate' ? 15 : 30;
+    const monthlyDeliveries = selectedFrequency === 'once' ? 1 : selectedFrequency === 'alternate' ? 15 : 30;
     const activeQty = milkQuantity || 1;
 
     return (
@@ -1412,6 +1414,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                   {[
                     { id: 'daily', label: 'Daily' },
                     { id: 'alternate', label: 'Alternate' },
+                    { id: 'once', label: 'One-Time' },
                   ].map((freq) => {
                     const active = selectedFrequency === freq.id;
                     return (
@@ -1600,7 +1603,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                             boxShadow: isSelected ? '0 3px 10px rgba(13, 92, 58, 0.2)' : 'none',
                           }}
                         >
-                          <span>Start {selectedFrequency === 'alternate' ? 'Alternate-Day' : 'Daily'} Plan ({activeQty}L)</span>
+                          <span>Start {selectedFrequency === 'once' ? 'One-Time' : selectedFrequency === 'alternate' ? 'Alternate-Day' : 'Daily'} {selectedFrequency === 'once' ? 'Order' : 'Plan'} ({activeQty}L)</span>
                           <ChevronRight size={14} />
                         </button>
                       </div>

@@ -153,26 +153,15 @@ class DairyCollectionCard extends StatelessWidget {
                 children: [
                   AspectRatio(
                     aspectRatio: 1.25,
-                    child: Image.network(
-                      displayImageUrl,
+                    child: FadeInImage(
+                      placeholder: AssetImage(
+                        ProductModel.resolveAssetFallback(product.name, product.category),
+                      ),
+                      image: NetworkImage(displayImageUrl),
                       fit: BoxFit.cover,
-                      loadingBuilder: (ctx, child, progress) {
-                        if (progress == null) return child;
-                        return Container(
-                          color: const Color(0xFFF3F7F5),
-                          child: const Center(
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF059669),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (ctx, err, stack) => Image.asset(
+                      placeholderFit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 150),
+                      imageErrorBuilder: (ctx, err, stack) => Image.asset(
                         ProductModel.resolveAssetFallback(product.name, product.category),
                         fit: BoxFit.cover,
                         errorBuilder: (c, e, s) => Container(

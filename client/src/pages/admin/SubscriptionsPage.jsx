@@ -233,10 +233,13 @@ export default function SubscriptionsPage({ onSignIn }) {
         const customer = subscription.customer || {};
         const payment = subscription.payment;
         const plan = subscription.plan || {};
+        const isOneTime = subscription.purpose === 'one_time' || plan.frequency === 'once' || plan.frequency === 'single';
         const planItems = [];
         if (plan.milkQty) planItems.push(`${plan.milkQty} L milk`);
         if (plan.curdQty) planItems.push(`${plan.curdQty} g curd`);
-        const schedule = plan.frequency === 'selected'
+        const schedule = isOneTime
+          ? 'One-Time Delivery (1 Drop)'
+          : plan.frequency === 'selected'
           ? `${titleCase(plan.frequency)}: ${(plan.deliveryDays || []).join(', ')}`
           : titleCase(plan.frequency || '—');
         const status = statusStyle(subscription.status);
@@ -248,6 +251,11 @@ export default function SubscriptionsPage({ onSignIn }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                   <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{customer.name || subscription.customerName || 'Customer'}</strong>
                   <span style={{ padding: '4px 9px', borderRadius: 20, background: status.background, color: status.color, fontSize: '0.72rem', fontWeight: 750 }}>{titleCase(subscription.status)}</span>
+                  {isOneTime && (
+                    <span style={{ padding: '3px 8px', borderRadius: 20, background: '#fef3c7', color: '#92400e', fontSize: '0.70rem', fontWeight: 800 }}>
+                      ⚡ One-Time Order
+                    </span>
+                  )}
                   <span style={{ color: '#64748b', fontSize: '0.76rem' }}>{customer.customerId || subscription.customerId}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 7, color: '#64748b', fontSize: '0.8rem' }}>
@@ -264,7 +272,7 @@ export default function SubscriptionsPage({ onSignIn }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '14px 18px', paddingTop: 14, borderTop: '1px solid #f1f5f9' }}>
               <Detail label="Plan" value={planItems.length ? planItems.join(' + ') : '—'} />
               <Detail label="Delivery schedule" value={schedule} />
-              <Detail label="Subscription period" value={`${formatDate(subscription.startDate)} – ${formatDate(subscription.endDate)}`} />
+              <Detail label="Subscription period" value={isOneTime ? `${formatDate(subscription.startDate)} (Single Drop)` : `${formatDate(subscription.startDate)} – ${formatDate(subscription.endDate)}`} />
               <Detail label="Email" value={customer.email} />
             </div>
 

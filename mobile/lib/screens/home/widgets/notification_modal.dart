@@ -89,6 +89,10 @@ class _NotificationModalState extends State<NotificationModal> {
       } else if (type == 'DELIVERY_COMPLETED' || type == 'DELIVERY_UPDATED') {
         // Immediate local injection for zero-latency delivery notification
         final payload = event['payload'] is Map ? Map<String, dynamic>.from(event['payload'] as Map) : event;
+        // Strictly ensure this delivery belongs to THIS logged-in customer only
+        if (!_isNotificationForCurrentCustomer(payload)) {
+          return;
+        }
         final custName = payload['customerName']?.toString() ?? 'You';
         final milk = payload['actualMilk'] ?? payload['plannedMilk'] ?? payload['milk'] ?? 1;
         final curd = payload['actualCurd'] ?? payload['curd'] ?? 0;
@@ -189,6 +193,21 @@ class _NotificationModalState extends State<NotificationModal> {
       if (itemPhone.isNotEmpty && myIds.contains(itemPhone)) return true;
       final itemCid = (item['customerId']?.toString() ?? '').toLowerCase().trim();
       if (itemCid.isNotEmpty && myIds.contains(itemCid)) return true;
+
+      // Personal notifications (deliveries, payments, orders) MUST strictly match this customer
+      final notifType = (item['type']?.toString() ?? '').toLowerCase().trim();
+      final isPersonalType = notifType == 'delivery_completed' ||
+          notifType == 'delivery_assigned' ||
+          notifType == 'payment_recorded' ||
+          notifType == 'order_updated';
+
+      if (isPersonalType) {
+        if (myIds.isNotEmpty) {
+          if (recipId.isNotEmpty && myIds.contains(recipId)) return true;
+          return false; // Strictly drop another customer's personal delivery or alert
+        }
+        return false;
+      }
 
       if (recipId.isEmpty) return true;
 
@@ -488,9 +507,6 @@ class _NotificationModalState extends State<NotificationModal> {
   List<Map<String, dynamic>> get _filteredNotifications {
     return _notifications.where((n) {
       if (_activeTab == 'unread') return n['isRead'] != true;
-      if (_activeTab == 'deliveries') {
-        return n['type'] == 'delivery_assigned' || n['type'] == 'delivery_completed';
-      }
       return true;
     }).toList();
   }
@@ -503,6 +519,20 @@ class _NotificationModalState extends State<NotificationModal> {
     widget.onNotificationChanged?.call();
     try {
       _api.delete('/api/notifications/clear-all');
+    } catch (_) {}
+  }
+
+  void _markAllAsRead() {
+    setState(() {
+      for (final n in _notifications) {
+        n['isRead'] = true;
+        final nId = n['id']?.toString() ?? '';
+        if (nId.isNotEmpty) _readIds.add(nId);
+      }
+    });
+    widget.onNotificationChanged?.call();
+    try {
+      _api.put('/api/notifications/read-all', {});
     } catch (_) {}
   }
 
@@ -1181,19 +1211,10 @@ class _NotificationModalState extends State<NotificationModal> {
     final list = _filteredNotifications;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF059669), // Emerald green top status bar area matching mockup
+      backgroundColor: Colors.white,
       body: SafeArea(
-        bottom: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: SafeArea(
-            top: false,
-            child: Column(
-              children: [
+        child: Column(
+          children: [
                 // 1. TOP HEADER (Green rounded square bell, Title + Caught up pill, Subtitle, [X] Close button)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
@@ -1288,7 +1309,7 @@ class _NotificationModalState extends State<NotificationModal> {
                   ),
                 ),
 
-                // 2. FILTER TABS & CLEAR ALL STRIP (All 1, Unread, Deliveries, and Clear all)
+                // 2. FILTER TABS & CLEAR ALL STRIP (All, Unread + Actions)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1305,45 +1326,66 @@ class _NotificationModalState extends State<NotificationModal> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          _buildTabPill('all', 'All', _notifications.length, showCountBadge: true),
-                          const SizedBox(width: 6),
-                          _buildTabPill('unread', 'Unread', _unreadCount, showCountBadge: false),
-                          const SizedBox(width: 6),
-                          _buildTabPill(
-                            'deliveries',
-                            'Deliveries',
-                            _notifications
-                                .where((n) => n['type'] == 'delivery_assigned' || n['type'] == 'delivery_completed')
-                                .length,
-                            showCountBadge: false,
-                          ),
+                          _buildTabPill('all', 'All', _notifications.length, showCountBadge: false),
+                          const SizedBox(width: 8),
+                          _buildTabPill('unread', 'Unread', _unreadCount, showCountBadge: true),
                         ],
                       ),
 
-                      // Clear All Action
-                      if (_notifications.isNotEmpty)
-                        InkWell(
-                          onTap: _clearAll,
-                          borderRadius: BorderRadius.circular(6),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFF94A3B8)),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Clear all',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
+                      // Actions Row (Mark all read + Clear all)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_unreadCount > 0) ...[
+                            InkWell(
+                              onTap: _markAllAsRead,
+                              borderRadius: BorderRadius.circular(6),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF059669)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Mark all read',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF059669),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
+                            const SizedBox(width: 8),
+                          ],
+                          if (_notifications.isNotEmpty)
+                            InkWell(
+                              onTap: _clearAll,
+                              borderRadius: BorderRadius.circular(6),
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, size: 14, color: Color(0xFF94A3B8)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Clear all',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1459,8 +1501,6 @@ class _NotificationModalState extends State<NotificationModal> {
               ],
             ),
           ),
-        ),
-      ),
     );
   }
 

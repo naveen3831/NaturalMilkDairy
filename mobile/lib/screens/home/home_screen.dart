@@ -1271,7 +1271,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: _showNotificationsSheet,
                   ),
                 ),
-                if (_unreadNotifCount >= 0)
+                if (_unreadNotifCount > 0)
                   Positioned(
                     top: 2,
                     right: 2,
@@ -1684,10 +1684,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             child: SizedBox(
                               height: 110,
                               width: double.infinity,
-                              child: Image.network(
-                                ProductModel.resolveImageUrl(prod.imageUrl, prod.name, prod.category),
+                              child: FadeInImage(
+                                placeholder: AssetImage(
+                                  ProductModel.resolveAssetFallback(prod.name, prod.category),
+                                ),
+                                image: NetworkImage(
+                                  ProductModel.resolveImageUrl(prod.imageUrl, prod.name, prod.category),
+                                ),
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Image.asset(
+                                placeholderFit: BoxFit.cover,
+                                fadeInDuration: const Duration(milliseconds: 150),
+                                imageErrorBuilder: (_, _, _) => Image.asset(
                                   ProductModel.resolveAssetFallback(prod.name, prod.category),
                                   fit: BoxFit.cover,
                                 ),

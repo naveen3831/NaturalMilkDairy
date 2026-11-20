@@ -24,6 +24,62 @@ const invalidateProductsCache = () => {
   cachedProductsTime = 0;
 };
 
+const OFFICIAL_PRODUCT_CLOUDINARY_MAP = {
+  'product-buffalo-milk.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545628/natural-milk-dairy/assets/product-buffalo-milk.jpg',
+  'product-buffalo-milk-1l.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545627/natural-milk-dairy/assets/product-buffalo-milk-1l.jpg',
+  'product-cow-milk.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545630/natural-milk-dairy/assets/product-cow-milk.jpg',
+  'product-cow-milk-500ml.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545629/natural-milk-dairy/assets/product-cow-milk-500ml.jpg',
+  'product-curd.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545631/natural-milk-dairy/assets/product-curd.jpg',
+  'product-ghee.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545632/natural-milk-dairy/assets/product-ghee.jpg',
+  'product-paneer.jpg': 'https://res.cloudinary.com/ddgjubbbx/image/upload/v1794545633/natural-milk-dairy/assets/product-paneer.jpg',
+};
+
+const resolveProductCloudinaryUrl = (rawImg, name = '', category = '') => {
+  const clean = (rawImg || '').trim();
+  if (clean.startsWith('https://res.cloudinary.com/')) {
+    if (clean.includes('v1791454805') || clean.includes('product-cow-milk.jpg')) {
+      return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-cow-milk.jpg'];
+    }
+    if (clean.includes('v1793013264') || clean.includes('product-buffalo-milk.jpg')) {
+      return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-buffalo-milk.jpg'];
+    }
+    if (clean.includes('v1791454807') || clean.includes('product-curd.jpg')) {
+      return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-curd.jpg'];
+    }
+    if (clean.includes('v1791454808') || clean.includes('product-ghee.jpg')) {
+      return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-ghee.jpg'];
+    }
+    if (clean.includes('v1791454809') || clean.includes('product-paneer.jpg')) {
+      return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-paneer.jpg'];
+    }
+    return clean;
+  }
+
+  const base = clean.replace(/^\/+/, '');
+  if (OFFICIAL_PRODUCT_CLOUDINARY_MAP[base]) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP[base];
+  }
+
+  const n = (name || '').toLowerCase();
+  const c = (category || '').toLowerCase();
+  if (n.includes('buffalo')) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-buffalo-milk.jpg'];
+  }
+  if (n.includes('500') || n.includes('half')) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-cow-milk-500ml.jpg'];
+  }
+  if (c === 'curd' || n.includes('curd') || n.includes('dahi')) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-curd.jpg'];
+  }
+  if (c === 'ghee' || n.includes('ghee')) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-ghee.jpg'];
+  }
+  if (c === 'paneer' || n.includes('paneer')) {
+    return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-paneer.jpg'];
+  }
+  return OFFICIAL_PRODUCT_CLOUDINARY_MAP['product-cow-milk.jpg'];
+};
+
 const getProducts = async (req, res) => {
   try {
     if (cachedProductsResponse && (Date.now() - cachedProductsTime < PRODUCTS_CACHE_TTL)) {
@@ -35,13 +91,14 @@ const getProducts = async (req, res) => {
     const payload = {
       success: true,
       products: products.map((p) => {
-        const img = p.image || p.imageUrl || '';
+        const rawImg = p.image || p.imageUrl || '';
+        const img = resolveProductCloudinaryUrl(rawImg, p.name, p.category);
         return {
           ...p,
           id: p._id.toString(),
           image: img,
           imageUrl: img,
-          images: Array.isArray(p.images) ? p.images : [],
+          images: Array.isArray(p.images) && p.images.length > 0 ? p.images : [img],
         };
       }),
     };

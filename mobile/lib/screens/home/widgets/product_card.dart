@@ -122,11 +122,17 @@ class _ProductCardState extends State<ProductCard> {
                 SizedBox(
                   height: 125,
                   width: double.infinity,
-                  child: Image.network(
-                    ProductModel.resolveImageUrl(p.imageUrl, p.name, p.category),
+                  child: FadeInImage(
+                    placeholder: AssetImage(
+                      ProductModel.resolveAssetFallback(p.name, p.category),
+                    ),
+                    image: NetworkImage(
+                      ProductModel.resolveImageUrl(p.imageUrl, p.name, p.category),
+                    ),
                     fit: BoxFit.cover,
-                    cacheWidth: 400,
-                    errorBuilder: (_, _, _) => Image.asset(
+                    placeholderFit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 150),
+                    imageErrorBuilder: (_, _, _) => Image.asset(
                       ProductModel.resolveAssetFallback(p.name, p.category),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Container(

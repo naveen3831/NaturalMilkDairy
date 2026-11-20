@@ -323,18 +323,6 @@ export default function NotificationModal() {
   // Filter notifications based on tab
   const filteredNotifications = notifications.filter((item) => {
     if (activeTab === 'unread') return !item.isRead;
-    if (activeTab === 'deliveries') {
-      return (
-        item.type === 'delivery_assigned' ||
-        item.type === 'delivery_completed' ||
-        item.type === 'delivery_missed' ||
-        item.type === 'route_update' ||
-        item.type === 'subscription_created' ||
-        item.type === 'partner_message' ||
-        item.type === 'customer_message' ||
-        item.type === 'ticket'
-      );
-    }
     return true;
   });
 
@@ -665,9 +653,8 @@ export default function NotificationModal() {
             }}
           >
             {[
-              { id: 'all', label: 'All', count: notifications.length },
+              { id: 'all', label: 'All' },
               { id: 'unread', label: 'Unread', count: unreadCount },
-              { id: 'deliveries', label: 'Deliveries' },
             ].map((tab) => {
               const isActive = activeTab === tab.id;
               return (

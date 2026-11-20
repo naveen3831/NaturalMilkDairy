@@ -964,6 +964,16 @@ const updateMyProfile = async (req, res) => {
       updatedUser = await User.findOneAndUpdate({ mobile: boy.mobile }, userUpdate, { new: true });
     }
 
+    if (password && password.trim().length >= 6 && (boy.email || userUpdate.email)) {
+      const { sendPasswordResetSuccessEmail } = require('../services/emailService');
+      sendPasswordResetSuccessEmail({
+        to: boy.email || userUpdate.email,
+        name: boy.name,
+        role: 'delivery_boy',
+        changeType: 'change',
+      }).catch((err) => console.warn('Delivery boy password change email failed:', err.message));
+    }
+
     const updatedData = {
       id: boy._id.toString(),
       name: boy.name,
