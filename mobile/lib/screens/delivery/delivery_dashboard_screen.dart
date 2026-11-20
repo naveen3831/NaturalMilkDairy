@@ -442,6 +442,22 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     return d.length > 10 ? d.substring(d.length - 10) : d;
   }
 
+  bool _isTestCustomer(Map<String, dynamic> item) {
+    final name = (item['customerName'] ?? item['name'] ?? '').toString().toLowerCase().trim();
+    final phone = (item['customerPhone'] ?? item['mobile'] ?? item['phone'] ?? '').toString().trim();
+    final addr = (item['customerAddress'] ?? item['address'] ?? '').toString().toLowerCase().trim();
+    final id = (item['customerId'] ?? item['id'] ?? item['_id'] ?? '').toString().toLowerCase().trim();
+    return name.startsWith('test') ||
+        name.contains('test customer') ||
+        name == 'test' ||
+        phone == '9876591835' ||
+        phone == '9999999999' ||
+        phone == '1234567890' ||
+        addr.contains('test doorstep') ||
+        id.contains('test') ||
+        item['isTest'] == true;
+  }
+
   bool _isNotificationForDriver(Map<String, dynamic> item) {
     try {
       final role = item['recipientRole']?.toString().toLowerCase().trim() ?? '';
@@ -633,17 +649,18 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           }
 
           if (delRes['success'] == true && delRes['deliveries'] is List) {
-            _deliveries = parsedTodayDeliveries;
+            _deliveries = parsedTodayDeliveries.where((d) => !_isTestCustomer(d)).toList();
           }
 
           if (custRes['success'] == true && custRes['customers'] is List) {
             _assignedCustomers = (custRes['customers'] as List)
                 .map((e) => Map<String, dynamic>.from(e as Map))
+                .where((c) => !_isTestCustomer(c))
                 .toList();
           }
 
           if (allDelRes['success'] == true && allDelRes['deliveries'] is List) {
-            _allDeliveries = parsedAllDeliveries;
+            _allDeliveries = parsedAllDeliveries.where((d) => !_isTestCustomer(d)).toList();
           } else if (_allDeliveries.isEmpty && _deliveries.isNotEmpty) {
             _allDeliveries = List<Map<String, dynamic>>.from(_deliveries);
           }
@@ -716,7 +733,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
 
   Future<void> _loadPaymentsFromCustomerLedgers() async {
     try {
-      final subset = _assignedCustomers.take(25).toList();
+      final subset = _assignedCustomers.where((c) => !_isTestCustomer(c)).take(25).toList();
       final collected = <Map<String, dynamic>>[];
       await Future.wait(
         subset.map((c) async {
@@ -853,7 +870,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
   }
 
   List<Map<String, dynamic>> get _filteredDeliveries {
-    List<Map<String, dynamic>> list = _deliveries;
+    List<Map<String, dynamic>> list = _deliveries.where((d) => !_isTestCustomer(d)).toList();
     if (_filterStatus != 'all') {
       list = list.where((d) => d['status'] == _filterStatus).toList();
     }

@@ -14,6 +14,7 @@ class ProductProvider extends ChangeNotifier {
   final Map<String, int> _cart = {}; // productId -> quantity
   StreamSubscription? _wsSubscription;
   Timer? _pollingTimer;
+  DateTime? _lastFetchTime;
 
   ProductProvider() {
     _initRealtime();
@@ -64,7 +65,14 @@ class ProductProvider extends ChangeNotifier {
     }).toList();
   }
 
-  Future<void> loadProducts({bool silent = false}) async {
+  Future<void> loadProducts({bool silent = false, bool force = false}) async {
+    // Avoid hammering backend: throttle repeated queries within 10 seconds unless force=true
+    if (!force && _products.isNotEmpty && _lastFetchTime != null) {
+      if (DateTime.now().difference(_lastFetchTime!) < const Duration(seconds: 10)) {
+        return;
+      }
+    }
+
     if (!silent) {
       _isLoading = true;
       notifyListeners();
@@ -73,6 +81,7 @@ class ProductProvider extends ChangeNotifier {
     final fresh = await _apiService.getProducts();
     if (fresh.isNotEmpty) {
       _products = fresh;
+      _lastFetchTime = DateTime.now();
     }
 
     if (!silent) {

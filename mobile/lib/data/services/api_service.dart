@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -15,73 +16,102 @@ class ApiService {
   String? _cachedToken;
   String? _customBaseUrl;
   String? _activeBaseUrl;
+  bool _initialized = false;
   final http.Client _client = http.Client();
 
   Future<void> init() async {
+    if (_initialized) return;
+    _initialized = true;
     final prefs = await SharedPreferences.getInstance();
     _cachedToken = prefs.getString(AppConstants.keyAuthToken);
-    if (AppConfig.isLiveServerActive) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
-      debugPrint('🌐 ApiService: [LIVE PRODUCTION MODE] Locked to: ${AppConfig.liveBaseUrl}');
-    } else {
-      _customBaseUrl = prefs.getString(AppConstants.keyCustomBaseUrl);
-      await resolveActiveBaseUrl();
-    }
+    _customBaseUrl = prefs.getString(AppConstants.keyCustomBaseUrl);
+    await resolveActiveBaseUrl();
   }
 
   String get baseUrl {
+    if (_activeBaseUrl != null && _activeBaseUrl!.isNotEmpty) {
+      return _activeBaseUrl!;
+    }
+    if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
+      return _customBaseUrl!;
+    }
     if (AppConfig.isLiveServerActive) {
       return AppConfig.liveBaseUrl;
     }
-    return _customBaseUrl ??
-        _activeBaseUrl ??
-        AppConstants.defaultBaseUrl;
+    return AppConstants.defaultBaseUrl;
   }
 
   /// Quick ping to check if a backend server is live and responding
-  Future<bool> testConnection([String? candidateUrl]) async {
+  Future<bool> testConnection([String? candidateUrl, int timeoutMs = 800]) async {
     final target = (candidateUrl ?? baseUrl).trim();
     if (target.isEmpty) return false;
     try {
       final res = await http
           .get(Uri.parse('$target/api/health'))
-          .timeout(const Duration(milliseconds: 8000));
+          .timeout(Duration(milliseconds: timeoutMs));
       return res.statusCode >= 200 && res.statusCode < 400;
     } catch (_) {
       return false;
     }
   }
 
-  /// Probes candidate URLs or binds the production server depending on connectivity
-  Future<String> resolveActiveBaseUrl() async {
-    if (AppConfig.isLiveServerActive) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
-      return AppConfig.liveBaseUrl;
+  /// Resolves the fastest responding backend URL without blocking startup
+  Future<String> resolveActiveBaseUrl({bool forceRefresh = false}) async {
+    if (!forceRefresh && _activeBaseUrl != null && _activeBaseUrl!.isNotEmpty) {
+      return _activeBaseUrl!;
     }
 
-    // 1. If custom developer URL was saved in shared preferences, check that first
+    if (AppConfig.isLiveServerActive) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      return _activeBaseUrl!;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final cachedLastWorking = prefs.getString('nmd_last_working_base_url');
+
+    // 1. If custom developer URL was saved in settings, check it quickly
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
-      final ok = await testConnection(_customBaseUrl);
+      final ok = await testConnection(_customBaseUrl, 600);
       if (ok) {
         _activeBaseUrl = _customBaseUrl;
-        debugPrint('🌐 ApiService: Using custom base URL: $_customBaseUrl');
         return _customBaseUrl!;
       }
     }
 
-    // 2. Scan all candidate local development backend addresses
-    for (final url in AppConstants.candidateBaseUrls) {
-      final isAlive = await testConnection(url);
-      if (isAlive) {
-        _activeBaseUrl = url;
-        debugPrint('🌐 ApiService: Auto-detected active local backend at: $url');
-        return url;
+    // 2. In local mode, test local candidate backends in parallel (450ms)
+    try {
+      final futures = AppConstants.candidateBaseUrls.map((url) async {
+        final ok = await testConnection(url, 450);
+        return ok ? url : null;
+      });
+      final results = await Future.wait(futures);
+      final workingLocal = results.firstWhere((u) => u != null, orElse: () => null);
+      if (workingLocal != null) {
+        _activeBaseUrl = workingLocal;
+        unawaited(prefs.setString('nmd_last_working_base_url', workingLocal));
+        return workingLocal;
+      }
+    } catch (_) {}
+
+    // 3. If no local candidate is responding, check cached working URL if valid
+    if (cachedLastWorking != null && cachedLastWorking.isNotEmpty) {
+      final ok = await testConnection(cachedLastWorking, 800);
+      if (ok) {
+        _activeBaseUrl = cachedLastWorking;
+        return _activeBaseUrl!;
       }
     }
 
-    // 3. Fallback when local candidates were unreachable
-    _activeBaseUrl = AppConstants.defaultBaseUrl;
-    debugPrint('🌐 ApiService: Active backend URL: $_activeBaseUrl');
+    // 4. Fallback to live cloud production server (3000ms for mobile data latency)
+    final liveOk = await testConnection(AppConfig.liveBaseUrl, 3000);
+    if (liveOk) {
+      _activeBaseUrl = AppConfig.liveBaseUrl;
+      unawaited(prefs.setString('nmd_last_working_base_url', AppConfig.liveBaseUrl));
+      return _activeBaseUrl!;
+    }
+
+    // 5. Ultimate fallback is always the live cloud server
+    _activeBaseUrl = AppConfig.liveBaseUrl;
     return _activeBaseUrl!;
   }
 
@@ -155,6 +185,69 @@ class ApiService {
     return headers;
   }
 
+  /// Safely parse HTTP response into a JSON map, handling HTML error pages and non-JSON gracefully
+  Map<String, dynamic> _safeDecodeJson(
+    http.Response response, {
+    String? defaultMsg,
+  }) {
+    final raw = response.body.trim();
+    if (raw.isEmpty) {
+      return {
+        'success': response.statusCode >= 200 && response.statusCode < 300,
+        'statusCode': response.statusCode,
+        'message': defaultMsg ??
+            (response.statusCode == 404
+                ? 'Endpoint not found on server ($baseUrl).'
+                : 'Empty server response.'),
+      };
+    }
+
+    // Check for HTML response (e.g. 404 HTML, 502 Bad Gateway HTML, cPanel error pages)
+    if (raw.startsWith('<') ||
+        raw.toLowerCase().startsWith('<!doctype') ||
+        raw.toLowerCase().startsWith('<html')) {
+      if (response.statusCode == 404) {
+        return {
+          'success': false,
+          'statusCode': 404,
+          'message':
+              'Service endpoint is not available on this server ($baseUrl). If using the live cloud server, the latest backend updates must be deployed; or connect to the local server on Wi-Fi.',
+        };
+      }
+      return {
+        'success': false,
+        'statusCode': response.statusCode,
+        'message':
+            'Server returned an HTML response (${response.statusCode}) instead of JSON. Please check server connectivity.',
+      };
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      return {
+        'success': response.statusCode >= 200 && response.statusCode < 300,
+        'statusCode': response.statusCode,
+        'data': decoded,
+      };
+    } on FormatException catch (_) {
+      return {
+        'success': false,
+        'statusCode': response.statusCode,
+        'message':
+            'Unable to parse response from $baseUrl. Please verify the backend service status.',
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'statusCode': response.statusCode,
+        'message': e.toString(),
+      };
+    }
+  }
+
   String _cleanErrorMessage(dynamic e) {
     final str = e.toString();
     if (str.contains('SocketException') ||
@@ -166,20 +259,23 @@ class ApiService {
     if (str.contains('TimeoutException')) {
       return 'Server response timed out. Please check your network and try again.';
     }
+    if (str.contains('FormatException')) {
+      return 'The server returned an invalid response. Please ensure backend server updates are active.';
+    }
     return str;
   }
 
   /// Automatically switch to another responding candidate backend if current one dropped
   Future<bool> _trySwitchToWorkingBackend() async {
     for (final candidate in AppConstants.candidateBaseUrls) {
-      if (candidate != _activeBaseUrl && await testConnection(candidate)) {
+      if (candidate != _activeBaseUrl && await testConnection(candidate, 450)) {
         _activeBaseUrl = candidate;
         debugPrint('🌐 ApiService: Switched active backend to: $candidate');
         return true;
       }
     }
-    // Also try live server if local candidates are not responding
-    if (await testConnection(AppConfig.liveBaseUrl)) {
+    // Also try live server if local candidates are not responding (2500ms for mobile latency)
+    if (_activeBaseUrl != AppConfig.liveBaseUrl && await testConnection(AppConfig.liveBaseUrl, 2500)) {
       _activeBaseUrl = AppConfig.liveBaseUrl;
       debugPrint('🌐 ApiService: Switched active backend to live server: ${AppConfig.liveBaseUrl}');
       return true;
@@ -195,7 +291,7 @@ class ApiService {
       final response = await _client
           .get(url, headers: _getHeaders(requiresAuth: true))
           .timeout(const Duration(seconds: 25));
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      return _safeDecodeJson(response);
     } catch (e) {
       debugPrint('ApiService GET error on $url: $e');
       if (retry) {
@@ -220,7 +316,7 @@ class ApiService {
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(const Duration(seconds: 45));
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      return _safeDecodeJson(response);
     } catch (e) {
       debugPrint('ApiService POST error on $url: $e');
       if (retry) {
@@ -245,7 +341,7 @@ class ApiService {
             body: body != null ? jsonEncode(body) : null,
           )
           .timeout(const Duration(seconds: 25));
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      return _safeDecodeJson(response);
     } catch (e) {
       debugPrint('ApiService PUT error on $url: $e');
       if (retry) {
@@ -266,7 +362,7 @@ class ApiService {
       final response = await _client
           .delete(url, headers: _getHeaders(requiresAuth: true))
           .timeout(const Duration(seconds: 20));
-      return jsonDecode(response.body) as Map<String, dynamic>;
+      return _safeDecodeJson(response);
     } catch (e) {
       debugPrint('ApiService DELETE error on $url: $e');
       if (retry) {
@@ -298,7 +394,7 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 25));
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = _safeDecodeJson(response);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (data['success'] == true) {
@@ -512,6 +608,170 @@ class ApiService {
     }
   }
 
+  /// Send 6-digit OTP to user's registered email for password recovery
+  Future<Map<String, dynamic>> sendForgotPasswordOtp(String email, [bool retry = true]) async {
+    final candidatePaths = [
+      '/api/auth/forgot-password/send-otp',
+      '/api/auth/forgot-password',
+      '/api/auth/send-otp',
+      '/api/forgot-password/send-otp',
+      '/api/forgot-password',
+    ];
+
+    Map<String, dynamic> lastResponse = {'success': false, 'message': 'Failed to reach service.'};
+
+    for (int i = 0; i < candidatePaths.length; i++) {
+      final path = candidatePaths[i];
+      final url = Uri.parse('$baseUrl$path');
+      try {
+        final res = await _client.post(
+          url,
+          headers: _getHeaders(requiresAuth: false),
+          body: jsonEncode({'email': email.trim().toLowerCase()}),
+        ).timeout(const Duration(seconds: 25));
+
+        lastResponse = _safeDecodeJson(res);
+        if (lastResponse['statusCode'] != 404) {
+          return lastResponse;
+        }
+      } catch (e) {
+        if (i == candidatePaths.length - 1) {
+          if (retry) {
+            final switched = await _trySwitchToWorkingBackend();
+            if (switched) {
+              return sendForgotPasswordOtp(email, false);
+            }
+          }
+          return {'success': false, 'message': _cleanErrorMessage(e)};
+        }
+      }
+    }
+
+    if (retry) {
+      final switched = await _trySwitchToWorkingBackend();
+      if (switched) {
+        return sendForgotPasswordOtp(email, false);
+      }
+    }
+    return lastResponse;
+  }
+
+  /// Verify OTP code entered by the user
+  Future<Map<String, dynamic>> verifyForgotPasswordOtp(String email, String otp, [bool retry = true]) async {
+    final candidatePaths = [
+      '/api/auth/forgot-password/verify-otp',
+      '/api/auth/verify-otp',
+      '/api/forgot-password/verify-otp',
+      '/api/forgot-password/verify',
+    ];
+
+    Map<String, dynamic> lastResponse = {'success': false, 'message': 'Failed to verify code.'};
+
+    for (int i = 0; i < candidatePaths.length; i++) {
+      final path = candidatePaths[i];
+      final url = Uri.parse('$baseUrl$path');
+      try {
+        final res = await _client.post(
+          url,
+          headers: _getHeaders(requiresAuth: false),
+          body: jsonEncode({
+            'email': email.trim().toLowerCase(),
+            'otp': otp.trim(),
+          }),
+        ).timeout(const Duration(seconds: 25));
+
+        lastResponse = _safeDecodeJson(res);
+        if (lastResponse['statusCode'] != 404) {
+          return lastResponse;
+        }
+      } catch (e) {
+        if (i == candidatePaths.length - 1) {
+          if (retry) {
+            final switched = await _trySwitchToWorkingBackend();
+            if (switched) {
+              return verifyForgotPasswordOtp(email, otp, false);
+            }
+          }
+          return {'success': false, 'message': _cleanErrorMessage(e)};
+        }
+      }
+    }
+
+    if (retry) {
+      final switched = await _trySwitchToWorkingBackend();
+      if (switched) {
+        return verifyForgotPasswordOtp(email, otp, false);
+      }
+    }
+    return lastResponse;
+  }
+
+  /// Reset password with verified resetToken
+  Future<Map<String, dynamic>> resetForgotPassword({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+    bool retry = true,
+  }) async {
+    final candidatePaths = [
+      '/api/auth/forgot-password/reset-password',
+      '/api/auth/reset-password',
+      '/api/forgot-password/reset-password',
+      '/api/forgot-password/reset',
+    ];
+
+    Map<String, dynamic> lastResponse = {'success': false, 'message': 'Failed to reset password.'};
+
+    for (int i = 0; i < candidatePaths.length; i++) {
+      final path = candidatePaths[i];
+      final url = Uri.parse('$baseUrl$path');
+      try {
+        final res = await _client.post(
+          url,
+          headers: _getHeaders(requiresAuth: false),
+          body: jsonEncode({
+            'email': email.trim().toLowerCase(),
+            'resetToken': resetToken.trim(),
+            'newPassword': newPassword,
+          }),
+        ).timeout(const Duration(seconds: 25));
+
+        lastResponse = _safeDecodeJson(res);
+        if (lastResponse['statusCode'] != 404) {
+          return lastResponse;
+        }
+      } catch (e) {
+        if (i == candidatePaths.length - 1) {
+          if (retry) {
+            final switched = await _trySwitchToWorkingBackend();
+            if (switched) {
+              return resetForgotPassword(
+                email: email,
+                resetToken: resetToken,
+                newPassword: newPassword,
+                retry: false,
+              );
+            }
+          }
+          return {'success': false, 'message': _cleanErrorMessage(e)};
+        }
+      }
+    }
+
+    if (retry) {
+      final switched = await _trySwitchToWorkingBackend();
+      if (switched) {
+        return resetForgotPassword(
+          email: email,
+          resetToken: resetToken,
+          newPassword: newPassword,
+          retry: false,
+        );
+      }
+    }
+    return lastResponse;
+  }
+
   /// 2. Register new customer
   Future<Map<String, dynamic>> register(Map<String, dynamic> payload) async {
     final url = Uri.parse('$baseUrl/api/auth/register');
@@ -524,7 +784,7 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 15));
 
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final data = _safeDecodeJson(response);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         if (data['success'] == true) {

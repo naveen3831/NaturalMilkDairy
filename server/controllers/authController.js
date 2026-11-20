@@ -1,11 +1,13 @@
+const crypto = require('crypto');
 const User = require('../models/User');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const DeliveryLocation = require('../models/DeliveryLocation');
+const PasswordResetOtp = require('../models/PasswordResetOtp');
 const { generateToken } = require('../middleware/authMiddleware');
 const { recordAudit } = require('../services/auditService');
 const { hashPassword, verifyPassword } = require('../security/password');
-const { sendCustomerCredentialsEmail } = require('../services/emailService');
+const { sendCustomerCredentialsEmail, sendPasswordResetOtpEmail } = require('../services/emailService');
 const { verifyFirebaseIdToken } = require('../security/firebaseVerifier');
 
 const escapeRegex = (text) => String(text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
@@ -977,4 +979,201 @@ const checkEmail = async (req, res) => {
   }
 };
 
-module.exports = { login, register, googleLogin, checkEmail, getDeliveryAreas, getMe, verifyTokenStatus, getAllUsers };
+const forgotPasswordSendOtp = async (req, res) => {
+  try {
+    const rawEmail = (req.body?.email || '').toString().trim().toLowerCase();
+    if (!rawEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid registered email address.' });
+    }
+
+    const emailRegex = new RegExp(`^${escapeRegex(rawEmail)}$`, 'i');
+
+    // Look for account across Customer, DeliveryBoy, and User
+    const [customer, deliveryBoy, adminUser] = await Promise.all([
+      Customer.findOne({ email: emailRegex }).lean(),
+      DeliveryBoy.findOne({ email: emailRegex }).lean(),
+      User.findOne({ email: emailRegex }).lean(),
+    ]);
+
+    const account = customer || deliveryBoy || adminUser;
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'No registered account found with this email address. Please check your email or create a new account.',
+      });
+    }
+
+    const role = customer ? 'customer' : deliveryBoy ? 'delivery_boy' : (adminUser?.role || 'user');
+    const accountName = account.name || 'User';
+
+    // Generate secure 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Remove any previous active OTPs for this email
+    await PasswordResetOtp.deleteMany({ email: rawEmail });
+
+    // Save new OTP
+    await PasswordResetOtp.create({
+      email: rawEmail,
+      otp,
+      role,
+      accountName,
+      expiresAt,
+    });
+
+    console.log(`🔑 [PASSWORD_RESET_OTP] Generated OTP ${otp} for email ${rawEmail} (${role})`);
+
+    // Dispatch OTP via Nodemailer
+    const emailResult = await sendPasswordResetOtpEmail({
+      to: rawEmail,
+      name: accountName,
+      otp,
+      expiresInMinutes: 10,
+    });
+
+    return res.json({
+      success: true,
+      message: 'A 6-digit verification code has been sent to your email.',
+      email: rawEmail,
+      expiresInMinutes: 10,
+      emailSent: emailResult.success,
+    });
+  } catch (err) {
+    console.error('forgotPasswordSendOtp error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to send verification code. Please try again.' });
+  }
+};
+
+const forgotPasswordVerifyOtp = async (req, res) => {
+  try {
+    const rawEmail = (req.body?.email || '').toString().trim().toLowerCase();
+    const rawOtp = (req.body?.otp || '').toString().trim();
+
+    if (!rawEmail || !rawOtp) {
+      return res.status(400).json({ success: false, message: 'Email and 6-digit OTP code are required.' });
+    }
+
+    const record = await PasswordResetOtp.findOne({ email: rawEmail });
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP has expired or is invalid. Please request a new verification code.',
+      });
+    }
+
+    if (new Date() > record.expiresAt) {
+      await PasswordResetOtp.deleteOne({ _id: record._id });
+      return res.status(400).json({
+        success: false,
+        message: 'This OTP code has expired. Please tap "Resend Code" to get a new one.',
+      });
+    }
+
+    if (record.attempts >= 5) {
+      await PasswordResetOtp.deleteOne({ _id: record._id });
+      return res.status(429).json({
+        success: false,
+        message: 'Too many incorrect attempts. Please request a new verification code.',
+      });
+    }
+
+    if (record.otp !== rawOtp) {
+      record.attempts += 1;
+      await record.save();
+      const remaining = 5 - record.attempts;
+      return res.status(400).json({
+        success: false,
+        message: `Incorrect OTP code. ${remaining > 0 ? `${remaining} attempts remaining.` : 'Please request a new code.'}`,
+      });
+    }
+
+    // OTP matched! Generate one-time resetToken
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    record.verified = true;
+    record.resetToken = resetToken;
+    await record.save();
+
+    return res.json({
+      success: true,
+      message: 'OTP verified successfully. You can now enter your new password.',
+      resetToken,
+    });
+  } catch (err) {
+    console.error('forgotPasswordVerifyOtp error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to verify OTP. Please try again.' });
+  }
+};
+
+const forgotPasswordResetPassword = async (req, res) => {
+  try {
+    const rawEmail = (req.body?.email || '').toString().trim().toLowerCase();
+    const resetToken = (req.body?.resetToken || '').toString().trim();
+    const newPassword = (req.body?.newPassword || req.body?.password || '').toString();
+
+    if (!rawEmail || !resetToken || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Email, reset token, and new password are required.' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    }
+
+    // Find verified session
+    const record = await PasswordResetOtp.findOne({
+      email: rawEmail,
+      resetToken,
+      verified: true,
+    });
+
+    if (!record || new Date() > record.expiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password reset session has expired. Please restart the forgot password process.',
+      });
+    }
+
+    const emailRegex = new RegExp(`^${escapeRegex(rawEmail)}$`, 'i');
+    const passwordHash = await hashPassword(newPassword);
+
+    // Update password across Customer, DeliveryBoy, and User collections
+    const updatePromises = [
+      Customer.updateMany({ email: emailRegex }, { $set: { password: passwordHash } }),
+      DeliveryBoy.updateMany({ email: emailRegex }, { $set: { password: passwordHash } }),
+      User.updateMany({ email: emailRegex }, { $set: { password: passwordHash } }),
+    ];
+    await Promise.all(updatePromises);
+
+    // Clean up OTP record so token cannot be used again
+    await PasswordResetOtp.deleteOne({ _id: record._id });
+
+    await recordAudit('Password Reset via OTP', record.accountName || rawEmail, `Password changed successfully for ${rawEmail}`, record.role || 'customer');
+
+    return res.json({
+      success: true,
+      message: 'Password has been updated successfully! You can now log in with your new password.',
+    });
+  } catch (err) {
+    console.error('forgotPasswordResetPassword error:', err);
+    return res.status(500).json({ success: false, message: 'Failed to reset password. Please try again.' });
+  }
+};
+
+const forgotPasswordResendOtp = async (req, res) => {
+  return forgotPasswordSendOtp(req, res);
+};
+
+module.exports = {
+  login,
+  register,
+  googleLogin,
+  checkEmail,
+  getDeliveryAreas,
+  getMe,
+  verifyTokenStatus,
+  getAllUsers,
+  forgotPasswordSendOtp,
+  forgotPasswordVerifyOtp,
+  forgotPasswordResetPassword,
+  forgotPasswordResendOtp,
+};

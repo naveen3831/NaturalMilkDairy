@@ -34,40 +34,73 @@ async function ensureSeedLocations() {
 // Run initial seed on load
 ensureSeedLocations();
 
+// In-memory cache for ultra-fast location fetching
+let cachedLocationsResponse = null;
+let cachedLocationsTime = 0;
+const LOCATIONS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+const invalidateLocationsCache = () => {
+  cachedLocationsResponse = null;
+  cachedLocationsTime = 0;
+};
+
 /**
  * GET /api/locations
  * Returns serviceable locations.
- * If admin: returns all with customer & partner counts.
- * If user/partner/public: returns active locations only.
+ * If admin: returns all with customer & partner counts using a single aggregate.
+ * If user/partner/public: returns active locations only with in-memory caching.
  */
 const getLocations = async (req, res) => {
   try {
-    await ensureSeedLocations();
-
     const isAdmin = req.user && req.user.role === 'admin';
-    const query = isAdmin ? {} : { isActive: true };
 
+    // Fast path: cached response for public / non-admin requests (< 1ms)
+    if (!isAdmin && cachedLocationsResponse && (Date.now() - cachedLocationsTime < LOCATIONS_CACHE_TTL)) {
+      res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+      return res.json(cachedLocationsResponse);
+    }
+
+    const query = isAdmin ? {} : { isActive: true };
     const locations = await DeliveryLocation.find(query).sort({ name: 1 }).lean();
 
-    // Attach real-time customer counts to each location
-    const locationsWithCounts = await Promise.all(
-      locations.map(async (loc) => {
-        const customerCount = await Customer.countDocuments({
-          area: { $regex: new RegExp(`^${loc.name}$`, 'i') },
-        });
-        return {
-          ...loc,
-          id: loc._id.toString(),
-          customerCount,
-        };
-      })
-    );
+    let locationsWithCounts;
+    if (isAdmin) {
+      // Single aggregation to fetch customer counts for all areas in 1 database roundtrip
+      const customerCounts = await Customer.aggregate([
+        { $match: { area: { $exists: true, $ne: '' } } },
+        { $group: { _id: { $toLower: { $trim: { input: '$area' } } }, count: { $sum: 1 } } },
+      ]);
+      const countMap = {};
+      customerCounts.forEach((c) => {
+        if (c._id) countMap[c._id] = c.count;
+      });
 
-    return res.json({
+      locationsWithCounts = locations.map((loc) => ({
+        ...loc,
+        id: loc._id.toString(),
+        customerCount: countMap[(loc.name || '').toLowerCase().trim()] || 0,
+      }));
+    } else {
+      locationsWithCounts = locations.map((loc) => ({
+        ...loc,
+        id: loc._id.toString(),
+        customerCount: 0,
+      }));
+    }
+
+    const responsePayload = {
       success: true,
       locations: locationsWithCounts,
       areas: locationsWithCounts.filter((l) => l.isActive).map((l) => l.name),
-    });
+    };
+
+    if (!isAdmin) {
+      cachedLocationsResponse = responsePayload;
+      cachedLocationsTime = Date.now();
+    }
+
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    return res.json(responsePayload);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -149,6 +182,7 @@ const createLocation = async (req, res) => {
       'location'
     );
 
+    invalidateLocationsCache();
     broadcast('LOCATION_UPDATED', { id: newLoc._id.toString(), name: cleanName });
 
     return res.status(201).json({
@@ -249,6 +283,7 @@ const updateLocation = async (req, res) => {
       'location'
     );
 
+    invalidateLocationsCache();
     broadcast('LOCATION_UPDATED', { id: loc._id.toString(), name: loc.name });
 
     const customerCount = await Customer.countDocuments({
@@ -295,7 +330,8 @@ const deleteLocation = async (req, res) => {
         'location'
       );
 
-      broadcast('LOCATION_UPDATED', { id: loc._id.toString(), name: loc.name });
+      invalidateLocationsCache();
+    broadcast('LOCATION_UPDATED', { id: loc._id.toString(), name: loc.name });
 
       return res.json({
         success: true,
@@ -313,6 +349,7 @@ const deleteLocation = async (req, res) => {
       'location'
     );
 
+    invalidateLocationsCache();
     broadcast('LOCATION_UPDATED', { id, deleted: true });
 
     return res.json({

@@ -217,6 +217,13 @@ export default function ReportDownloadModal({
           } catch (_) {}
         }
 
+        // Filter out dummy/test accounts so partners only see real customers
+        list = list.filter((c) => {
+          const n = (c.name || '').toLowerCase().trim();
+          const p = (c.mobile || '').trim();
+          return !n.startsWith('test') && !n.includes('test customer') && p !== '9876591835' && c.isTest !== true;
+        });
+
         if (isMounted && list.length > 0) {
           setCustomers(list);
           setSelectedCustomer((prev) => {

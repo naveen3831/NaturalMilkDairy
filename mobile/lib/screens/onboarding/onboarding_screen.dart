@@ -51,6 +51,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     },
   ];
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Pre-cache all slide images so they render immediately without any decode delay
+    for (final slide in _slides) {
+      final img = slide['image'] as String?;
+      if (img != null && img.isNotEmpty) {
+        precacheImage(AssetImage(img), context);
+      }
+    }
+  }
+
   Future<void> _completeOnboarding(Widget targetScreen) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(AppConstants.keyOnboardingSeen, true);
@@ -90,7 +102,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Image.asset(
                   'assets/images/logo.png',
                   fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Icon(Icons.water_drop, size: 18, color: AppColors.primaryGreen),
+                  errorBuilder: (context, error, stackTrace) => const Icon(Icons.water_drop, size: 18, color: AppColors.primaryGreen),
                 ),
               ),
               const SizedBox(width: 8),
@@ -194,10 +206,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                           child: Image.asset(
                                             'assets/images/logo.png',
                                             fit: BoxFit.contain,
-                                            errorBuilder: (_, _, _) => Image.network(
+                                            errorBuilder: (context, error, stackTrace) => Image.network(
                                               slide['networkImage'] as String,
                                               fit: BoxFit.contain,
-                                              errorBuilder: (_, _, _) => const Icon(
+                                              errorBuilder: (context, error, stackTrace) => const Icon(
                                                 Icons.water_drop_rounded,
                                                 size: 56,
                                                 color: AppColors.primaryGreen,
@@ -268,26 +280,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      // Image with smooth loading and local fallback
-                                      Image.network(
-                                        slide['networkImage'] as String,
+                                      // Local bundled asset - views automatically with 0ms loading
+                                      Image.asset(
+                                        slide['image'] as String,
                                         fit: BoxFit.cover,
-                                        loadingBuilder: (context, child, progress) {
-                                          if (progress == null) return child;
-                                          return Container(
-                                            color: const Color(0xFFF1F5F3),
-                                            child: Center(
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: accentColor,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                        errorBuilder: (_, _, _) => Image.asset(
-                                          slide['image'] as String,
+                                        errorBuilder: (context, error, stackTrace) => Image.network(
+                                          slide['networkImage'] as String,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (_, _, _) => Container(
+                                          errorBuilder: (context, error, stackTrace) => Container(
                                             color: accentColor.withValues(alpha: 0.1),
                                             child: Center(
                                               child: Icon(Icons.eco_rounded, size: 54, color: accentColor),

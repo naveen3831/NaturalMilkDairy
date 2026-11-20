@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useWebSocket } from './WebSocketContext';
 import { useAuth } from './AuthContext';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
@@ -52,6 +52,16 @@ export const DairyProvider = ({ children }) => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
+
+  // Cache & deduplication ref to prevent redundant duplicate re-fetches (< 2.5s)
+  const lastFetchedRef = useRef({});
+  const shouldSkipFetch = useCallback((key, cooldownMs = 2500) => {
+    const now = Date.now();
+    const last = lastFetchedRef.current[key] || 0;
+    if (now - last < cooldownMs) return true;
+    lastFetchedRef.current[key] = now;
+    return false;
+  }, []);
 
   // Offline support (PRD Section 34)
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -194,7 +204,8 @@ export const DairyProvider = ({ children }) => {
   }, [getAuthHeaders, token]);
 
   // Fetch Products
-  const fetchProducts = useCallback(async () => {
+  const fetchProducts = useCallback(async (force = false) => {
+    if (!force && shouldSkipFetch('products')) return;
     try {
       const res = await fetch('/api/products', {
         headers: getAuthHeaders(),
@@ -206,7 +217,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Products fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, shouldSkipFetch]);
 
   // Fetch Delivery Boys
   const fetchDeliveryBoys = useCallback(async () => {
@@ -273,7 +284,8 @@ export const DairyProvider = ({ children }) => {
   }, [getAuthHeaders, token]);
 
   // Fetch Service Locations
-  const fetchLocations = useCallback(async () => {
+  const fetchLocations = useCallback(async (force = false) => {
+    if (!force && shouldSkipFetch('locations')) return;
     try {
       const res = await fetch('/api/locations', {
         headers: getAuthHeaders(),
@@ -285,7 +297,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Locations fetch error:', err);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, shouldSkipFetch]);
 
   // Real-time synchronization notifier (broadcasts to all open tabs and windows)
   const notifyRealtimeSync = useCallback(() => {
@@ -302,7 +314,8 @@ export const DairyProvider = ({ children }) => {
   }, []);
 
   // Fetch Contact Details & Social Links
-  const fetchContactInfo = useCallback(async () => {
+  const fetchContactInfo = useCallback(async (force = false) => {
+    if (!force && shouldSkipFetch('contact-info')) return;
     try {
       const res = await fetch('/api/contact-info');
       const data = await res.json();
@@ -312,7 +325,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Contact info fetch error:', err);
     }
-  }, []);
+  }, [shouldSkipFetch]);
 
   // Update Contact Details & Social Links (Admin)
   const updateContactInfo = useCallback(
@@ -358,7 +371,8 @@ export const DairyProvider = ({ children }) => {
     }
   }, [getAuthHeaders, notifyRealtimeSync]);
 
-  const fetchMediaAssets = useCallback(async () => {
+  const fetchMediaAssets = useCallback(async (force = false) => {
+    if (!force && shouldSkipFetch('media')) return;
     try {
       const res = await fetch('/api/media');
       const data = await res.json();
@@ -368,7 +382,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Media assets fetch error:', err);
     }
-  }, []);
+  }, [shouldSkipFetch]);
 
   // Reload everything
   const refreshAll = useCallback(() => {

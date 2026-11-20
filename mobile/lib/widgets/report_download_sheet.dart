@@ -223,6 +223,13 @@ class _ReportDownloadBottomSheetContentState
         }
       }
 
+      bool isTest(Map<String, dynamic> c) {
+        final n = (c['name'] ?? c['customerName'] ?? '').toString().toLowerCase().trim();
+        final p = (c['mobile'] ?? c['customerPhone'] ?? '').toString().trim();
+        return n.startsWith('test') || n.contains('test customer') || p == '9876591835' || c['isTest'] == true;
+      }
+      fetched = fetched.where((c) => !isTest(c)).toList();
+
       if (fetched.isNotEmpty && mounted) {
         setState(() {
           _customers = fetched;

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
-import '../../data/services/api_service.dart';
 import '../../data/services/google_auth_service.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/customer_provider.dart';
@@ -31,6 +30,18 @@ class _LoginScreenState extends State<LoginScreen> {
     _identifierController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _handleGuestLogin() {
+    final auth = context.read<AuthProvider>();
+    auth.continueAsGuest();
+    if (mounted) {
+      context.read<CustomerProvider>().clearCustomerData();
+    }
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _handleLogin() async {
@@ -154,154 +165,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showServerConfigDialog() {
-    final apiService = ApiService();
-    final urlController = TextEditingController(text: apiService.baseUrl);
-    bool? testResult;
-    bool isTesting = false;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.wifi_tethering_rounded, color: AppColors.primaryGreen, size: 22),
-              SizedBox(width: 8),
-              Text('Server Connection', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Quick Presets (Tap to select):',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    ActionChip(
-                      label: const Text('USB (127.0.0.1)', style: TextStyle(fontSize: 11)),
-                      backgroundColor: AppColors.primaryGreenSoft,
-                      onPressed: () => setDialogState(() => urlController.text = 'http://127.0.0.1:5000'),
-                    ),
-                    ActionChip(
-                      label: const Text('Wi-Fi (192.168.1.68)', style: TextStyle(fontSize: 11)),
-                      backgroundColor: AppColors.primaryGreenSoft,
-                      onPressed: () => setDialogState(() => urlController.text = 'http://192.168.1.68:5000'),
-                    ),
-                    ActionChip(
-                      label: const Text('Emulator (10.0.2.2)', style: TextStyle(fontSize: 11)),
-                      backgroundColor: AppColors.primaryGreenSoft,
-                      onPressed: () => setDialogState(() => urlController.text = 'http://10.0.2.2:5000'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: urlController,
-                  decoration: const InputDecoration(
-                    labelText: 'Backend URL',
-                    hintText: 'http://192.168.1.68:5000',
-                    isDense: true,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    TextButton.icon(
-                      onPressed: isTesting
-                          ? null
-                          : () async {
-                              setDialogState(() {
-                                isTesting = true;
-                                testResult = null;
-                              });
-                              final ok = await apiService.testConnection(urlController.text.trim());
-                              setDialogState(() {
-                                isTesting = false;
-                                testResult = ok;
-                              });
-                            },
-                      icon: isTesting
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : Icon(
-                              testResult == true
-                                  ? Icons.check_circle_rounded
-                                  : testResult == false
-                                      ? Icons.cancel_rounded
-                                      : Icons.network_check_rounded,
-                              size: 16,
-                              color: testResult == true
-                                  ? Colors.green
-                                  : testResult == false
-                                      ? Colors.red
-                                      : AppColors.primaryGreen,
-                            ),
-                      label: Text(
-                        testResult == true
-                            ? 'Connected (200 OK)'
-                            : testResult == false
-                                ? 'Unreachable'
-                                : 'Test Ping',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: testResult == true
-                              ? Colors.green
-                              : testResult == false
-                                  ? Colors.red
-                                  : AppColors.primaryGreen,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () async {
-                        setDialogState(() => isTesting = true);
-                        final detected = await apiService.resolveActiveBaseUrl();
-                        setDialogState(() {
-                          isTesting = false;
-                          urlController.text = detected;
-                          testResult = true;
-                        });
-                      },
-                      child: const Text('Auto-Detect', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                await apiService.setCustomBaseUrl(urlController.text.trim());
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                messenger.showSnackBar(
-                  SnackBar(content: Text('Server updated to ${apiService.baseUrl}')),
-                );
-                setState(() {});
-              },
-              child: const Text('Save & Apply'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -310,20 +173,73 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: AppColors.creamBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 8),
-                    // Brand Header
-                    Center(
-                      child: GestureDetector(
-                        onLongPress: _showServerConfigDialog,
-                        child: Container(
-                          width: 84,
-                          height: 84,
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Right Guest Login Action
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _handleGuestLogin,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: AppColors.primaryGreen.withValues(alpha: 0.35),
+                            width: 1.2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.primaryGreen.withValues(alpha: 0.08),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_outline_rounded,
+                              size: 16,
+                              color: AppColors.primaryGreen,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              'Guest Login',
+                              style: TextStyle(
+                                color: AppColors.primaryGreen,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                            SizedBox(width: 4),
+                            Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 10,
+                              color: AppColors.primaryGreen,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Brand Header
+                Center(
+                  child: Container(
+                    width: 84,
+                    height: 84,
                     decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
@@ -354,7 +270,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-              ),
                 const SizedBox(height: 20),
                 Center(
                   child: Text(
@@ -476,7 +391,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => ForgotPasswordScreen(
+                            initialEmail: _identifierController.text.contains('@')
+                                ? _identifierController.text.trim()
+                                : null,
+                          ),
+                        ),
                       );
                     },
                     child: const Text(
@@ -546,23 +467,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
+                        Image.asset(
+                          'assets/images/google_logo.png',
                           width: 22,
                           height: 22,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                          child: Center(
-                            child: Text(
-                              'G',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.blue.shade600,
-                              ),
-                            ),
-                          ),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const _Google4ColorIcon(size: 22),
                         ),
                         const SizedBox(width: 10),
                         const Text(
@@ -613,4 +523,66 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+/// Renders an authentic Google 4-color 'G' icon
+class _Google4ColorIcon extends StatelessWidget {
+  final double size;
+  const _Google4ColorIcon({this.size = 22});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _GoogleLogoPainter(),
+      ),
+    );
+  }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final center = Offset(w / 2, h / 2);
+    final radius = w / 2;
+    final strokeW = w * 0.22;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeW
+      ..strokeCap = StrokeCap.butt;
+
+    final rect = Rect.fromCircle(center: center, radius: radius - strokeW / 2);
+
+    // Blue arc & crossbar
+    paint.color = const Color(0xFF4285F4);
+    canvas.drawArc(rect, -0.6, 1.2, false, paint);
+
+    final crossbarPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTWH(center.dx - strokeW * 0.2, center.dy - strokeW / 2, radius * 0.95, strokeW),
+      crossbarPaint,
+    );
+
+    // Green arc (bottom)
+    paint.color = const Color(0xFF34A853);
+    canvas.drawArc(rect, 0.6, 1.5, false, paint);
+
+    // Yellow arc (bottom-left)
+    paint.color = const Color(0xFFFBBC05);
+    canvas.drawArc(rect, 2.1, 1.2, false, paint);
+
+    // Red arc (top)
+    paint.color = const Color(0xFFEA4335);
+    canvas.drawArc(rect, 3.3, 1.6, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

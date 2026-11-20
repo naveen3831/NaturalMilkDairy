@@ -49,6 +49,8 @@ const getDeliveries = async (req, res) => {
 
     if (req.user?.role === 'delivery_boy') {
       filter.deletedForDriver = { $ne: true };
+      filter.customerName = { $not: /^test\b/i };
+      filter.customerPhone = { $nin: ['9876591835', '9999999999', '1234567890'] };
 
       const partnerIds = new Set([req.user.id, req.user.boyId, req.user.mobile].filter(Boolean));
       const partnerNames = new Set(req.user.name ? [req.user.name.trim()] : []);
@@ -70,9 +72,12 @@ const getDeliveries = async (req, res) => {
         }
       }
 
-      // Find all customers assigned to this delivery partner or in their territory
+      // Find all real-time customers assigned to this delivery partner or in their territory
       const assignedCusts = await Customer.find({
-        status: { $ne: 'inactive' },
+        status: 'active',
+        isTest: { $ne: true },
+        name: { $not: /^test\b/i },
+        mobile: { $nin: ['9876591835', '9999999999', '1234567890'] },
         $or: [
           { 'deliveryPlan.deliveryBoyId': { $in: [...partnerIds] } },
           { 'deliveryPlan.deliveryBoyName': { $in: [...partnerNames].map((n) => new RegExp(`^${n}$`, 'i')) } },
@@ -281,7 +286,10 @@ const getAssignedCustomers = async (req, res) => {
     }
 
     const customers = await Customer.find({
-      status: { $ne: 'inactive' },
+      status: 'active',
+      isTest: { $ne: true },
+      name: { $not: /^test\b/i },
+      mobile: { $nin: ['9876591835', '9999999999', '1234567890'] },
       $or: assignmentFilters,
     }).sort({ createdAt: -1, name: 1 }).lean();
 

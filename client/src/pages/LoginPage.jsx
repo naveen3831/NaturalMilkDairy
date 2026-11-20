@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Eye, EyeOff } from 'lucide-react';
 import { CLOUDINARY_MEDIA } from '../constants/cloudinaryMedia';
+import ForgotPasswordModal from '../components/ForgotPasswordModal';
 import {
   initGoogleIdentityServices,
   renderGoogleButton,
@@ -19,6 +20,7 @@ export default function LoginPage({ setActiveTab }) {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleBtnMounted, setIsGoogleBtnMounted] = useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
   const googleBtnRef = useRef(null);
 
@@ -141,7 +143,8 @@ export default function LoginPage({ setActiveTab }) {
   };
 
   const handleForgotPassword = () => {
-    alert('Please contact dairy support at +91 98765 43210 or your delivery supervisor to reset your password.');
+    setError('');
+    setIsForgotPasswordOpen(true);
   };
 
   return (
@@ -633,6 +636,18 @@ export default function LoginPage({ setActiveTab }) {
           )}
         </div>
       </div>
+
+      {/* Forgot Password with Email OTP Verification Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotPasswordOpen}
+        onClose={() => setIsForgotPasswordOpen(false)}
+        initialEmail={identifier.includes('@') ? identifier.trim() : ''}
+        onPasswordResetSuccess={(resetEmail) => {
+          if (resetEmail) {
+            setIdentifier(resetEmail);
+          }
+        }}
+      />
     </div>
   );
 }

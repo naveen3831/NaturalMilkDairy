@@ -477,23 +477,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
+                        Image.asset(
+                          'assets/images/google_logo.png',
                           width: 22,
                           height: 22,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                          child: Center(
-                            child: Text(
-                              'G',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.blue.shade600,
-                              ),
-                            ),
-                          ),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const _Google4ColorIcon(size: 22),
                         ),
                         const SizedBox(width: 10),
                         const Text(
@@ -533,4 +522,66 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ),
     );
   }
+}
+
+/// Renders an authentic Google 4-color 'G' icon
+class _Google4ColorIcon extends StatelessWidget {
+  final double size;
+  const _Google4ColorIcon({this.size = 22});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _GoogleLogoPainter(),
+      ),
+    );
+  }
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+    final center = Offset(w / 2, h / 2);
+    final radius = w / 2;
+    final strokeW = w * 0.22;
+
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeW
+      ..strokeCap = StrokeCap.butt;
+
+    final rect = Rect.fromCircle(center: center, radius: radius - strokeW / 2);
+
+    // Blue arc & crossbar
+    paint.color = const Color(0xFF4285F4);
+    canvas.drawArc(rect, -0.6, 1.2, false, paint);
+
+    final crossbarPaint = Paint()
+      ..color = const Color(0xFF4285F4)
+      ..style = PaintingStyle.fill;
+    canvas.drawRect(
+      Rect.fromLTWH(center.dx - strokeW * 0.2, center.dy - strokeW / 2, radius * 0.95, strokeW),
+      crossbarPaint,
+    );
+
+    // Green arc (bottom)
+    paint.color = const Color(0xFF34A853);
+    canvas.drawArc(rect, 0.6, 1.5, false, paint);
+
+    // Yellow arc (bottom-left)
+    paint.color = const Color(0xFFFBBC05);
+    canvas.drawArc(rect, 2.1, 1.2, false, paint);
+
+    // Red arc (top)
+    paint.color = const Color(0xFFEA4335);
+    canvas.drawArc(rect, 3.3, 1.6, false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

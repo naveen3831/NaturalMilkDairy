@@ -297,8 +297,11 @@ export default function HomePage({ setActiveTab }) {
 
   const [bannersList, setBannersList] = useState(DEFAULT_BANNERS);
   const [activeBannerIndex, setActiveBannerIndex] = useState(0);
+  const bannersFetchedRef = useRef(false);
 
   useEffect(() => {
+    if (bannersFetchedRef.current) return;
+    bannersFetchedRef.current = true;
     fetch('/api/banners')
       .then((res) => res.json())
       .then((data) => {

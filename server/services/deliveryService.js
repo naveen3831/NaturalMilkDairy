@@ -25,7 +25,34 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
     const activeLocations = await DeliveryLocation.find({ isActive: true }).lean().catch(() => []);
     const activeLocationSet = new Set(activeLocations.map((l) => l.name.toLowerCase().trim()));
 
-    const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
+    // Automatically purge any dummy/test customer deliveries so partners only see real-time customers
+    await Delivery.deleteMany({
+      $or: [
+        { customerName: { $regex: /^test\b/i } },
+        { customerPhone: { $in: ['9876591835', '9999999999', '1234567890'] } },
+        { customerAddress: { $regex: /test doorstep/i } },
+      ],
+      status: 'pending',
+    }).catch(() => {});
+
+    // Ensure test customers are deactivated
+    await Customer.updateMany(
+      {
+        $or: [
+          { name: { $regex: /^test\b/i } },
+          { mobile: { $in: ['9876591835', '9999999999', '1234567890'] } },
+          { address: { $regex: /test doorstep/i } },
+        ],
+      },
+      { $set: { isTest: true, status: 'inactive' } }
+    ).catch(() => {});
+
+    const customers = await Customer.find({
+      status: 'active',
+      isTest: { $ne: true },
+      name: { $not: /^test\b/i },
+      mobile: { $nin: ['9876591835', '9999999999', '1234567890'] },
+    }).lean();
 
     // Cache active delivery partners to auto-assign territory drops
     const allBoys = await DeliveryBoy.find().lean().catch(() => []);
@@ -229,7 +256,15 @@ let lastEnsureAllTime = 0;
 
 const ensureDeliveriesForCustomer = async (customer, force = false) => {
   if (!customer) return;
-  // If customer is not actively subscribed, DO NOT generate deliveries!
+  // If customer is a dummy/test customer or not actively subscribed, DO NOT generate deliveries!
+  if (
+    customer.isTest ||
+    customer.status !== 'active' ||
+    /^test\b/i.test(customer.name || '') ||
+    ['9876591835', '9999999999', '1234567890'].includes(customer.mobile)
+  ) {
+    return;
+  }
   const hasActiveSub = customer.subscription?.status === 'active' || customer.deliveryPlan?.isSubscribed === true;
   if (!hasActiveSub) {
     return;
@@ -420,7 +455,12 @@ const ensureAllDeliveries = async (force = false) => {
     const todayStr = formatDate();
     await ensureDeliveriesForDate(todayStr);
 
-    const customers = await Customer.find({ status: { $ne: 'inactive' } }).lean();
+    const customers = await Customer.find({
+      status: 'active',
+      isTest: { $ne: true },
+      name: { $not: /^test\b/i },
+      mobile: { $nin: ['9876591835', '9999999999', '1234567890'] },
+    }).lean();
     for (const c of customers) {
       await ensureDeliveriesForCustomer(c);
     }

@@ -14,10 +14,25 @@ const uploadProductImagesList = async (list) => {
   return results;
 };
 
+// In-memory cache for ultra-fast product catalog delivery (< 1ms)
+let cachedProductsResponse = null;
+let cachedProductsTime = 0;
+const PRODUCTS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+const invalidateProductsCache = () => {
+  cachedProductsResponse = null;
+  cachedProductsTime = 0;
+};
+
 const getProducts = async (req, res) => {
   try {
+    if (cachedProductsResponse && (Date.now() - cachedProductsTime < PRODUCTS_CACHE_TTL)) {
+      res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+      return res.json(cachedProductsResponse);
+    }
+
     const products = await Product.find({}).lean();
-    return res.json({
+    const payload = {
       success: true,
       products: products.map((p) => {
         const img = p.image || p.imageUrl || '';
@@ -29,7 +44,13 @@ const getProducts = async (req, res) => {
           images: Array.isArray(p.images) ? p.images : [],
         };
       }),
-    });
+    };
+
+    cachedProductsResponse = payload;
+    cachedProductsTime = Date.now();
+
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+    return res.json(payload);
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -61,6 +82,7 @@ const updateProductPrice = async (req, res) => {
       'price'
     );
 
+    invalidateProductsCache();
     broadcast('PRODUCT_UPDATED', {});
 
     return res.json({
@@ -107,6 +129,7 @@ const addProduct = async (req, res) => {
 
     await recordAudit('Product Added', actor || 'Admin', `Added new product ${cleanName} at ₹${price}`, 'price');
 
+    invalidateProductsCache();
     broadcast('PRODUCT_UPDATED', {});
 
     return res.status(201).json({
@@ -162,6 +185,7 @@ const updateProduct = async (req, res) => {
 
     await recordAudit('Product Updated', actor || 'Admin', `Updated details for ${product.name}`, 'price');
 
+    invalidateProductsCache();
     broadcast('PRODUCT_UPDATED', {});
 
     return res.json({
@@ -193,6 +217,7 @@ const deleteProduct = async (req, res) => {
 
     await recordAudit('Product Deleted', actor || 'Admin', `Deleted catalog product: ${product.name}`, 'price');
 
+    invalidateProductsCache();
     broadcast('PRODUCT_UPDATED', {});
 
     return res.json({

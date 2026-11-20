@@ -20,4 +20,9 @@ const paymentSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+// High performance indexes
+paymentSchema.index({ customerId: 1, paymentDate: -1 });
+paymentSchema.index({ deliveryBoyId: 1, paymentDate: -1 });
+paymentSchema.index({ paymentDate: -1 });
+
 module.exports = mongoose.models.Payment || mongoose.model('Payment', paymentSchema);

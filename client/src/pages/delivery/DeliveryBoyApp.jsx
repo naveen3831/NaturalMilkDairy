@@ -196,6 +196,27 @@ export default function DeliveryBoyApp({ setActiveTab }) {
   const targetDriverId = boyId || user?.id || user?.mobile || '';
   const boyName = user?.name || matchedBoy?.name || 'Delivery Partner';
   const boyArea = user?.assignedArea || matchedBoy?.assignedArea || matchedBoy?.area || 'Madhapur';
+
+  // Filter out any dummy / test customer so delivery partners only see real-time active customers
+  const isTestItem = useCallback((item) => {
+    if (!item) return false;
+    const name = (item.name || item.customerName || '').toLowerCase().trim();
+    const phone = (item.mobile || item.customerPhone || item.phone || '').trim();
+    const addr = (item.address || item.customerAddress || '').toLowerCase().trim();
+    const id = (item.customerId || item.id || item._id || '').toLowerCase().trim();
+    return (
+      name.startsWith('test') ||
+      name.includes('test customer') ||
+      name === 'test' ||
+      phone === '9876591835' ||
+      phone === '9999999999' ||
+      phone === '1234567890' ||
+      addr.includes('test doorstep') ||
+      id.includes('test') ||
+      item.isTest === true
+    );
+  }, []);
+
   const [assignedCustomers, setAssignedCustomers] = useState([]);
   const [assignedCustomersError, setAssignedCustomersError] = useState('');
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
@@ -209,14 +230,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
       if (!response.ok || !data.success) {
         throw new Error(data.message || 'Unable to load your assigned customers.');
       }
-      setAssignedCustomers(Array.isArray(data.customers) ? data.customers : []);
+      const rawCustomers = Array.isArray(data.customers) ? data.customers : [];
+      setAssignedCustomers(rawCustomers.filter((c) => !isTestItem(c)));
       setAssignedCustomersError('');
     } catch (error) {
       setAssignedCustomersError(error.message || 'Unable to load your assigned customers.');
     } finally {
       setIsLoadingCustomers(false);
     }
-  }, [token]);
+  }, [token, isTestItem]);
 
   // Customers Management Tab States (CRUD, Categories & Filtering)
   const [customerCategory, setCustomerCategory] = useState('all'); // 'all' | 'assigned' | 'driver' | 'subscription'
@@ -1348,9 +1370,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // Filter deliveries assigned to this delivery partner directly from active database
+  // Filter deliveries assigned to this delivery partner directly from active database (excluding test customer data)
   const isAssignedToMe = (d) => {
-    if (!d) return false;
+    if (!d || isTestItem(d)) return false;
     const matchesId =
       (boyId && d.deliveryBoyId === boyId) ||
       (matchedBoy?._id && d.deliveryBoyId === matchedBoy._id.toString()) ||

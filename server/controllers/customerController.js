@@ -68,6 +68,13 @@ const getCustomers = async (req, res) => {
       filter['deliveryPlan.deliveryBoyId'] = deliveryBoyId;
     }
 
+    if (req.user?.role === 'delivery_boy' || req.query.role === 'delivery_boy') {
+      filter.status = 'active';
+      filter.isTest = { $ne: true };
+      filter.name = { $not: /^test\b/i };
+      filter.mobile = { $nin: ['9876591835', '9999999999', '1234567890'] };
+    }
+
     if (search) {
       const q = search.trim();
       filter.$or = [
@@ -2658,13 +2665,6 @@ const extendSubscription = async (req, res) => {
       message: hasExistingActive
         ? `Subscription extended by ${numDays} days successfully until ${formatDate(newEndDate)}!`
         : `Subscription activated successfully for ${numDays} days until ${formatDate(newEndDate)}!`,
-      customer: {
-        ...customer.toObject(),
-        id: customer._id.toString(),
-      },
-      newEndDate: newEndDate.toISOString(),
-      newBalance: customer.currentBalance,
-    });
       customer: {
         ...customer.toObject(),
         id: customer._id.toString(),

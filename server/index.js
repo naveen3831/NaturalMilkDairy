@@ -132,6 +132,16 @@ app.use('/api/supports', require('./routes/supportRoutes'));
 app.use('/api/banners', require('./routes/bannerRoutes'));
 app.use('/api/contact-info', require('./routes/contactInfoRoutes'));
 app.use('/api/media', require('./routes/mediaRoutes'));
+app.use('/api/forgot-password', require('./routes/authRoutes'));
+app.use('/api/reset-password', require('./routes/authRoutes'));
+
+// 5.1 Catch-all for undefined /api/* routes (Always return JSON, never HTML)
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `API endpoint not found: ${req.method} ${req.originalUrl}`,
+  });
+});
 
 // Static files for client build
 app.use(express.static(path.join(__dirname, '../client/dist')));

@@ -53,6 +53,19 @@ const ensureDefaultContactInfo = async () => {
   }
 };
 
+// Run initial check once on module load
+ensureDefaultContactInfo();
+
+// In-memory cache for ultra-fast primary contact info delivery (< 1ms)
+let cachedContactResponse = null;
+let cachedContactTime = 0;
+const CONTACT_CACHE_TTL = 120 * 1000; // 2 minutes
+
+const invalidateContactCache = () => {
+  cachedContactResponse = null;
+  cachedContactTime = 0;
+};
+
 /**
  * Helper: clean phone string to pure digits
  */
@@ -68,14 +81,25 @@ const sanitizeCleanPhone = (phoneStr = '') => {
  */
 exports.getPrimaryContactInfo = async (req, res) => {
   try {
-    let contactInfo = await ContactInfo.findOne({ isPrimary: true, isActive: true });
+    if (cachedContactResponse && (Date.now() - cachedContactTime < CONTACT_CACHE_TTL)) {
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(cachedContactResponse);
+    }
+
+    let contactInfo = await ContactInfo.findOne({ isPrimary: true, isActive: true }).lean();
     if (!contactInfo) {
       contactInfo = await ensureDefaultContactInfo();
     }
-    return res.json({
+    const payload = {
       success: true,
       contactInfo: contactInfo || DEFAULT_CONTACT_INFO,
-    });
+    };
+
+    cachedContactResponse = payload;
+    cachedContactTime = Date.now();
+
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    return res.json(payload);
   } catch (err) {
     console.error('getPrimaryContactInfo error:', err.message);
     return res.status(500).json({
@@ -181,6 +205,7 @@ exports.createContactInfo = async (req, res) => {
     const saved = await record.save();
 
     // Broadcast real-time update
+    invalidateContactCache();
     broadcast('CONTACT_INFO_UPDATED', { contactInfo: saved });
 
     return res.status(201).json({
@@ -257,6 +282,7 @@ exports.updatePrimaryContactInfo = async (req, res) => {
     const updated = await contactInfo.save();
 
     // Broadcast real-time update
+    invalidateContactCache();
     broadcast('CONTACT_INFO_UPDATED', { contactInfo: updated });
 
     return res.json({
@@ -341,6 +367,7 @@ exports.updateContactInfoById = async (req, res) => {
     contactInfo.updatedBy = req.user?.name || req.user?.email || 'Admin';
     const updated = await contactInfo.save();
 
+    invalidateContactCache();
     broadcast('CONTACT_INFO_UPDATED', { contactInfo: updated });
 
     return res.json({
@@ -374,6 +401,7 @@ exports.deleteContactInfo = async (req, res) => {
     }
 
     await ContactInfo.findByIdAndDelete(id);
+    invalidateContactCache();
     broadcast('CONTACT_INFO_UPDATED', {});
 
     return res.json({ success: true, message: 'Contact info record deleted successfully' });
@@ -398,6 +426,7 @@ exports.resetContactInfo = async (req, res) => {
     primary.updatedBy = req.user?.name || 'Reset to Factory Defaults';
     const reset = await primary.save();
 
+    invalidateContactCache();
     broadcast('CONTACT_INFO_UPDATED', { contactInfo: reset });
 
     return res.json({

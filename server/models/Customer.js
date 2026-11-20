@@ -97,4 +97,11 @@ customerSchema.pre('validate', function(next) {
   next();
 });
 
+// High performance indexes for rapid lookups and counts
+customerSchema.index({ mobile: 1 });
+customerSchema.index({ area: 1 });
+customerSchema.index({ status: 1 });
+customerSchema.index({ 'deliveryPlan.deliveryBoyId': 1 });
+customerSchema.index({ userId: 1 });
+
 module.exports = mongoose.models.Customer || mongoose.model('Customer', customerSchema);

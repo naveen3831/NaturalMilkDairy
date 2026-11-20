@@ -56,4 +56,11 @@ const deliverySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
+// High performance compound indexes for fast query resolution
+deliverySchema.index({ deliveryDate: 1, customerId: 1 });
+deliverySchema.index({ deliveryDate: 1, deliveryBoyId: 1, status: 1 });
+deliverySchema.index({ customerId: 1, deliveryDate: -1 });
+deliverySchema.index({ status: 1 });
+deliverySchema.index({ deliveryBoyId: 1, deliveryDate: -1 });
+
 module.exports = mongoose.models.Delivery || mongoose.model('Delivery', deliverySchema);

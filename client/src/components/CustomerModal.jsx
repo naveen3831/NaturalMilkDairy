@@ -81,14 +81,14 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
 
   const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== 'undefined') {
-      return window.innerWidth <= 768;
+      return window.innerWidth <= 840 || (window.matchMedia && window.matchMedia('(max-width: 840px)').matches);
     }
     return false;
   });
 
   useEffect(() => {
     const handleResize = () => {
-      setIsMobile(window.innerWidth <= 768);
+      setIsMobile(window.innerWidth <= 840 || (window.matchMedia && window.matchMedia('(max-width: 840px)').matches));
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -445,6 +445,27 @@ export default function CustomerModal({ isOpen, onClose, customerToEdit = null, 
                 {area && !locations.some((l) => l.isActive && l.name.toLowerCase() === area.toLowerCase()) && (
                   <option value={area}>{area} (Current)</option>
                 )}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
+                <Truck size={12} color="#059669" />
+                <span>Assigned Delivery Partner</span>
+              </label>
+              <select
+                value={deliveryBoyId}
+                onChange={(e) => setDeliveryBoyId(e.target.value)}
+                style={{ borderRadius: '8px', border: '1px solid #cbd5e1', padding: '8px 12px', fontSize: '0.84rem', width: '100%', background: '#ffffff' }}
+              >
+                <option value="">Choose Delivery Partner (Unassigned)</option>
+                {(deliveryBoys || [])
+                  .filter((b) => b.status !== 'inactive')
+                  .map((b) => (
+                    <option key={b.id || b._id} value={b.id || b._id}>
+                      {b.name} ({b.assignedArea || 'Route'})
+                    </option>
+                  ))}
               </select>
             </div>
 

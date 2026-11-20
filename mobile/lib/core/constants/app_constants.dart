@@ -1,5 +1,5 @@
-import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../config/app_config.dart';
 
 class AppConstants {
   static const String appName = 'Natural Milk Dairy';
@@ -10,8 +10,9 @@ class AppConstants {
 
   /// Candidate backend URLs tested automatically by ApiService
   static List<String> get candidateBaseUrls => const [
+        'http://192.168.88.6:5000', // Wi-Fi local network IP (physical phone & PC)
         'http://127.0.0.1:5000', // USB reverse port forwarding (physical phone)
-        'http://192.168.1.68:5000', // Wi-Fi local network IP (physical phone & PC)
+        'http://192.168.1.68:5000', // Alternative Wi-Fi local network IP
         'http://10.0.2.2:5000', // Android Emulator loopback
         'http://localhost:5000', // Desktop & Web
       ];
@@ -21,13 +22,7 @@ class AppConstants {
     if (kIsWeb) {
       return 'http://localhost:5000';
     }
-    try {
-      if (Platform.isAndroid) {
-        // 127.0.0.1:5000 works on physical Android phones with adb reverse
-        return 'http://127.0.0.1:5000';
-      }
-    } catch (_) {}
-    return 'http://localhost:5000';
+    return AppConfig.liveBaseUrl;
   }
 
   // Local storage keys

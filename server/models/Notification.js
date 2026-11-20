@@ -22,19 +22,6 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: [
-        'delivery_assigned',
-        'delivery_completed',
-        'delivery_missed',
-        'payment_collected',
-        'subscription_created',
-        'route_update',
-        'system',
-        'partner_message',
-        'customer_message',
-        'ticket',
-        'driver_duty',
-      ],
       default: 'system',
     },
     data: {
@@ -52,6 +39,11 @@ const notificationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// High performance indexes for fast notification delivery & history
+notificationSchema.index({ recipientRole: 1, recipientId: 1, createdAt: -1 });
+notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ isRead: 1 });
 
 // Automatic Real-Time & FCM Push Dispatch on every created notification
 notificationSchema.post('save', function (doc) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +37,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Initialize auth on application startup
+  /// Initialize auth on application startup with zero-latency cached restoration
   Future<bool> initAuth() async {
     _isLoading = true;
     notifyListeners();
@@ -53,14 +54,25 @@ class AuthProvider extends ChangeNotifier {
         } catch (_) {}
       }
 
-      // Verify and refresh with server
-      final freshUser = await _apiService.getMe();
-      if (freshUser != null) {
-        _user = freshUser;
-        await prefs.setString(AppConstants.keyUserData, jsonEncode(freshUser.toJson()));
-      }
       _realtimeService.updateToken(_token);
-      FcmService().syncToken();
+      unawaited(FcmService().syncToken());
+
+      if (_user != null) {
+        // Fast-path: restored instantly from local storage, refresh in background
+        unawaited(_refreshUserInBackground(prefs));
+      } else {
+        // Fallback: only if user cache was missing, query server with fast 1.2s timeout
+        try {
+          final freshUser = await _apiService.getMe().timeout(
+            const Duration(milliseconds: 1200),
+            onTimeout: () => null,
+          );
+          if (freshUser != null) {
+            _user = freshUser;
+            await prefs.setString(AppConstants.keyUserData, jsonEncode(freshUser.toJson()));
+          }
+        } catch (_) {}
+      }
     } else {
       _realtimeService.updateToken('guest');
     }
@@ -68,6 +80,17 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
     return isAuthenticated;
+  }
+
+  Future<void> _refreshUserInBackground(SharedPreferences prefs) async {
+    try {
+      final freshUser = await _apiService.getMe();
+      if (freshUser != null) {
+        _user = freshUser;
+        await prefs.setString(AppConstants.keyUserData, jsonEncode(freshUser.toJson()));
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   /// Sign in customer

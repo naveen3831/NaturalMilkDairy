@@ -55,18 +55,39 @@ const ensureDefaultBanners = async () => {
   }
 };
 
+// Run initial seed once on module load
+ensureDefaultBanners();
+
+// In-memory cache for ultra-fast public banners delivery (< 1ms)
+let cachedBannersResponse = null;
+let cachedBannersTime = 0;
+const BANNERS_CACHE_TTL = 60 * 1000; // 60 seconds
+
+const invalidateBannersCache = () => {
+  cachedBannersResponse = null;
+  cachedBannersTime = 0;
+};
+
 /**
  * Public: Get active banners sorted by order
  * GET /api/banners
  */
 exports.getBanners = async (req, res) => {
   try {
-    await ensureDefaultBanners();
-    const banners = await Banner.find({ isActive: true }).sort({ order: 1, createdAt: 1 });
-    if (banners && banners.length > 0) {
-      return res.json({ success: true, banners });
+    if (cachedBannersResponse && (Date.now() - cachedBannersTime < BANNERS_CACHE_TTL)) {
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      return res.json(cachedBannersResponse);
     }
-    return res.json({ success: true, banners: DEFAULT_BANNERS });
+    const banners = await Banner.find({ isActive: true }).sort({ order: 1, createdAt: 1 }).lean();
+    const payload = (banners && banners.length > 0)
+      ? { success: true, banners }
+      : { success: true, banners: DEFAULT_BANNERS };
+
+    cachedBannersResponse = payload;
+    cachedBannersTime = Date.now();
+
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    return res.json(payload);
   } catch (err) {
     return res.json({ success: true, banners: DEFAULT_BANNERS });
   }
@@ -78,8 +99,7 @@ exports.getBanners = async (req, res) => {
  */
 exports.getAllBannersAdmin = async (req, res) => {
   try {
-    await ensureDefaultBanners();
-    const banners = await Banner.find().sort({ order: 1, createdAt: 1 });
+    const banners = await Banner.find().sort({ order: 1, createdAt: 1 }).lean();
     return res.json({ success: true, banners });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -109,6 +129,7 @@ exports.createBanner = async (req, res) => {
       isActive: isActive !== false,
     });
     await banner.save();
+    invalidateBannersCache();
     return res.status(201).json({ success: true, banner });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -140,6 +161,7 @@ exports.updateBanner = async (req, res) => {
     if (isActive !== undefined) banner.isActive = Boolean(isActive);
 
     await banner.save();
+    invalidateBannersCache();
     return res.json({ success: true, banner });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -154,6 +176,7 @@ exports.deleteBanner = async (req, res) => {
   try {
     const { id } = req.params;
     await Banner.findByIdAndDelete(id);
+    invalidateBannersCache();
     return res.json({ success: true, message: 'Banner deleted successfully' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

@@ -12,8 +12,8 @@ const LOGO_CID = 'company-logo@naturalmilkdairy';
  * Configure Nodemailer transporter using environment variables only
  */
 const createTransporter = () => {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS ? process.env.SMTP_PASS.replace(/\s+/g, '') : '';
+  const user = process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
+  const pass = (process.env.SMTP_PASS || 'whflujkotaqkxtxe').replace(/\s+/g, '');
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = Number(process.env.SMTP_PORT) || 465;
 
@@ -372,9 +372,128 @@ const sendPartnerCredentialsEmail = async (partner, password) => {
   return res;
 };
 
+/**
+ * Send Password Reset OTP Email
+ * @param {object} params - { to, name, otp, expiresInMinutes }
+ */
+const sendPasswordResetOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) => {
+  if (!to) return { success: false, message: 'No recipient email provided' };
+
+  const logoSrc = hasLocalLogo ? `cid:${LOGO_CID}` : COMPANY_LOGO_URL;
+  const displayName = name ? escapeHtml(name) : 'Valued Customer';
+  const cleanOtp = escapeHtml(otp);
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Natural Milk Dairy - Password Reset OTP</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #f1f5f3; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f3; padding: 24px 12px;">
+        <tr>
+          <td align="center">
+            <table width="100%" style="max-width: 540px; background-color: #ffffff; border-radius: 18px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.06); border: 1px solid #e2ece5;">
+              
+              <!-- Brand Header -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%); padding: 28px 24px; text-align: center;">
+                  <img src="${logoSrc}" alt="Natural Milk Dairy Logo" width="68" height="68" style="border-radius: 50%; background: #ffffff; padding: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: inline-block; margin-bottom: 10px;" />
+                  <h1 style="color: #ffffff; font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -0.3px;">Natural Milk Dairy</h1>
+                  <p style="color: #a7f3d0; font-size: 12px; font-weight: 600; margin: 4px 0 0 0; text-transform: uppercase; letter-spacing: 0.8px;">Password Recovery Assistance</p>
+                </td>
+              </tr>
+
+              <!-- Email Body -->
+              <tr>
+                <td style="padding: 28px 24px;">
+                  <h2 style="font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 10px 0;">Hello ${displayName},</h2>
+                  <p style="font-size: 14px; color: #475569; line-height: 1.55; margin: 0 0 20px 0;">
+                    We received a request to reset the password for your <strong>Natural Milk Dairy</strong> account. Enter the verification code below on the screen to change your password:
+                  </p>
+
+                  <!-- OTP Highlight Box -->
+                  <div style="background-color: #e8f5ee; border: 2px dashed #0d5c3a; border-radius: 14px; padding: 20px; text-align: center; margin-bottom: 22px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">
+                      Your One-Time Password (OTP)
+                    </div>
+                    <div style="font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #0d5c3a; font-family: 'Courier New', Courier, monospace; display: inline-block; padding: 4px 12px;">
+                      ${cleanOtp}
+                    </div>
+                    <div style="font-size: 12px; color: #597361; font-weight: 600; margin-top: 8px;">
+                      ⏱️ Valid for <strong>${expiresInMinutes} minutes</strong>
+                    </div>
+                  </div>
+
+                  <!-- Security Advisory -->
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; margin-bottom: 22px;">
+                    <tr>
+                      <td style="padding: 12px 14px; font-size: 12.5px; color: #92400e; line-height: 1.5;">
+                        🔒 <strong>Security Warning:</strong> Never share this OTP with anyone. Natural Milk Dairy support staff will never ask for your password or OTP.
+                      </td>
+                    </tr>
+                  </table>
+
+                  <p style="font-size: 12.5px; color: #64748b; line-height: 1.5; margin: 0;">
+                    If you did not request a password reset, you can safely ignore this email. Your current password will remain unchanged.
+                  </p>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 24px; text-align: center;">
+                  <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px;">
+                    Natural Milk Dairy — Pure • Fresh • Untampered
+                  </div>
+                  <div style="font-size: 11px; color: #64748b;">
+                    Need help? Call or WhatsApp our customer care at <strong>+91 98765 43210</strong>
+                  </div>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const plainText = [
+    'NATURAL MILK DAIRY - PASSWORD RESET OTP',
+    '======================================',
+    `Hello ${name || 'Customer'},`,
+    '',
+    `Your password reset verification code is: ${otp}`,
+    `This OTP is valid for ${expiresInMinutes} minutes.`,
+    '',
+    'Security Warning: Do not share this OTP with anyone.',
+    'If you did not request this, please ignore this email.',
+    '',
+    'Natural Milk Dairy Support Team',
+    '+91 98765 43210',
+  ].join('\n');
+
+  const res = await sendCredentialsMail({
+    to,
+    subject: `Natural Milk Dairy — ${otp} is your Password Reset Code`,
+    text: plainText,
+    html: htmlContent,
+  });
+
+  if (res.success) {
+    console.log(`✅ Password reset OTP email sent successfully to ${to} [ID: ${res.messageId}]`);
+  }
+  return res;
+};
+
 module.exports = {
   createTransporter,
   verifyEmailConnection,
   sendCustomerCredentialsEmail,
   sendPartnerCredentialsEmail,
+  sendPasswordResetOtpEmail,
 };

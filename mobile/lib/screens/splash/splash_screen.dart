@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
-import '../../data/services/api_service.dart';
 import '../../data/services/fcm_service.dart';
 import '../../data/services/realtime_service.dart';
 import '../../providers/auth_provider.dart';
@@ -30,17 +29,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 750),
     );
 
     _scaleAnimation = CurvedAnimation(
       parent: _animController,
-      curve: Curves.easeOutBack,
+      curve: Curves.easeOutCubic,
     );
 
     _fadeAnimation = CurvedAnimation(
       parent: _animController,
-      curve: Curves.easeIn,
+      curve: const Interval(0.15, 1.0, curve: Curves.easeOut),
     );
 
     _animController.forward();
@@ -52,44 +51,52 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _initializeApp() async {
     if (!mounted) return;
 
-    // Smoothly initialize services post-frame without stalling Android main thread
-    try {
-      await ApiService().init();
-      RealtimeService().connect();
-      unawaited(FcmService().init());
-      unawaited(LauncherService.requestNotificationPermission());
-    } catch (e) {
-      debugPrint('Startup service initialization notice: $e');
-    }
+    final stopwatch = Stopwatch()..start();
 
-    if (!mounted) return;
-    context.read<ProductProvider>().loadProducts();
+    // 1. Kick off background services asynchronously
+    RealtimeService().connect();
+    unawaited(FcmService().init());
+    unawaited(LauncherService.requestNotificationPermission());
 
+    // 2. Initialize Auth & API in parallel
     final authProvider = context.read<AuthProvider>();
     final isAuth = await authProvider.initAuth();
 
-    // Minimum splash duration for smooth logo reveal
-    await Future.delayed(const Duration(milliseconds: 1500));
+    if (!mounted) return;
+    context.read<ProductProvider>().loadProducts(silent: true);
+
+    // 3. Keep splash screen displayed for a snappy, consistent minimum duration (~800ms)
+    // so the logo animation displays smoothly without freezing or stalling
+    const int minDisplayMs = 800;
+    final int elapsed = stopwatch.elapsedMilliseconds;
+    if (elapsed < minDisplayMs) {
+      await Future.delayed(Duration(milliseconds: minDisplayMs - elapsed));
+    }
 
     if (!mounted) return;
 
+    // 4. Target screen selection
+    Widget target = const HomeScreen();
     if (isAuth) {
-      // If user is logged in, DO NOT show onboarding screens
-      Widget target = const HomeScreen();
       if (authProvider.isAdmin) {
         target = const AdminDashboardScreen();
       } else if (authProvider.isDeliveryBoy) {
         target = const DeliveryPartnerDashboardScreen();
       }
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => target),
-      );
     } else {
-      // Without login -> show onboarding screens
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-      );
+      target = const OnboardingScreen();
     }
+
+    // 5. Ultra-smooth fade transition
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => target,
+        transitionDuration: const Duration(milliseconds: 280),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
   }
 
   @override
