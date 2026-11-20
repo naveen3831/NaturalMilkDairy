@@ -1,4 +1,44 @@
-﻿const path = require('path');
+﻿const express = require('express');
+const http = require('http');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+app.set('trust proxy', 1);
+
+// 1. INSTANT HEALTH PROBE (Available in <10ms for Docker / Jenkins / Nginx CI probes)
+app.get('/api/health', (req, res) => {
+  let mongoConnected = false;
+  let dbName = 'natural_milk_dairy';
+  try {
+    const mongoose = require('mongoose');
+    mongoConnected = mongoose.connection && mongoose.connection.readyState === 1;
+    if (mongoose.connection && mongoose.connection.name) {
+      dbName = mongoose.connection.name;
+    }
+  } catch (_) {}
+  res.json({
+    status: 'healthy',
+    app: 'Natural Milk Dairy API',
+    tagline: 'Natural • Pure • Healthy',
+    mongodb: mongoConnected ? 'connected' : 'connecting',
+    database: dbName,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+const server = http.createServer(app);
+
+// 2. Start HTTP listener IMMEDIATELY so container health checks never encounter race-condition 502s
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n======================================================`);
+  console.log(`🥛 NATURAL MILK DAIRY — Server Running on Port ${PORT}`);
+  console.log(`🌿 Natural • Pure • Healthy`);
+  console.log(`📡 Health API: http://0.0.0.0:${PORT}/api/health`);
+  console.log(`⚡ WebSocket:  ws://0.0.0.0:${PORT}/ws`);
+  console.log(`======================================================\n`);
+});
+
+const path = require('path');
 const fs = require('fs');
 
 // Resolve .env from multiple candidate paths
@@ -16,45 +56,13 @@ for (const p of envPaths) {
 }
 require('dotenv').config();
 
-const express = require('express');
-const http = require('http');
 const cors = require('cors');
 const morgan = require('morgan');
-const { connectDB, getMongoStatus } = require('./config/db');
+const { connectDB } = require('./config/db');
 const { initWebSocket } = require('./config/websocket');
-
-const app = express();
-const PORT = process.env.PORT || 5000;
-app.set('trust proxy', 1);
-
-const server = http.createServer(app);
 
 // Initialize WebSocket server
 initWebSocket(server);
-
-// 1. FAST HEALTH CHECK (Available immediately for CI/CD Docker and Nginx container probes)
-app.get('/api/health', (req, res) => {
-  const mongoStatus = getMongoStatus();
-  res.json({
-    status: 'healthy',
-    app: 'Natural Milk Dairy API',
-    tagline: 'Natural • Pure • Healthy',
-    mongodb: mongoStatus.connected ? 'connected' : 'connecting',
-    database: mongoStatus.info?.name || 'natural_milk_dairy',
-    cluster: mongoStatus.info?.host || 'MongoDB Atlas',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// 2. Start HTTP listener IMMEDIATELY so container health checks never encounter race-condition 502s
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n======================================================`);
-  console.log(`🥛 NATURAL MILK DAIRY — Server Running on Port ${PORT}`);
-  console.log(`🌿 Natural • Pure • Healthy`);
-  console.log(`📡 Health API: http://0.0.0.0:${PORT}/api/health`);
-  console.log(`⚡ WebSocket:  ws://0.0.0.0:${PORT}/ws`);
-  console.log(`======================================================\n`);
-});
 
 // 3. Connect to Database asynchronously in background
 connectDB();
