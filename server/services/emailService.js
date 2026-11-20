@@ -13,7 +13,10 @@ const LOGO_CID = 'company-logo@naturalmilkdairy';
  */
 const createTransporter = (useFallbackPort = false) => {
   const user = process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
-  const pass = (process.env.SMTP_PASS || 'whflujkotaqkxtxe').replace(/\s+/g, '');
+  let pass = (process.env.SMTP_PASS || 'ftvdaytualgcpjiz').replace(/\s+/g, '');
+  if (!pass || pass === 'whflujkotaqkxtxe') {
+    pass = 'ftvdaytualgcpjiz';
+  }
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = useFallbackPort ? 587 : (Number(process.env.SMTP_PORT) || 465);
 
