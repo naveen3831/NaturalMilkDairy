@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_constants.dart';
 import '../../data/services/api_service.dart';
 import 'login_screen.dart';
 
@@ -343,7 +342,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   _step == 1
                       ? 'Enter your registered email address and we will send a 6-digit verification code.'
                       : _step == 2
-                          ? 'We have sent a 6-digit OTP code to ${_emailController.text.trim()}.'
+                          ? 'We have sent a 6-digit OTP code to ${_emailController.text.trim()}.\nPlease check your Inbox and Spam / Junk folder.'
                           : _step == 3
                               ? 'Your email has been verified. Create a secure new password for your account.'
                               : 'Your account password has been updated. You can now sign in with your new credentials.',

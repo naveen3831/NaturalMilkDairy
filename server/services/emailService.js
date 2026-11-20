@@ -9,27 +9,44 @@ const hasLocalLogo = fs.existsSync(localLogoPath);
 const LOGO_CID = 'company-logo@naturalmilkdairy';
 
 /**
- * Configure Nodemailer transporter using environment variables only
+ * Configure Nodemailer transporter with dual-strategy fallback (Gmail service + Port 587)
  */
-const createTransporter = () => {
+const createTransporter = (useFallbackPort = false) => {
   const user = process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
   const pass = (process.env.SMTP_PASS || 'whflujkotaqkxtxe').replace(/\s+/g, '');
   const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const port = Number(process.env.SMTP_PORT) || 465;
+  const port = useFallbackPort ? 587 : (Number(process.env.SMTP_PORT) || 465);
 
   if (!user || !pass) {
-    console.warn('⚠️ SMTP_USER or SMTP_PASS not set in .env. Emails will not be sent.');
+    console.warn('⚠️ SMTP_USER or SMTP_PASS not set. Emails will not be sent.');
     return null;
+  }
+
+  if (useFallbackPort || port === 587) {
+    return nodemailer.createTransport({
+      host: 'smtp.gmail.com',
+      port: 587,
+      secure: false, // STARTTLS
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    });
+  }
+
+  // Official Gmail service transport (resolves best available connection)
+  if (host === 'smtp.gmail.com' || user.endsWith('@gmail.com')) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    });
   }
 
   return nodemailer.createTransport({
     host,
     port,
     secure: port === 465,
-    auth: {
-      user,
-      pass,
-    },
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
   });
 };
 
@@ -41,7 +58,7 @@ const verifyEmailConnection = async () => {
   if (!transporter) return false;
   try {
     await transporter.verify();
-    console.log('📧 SMTP Email Service Connected Successfully:', process.env.SMTP_USER);
+    console.log('📧 SMTP Email Service Connected Successfully:', process.env.SMTP_USER || 'naveenkumar970100@gmail.com');
     return true;
   } catch (err) {
     console.error('❌ SMTP Connection Error:', err.message);
@@ -174,38 +191,41 @@ const buildCredentialsEmailHtml = ({
 };
 
 const sendCredentialsMail = async ({ to, subject, text, html }) => {
-  const transporter = createTransporter();
-  if (!transporter) return { success: false, message: 'SMTP not configured' };
+  const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || 'naveenkumar970100@gmail.com';
   if (!to) return { success: false, message: 'No recipient email provided' };
 
-  const fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER;
+  const mailOptions = {
+    from: `"Natural Milk Dairy" <${fromEmail}>`,
+    replyTo: fromEmail,
+    to,
+    subject,
+    text,
+    html,
+    headers: {
+      'X-Priority': '1',
+      Importance: 'high',
+    },
+  };
+
+  // Attempt 1: Default Gmail service connection
   try {
-    const info = await transporter.sendMail({
-      from: `"Natural Milk Dairy" <${fromEmail}>`,
-      replyTo: fromEmail,
-      to,
-      subject,
-      text,
-      html,
-      attachments: hasLocalLogo
-        ? [
-            {
-              filename: 'logo.png',
-              path: localLogoPath,
-              cid: LOGO_CID,
-              contentDisposition: 'inline',
-            },
-          ]
-        : [],
-      headers: {
-        'X-Priority': '1',
-        Importance: 'high',
-      },
-    });
+    const transporter = createTransporter(false);
+    if (!transporter) return { success: false, message: 'SMTP not configured' };
+    const info = await transporter.sendMail(mailOptions);
     return { success: true, messageId: info.messageId };
-  } catch (err) {
-    console.error(`❌ Failed to send credentials email to ${to}:`, err.message);
-    return { success: false, error: err.message };
+  } catch (primaryErr) {
+    console.warn(`⚠️ Primary SMTP delivery to ${to} failed (${primaryErr.message}). Retrying with STARTTLS port 587...`);
+    // Attempt 2: Fallback to Port 587 STARTTLS
+    try {
+      const fallbackTransporter = createTransporter(true);
+      if (!fallbackTransporter) return { success: false, message: 'Fallback SMTP not configured' };
+      const fallbackInfo = await fallbackTransporter.sendMail(mailOptions);
+      console.log(`✅ Fallback SMTP delivery succeeded for ${to} [ID: ${fallbackInfo.messageId}]`);
+      return { success: true, messageId: fallbackInfo.messageId };
+    } catch (fallbackErr) {
+      console.error(`❌ All SMTP delivery attempts failed to ${to}:`, fallbackErr.message);
+      return { success: false, error: fallbackErr.message };
+    }
   }
 };
 

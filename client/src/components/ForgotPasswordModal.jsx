@@ -61,7 +61,7 @@ export default function ForgotPasswordModal({ isOpen, onClose, onPasswordResetSu
       const data = await res.json();
 
       if (data.success) {
-        setSuccessMsg(`Verification code sent to ${cleanEmail}`);
+        setSuccessMsg(`Verification code sent to ${cleanEmail}. Please check your Inbox and Spam / Junk folder.`);
         setStep(2);
         setResendTimer(60);
       } else {

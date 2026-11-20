@@ -1032,12 +1032,19 @@ const forgotPasswordSendOtp = async (req, res) => {
       expiresInMinutes: 10,
     });
 
+    if (!emailResult.success) {
+      console.error(`❌ [PASSWORD_RESET_OTP] Email delivery failed for ${rawEmail}:`, emailResult.error || emailResult.message);
+      return res.status(500).json({
+        success: false,
+        message: `Failed to deliver verification email: ${emailResult.error || emailResult.message || 'SMTP delivery issue'}. Please check your email settings or try again.`,
+      });
+    }
+
     return res.json({
       success: true,
-      message: 'A 6-digit verification code has been sent to your email.',
+      message: 'A 6-digit verification code has been sent to your email. Please check your Inbox and Spam/Junk folder.',
       email: rawEmail,
       expiresInMinutes: 10,
-      emailSent: emailResult.success,
     });
   } catch (err) {
     console.error('forgotPasswordSendOtp error:', err);
