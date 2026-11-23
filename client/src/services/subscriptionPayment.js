@@ -73,6 +73,7 @@ export async function startSubscriptionPayment(params = {}) {
     curdQty,
     milkType,
     frequency,
+    alternateSchedule,
     planName,
     extraProducts,
     address,
@@ -126,6 +127,9 @@ export async function startSubscriptionPayment(params = {}) {
   }
   if (frequency || planPayload?.frequency) {
     bodyPayload.frequency = frequency || planPayload.frequency;
+  }
+  if (alternateSchedule || planPayload?.alternateSchedule) {
+    bodyPayload.alternateSchedule = alternateSchedule || planPayload.alternateSchedule;
   }
   if (planName || planPayload?.planName) {
     bodyPayload.planName = planName || planPayload.planName;

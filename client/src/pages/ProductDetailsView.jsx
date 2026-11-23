@@ -20,6 +20,8 @@ import {
   Navigation,
   Crosshair,
   Share2,
+  Edit3,
+  Phone,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
@@ -63,7 +65,16 @@ export default function ProductDetailsView({
   const [milkQty, setMilkQty] = useState(defaultMilkQty);
   const [curdQty, setCurdQty] = useState(product?.category === 'curd' ? 500 : 0);
   const [orderFrequency, setOrderFrequency] = useState('subscription'); // 'one_time' or 'subscription'
-  const [subscriptionSchedule, setSubscriptionSchedule] = useState('daily'); // 'daily', 'alternate', 'selected'
+  const [subscriptionSchedule, setSubscriptionSchedule] = useState('daily'); // 'daily', 'alternate', 'selected', 'weekends'
+  const [alternateSchedule, setAlternateSchedule] = useState('tomorrow'); // 'tomorrow' or 'day_after'
+  const [oneTimeDay, setOneTimeDay] = useState('tomorrow'); // 'tomorrow' or 'weekend'
+
+  // Mobile edit modal state
+  const [isEditMobileOpen, setIsEditMobileOpen] = useState(false);
+  const [editMobileName, setEditMobileName] = useState('');
+  const [editMobilePhone, setEditMobilePhone] = useState('');
+  const [isSavingMobile, setIsSavingMobile] = useState(false);
+  const [mobileError, setMobileError] = useState('');
 
   // Contact and Address state
   const [customerName, setCustomerName] = useState(effectiveCustomer.name || 'Valued Customer');
@@ -111,6 +122,7 @@ export default function ProductDetailsView({
     if (orderFrequency === 'one_time') return 1;
     if (subscriptionSchedule === 'alternate') return 15;
     if (subscriptionSchedule === 'selected') return 22; // Weekdays
+    if (subscriptionSchedule === 'weekends') return 8; // Weekends
     return 30; // Daily
   }, [orderFrequency, subscriptionSchedule]);
 
@@ -122,6 +134,55 @@ export default function ProductDetailsView({
       navigator.clipboard.writeText(window.location.href);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2200);
+    }
+  };
+
+  // Handle mobile number & contact update
+  const handleSaveMobile = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPhone = editMobilePhone.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setMobileError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!editMobileName.trim()) {
+      setMobileError('Please enter customer name.');
+      return;
+    }
+    setIsSavingMobile(true);
+    setMobileError('');
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/customers/me/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          name: editMobileName.trim(),
+          mobile: cleanPhone,
+          address: address.trim() || 'Doorstep Delivery',
+          area: selectedArea,
+          landmark: landmark.trim(),
+          latitude: selectedLat,
+          longitude: selectedLng,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setCustomerName(editMobileName.trim());
+        setCustomerMobile(cleanPhone);
+        setIsEditMobileOpen(false);
+        refreshAll?.();
+        notifyRealtimeSync?.();
+      } else {
+        setMobileError(data.message || 'Failed to update mobile number.');
+      }
+    } catch (err) {
+      setMobileError(err.message || 'Network error updating mobile number.');
+    } finally {
+      setIsSavingMobile(false);
     }
   };
 
@@ -154,6 +215,7 @@ export default function ProductDetailsView({
         curdQty,
         milkType: product?.name || 'Farm Fresh Pure Milk',
         frequency: frequencyPayload,
+        alternateSchedule,
         planName: isOneTime ? `One-Time ${product?.name || 'Milk Order'}` : `30-Day ${product?.name || 'Daily Drop'} Plan`,
         address: address.trim(),
         area: selectedArea,
@@ -579,21 +641,48 @@ export default function ProductDetailsView({
                     Customer Contact
                   </span>
                 </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    padding: '3px 8px',
-                    borderRadius: '6px',
-                    background: '#dcfce7',
-                    color: '#15803d',
-                    fontSize: '10.5px',
-                    fontWeight: 800,
-                  }}
-                >
-                  <ShieldCheck size={12} />
-                  <span>Verified</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: '#dcfce7',
+                      color: '#15803d',
+                      fontSize: '10.5px',
+                      fontWeight: 800,
+                    }}
+                  >
+                    <ShieldCheck size={12} />
+                    <span>Verified</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditMobileName(customerName);
+                      setEditMobilePhone(customerMobile);
+                      setMobileError('');
+                      setIsEditMobileOpen(true);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: '#e2f1ea',
+                      border: '1px solid #a5d6a7',
+                      color: '#0d5c3a',
+                      fontSize: '10.5px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Edit3 size={11} />
+                    <span>Change</span>
+                  </button>
                 </div>
               </div>
 
@@ -619,8 +708,29 @@ export default function ProductDetailsView({
                   <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0c2340' }}>
                     {customerName}
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#6b7280', fontWeight: 600 }}>
-                    {customerMobile ? `+91 ${customerMobile}` : 'Phone verified'}
+                  <div style={{ fontSize: '11.5px', color: '#6b7280', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>{customerMobile ? `+91 ${customerMobile}` : 'Phone verified'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditMobileName(customerName);
+                        setEditMobilePhone(customerMobile);
+                        setMobileError('');
+                        setIsEditMobileOpen(true);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#0d5c3a',
+                        fontWeight: 800,
+                        fontSize: '11px',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      Edit Mobile
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1102,13 +1212,13 @@ export default function ProductDetailsView({
                   <div style={{ fontSize: '12px', fontWeight: 700, color: '#4b5563', margin: '18px 0 10px 0' }}>
                     Delivery Schedule
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                     {/* Every Morning */}
                     <div
                       onClick={() => setSubscriptionSchedule('daily')}
                       style={{
                         position: 'relative',
-                        padding: '12px 6px',
+                        padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'daily' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'daily' ? '#e2f1ea' : '#f9fafb',
@@ -1154,7 +1264,7 @@ export default function ProductDetailsView({
                     <div
                       onClick={() => setSubscriptionSchedule('alternate')}
                       style={{
-                        padding: '12px 6px',
+                        padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'alternate' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'alternate' ? '#e2f1ea' : '#f9fafb',
@@ -1184,13 +1294,12 @@ export default function ProductDetailsView({
                     <div
                       onClick={() => setSubscriptionSchedule('selected')}
                       style={{
-                        padding: '12px 6px',
+                        padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'selected' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'selected' ? '#e2f1ea' : '#f9fafb',
                         textAlign: 'center',
                         cursor: 'pointer',
-                        marginTop: '7px',
                       }}
                     >
                       <div
@@ -1208,6 +1317,139 @@ export default function ProductDetailsView({
                         {subscriptionSchedule === 'selected' && <Check size={13} color="#0d5c3a" />}
                       </div>
                       <span style={{ fontSize: '9px', color: '#6b7280' }}>Mon-Fri · 22 Drops</span>
+                    </div>
+
+                    {/* Weekends Only */}
+                    <div
+                      onClick={() => setSubscriptionSchedule('weekends')}
+                      style={{
+                        padding: '12px 8px',
+                        borderRadius: '12px',
+                        border: `1.8px solid ${subscriptionSchedule === 'weekends' ? '#0d5c3a' : '#e2ebe5'}`,
+                        background: subscriptionSchedule === 'weekends' ? '#e2f1ea' : '#f9fafb',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: subscriptionSchedule === 'weekends' ? 900 : 700,
+                          color: subscriptionSchedule === 'weekends' ? '#0d5c3a' : '#0c2340',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '3px',
+                        }}
+                      >
+                        <span>Weekends Only</span>
+                        {subscriptionSchedule === 'weekends' && <Check size={13} color="#0d5c3a" />}
+                      </div>
+                      <span style={{ fontSize: '9px', color: '#6b7280' }}>Sat-Sun · 8 Drops</span>
+                    </div>
+                  </div>
+
+                  {/* Sub-selector for Alternate Days */}
+                  {subscriptionSchedule === 'alternate' && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        padding: '12px',
+                        borderRadius: '12px',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                      }}
+                    >
+                      <div style={{ fontSize: '11.5px', fontWeight: 800, color: '#14532d', marginBottom: '8px' }}>
+                        Alternate Days Delivery Pattern:
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <div
+                          onClick={() => setAlternateSchedule('tomorrow')}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${alternateSchedule === 'tomorrow' ? '#0d5c3a' : '#dce8df'}`,
+                            background: alternateSchedule === 'tomorrow' ? '#0d5c3a' : '#ffffff',
+                            color: alternateSchedule === 'tomorrow' ? '#ffffff' : '#0c2340',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ fontSize: '11px', fontWeight: 800 }}>Start Tomorrow</div>
+                          <div style={{ fontSize: '9.5px', opacity: 0.85 }}>e.g. Mon, Wed, Fri</div>
+                        </div>
+                        <div
+                          onClick={() => setAlternateSchedule('day_after')}
+                          style={{
+                            padding: '8px 10px',
+                            borderRadius: '10px',
+                            border: `1.5px solid ${alternateSchedule === 'day_after' ? '#0d5c3a' : '#dce8df'}`,
+                            background: alternateSchedule === 'day_after' ? '#0d5c3a' : '#ffffff',
+                            color: alternateSchedule === 'day_after' ? '#ffffff' : '#0c2340',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ fontSize: '11px', fontWeight: 800 }}>Start Day After</div>
+                          <div style={{ fontSize: '9.5px', opacity: 0.85 }}>e.g. Tue, Thu, Sat</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sub-note for Weekends Only */}
+                  {subscriptionSchedule === 'weekends' && (
+                    <div
+                      style={{
+                        marginTop: '12px',
+                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        background: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#14532d',
+                      }}
+                    >
+                      Delivered every Saturday & Sunday morning before 6:30 AM (8 drops in 30 days).
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Delivery Day for One-Time orders */}
+              {orderFrequency === 'one_time' && (
+                <>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#4b5563', margin: '18px 0 10px 0' }}>
+                    Delivery Day
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div
+                      onClick={() => setOneTimeDay('tomorrow')}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        border: `1.5px solid ${oneTimeDay === 'tomorrow' ? '#0d5c3a' : '#dce8df'}`,
+                        background: oneTimeDay === 'tomorrow' ? '#0d5c3a' : '#ffffff',
+                        color: oneTimeDay === 'tomorrow' ? '#ffffff' : '#0c2340',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', fontWeight: 800 }}>Tomorrow Morning</div>
+                      <div style={{ fontSize: '9.5px', opacity: 0.85 }}>Before 6:30 AM drop</div>
+                    </div>
+                    <div
+                      onClick={() => setOneTimeDay('weekend')}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '12px',
+                        border: `1.5px solid ${oneTimeDay === 'weekend' ? '#0d5c3a' : '#dce8df'}`,
+                        background: oneTimeDay === 'weekend' ? '#0d5c3a' : '#ffffff',
+                        color: oneTimeDay === 'weekend' ? '#ffffff' : '#0c2340',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div style={{ fontSize: '11px', fontWeight: 800 }}>This Weekend</div>
+                      <div style={{ fontSize: '9.5px', opacity: 0.85 }}>Saturday Morning</div>
                     </div>
                   </div>
                 </>
@@ -1415,6 +1657,149 @@ export default function ProductDetailsView({
             >
               🔒 256-Bit SSL Encrypted • Secure Checkout • Money-back Guarantee
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 11. UPDATE MOBILE NUMBER MODAL ── */}
+      {isEditMobileOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setIsEditMobileOpen(false)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '20px',
+              padding: '24px',
+              maxWidth: '420px',
+              width: '100%',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a' }}>
+                  <Phone size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 900, color: '#0c2340' }}>Update Mobile Number</h3>
+                  <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>Updates contact for driver deliveries & notifications</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditMobileOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {mobileError && (
+              <div style={{ padding: '8px 12px', borderRadius: '8px', background: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626', fontSize: '11.5px', marginBottom: '14px', fontWeight: 600 }}>
+                {mobileError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveMobile}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: '#374151', marginBottom: '5px' }}>
+                  Customer Name
+                </label>
+                <input
+                  type="text"
+                  value={editMobileName}
+                  onChange={(e) => setEditMobileName(e.target.value)}
+                  placeholder="Your Full Name"
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #dce8df',
+                    fontSize: '13px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '11.5px', fontWeight: 700, color: '#374151', marginBottom: '5px' }}>
+                  10-Digit Mobile Number *
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #dce8df', borderRadius: '10px', overflow: 'hidden' }}>
+                  <span style={{ padding: '0 10px', background: '#f3f4f6', color: '#0c2340', fontWeight: 800, fontSize: '13px', borderRight: '1px solid #dce8df', height: '40px', display: 'flex', alignItems: 'center' }}>
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    value={editMobilePhone}
+                    onChange={(e) => setEditMobilePhone(e.target.value)}
+                    placeholder="9912020406"
+                    maxLength={10}
+                    style={{
+                      flex: 1,
+                      padding: '10px 12px',
+                      border: 'none',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: '#0c2340',
+                      outline: 'none',
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditMobileOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '12px',
+                    border: '1px solid #dce8df',
+                    background: '#f9fafb',
+                    color: '#4b5563',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingMobile}
+                  style={{
+                    flex: 2,
+                    padding: '10px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: 900,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {isSavingMobile ? 'Saving...' : 'Save & Update Mobile'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

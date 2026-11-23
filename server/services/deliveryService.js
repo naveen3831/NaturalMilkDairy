@@ -100,7 +100,9 @@ const ensureDeliveriesForDate = async (dateStr = formatDate()) => {
       if (plan.frequency === 'daily' || !plan.frequency) {
         shouldDeliver = true;
       } else if (plan.frequency === 'alternate') {
-        shouldDeliver = dayNumber % 2 === 0;
+        shouldDeliver = plan.alternateSchedule === 'day_after' ? dayNumber % 2 !== 0 : dayNumber % 2 === 0;
+      } else if (plan.frequency === 'weekends') {
+        shouldDeliver = ['Sat', 'Sun'].includes(dayName);
       } else if (plan.frequency === 'selected' || plan.frequency === 'custom') {
         shouldDeliver = Array.isArray(plan.deliveryDays) && plan.deliveryDays.includes(dayName);
       } else if (plan.frequency === 'once' || plan.frequency === 'single') {
@@ -386,7 +388,9 @@ const ensureDeliveriesForCustomer = async (customer, force = false) => {
         if (plan.frequency === 'daily' || !plan.frequency) {
           shouldDeliver = true;
         } else if (plan.frequency === 'alternate') {
-          shouldDeliver = dayNumber % 2 === 0;
+          shouldDeliver = plan.alternateSchedule === 'day_after' ? dayNumber % 2 !== 0 : dayNumber % 2 === 0;
+        } else if (plan.frequency === 'weekends') {
+          shouldDeliver = ['Sat', 'Sun'].includes(dayName);
         } else if (plan.frequency === 'selected' || plan.frequency === 'custom') {
           shouldDeliver = Array.isArray(plan.deliveryDays) && plan.deliveryDays.includes(dayName);
         }

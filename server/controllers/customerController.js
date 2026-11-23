@@ -1527,6 +1527,23 @@ const updateOwnCustomerProfile = async (req, res) => {
       { $set: deliveryUpdate }
     );
 
+    if (oldMobile !== customer.mobile) {
+      await Subscription.updateMany(
+        {
+          $or: [
+            { customer: customer._id },
+            { customerId: customer.customerId },
+          ],
+        },
+        {
+          $set: {
+            customerName: customer.name,
+            whatsapp: customer.whatsapp || customer.mobile,
+          },
+        }
+      );
+    }
+
     // Notify Admin & Delivery Partner in real time with location updates
     await notifyAddressUpdate(customer, fullAddress, 'updated delivery profile & address');
 
@@ -1875,6 +1892,8 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
 
     // 3. Sync all pending deliveries for this customer
     const deliveryUpdateFields = {
+      customerName: customer.name,
+      customerPhone: customer.mobile,
       customerAddress: fullAddress,
     };
     if (lat != null) {
@@ -1900,17 +1919,26 @@ const notifyAddressUpdate = async (customer, formattedAddress, actionDescription
       }
     );
 
-    // 4. Real-time WebSocket Broadcasts
+    // 4. Real-time WebSocket Broadcasts with complete customer & phone details
     broadcast('CUSTOMER_UPDATED', {
       customerId: customer.customerId,
       id: customer._id.toString(),
+      name: customer.name,
+      customerName: customer.name,
+      mobile: customer.mobile,
+      customerPhone: customer.mobile,
+      phone: customer.mobile,
       latitude: lat,
       longitude: lng,
       address: fullAddress,
       area: customer.area,
+      landmark: customer.landmark,
     });
     broadcast('DELIVERY_UPDATED', {
       customerId: customer.customerId,
+      customerName: customer.name,
+      customerPhone: customer.mobile,
+      customerAddress: fullAddress,
       latitude: lat,
       longitude: lng,
     });

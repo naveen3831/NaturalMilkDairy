@@ -70,6 +70,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     milkQty: preselectedProduct?.selectedQty || (preselectedProduct?.name?.includes('500ml') ? 0.5 : 1),
     curdQty: preselectedProduct?.category === 'curd' ? 500 : 0,
     frequency: preselectedProduct?.selectedFrequency || 'daily',
+    alternateSchedule: 'tomorrow',
     paymentType: 'credit',
     paymentCycle: 'monthly',
   });
@@ -79,6 +80,68 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdInfo, setCreatedInfo] = useState(null);
   const [paymentError, setPaymentError] = useState('');
+
+  // Customer contact editing state
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editMobile, setEditMobile] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [isSavingContact, setIsSavingContact] = useState(false);
+
+  const startEditContact = () => {
+    setEditName(formData.name || user?.name || '');
+    setEditMobile(formData.mobile || user?.mobile || '');
+    setContactError('');
+    setIsEditingContact(true);
+  };
+
+  const handleSaveContact = async (e) => {
+    if (e) e.preventDefault();
+    const cleanPhone = editMobile.replace(/\D/g, '').slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      setContactError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!editName.trim()) {
+      setContactError('Please enter customer name.');
+      return;
+    }
+    setIsSavingContact(true);
+    setContactError('');
+    try {
+      const res = await fetch('/api/customers/me/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({
+          name: editName.trim(),
+          mobile: cleanPhone,
+          address: formData.address.trim() || 'Doorstep Delivery',
+          area: formData.area,
+          landmark: formData.landmark.trim(),
+          latitude: formData.latitude,
+          longitude: formData.longitude,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFormData((prev) => ({
+          ...prev,
+          name: editName.trim(),
+          mobile: cleanPhone,
+          whatsapp: cleanPhone,
+        }));
+        setIsEditingContact(false);
+        refreshAll?.();
+        notifyRealtimeSync?.();
+      } else {
+        setContactError(data.message || 'Failed to update contact.');
+      }
+    } catch (err) {
+      setContactError(err.message || 'Error updating contact.');
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
 
   React.useEffect(() => {
     if (user) {
@@ -117,6 +180,8 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
       dropsCount = 15;
     } else if (formData.frequency === 'selected' || formData.frequency === 'weekdays') {
       dropsCount = 22; // ~22 weekdays in 30 days
+    } else if (formData.frequency === 'weekends') {
+      dropsCount = 8; // Saturday & Sunday mornings
     }
 
     const totalAmount = Math.round(dailyCost * dropsCount);
@@ -156,6 +221,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           milkQty: Number(formData.milkQty),
           curdQty: Number(formData.curdQty),
           frequency: formData.frequency,
+          alternateSchedule: formData.alternateSchedule || 'tomorrow',
           purpose: formData.frequency === 'once' ? 'one_time' : 'new',
           latitude: formData.latitude,
           longitude: formData.longitude,
@@ -348,18 +414,111 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 <span className="subscribe-section-title">
                   <User size={16} /> Customer Contact
                 </span>
-                <span className="subscribe-verified-tag">
-                  <ShieldCheck size={13} /> Verified
-                </span>
-              </div>
-
-              <div className="subscribe-customer-badge">
-                <div className="subscribe-customer-avatar">{userInitials}</div>
-                <div className="subscribe-customer-meta">
-                  <div className="subscribe-customer-name">{formData.name || 'Valued Customer'}</div>
-                  <div className="subscribe-customer-phone">+91 {formData.mobile}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="subscribe-verified-tag">
+                    <ShieldCheck size={13} /> Verified
+                  </span>
+                  {!isEditingContact && (
+                    <button
+                      type="button"
+                      onClick={startEditContact}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid #bbf7d0',
+                        color: '#0d5c3a',
+                        borderRadius: '8px',
+                        padding: '3px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Change
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {isEditingContact ? (
+                <div style={{ padding: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '6px' }}>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0c2340', marginBottom: '8px' }}>
+                    Update Mobile & Contact Details
+                  </div>
+                  {contactError && (
+                    <div style={{ fontSize: '0.75rem', color: '#b91c1c', marginBottom: '6px', fontWeight: 600 }}>
+                      {contactError}
+                    </div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                        Customer Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 700, display: 'block', marginBottom: '2px' }}>
+                        10-Digit Mobile
+                      </label>
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={editMobile}
+                        onChange={(e) => setEditMobile(e.target.value)}
+                        style={{ width: '100%', padding: '6px 8px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingContact(false)}
+                      style={{ padding: '5px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '0.75rem', cursor: 'pointer' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveContact}
+                      disabled={isSavingContact}
+                      style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#0d5c3a', color: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                    >
+                      {isSavingContact ? 'Saving...' : 'Save Phone'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="subscribe-customer-badge">
+                  <div className="subscribe-customer-avatar">{userInitials}</div>
+                  <div className="subscribe-customer-meta">
+                    <div className="subscribe-customer-name">{formData.name || 'Valued Customer'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="subscribe-customer-phone">+91 {formData.mobile}</span>
+                      <button
+                        type="button"
+                        onClick={startEditContact}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#0d5c3a',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          textDecoration: 'underline',
+                          cursor: 'pointer',
+                          padding: 0,
+                        }}
+                      >
+                        Edit Mobile
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Section 2: Doorstep Delivery Address */}
@@ -579,9 +738,10 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 <div className="subscribe-freq-grid">
                   {[
                     { id: 'daily', title: 'Every Morning', desc: 'Daily · 30 Drops', tag: 'Best Value' },
-                    { id: 'once', title: 'One-Time Order', desc: 'Single Drop · 1 Day', tag: 'Try Once' },
                     { id: 'alternate', title: 'Alternate Days', desc: '1 Day Gap · 15 Drops', tag: null },
                     { id: 'selected', title: 'Weekdays Only', desc: 'Mon to Fri · 22 Drops', tag: null },
+                    { id: 'weekends', title: 'Weekends Only', desc: 'Sat-Sun · 8 Drops', tag: 'Sat & Sun' },
+                    { id: 'once', title: 'One-Time Order', desc: 'Single Drop · 1 Day', tag: 'Try Once' },
                   ].map((item) => {
                     const isSelected = formData.frequency === item.id;
                     return (
@@ -610,10 +770,54 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                   </div>
                 )}
                 {formData.frequency === 'alternate' && (
+                  <div style={{ marginTop: '10px', padding: '12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <Sparkles size={16} color="#15803d" />
+                      <span style={{ fontSize: '0.82rem', color: '#166534', fontWeight: 800 }}>
+                        Alternate Days Delivery Pattern:
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, alternateSchedule: 'tomorrow' })}
+                        style={{
+                          padding: '8px',
+                          borderRadius: '8px',
+                          border: (formData.alternateSchedule || 'tomorrow') === 'tomorrow' ? '2px solid #0d5c3a' : '1px solid #cbd5e1',
+                          background: (formData.alternateSchedule || 'tomorrow') === 'tomorrow' ? '#0d5c3a' : '#fff',
+                          color: (formData.alternateSchedule || 'tomorrow') === 'tomorrow' ? '#fff' : '#334155',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Start Tomorrow (Mon, Wed...)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, alternateSchedule: 'day_after' })}
+                        style={{
+                          padding: '8px',
+                          borderRadius: '8px',
+                          border: formData.alternateSchedule === 'day_after' ? '2px solid #0d5c3a' : '1px solid #cbd5e1',
+                          background: formData.alternateSchedule === 'day_after' ? '#0d5c3a' : '#fff',
+                          color: formData.alternateSchedule === 'day_after' ? '#fff' : '#334155',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Start Day After (Tue, Thu...)
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {formData.frequency === 'weekends' && (
                   <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Sparkles size={16} color="#15803d" />
                     <span style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 700 }}>
-                      Alternate Days Schedule: Delivered every other morning with 15 doorstep drops over 30 days.
+                      Weekends Only Schedule: Delivered every Saturday & Sunday morning before 6:30 AM (8 drops in 30 days).
                     </span>
                   </div>
                 )}

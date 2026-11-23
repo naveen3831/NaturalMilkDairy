@@ -36,7 +36,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   late double _selectedMilkQty;
   int _selectedCurdQty = 0;
   String _orderFrequency = 'subscription'; // 'one_time' or 'subscription'
-  String _subscriptionSchedule = 'daily'; // 'daily', 'alternate', 'selected'
+  String _subscriptionSchedule = 'daily'; // 'daily', 'alternate', 'selected', 'weekends'
+  String _alternateSchedule = 'tomorrow'; // 'tomorrow' or 'day_after'
+  String _oneTimeDay = 'tomorrow'; // 'tomorrow' or 'weekend'
 
   static const List<String> _areas = [
     'Madhapur',
@@ -98,7 +100,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   int get _dropsCount {
     if (_orderFrequency == 'one_time') return 1;
     if (_subscriptionSchedule == 'alternate') return 15;
-    if (_subscriptionSchedule == 'selected') return 22;
+    if (_subscriptionSchedule == 'selected' || _subscriptionSchedule == 'weekdays') return 22;
+    if (_subscriptionSchedule == 'weekends') return 8;
     return 30; // daily
   }
 
@@ -119,6 +122,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     } else if (widget.initialFrequency == 'selected' || widget.initialFrequency == 'weekdays') {
       _orderFrequency = 'subscription';
       _subscriptionSchedule = 'selected';
+    } else if (widget.initialFrequency == 'weekends' || widget.initialFrequency == 'weekend') {
+      _orderFrequency = 'subscription';
+      _subscriptionSchedule = 'weekends';
     } else {
       _orderFrequency = 'subscription';
       _subscriptionSchedule = 'daily';
@@ -241,6 +247,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         milkQty: _selectedMilkQty,
         curdQty: _selectedCurdQty,
         frequency: freq,
+        alternateSchedule: _alternateSchedule,
         purpose: isOneTime ? 'one_time' : 'new',
         days: isOneTime ? 1 : 30,
         address: _addressController.text.trim(),
@@ -911,23 +918,52 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                               ),
                             ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 12),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Verified',
-                                  style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(6),
                                 ),
-                              ],
-                            ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 12),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Verified',
+                                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: _showUpdateMobileDialog,
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE2F1EA),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFFA5D6A7), width: 1),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.edit_outlined, color: Color(0xFF0D5C3A), size: 11),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Change',
+                                        style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -957,9 +993,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
                                 ),
                                 const SizedBox(height: 2),
-                                Text(
-                                  _mobileController.text.isNotEmpty ? '+91 ${_mobileController.text}' : 'Phone verified',
-                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        _mobileController.text.isNotEmpty ? '+91 ${_mobileController.text}' : 'Phone verified',
+                                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    InkWell(
+                                      onTap: _showUpdateMobileDialog,
+                                      child: const Text(
+                                        'Edit Mobile',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0D5C3A),
+                                          decoration: TextDecoration.underline,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -1498,7 +1554,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         }).toList(),
                       ),
 
-                      // Delivery Schedule Section (Matching Screenshot 1)
+                      // Delivery Schedule Section (Subscription / Daily Drop)
                       if (_orderFrequency == 'subscription') ...[
                         const SizedBox(height: 20),
                         const Text(
@@ -1530,8 +1586,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                 isSelected: _subscriptionSchedule == 'alternate',
                               ),
                             ),
-                            const SizedBox(width: 8),
-
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
                             // 3. Weekdays Only
                             Expanded(
                               child: _buildScheduleCard(
@@ -1540,6 +1599,124 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                 badge: null,
                                 drops: 'Mon-Fri · 22 Drops',
                                 isSelected: _subscriptionSchedule == 'selected',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // 4. Weekends Only
+                            Expanded(
+                              child: _buildScheduleCard(
+                                id: 'weekends',
+                                title: 'Weekends Only',
+                                badge: 'Sat & Sun',
+                                drops: 'Sat-Sun · 8 Drops',
+                                isSelected: _subscriptionSchedule == 'weekends',
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // Sub-selector for Alternate Days
+                        if (_subscriptionSchedule == 'alternate') ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(
+                                  children: [
+                                    Icon(Icons.swap_horiz_rounded, size: 16, color: Color(0xFF15803D)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Alternate Days Delivery Pattern:',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF14532D)),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildAlternateOptionChip(
+                                        id: 'tomorrow',
+                                        title: 'Start Tomorrow',
+                                        subtitle: 'e.g. Mon, Wed, Fri',
+                                        isSelected: _alternateSchedule == 'tomorrow',
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: _buildAlternateOptionChip(
+                                        id: 'day_after',
+                                        title: 'Start Day After',
+                                        subtitle: 'e.g. Tue, Thu, Sat',
+                                        isSelected: _alternateSchedule == 'day_after',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Sub-note for Weekends Only
+                        if (_subscriptionSchedule == 'weekends') ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.weekend_rounded, size: 16, color: Color(0xFF15803D)),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Delivered every Saturday & Sunday morning before 6:30 AM (8 drops in 30 days).',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF14532D)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+
+                      // Delivery Schedule for Single Milk Order (One-Time)
+                      if (_orderFrequency == 'one_time') ...[
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Delivery Day',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF4B5563)),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildOneTimeScheduleChip(
+                                id: 'tomorrow',
+                                title: 'Tomorrow Morning',
+                                subtitle: 'Before 6:30 AM drop',
+                                isSelected: _oneTimeDay == 'tomorrow',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildOneTimeScheduleChip(
+                                id: 'weekend',
+                                title: 'This Weekend',
+                                subtitle: 'Saturday Morning',
+                                isSelected: _oneTimeDay == 'weekend',
                               ),
                             ),
                           ],
@@ -2099,6 +2276,343 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAlternateOptionChip({
+    required String id,
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+  }) {
+    return InkWell(
+      onTap: () => setState(() => _alternateSchedule = id),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                  size: 13,
+                  color: isSelected ? Colors.white : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                    color: isSelected ? Colors.white : const Color(0xFF0C2340),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 9.5,
+                color: isSelected ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOneTimeScheduleChip({
+    required String id,
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+  }) {
+    return InkWell(
+      onTap: () => setState(() => _oneTimeDay = id),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                  size: 13,
+                  color: isSelected ? Colors.white : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                    color: isSelected ? Colors.white : const Color(0xFF0C2340),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 9.5,
+                color: isSelected ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF6B7280),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showUpdateMobileDialog() {
+    final nameCtrl = TextEditingController(text: _nameController.text.trim());
+    final phoneCtrl = TextEditingController(text: _mobileController.text.trim());
+    bool isSaving = false;
+    String? localError;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFE2F1EA),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.phone_iphone_rounded, color: Color(0xFF0D5C3A), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Update Mobile Number',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Updates contact for driver deliveries & notifications',
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFF6B7280)),
+                      onPressed: () => Navigator.pop(bCtx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (localError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            localError!,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Text(
+                  'Customer Name',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Your Full Name',
+                    prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF0D5C3A), size: 18),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFDCE8DF))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFDCE8DF))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF0D5C3A), width: 1.5)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  '10-Digit Mobile Number *',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF374151)),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  decoration: InputDecoration(
+                    hintText: 'e.g. 9912020406',
+                    prefixText: '+91 ',
+                    prefixStyle: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                    prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF0D5C3A), size: 18),
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFDCE8DF))),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFDCE8DF))),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF0D5C3A), width: 1.5)),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: isSaving ? null : () async {
+                      final newName = nameCtrl.text.trim();
+                      final rawPhone = phoneCtrl.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
+                      final newPhone = rawPhone.length > 10 ? rawPhone.substring(rawPhone.length - 10) : rawPhone;
+
+                      if (newName.isEmpty) {
+                        setSheetState(() => localError = 'Please enter your name');
+                        return;
+                      }
+                      if (!RegExp(r'^[6-9]\d{9}$').hasMatch(newPhone)) {
+                        setSheetState(() => localError = 'Please enter a valid 10-digit Indian mobile number');
+                        return;
+                      }
+
+                      setSheetState(() {
+                        isSaving = true;
+                        localError = null;
+                      });
+
+                      try {
+                        final cp = context.read<CustomerProvider>();
+                        final auth = context.read<AuthProvider>();
+                        final messenger = ScaffoldMessenger.of(context);
+                        final success = await cp.updateCustomerProfile(
+                          name: newName,
+                          mobile: newPhone,
+                          address: _addressController.text.trim(),
+                          area: _selectedArea,
+                          landmark: _landmarkController.text.trim(),
+                          latitude: _selectedLat,
+                          longitude: _selectedLng,
+                        );
+
+                        if (success) {
+                          auth.updateUserProfile(name: newName, mobile: newPhone);
+                          setState(() {
+                            _nameController.text = newName;
+                            _mobileController.text = newPhone;
+                          });
+                          if (bCtx.mounted) Navigator.pop(bCtx);
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('✅ Mobile number updated to +91 $newPhone'),
+                                backgroundColor: const Color(0xFF0D5C3A),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } else {
+                          setSheetState(() {
+                            isSaving = false;
+                            localError = 'Failed to update mobile number. Please try again.';
+                          });
+                        }
+                      } catch (err) {
+                        setSheetState(() {
+                          isSaving = false;
+                          localError = err.toString();
+                        });
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0D5C3A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      elevation: 0,
+                    ),
+                    child: isSaving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          )
+                        : const Text(
+                            'Save & Update Mobile',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

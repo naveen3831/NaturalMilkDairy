@@ -34,24 +34,29 @@ const normalizePlan = (body) => {
   const curdQty = Number(body.curdQty);
   let frequency = body.frequency;
   if (frequency === 'weekdays') frequency = 'selected';
+  if (frequency === 'weekends' || frequency === 'weekend') frequency = 'weekends';
   const isOneTime = frequency === 'once' || frequency === 'single' || body.purpose === 'one_time';
   if (isOneTime) {
     frequency = 'once';
   }
-  const deliveryDays = frequency === 'selected'
-    ? (Array.isArray(body.deliveryDays) && body.deliveryDays.length
+  let deliveryDays = VALID_DAYS;
+  if (frequency === 'weekends') {
+    deliveryDays = ['Sat', 'Sun'];
+  } else if (frequency === 'selected') {
+    deliveryDays = (Array.isArray(body.deliveryDays) && body.deliveryDays.length
       ? body.deliveryDays.filter((day) => VALID_DAYS.includes(day))
-      : WEEKDAYS)
-    : VALID_DAYS;
+      : WEEKDAYS);
+  }
+  const alternateSchedule = body.alternateSchedule === 'day_after' || body.alternateSchedule === 'even' ? 'day_after' : 'tomorrow';
 
   if (!Number.isFinite(milkQty) || !Number.isFinite(curdQty) ||
       milkQty < 0 || milkQty > 10 || curdQty < 0 || curdQty > 5000 ||
-      milkQty + curdQty === 0 || !['daily', 'alternate', 'selected', 'once', 'single'].includes(frequency) ||
+      milkQty + curdQty === 0 || !['daily', 'alternate', 'selected', 'weekends', 'once', 'single'].includes(frequency) ||
       (frequency === 'selected' && deliveryDays.length === 0)) {
     return null;
   }
 
-  return { milkQty, curdQty, frequency, deliveryDays, isOneTime };
+  return { milkQty, curdQty, frequency, deliveryDays, alternateSchedule, isOneTime };
 };
 
 const estimateSubscriptionAmount = (plan, startDate) => {
@@ -63,9 +68,10 @@ const estimateSubscriptionAmount = (plan, startDate) => {
   for (let offset = 0; offset < SUBSCRIPTION_DAYS; offset += 1) {
     const date = addDays(startDate, offset);
     const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-    const dayNumber = Math.floor(startOfLocalDay(date).getTime() / DAY_MS);
+    const isAlternate = plan.alternateSchedule === 'day_after' ? offset % 2 === 1 : offset % 2 === 0;
     const shouldDeliver = plan.frequency === 'daily' ||
-      (plan.frequency === 'alternate' && dayNumber % 2 === 0) ||
+      (plan.frequency === 'alternate' && isAlternate) ||
+      (plan.frequency === 'weekends' && ['Sat', 'Sun'].includes(dayName)) ||
       (plan.frequency === 'selected' && plan.deliveryDays.includes(dayName));
     if (shouldDeliver) scheduledDrops += 1;
   }

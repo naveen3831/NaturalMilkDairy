@@ -116,6 +116,58 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           });
         }
       }
+      if ((type == 'CUSTOMER_UPDATED' || type == 'DELIVERY_UPDATED') && event['payload'] is Map) {
+        if (mounted) {
+          final payload = event['payload'] as Map;
+          final custId = (payload['customerId'] ?? payload['_id'] ?? payload['id'])?.toString();
+          final newMobile = (payload['mobile'] ?? payload['customerPhone'])?.toString();
+          final oldMobile = payload['oldMobile']?.toString();
+          final newName = (payload['name'] ?? payload['customerName'])?.toString();
+          final newAddr = (payload['address'] ?? payload['customerAddress'])?.toString();
+          final newArea = (payload['area'] ?? payload['assignedArea'])?.toString();
+
+          setState(() {
+            for (var c in _customers) {
+              final cId = (c['_id'] ?? c['id'] ?? c['customerId'])?.toString();
+              final cPhone = (c['mobile'] ?? c['phone'])?.toString();
+              final matchesCust = (custId != null && cId == custId) ||
+                  (oldMobile != null && _cleanPhone(cPhone) == _cleanPhone(oldMobile));
+              if (matchesCust) {
+                if (newMobile != null && newMobile.isNotEmpty) c['mobile'] = newMobile;
+                if (newName != null && newName.isNotEmpty) c['name'] = newName;
+                if (newAddr != null && newAddr.isNotEmpty) c['address'] = newAddr;
+                if (newArea != null && newArea.isNotEmpty) c['area'] = newArea;
+              }
+            }
+            for (var d in _deliveries) {
+              final dCustId = (d['customerId'] ?? d['customer']?['_id'] ?? d['customer']?['id'])?.toString();
+              final dPhone = (d['customerPhone'] ?? d['mobile'] ?? d['phone'])?.toString();
+              final matchesDel = (custId != null && dCustId == custId) ||
+                  (oldMobile != null && _cleanPhone(dPhone) == _cleanPhone(oldMobile));
+              if (matchesDel) {
+                if (newMobile != null && newMobile.isNotEmpty) {
+                  d['customerPhone'] = newMobile;
+                  d['mobile'] = newMobile;
+                  if (d['customer'] is Map) d['customer']['mobile'] = newMobile;
+                }
+                if (newName != null && newName.isNotEmpty) {
+                  d['customerName'] = newName;
+                  d['name'] = newName;
+                  if (d['customer'] is Map) d['customer']['name'] = newName;
+                }
+                if (newAddr != null && newAddr.isNotEmpty) {
+                  d['customerAddress'] = newAddr;
+                  d['address'] = newAddr;
+                }
+              }
+            }
+          });
+        }
+        _adminWsDebounce?.cancel();
+        _adminWsDebounce = Timer(const Duration(milliseconds: 600), () {
+          _loadAllData(silent: true);
+        });
+      }
       if (type == 'NOTIFICATION_CREATED' ||
           type == 'NOTIFICATION_UPDATED' ||
           type == 'NOTIFICATION_DELETED' ||

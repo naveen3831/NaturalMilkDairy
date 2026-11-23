@@ -427,6 +427,40 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             }
           }
         }
+        if ((type == 'CUSTOMER_UPDATED' || type == 'DELIVERY_UPDATED') && event['payload'] is Map) {
+          if (mounted) {
+            final payload = event['payload'] as Map;
+            final custId = (payload['customerId'] ?? payload['_id'] ?? payload['id'])?.toString();
+            final newMobile = (payload['mobile'] ?? payload['customerPhone'])?.toString();
+            final oldMobile = payload['oldMobile']?.toString();
+            final newName = (payload['name'] ?? payload['customerName'])?.toString();
+            final newAddr = (payload['address'] ?? payload['customerAddress'])?.toString();
+            if (newMobile != null && newMobile.isNotEmpty) {
+              setState(() {
+                for (var d in _deliveries) {
+                  final dCustId = (d['customerId'] ?? d['customer']?['_id'] ?? d['customer']?['id'])?.toString();
+                  final dPhone = (d['customerPhone'] ?? d['mobile'] ?? d['phone'])?.toString();
+                  final match = (custId != null && dCustId == custId) ||
+                      (oldMobile != null && _cleanPhone(dPhone) == _cleanPhone(oldMobile));
+                  if (match) {
+                    d['customerPhone'] = newMobile;
+                    d['mobile'] = newMobile;
+                    if (d['customer'] is Map) d['customer']['mobile'] = newMobile;
+                    if (newName != null && newName.isNotEmpty) {
+                      d['customerName'] = newName;
+                      d['name'] = newName;
+                      if (d['customer'] is Map) d['customer']['name'] = newName;
+                    }
+                    if (newAddr != null && newAddr.isNotEmpty) {
+                      d['customerAddress'] = newAddr;
+                      d['address'] = newAddr;
+                    }
+                  }
+                }
+              });
+            }
+          }
+        }
         _wsDebounceTimer?.cancel();
         _wsDebounceTimer = Timer(const Duration(milliseconds: 600), () {
           _loadData(silent: true);
