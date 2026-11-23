@@ -497,25 +497,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                   <div className="subscribe-customer-avatar">{userInitials}</div>
                   <div className="subscribe-customer-meta">
                     <div className="subscribe-customer-name">{formData.name || 'Valued Customer'}</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className="subscribe-customer-phone">+91 {formData.mobile}</span>
-                      <button
-                        type="button"
-                        onClick={startEditContact}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#0d5c3a',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          textDecoration: 'underline',
-                          cursor: 'pointer',
-                          padding: 0,
-                        }}
-                      >
-                        Edit Mobile
-                      </button>
-                    </div>
+                    <div className="subscribe-customer-phone">+91 {formData.mobile}</div>
                   </div>
                 </div>
               )}

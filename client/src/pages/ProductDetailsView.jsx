@@ -708,29 +708,8 @@ export default function ProductDetailsView({
                   <div style={{ fontSize: '13.5px', fontWeight: 900, color: '#0c2340' }}>
                     {customerName}
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#6b7280', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>{customerMobile ? `+91 ${customerMobile}` : 'Phone verified'}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditMobileName(customerName);
-                        setEditMobilePhone(customerMobile);
-                        setMobileError('');
-                        setIsEditMobileOpen(true);
-                      }}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#0d5c3a',
-                        fontWeight: 800,
-                        fontSize: '11px',
-                        textDecoration: 'underline',
-                        cursor: 'pointer',
-                        padding: 0,
-                      }}
-                    >
-                      Edit Mobile
-                    </button>
+                  <div style={{ fontSize: '11.5px', color: '#6b7280', fontWeight: 600 }}>
+                    {customerMobile ? `+91 ${customerMobile}` : 'Phone verified'}
                   </div>
                 </div>
               </div>

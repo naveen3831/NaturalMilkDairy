@@ -993,29 +993,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0C2340)),
                                 ),
                                 const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Flexible(
-                                      child: Text(
-                                        _mobileController.text.isNotEmpty ? '+91 ${_mobileController.text}' : 'Phone verified',
-                                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    InkWell(
-                                      onTap: _showUpdateMobileDialog,
-                                      child: const Text(
-                                        'Edit Mobile',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w800,
-                                          color: Color(0xFF0D5C3A),
-                                          decoration: TextDecoration.underline,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                Text(
+                                  _mobileController.text.isNotEmpty ? '+91 ${_mobileController.text}' : 'Phone verified',
+                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF6B7280), fontWeight: FontWeight.w600),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
