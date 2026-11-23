@@ -634,7 +634,7 @@ export function CustomerSubscriptionPublicModal({ isOpen, onClose, customer, onN
           >
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#64748b' }}>Customer ID:</span>
-              <strong style={{ color: '#0f172a' }}>{customer?.customerId || 'CUST-101'}</strong>
+              <strong style={{ color: '#0f172a' }}>{customer?.customerId || 'N/A'}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#64748b' }}>Delivery Territory:</span>
@@ -1374,7 +1374,7 @@ export function CustomerSupportPublicModal({ isOpen, onClose, customer }) {
   const phone = '+91 98765 43210';
   const cleanPhone = '919876543210';
   const whatsappMsg = encodeURIComponent(
-    `Hello Natural Milk Dairy Support,\nMy name is ${customer?.name || 'Customer'} (ID: ${customer?.customerId || 'CUST-101'}). I need assistance regarding my milk delivery.`
+    `Hello Natural Milk Dairy Support,\nMy name is ${customer?.name || 'Customer'}${customer?.customerId ? ` (ID: ${customer.customerId})` : ''}. I need assistance regarding my milk delivery.`
   );
   const waUrl = `https://wa.me/${cleanPhone}?text=${whatsappMsg}`;
 

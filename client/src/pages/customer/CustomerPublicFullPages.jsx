@@ -80,7 +80,7 @@ export function CustomerSubscriptionPage({ setActiveTab }) {
   const deliveryPlan = current.deliveryPlan || {};
   const isPaused = current.status === 'paused';
   const hasActiveSub = Boolean(
-    (current.subscription?.status === 'active' ||
+    ((current.subscription?.status === 'active' && Number(deliveryPlan.milkQty || 0) > 0) ||
       (current.subscription?.endDate && new Date(current.subscription.endDate) >= new Date())) &&
     current.status !== 'inactive'
   );

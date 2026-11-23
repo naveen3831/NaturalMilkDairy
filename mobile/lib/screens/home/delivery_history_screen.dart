@@ -26,7 +26,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
   String _selectedFilter = 'all'; // 'all', 'proof', 'month', 'week', 'addons', 'custom'
   DateTime _customStartDate = IstDateTime.toIst(DateTime.now()).subtract(const Duration(days: 7));
   DateTime _customEndDate = IstDateTime.toIst(DateTime.now());
-  bool _isRefreshing = false;
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription? _wsSub;
 
@@ -61,14 +60,10 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
   }
 
   Future<void> _handleRefresh() async {
-    setState(() => _isRefreshing = true);
     try {
       final customerProvider = context.read<CustomerProvider>();
       await customerProvider.loadAllCustomerData(silent: true);
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _isRefreshing = false);
-    }
+    } catch (_) {}
   }
 
   Map<String, String> _parseDateParts(String raw) {
@@ -349,18 +344,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
               initialDeliveries: customerProvider.deliveries,
             ),
           ),
-          IconButton(
-            tooltip: 'Refresh Data',
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D5C3A)),
-                  )
-                : const Icon(Icons.refresh_rounded, color: Color(0xFF0C2340), size: 20),
-            onPressed: _isRefreshing ? null : _handleRefresh,
-          ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 8),
         ],
       ),
       body: RefreshIndicator(
@@ -647,14 +631,18 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                         child: const Icon(Icons.inventory_2_outlined, size: 36, color: Color(0xFF94A3B8)),
                       ),
                       const SizedBox(height: 12),
-                      const Text(
-                        'No deliveries found matching your search.',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF334155)),
+                      Text(
+                        _searchQuery.isNotEmpty
+                            ? 'No deliveries found matching your search.'
+                            : 'No deliveries recorded yet.',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5, color: Color(0xFF334155)),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Try clearing search filters or pull down to refresh history.',
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                      Text(
+                        _searchQuery.isNotEmpty
+                            ? 'Try clearing search filters or pull down to refresh history.'
+                            : 'Your morning doorstep deliveries will appear here once orders begin.',
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                         textAlign: TextAlign.center,
                       ),
                     ],

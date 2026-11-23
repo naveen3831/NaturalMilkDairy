@@ -22,6 +22,7 @@ import {
   Share2,
   Edit3,
   Phone,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDairy } from '../context/DairyContext';
@@ -56,7 +57,7 @@ export default function ProductDetailsView({
   onNavigateDashboard,
 }) {
   const { user } = useAuth();
-  const { refreshAll, notifyRealtimeSync } = useDairy();
+  const { products, refreshAll, notifyRealtimeSync } = useDairy();
 
   const effectiveCustomer = customer || user || {};
 
@@ -64,6 +65,9 @@ export default function ProductDetailsView({
   const defaultMilkQty = product?.name?.toLowerCase().includes('500ml') ? 0.5 : 1.0;
   const [milkQty, setMilkQty] = useState(defaultMilkQty);
   const [curdQty, setCurdQty] = useState(product?.category === 'curd' ? 500 : 0);
+  const [selectedAddons, setSelectedAddons] = useState({}); // { [productId]: quantity }
+  const [isAddonsModalOpen, setIsAddonsModalOpen] = useState(false);
+  const [addonCategory, setAddonCategory] = useState('all');
   const [orderFrequency, setOrderFrequency] = useState('subscription'); // 'one_time' or 'subscription'
   const [subscriptionSchedule, setSubscriptionSchedule] = useState('daily'); // 'daily', 'alternate', 'selected', 'weekends'
   const [alternateSchedule, setAlternateSchedule] = useState('tomorrow'); // 'tomorrow' or 'day_after'
@@ -112,11 +116,49 @@ export default function ProductDetailsView({
     return !isNaN(parsed) && parsed > 0 ? parsed : (product.category === 'curd' ? 35 : 60);
   }, [product]);
 
+  const availableCatalog = useMemo(() => {
+    return Array.isArray(products) ? products.filter((p) => p.status !== 'inactive') : [];
+  }, [products]);
+
+  const selectedAddonsCount = useMemo(() => {
+    return Object.values(selectedAddons).reduce((sum, q) => sum + (Number(q) || 0), 0);
+  }, [selectedAddons]);
+
+  const addonsDailyCost = useMemo(() => {
+    let cost = 0;
+    Object.entries(selectedAddons).forEach(([pId, qty]) => {
+      if (qty > 0) {
+        const prod = availableCatalog.find((p) => String(p.id || p._id) === String(pId));
+        const pPrice = Number(prod?.price || prod?.numericPrice) || 0;
+        cost += pPrice * qty;
+      }
+    });
+    return cost;
+  }, [selectedAddons, availableCatalog]);
+
+  const extraProductsPayload = useMemo(() => {
+    const list = [];
+    Object.entries(selectedAddons).forEach(([pId, qty]) => {
+      if (qty > 0) {
+        const prod = availableCatalog.find((p) => String(p.id || p._id) === String(pId));
+        list.push({
+          productId: pId,
+          name: prod?.name || 'Extra Item',
+          quantity: qty,
+          unit: prod?.unit || 'pack',
+          price: Number(prod?.price || prod?.numericPrice) || 0,
+          image: prod?.image || prod?.imageUrl || '',
+        });
+      }
+    });
+    return list;
+  }, [selectedAddons, availableCatalog]);
+
   const dailyCost = useMemo(() => {
     const milkCost = Math.round(milkQty * unitPrice);
     const curdCost = Math.round((curdQty / 500) * 30);
-    return milkCost + curdCost;
-  }, [milkQty, unitPrice, curdQty]);
+    return milkCost + curdCost + addonsDailyCost;
+  }, [milkQty, unitPrice, curdQty, addonsDailyCost]);
 
   const dropsCount = useMemo(() => {
     if (orderFrequency === 'one_time') return 1;
@@ -213,6 +255,7 @@ export default function ProductDetailsView({
         days: isOneTime ? 1 : 30,
         milkQty,
         curdQty,
+        extraProducts: extraProductsPayload,
         milkType: product?.name || 'Farm Fresh Pure Milk',
         frequency: frequencyPayload,
         alternateSchedule,
@@ -964,6 +1007,11 @@ export default function ProductDetailsView({
                     cursor: 'pointer',
                     boxShadow: orderFrequency === 'one_time' ? '0 3px 8px rgba(13, 92, 58, 0.22)' : 'none',
                     transition: 'all 0.18s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-start',
+                    height: '100%',
+                    boxSizing: 'border-box',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
@@ -973,9 +1021,9 @@ export default function ProductDetailsView({
                   <p
                     style={{
                       fontSize: '11px',
-                      margin: '6px 0 0 0',
+                      margin: '7px 0 0 0',
                       color: orderFrequency === 'one_time' ? 'rgba(255,255,255,0.9)' : '#6b7280',
-                      lineHeight: 1.25,
+                      lineHeight: 1.3,
                     }}
                   >
                     Single delivery tomorrow morning
@@ -994,6 +1042,11 @@ export default function ProductDetailsView({
                     cursor: 'pointer',
                     boxShadow: orderFrequency === 'subscription' ? '0 3px 8px rgba(13, 92, 58, 0.22)' : 'none',
                     transition: 'all 0.18s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-start',
+                    height: '100%',
+                    boxSizing: 'border-box',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
@@ -1003,9 +1056,9 @@ export default function ProductDetailsView({
                   <p
                     style={{
                       fontSize: '11px',
-                      margin: '6px 0 0 0',
+                      margin: '7px 0 0 0',
                       color: orderFrequency === 'subscription' ? 'rgba(255,255,255,0.9)' : '#6b7280',
-                      lineHeight: 1.25,
+                      lineHeight: 1.3,
                     }}
                   >
                     Every morning by 6:30 AM · Pause anytime
@@ -1185,6 +1238,160 @@ export default function ProductDetailsView({
                 })}
               </div>
 
+              {/* ── ALL AVAILABLE FARM PRODUCTS ADD-ONS ── */}
+              <div style={{ marginTop: '18px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShoppingBag size={15} color="#0d5c3a" />
+                    <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#0c2340' }}>
+                      Farm Add-ons & Extra Products
+                    </span>
+                    {selectedAddonsCount > 0 && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 800,
+                          background: '#0d5c3a',
+                          color: '#ffffff',
+                          padding: '2px 7px',
+                          borderRadius: '10px',
+                        }}
+                      >
+                        {selectedAddonsCount} Added
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddonsModalOpen(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      background: '#f0fdf4',
+                      border: '1.2px solid #86efac',
+                      color: '#15803d',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Plus size={12} />
+                    <span>{selectedAddonsCount > 0 ? 'Edit Add-ons' : '+ Add-ons'}</span>
+                  </button>
+                </div>
+
+                {selectedAddonsCount > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {extraProductsPayload.map((item) => (
+                      <div
+                        key={item.productId}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '12px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a' }}>
+                              <ShoppingBag size={18} />
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#0c2340', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.name}
+                            </div>
+                            <div style={{ fontSize: '10.5px', color: '#0d5c3a', fontWeight: 700 }}>
+                              ₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}{orderFrequency === 'one_time' ? '' : '/drop'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Quantity Stepper */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            background: '#0d5c3a',
+                            borderRadius: '14px',
+                            padding: '2px 4px',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => {
+                                const next = { ...prev };
+                                if ((next[item.productId] || 0) <= 1) {
+                                  delete next[item.productId];
+                                } else {
+                                  next[item.productId] = next[item.productId] - 1;
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span style={{ fontSize: '11.5px', fontWeight: 900, padding: '0 4px' }}>{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => ({
+                                ...prev,
+                                [item.productId]: (prev[item.productId] || 0) + 1,
+                              }));
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setIsAddonsModalOpen(true)}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus size={14} color="#0d5c3a" />
+                      <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                        Add Ghee, Paneer, Curd or other fresh dairy to this drop
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#0d5c3a' }}>Browse</span>
+                  </div>
+                )}
+              </div>
+
               {/* Delivery Schedule (When Daily Drop is active - Screenshot 1) */}
               {orderFrequency === 'subscription' && (
                 <>
@@ -1203,7 +1410,7 @@ export default function ProductDetailsView({
                         background: subscriptionSchedule === 'daily' ? '#e2f1ea' : '#f9fafb',
                         textAlign: 'center',
                         cursor: 'pointer',
-                        marginTop: '7px',
+                        marginTop: '8px',
                       }}
                     >
                       <span
@@ -1243,13 +1450,14 @@ export default function ProductDetailsView({
                     <div
                       onClick={() => setSubscriptionSchedule('alternate')}
                       style={{
+                        position: 'relative',
                         padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'alternate' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'alternate' ? '#e2f1ea' : '#f9fafb',
                         textAlign: 'center',
                         cursor: 'pointer',
-                        marginTop: '7px',
+                        marginTop: '8px',
                       }}
                     >
                       <div
@@ -1273,12 +1481,14 @@ export default function ProductDetailsView({
                     <div
                       onClick={() => setSubscriptionSchedule('selected')}
                       style={{
+                        position: 'relative',
                         padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'selected' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'selected' ? '#e2f1ea' : '#f9fafb',
                         textAlign: 'center',
                         cursor: 'pointer',
+                        marginTop: '8px',
                       }}
                     >
                       <div
@@ -1302,14 +1512,32 @@ export default function ProductDetailsView({
                     <div
                       onClick={() => setSubscriptionSchedule('weekends')}
                       style={{
+                        position: 'relative',
                         padding: '12px 8px',
                         borderRadius: '12px',
                         border: `1.8px solid ${subscriptionSchedule === 'weekends' ? '#0d5c3a' : '#e2ebe5'}`,
                         background: subscriptionSchedule === 'weekends' ? '#e2f1ea' : '#f9fafb',
                         textAlign: 'center',
                         cursor: 'pointer',
+                        marginTop: '8px',
                       }}
                     >
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: '-8px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          background: '#0d5c3a',
+                          color: '#ffffff',
+                          borderRadius: '8px',
+                          padding: '1.5px 7px',
+                          fontSize: '8.5px',
+                          fontWeight: 900,
+                        }}
+                      >
+                        Sat &amp; Sun
+                      </span>
                       <div
                         style={{
                           fontSize: '11px',
@@ -1516,6 +1744,15 @@ export default function ProductDetailsView({
                   </strong>
                 </div>
               )}
+
+              {extraProductsPayload.map((addon) => (
+                <div key={addon.productId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                  <span>{addon.name} ({addon.quantity} × ₹{addon.price})</span>
+                  <strong style={{ color: '#0c2340', fontWeight: 800 }}>
+                    ₹{addon.quantity * addon.price}{orderFrequency === 'one_time' ? '' : '/drop'}
+                  </strong>
+                </div>
+              ))}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '10px' }}>
                 <span>Doorstep Drop (Before 6:30 AM)</span>
@@ -1779,6 +2016,228 @@ export default function ProductDetailsView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── ALL AVAILABLE FARM ADD-ONS PICKER MODAL ── */}
+      {isAddonsModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 110,
+            background: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setIsAddonsModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '24px',
+              maxWidth: '520px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#0c2340' }}>
+                  Farm Add-ons & Extra Products
+                </h4>
+                <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: '#64748b' }}>
+                  Select pure farm dairy to accompany your delivery
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddonsModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div style={{ padding: '10px 20px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '6px', overflowX: 'auto' }}>
+              {['all', 'ghee', 'paneer', 'curd', 'milk', 'other'].map((cat) => {
+                const isSel = addonCategory === cat;
+                const label = cat === 'all' ? 'All Products' : cat.charAt(0).toUpperCase() + cat.slice(1);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setAddonCategory(cat)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '20px',
+                      border: isSel ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
+                      background: isSel ? '#0d5c3a' : '#f8fafc',
+                      color: isSel ? '#ffffff' : '#475569',
+                      fontSize: '11.5px',
+                      fontWeight: isSel ? 800 : 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Products List */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {availableCatalog
+                .filter((p) => addonCategory === 'all' || (p.category || '').toLowerCase() === addonCategory.toLowerCase())
+                .map((prod) => {
+                  const pId = prod.id || prod._id;
+                  const currentQty = selectedAddons[pId] || 0;
+                  const price = Number(prod.price || prod.numericPrice) || 0;
+
+                  return (
+                    <div
+                      key={pId}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '14px',
+                        border: currentQty > 0 ? '1.5px solid #86efac' : '1px solid #f1f5f9',
+                        background: currentQty > 0 ? '#f0fdf4' : '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                        {prod.image || prod.imageUrl ? (
+                          <img
+                            src={prod.image || prod.imageUrl}
+                            alt={prod.name}
+                            style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a', flexShrink: 0 }}>
+                            <ShoppingBag size={20} />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0c2340', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {prod.name}
+                          </div>
+                          <div style={{ fontSize: '11.5px', fontWeight: 900, color: '#0d5c3a' }}>
+                            ₹{price} <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 500 }}>· {prod.unit || 'pack'}</span>
+                          </div>
+                          {prod.description && (
+                            <div style={{ fontSize: '10px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {prod.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {currentQty === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAddons((prev) => ({ ...prev, [pId]: 1 }));
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '18px',
+                            background: '#e2f1ea',
+                            border: '1.2px solid #a5d6a7',
+                            color: '#0d5c3a',
+                            fontSize: '11.5px',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          + ADD
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            background: '#0d5c3a',
+                            borderRadius: '20px',
+                            padding: '3px 6px',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => {
+                                const next = { ...prev };
+                                if ((next[pId] || 0) <= 1) {
+                                  delete next[pId];
+                                } else {
+                                  next[pId] = next[pId] - 1;
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span style={{ fontSize: '12px', fontWeight: 900, padding: '0 6px' }}>{currentQty}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => ({ ...prev, [pId]: (prev[pId] || 0) + 1 }));
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  {selectedAddonsCount} Item{selectedAddonsCount === 1 ? '' : 's'} Selected
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 900, color: '#0d5c3a' }}>
+                  +₹{addonsDailyCost}{orderFrequency === 'one_time' ? '' : '/drop'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddonsModalOpen(false)}
+                style={{
+                  padding: '10px 22px',
+                  borderRadius: '12px',
+                  background: '#0d5c3a',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Apply Add-ons
+              </button>
+            </div>
           </div>
         </div>
       )}

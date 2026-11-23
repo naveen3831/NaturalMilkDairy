@@ -185,22 +185,23 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   }, [viewingProofPhoto]);
 
   const matchedCustomer = customers.find((customer) =>
-    customer.mobile === user?.mobile
-    || customer.id === user?.id
-    || customer.customerId === user?.customerId
+    (user?.mobile && customer.mobile === user.mobile)
+    || (user?.id && (customer.id === user.id || customer._id === user.id))
+    || (user?.customerId && customer.customerId === user.customerId)
+    || (user?.email && customer.email && customer.email.toLowerCase() === user.email.toLowerCase())
   ) || {
-    name: user?.name || 'Customer',
-    customerId: user?.customerId || 'CUST-101',
+    name: user?.name || '',
+    customerId: user?.customerId || '',
     mobile: user?.mobile || '',
     email: user?.email || '',
     whatsapp: user?.whatsapp || '',
     address: user?.address || '',
     area: user?.area || user?.assignedArea || '',
     landmark: user?.landmark || '',
-    deliveryPlan: user?.deliveryPlan || { milkQty: 1, milkUnit: 'L', curdQty: 0, curdUnit: 'g', frequency: 'daily', deliveryBoyName: '' },
+    deliveryPlan: user?.deliveryPlan || null,
     paymentInfo: user?.paymentInfo || {},
     currentBalance: 0,
-    status: 'active',
+    status: user?.status || 'active',
   };
   const currentCustomer = ledgerCustomer || matchedCustomer;
 
@@ -944,29 +945,42 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       }));
     }
 
-    const calculatedDailyCost = (Number(milkQuantity) || 1) * 60 + ((Number(curdQuantity) || 0) / 500) * 30;
+    // Strictly verify if customer has a real active paid subscription in the database
+    // NEVER invent synthetic subscriptions for new users or customers without active subscriptions!
+    const isActuallyActive = subInfo.status === 'active' &&
+      subInfo.endDate &&
+      new Date(subInfo.endDate) > new Date() &&
+      (Boolean(subInfo.paymentId) || Number(subInfo.amount) > 0);
+
+    if (!isActuallyActive) {
+      return [];
+    }
+
+    const calculatedDailyCost = (Number(currentCustomer.deliveryPlan?.milkQty) || 1) * 60 + ((Number(currentCustomer.deliveryPlan?.curdQty) || 0) / 500) * 30;
 
     return [{
       _id: currentCustomer._id || currentCustomer.id || 'primary-plan',
       id: currentCustomer.id || currentCustomer._id || 'primary-plan',
       isPrimaryAccountPlan: true,
-      customerId: currentCustomer.customerId || 'CUST-101',
+      customerId: currentCustomer.customerId || user?.customerId || '',
       customerName: currentCustomer.name || user?.name || 'Customer',
-      status: isPaused ? 'paused' : (subInfo.status === 'expired' ? 'expired' : (currentCustomer.status === 'active' ? 'active' : 'paused')),
+      status: isPaused ? 'paused' : (subInfo.status === 'expired' ? 'expired' : 'active'),
       plan: {
-        milkQty: milkQuantity || 1,
-        milkUnit: milkUnit || 'L',
-        curdQty: curdQuantity || 0,
-        curdUnit: curdUnit || 'g',
+        milkQty: currentCustomer.deliveryPlan?.milkQty || 1,
+        milkUnit: currentCustomer.deliveryPlan?.milkUnit || 'L',
+        curdQty: currentCustomer.deliveryPlan?.curdQty || 0,
+        curdUnit: currentCustomer.deliveryPlan?.curdUnit || 'g',
         frequency: plan.frequency || 'daily',
         deliveryDays: plan.deliveryDays || [],
+        planName: plan.planName || 'Daily Farm Pure Milk Plan',
+        milkType: plan.milkType || 'Pure A2 Cow Milk',
       },
-      deliveryAddress: currentCustomer.address || 'Doorstep drop',
-      area: currentCustomer.area || 'Bangalore',
+      deliveryAddress: currentCustomer.address || user?.address || '',
+      area: currentCustomer.area || user?.area || '',
       landmark: currentCustomer.landmark || '',
       whatsapp: currentCustomer.whatsapp || currentCustomer.mobile || '',
       startDate: subInfo.startDate || plan.startDate || currentCustomer.createdAt,
-      endDate: subInfo.endDate || subscriptionThrough,
+      endDate: subInfo.endDate,
       amount: (subInfo.amount ? subInfo.amount * 100 : (calculatedDailyCost * 30 * 100)) || 180000,
       providerPaymentId: subInfo.paymentId || '',
       providerOrderId: '',
@@ -1427,8 +1441,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
     const customerName = currentCustomer.name || user?.name || 'Customer';
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
-    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
-    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Madhapur';
+    const customerId = currentCustomer.customerId || user?.customerId || '';
+    const customerArea = currentCustomer.area || user?.area || user?.assignedArea || '';
     const customerAddress = currentCustomer.address || user?.address || 'Doorstep';
 
     const newTicketMsg = {
@@ -1569,9 +1583,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     setDeletingAccount(true);
     setDeleteError('');
     try {
-      const token = localStorage.getItem('nmd_jwt_token');
+      const token = localStorage.getItem('token') || localStorage.getItem('nmd_jwt_token') || sessionStorage.getItem('nmd_jwt_token');
       const targetId = currentCustomer?._id || currentCustomer?.customerId || user?.id || 'me';
-      const response = await fetch(`/api/customers/${targetId}`, {
+      const response = await fetch('/api/customers/me/account', {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
@@ -1587,12 +1601,18 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         throw new Error(data.message || 'Unable to delete your account.');
       }
       setShowDeleteConfirm(false);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       localStorage.removeItem('nmd_customer_page');
       localStorage.removeItem('nmd_jwt_token');
       localStorage.removeItem('nmd_user');
+      sessionStorage.clear();
       alert('Your customer account and all associated data have been permanently deleted from our database.');
-      logout();
+      if (typeof logout === 'function') {
+        logout();
+      }
       setActiveTab('home');
+      window.location.href = '/';
     } catch (error) {
       setDeleteError(error.message || 'Unable to delete your account.');
     } finally {
@@ -1821,10 +1841,10 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const plan = sub.plan || {};
     const planMilk = plan.milkQty || milkQuantity || 1;
     const planMilkUnit = plan.milkUnit || milkUnit || 'L';
-    const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || 'Naveen';
-    const customerId = sub.customerId || currentCustomer.customerId || user?.customerId || 'CUST-101';
-    const areaName = sub.area || currentCustomer.area || user?.area || 'Madhupur';
-    const displayAddress = sub.deliveryAddress || currentCustomer.address || address || 'Madhupur, Hyderabad, Telangana - 500081';
+    const partnerName = sub.deliveryBoyName || currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || '';
+    const customerId = sub.customerId || currentCustomer.customerId || user?.customerId || '';
+    const areaName = sub.area || currentCustomer.area || user?.area || '';
+    const displayAddress = sub.deliveryAddress || currentCustomer.address || address || '';
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     const content = (
@@ -2055,7 +2075,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         {/* Subscription Expiry Badge */}
         {(() => {
           const subEnd = sub?.endDate || currentCustomer.subscription?.endDate || subscriptionThrough;
-          const target = subEnd ? new Date(subEnd) : new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
+          if (!subEnd) return null;
+          const target = new Date(subEnd);
           const now = new Date();
           const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
           const targetMidnight = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
@@ -2818,14 +2839,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderSubscriptionPage = () => {
     const latestFailedSub = customerSubscriptions.find((s) => s.status === 'failed');
-    const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0] || {
-      id: currentCustomer.customerId || 'CUST-101',
-      customerId: currentCustomer.customerId || 'CUST-101',
-      status: isPaused ? 'paused' : 'active',
-      plan: { milkQty: milkQuantity || 1, milkUnit: milkUnit || 'L', frequency: 'daily' },
-      deliveryBoyName: currentCustomer.deliveryPlan?.deliveryBoyName || user?.deliveryBoyName || 'Naveen',
-      area: currentCustomer.area || user?.area || 'Madhupur',
-    };
+    const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0] || null;
 
     return (
       <section className="customer-dashboard-main customer-subscription-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -3095,276 +3109,336 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 900, color: '#0c2340' }}>
               Active Subscriptions
             </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {primarySub && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSubHistoryModal(true)}
+                  style={{
+                    background: '#e2f1ea',
+                    border: '1px solid #b7dfca',
+                    color: '#0d5c3a',
+                    borderRadius: '12px',
+                    padding: '5px 11px',
+                    fontSize: '0.75rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                >
+                  <Clock3 size={13} />
+                  <span>Subscription History</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubForDetails(primarySub)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#0d5c3a',
+                    fontSize: '0.80rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  View Details →
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!primarySub ? (
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '36px 20px',
+                textAlign: 'center',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  background: '#f0fdf4',
+                  color: '#0d5c3a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 14px',
+                }}
+              >
+                <Calendar size={28} />
+              </div>
+              <h4 style={{ margin: '0 0 6px', fontSize: '1.05rem', fontWeight: 900, color: '#0c2340' }}>
+                No Active Subscriptions Yet
+              </h4>
+              <p style={{ margin: '0 0 16px', fontSize: '0.82rem', color: '#6b7280', maxWidth: '340px', marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.4 }}>
+                You don't have any active doorstep dairy subscriptions. Select a pure milk or dairy plan below to get farm-fresh delivery every morning!
+              </p>
               <button
                 type="button"
-                onClick={() => setShowSubHistoryModal(true)}
+                onClick={() => {
+                  const el = document.getElementById('more-subscription-plans');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
                 style={{
-                  background: '#e2f1ea',
-                  border: '1px solid #b7dfca',
-                  color: '#0d5c3a',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
                   borderRadius: '12px',
-                  padding: '5px 11px',
-                  fontSize: '0.75rem',
+                  padding: '10px 22px',
+                  fontSize: '0.84rem',
                   fontWeight: 800,
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
+                  gap: '8px',
                 }}
               >
-                <Clock3 size={13} />
-                <span>Subscription History</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedSubForDetails(primarySub)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#0d5c3a',
-                  fontSize: '0.80rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  padding: 0,
-                }}
-              >
-                View Details →
+                <Plus size={16} />
+                <span>Choose a Plan & Subscribe</span>
               </button>
             </div>
-          </div>
-
-          {/* Active Subscription Card */}
-          <div
-            onClick={() => setSelectedSubForDetails(primarySub)}
-            style={{
-              background: '#ffffff',
-              borderRadius: '20px',
-              border: '1px solid #e2ebe5',
-              padding: '18px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '14px',
-              transition: 'transform 0.15s ease',
-            }}
-          >
-            <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
-              <img
-                src="/product-cow-milk.jpg"
-                alt="Daily Farm Pure Milk Plan"
-                style={{
-                  width: '64px',
-                  height: '68px',
-                  borderRadius: '14px',
-                  objectFit: 'cover',
-                  border: '1px solid #e2ebe5',
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
-                  <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Daily Farm Pure Milk Plan
-                  </h4>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: '3px 9px',
-                      borderRadius: '20px',
-                      fontSize: '0.70rem',
-                      fontWeight: 800,
-                      background: '#e2f1ea',
-                      color: '#0d5c3a',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#0d5c3a' }} />
-                    Active
+          ) : (
+            <div
+              onClick={() => setSelectedSubForDetails(primarySub)}
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #e2ebe5',
+                padding: '18px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.04)',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
+                <img
+                  src="/product-cow-milk.jpg"
+                  alt="Dairy Plan"
+                  style={{
+                    width: '64px',
+                    height: '68px',
+                    borderRadius: '14px',
+                    objectFit: 'cover',
+                    border: '1px solid #e2ebe5',
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {primarySub.planName || primarySub.plan?.planName || currentCustomer?.deliveryPlan?.planName || 'Farm Pure Milk Plan'}
+                    </h4>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 9px',
+                        borderRadius: '20px',
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        background: primarySub.status === 'paused' ? '#fef3c7' : '#e2f1ea',
+                        color: primarySub.status === 'paused' ? '#b45309' : '#0d5c3a',
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: primarySub.status === 'paused' ? '#b45309' : '#0d5c3a' }} />
+                      {primarySub.status === 'paused' ? 'Paused' : 'Active'}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>
+                    {primarySub.customerId ? `ID: ${primarySub.customerId} • ` : (currentCustomer.customerId ? `ID: ${currentCustomer.customerId} • ` : '')}{(primarySub.plan?.frequency === 'alternate' || currentCustomer?.deliveryPlan?.frequency === 'alternate') ? 'Alternate Days' : 'Daily Morning'}
                   </span>
                 </div>
-                <span style={{ fontSize: '0.78rem', color: '#6b7280', fontWeight: 600 }}>
-                  ID: {primarySub.customerId || 'CUST-101'} • {(primarySub.plan?.frequency === 'alternate' || currentCustomer?.deliveryPlan?.frequency === 'alternate') ? 'Alternate Days' : 'Daily Morning'}
-                </span>
-              </div>
-            </div>
-
-            {/* 3 Metric Boxes matching Image 1 */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)', gap: '6px' }}>
-              <div
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '8px 6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Milk size={15} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {primarySub.plan?.milkQty || milkQuantity || 1} {primarySub.plan?.milkUnit || milkUnit || 'L'} / day
-                  </strong>
-                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Pure A2 Milk</span>
-                </div>
               </div>
 
-              <div
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '8px 6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Clock3 size={15} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Before 6:30 AM
-                  </strong>
-                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Morning Delivery</span>
-                </div>
-              </div>
-
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openProfileDetail('delivery-address', 'subscription');
-                }}
-                style={{
-                  background: '#f2f8f4',
-                  borderRadius: '10px',
-                  border: '1px solid #deede2',
-                  padding: '8px 6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  cursor: 'pointer',
-                }}
-              >
-                <MapPin size={15} color="#0d5c3a" />
-                <div style={{ minWidth: 0 }}>
-                  <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {primarySub.area || currentCustomer.area || 'Madhupur'}
-                  </strong>
-                  <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Delivery Area</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Expiry Date Badge */}
-            {(() => {
-              const subEnd = primarySub?.endDate || currentCustomer.subscription?.endDate || subscriptionThrough;
-              const target = subEnd ? new Date(subEnd) : new Date(Date.now() + 28 * 24 * 60 * 60 * 1000);
-              const now = new Date();
-              const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-              const targetMidnight = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
-              const diffDays = Math.ceil((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
-              const formattedDate = target.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-              const isExpired = diffDays < 0;
-              const daysText = isExpired ? 'Expired' : diffDays === 0 ? 'Expires Today' : `${diffDays} Days Left`;
-              const badgeBg = isExpired ? '#fef2f2' : diffDays <= 3 ? '#fffbeb' : '#e2f1ea';
-              const badgeBorder = isExpired ? '#fecaca' : diffDays <= 3 ? '#fde68a' : '#b7dfca';
-              const badgeColor = isExpired ? '#dc2626' : diffDays <= 3 ? '#b45309' : '#0d5c3a';
-
-              return (
+              {/* 3 Metric Boxes */}
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(3, 1fr)' : 'repeat(3, 1fr)', gap: '6px' }}>
                 <div
                   style={{
+                    background: '#f2f8f4',
+                    borderRadius: '10px',
+                    border: '1px solid #deede2',
+                    padding: '8px 6px',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    background: badgeBg,
-                    border: `1.2px solid ${badgeBorder}`,
-                    borderRadius: '12px',
-                    padding: '8px 12px',
-                    color: badgeColor,
+                    gap: '6px',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                    <CalendarDays size={16} />
-                    <strong style={{ fontSize: '0.80rem', fontWeight: 800 }}>
-                      Valid Until: {formattedDate} • {daysText}
+                  <Milk size={15} color="#0d5c3a" />
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {primarySub.plan?.milkQty || currentCustomer?.deliveryPlan?.milkQty || 1} {primarySub.plan?.milkUnit || currentCustomer?.deliveryPlan?.milkUnit || 'L'} / day
                     </strong>
+                    <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Pure A2 Milk</span>
                   </div>
-                  <span
+                </div>
+
+                <div
+                  style={{
+                    background: '#f2f8f4',
+                    borderRadius: '10px',
+                    border: '1px solid #deede2',
+                    padding: '8px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Clock3 size={15} color="#0d5c3a" />
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      Before 6:30 AM
+                    </strong>
+                    <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Morning Delivery</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openProfileDetail('delivery-address', 'subscription');
+                  }}
+                  style={{
+                    background: '#f2f8f4',
+                    borderRadius: '10px',
+                    border: '1px solid #deede2',
+                    padding: '8px 6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <MapPin size={15} color="#0d5c3a" />
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: '0.72rem', fontWeight: 900, color: '#0c2340', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {primarySub.area || currentCustomer.area || user?.area || 'Delivery Area'}
+                    </strong>
+                    <span style={{ fontSize: '0.62rem', color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>Delivery Area</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expiry Date Badge - Only show if real endDate exists */}
+              {(() => {
+                const subEnd = primarySub?.endDate || currentCustomer.subscription?.endDate;
+                if (!subEnd) return null;
+                const target = new Date(subEnd);
+                const now = new Date();
+                const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                const targetMidnight = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+                const diffDays = Math.ceil((targetMidnight - todayMidnight) / (1000 * 60 * 60 * 24));
+                const formattedDate = target.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+                const isExpired = diffDays < 0;
+                const daysText = isExpired ? 'Expired' : diffDays === 0 ? 'Expires Today' : `${diffDays} Days Left`;
+                const badgeBg = isExpired ? '#fef2f2' : diffDays <= 3 ? '#fffbeb' : '#e2f1ea';
+                const badgeBorder = isExpired ? '#fecaca' : diffDays <= 3 ? '#fde68a' : '#b7dfca';
+                const badgeColor = isExpired ? '#dc2626' : diffDays <= 3 ? '#b45309' : '#0d5c3a';
+
+                return (
+                  <div
                     style={{
-                      fontSize: '0.70rem',
-                      fontWeight: 800,
-                      background: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: badgeBg,
+                      border: `1.2px solid ${badgeBorder}`,
+                      borderRadius: '12px',
+                      padding: '8px 12px',
                       color: badgeColor,
-                      padding: '2px 8px',
-                      borderRadius: '10px',
-                      border: `1px solid ${badgeBorder}`,
                     }}
                   >
-                    {isExpired ? 'Renewal Due' : 'Active Plan'}
-                  </span>
-                </div>
-              );
-            })()}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <CalendarDays size={16} />
+                      <strong style={{ fontSize: '0.80rem', fontWeight: 800 }}>
+                        Valid Until: {formattedDate} • {daysText}
+                      </strong>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.70rem',
+                        fontWeight: 800,
+                        background: '#ffffff',
+                        color: badgeColor,
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                        border: `1px solid ${badgeBorder}`,
+                      }}
+                    >
+                      {isExpired ? 'Renewal Due' : 'Active Plan'}
+                    </span>
+                  </div>
+                );
+              })()}
 
-            {/* Two Action Buttons: View Details (outline) & Manage Plan (solid green) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '4px' }}>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedSubForDetails(primarySub);
-                }}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  border: '1.5px solid #0d5c3a',
-                  background: '#ffffff',
-                  color: '#0d5c3a',
-                  fontWeight: 800,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-              >
-                <Eye size={15} />
-                <span>View Details</span>
-              </button>
+              {/* Two Action Buttons: View Details (outline) & Manage Plan (solid green) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', paddingTop: '4px' }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedSubForDetails(primarySub);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    border: '1.5px solid #0d5c3a',
+                    background: '#ffffff',
+                    color: '#0d5c3a',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Eye size={15} />
+                  <span>View Details</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedSubForDetails(primarySub);
-                }}
-                style={{
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  border: 'none',
-                  background: '#0d5c3a',
-                  color: '#ffffff',
-                  fontWeight: 800,
-                  fontSize: '0.82rem',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
-                }}
-              >
-                <Settings size={15} />
-                <span>Manage Plan</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedSubForDetails(primarySub);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    background: '#0d5c3a',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
+                  }}
+                >
+                  <Settings size={15} />
+                  <span>Manage Plan</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* More Subscription Plans Section */}
@@ -3625,14 +3699,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const renderDeliveryHistory = (title = 'Recent deliveries', limit = Infinity) => {
-    const defaultSampleDeliveries = [
-      { id: 'del-1', deliveryDate: '2026-10-28', actualMilk: 1, actualCurd: 500, status: 'pending', paymentStatus: 'advance' },
-      { id: 'del-2', deliveryDate: '2026-10-27', actualMilk: 1, actualCurd: 0, status: 'pending', paymentStatus: 'advance' },
-      { id: 'del-3', deliveryDate: '2026-10-26', actualMilk: 1, actualCurd: 500, status: 'delivered', paymentStatus: 'paid' },
-      { id: 'del-4', deliveryDate: '2026-10-25', actualMilk: 1, actualCurd: 0, status: 'delivered', paymentStatus: 'paid' },
-      { id: 'del-5', deliveryDate: '2026-10-24', actualMilk: 1, actualCurd: 500, status: 'delivered', paymentStatus: 'paid' },
-    ];
-    const sourceDeliveries = allCustomerDeliveries.length > 0 ? allCustomerDeliveries : defaultSampleDeliveries;
+    const sourceDeliveries = allCustomerDeliveries;
     const todayIstKey = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
     const todayDeliveries = sourceDeliveries.filter(
@@ -5329,7 +5396,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <div className="customer-dashboard-eyebrow">
             <span className="customer-dashboard-eyebrow-dot" />
             YOUR CUSTOMER DASHBOARD
-            <span className="customer-dashboard-id">ID {currentCustomer.customerId || 'CUST-101'}</span>
+            {currentCustomer.customerId && <span className="customer-dashboard-id">ID {currentCustomer.customerId}</span>}
           </div>
           <h1>Good morning, {currentCustomer.name}</h1>
           <p>Fresh essentials, thoughtfully delivered to your doorstep.</p>
@@ -5401,7 +5468,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
     const customerEmail = currentCustomer.email || user?.email || 'Not provided';
     const customerArea = currentCustomer.area || user?.area || user?.assignedArea || 'Mumbai';
-    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const customerId = currentCustomer.customerId || user?.customerId || '';
     const customerAddress = currentCustomer.address || user?.address || 'Not provided';
     const customerWhatsapp = currentCustomer.whatsapp || currentCustomer.mobile || user?.mobile || 'Not provided';
     const totalDeliveries = ledgerEntries.filter((e) => e.type === 'delivery').length || customerDeliveries.length;
@@ -6791,6 +6858,23 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               >
                 <PlusCircle size={18} />
                 <span>Change Tomorrow's Quantity</span>
+              </button>
+              <button
+                type="button"
+                className="mobile-detail-btn is-outline"
+                style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2' }}
+                onClick={() => setShowStopFullPage(true)}
+              >
+                <X size={18} />
+                <span>Stop Subscription</span>
+              </button>
+              <button
+                type="button"
+                className="mobile-detail-btn is-outline"
+                onClick={() => setShowSubHistoryModal(true)}
+              >
+                <FileText size={18} />
+                <span>Subscription History & Invoices</span>
               </button>
               <button
                 type="button"
@@ -8377,11 +8461,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   };
 
   const renderCustomerProfileMobile = () => {
-    const customerInitial = (currentCustomer.name || user?.name || 'N').charAt(0).toUpperCase();
-    const customerName = currentCustomer.name || user?.name || 'Naveen Kumar';
-    const customerPhone = currentCustomer.mobile || user?.mobile || '7702233931';
-    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
-    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 9;
+    const customerInitial = (currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
+    const customerName = currentCustomer.name || user?.name || 'Customer';
+    const customerPhone = currentCustomer.mobile || user?.mobile || '';
+    const customerId = currentCustomer.customerId || user?.customerId || '';
+    const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length || 0;
 
     return (
       <div className="customer-profile-mobile" style={{ padding: '8px 0 24px 0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -8395,7 +8479,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </p>
         </div>
 
-        {/* User Card: Avatar circle, Naveen Kumar, ID: CUST-101, 7702233931, Active green badge, Chevron > */}
+        {/* User Card: Avatar circle, customer name, ID, phone, status badge */}
         <div
           onClick={() => openProfileDetail('account-details')}
           style={{
@@ -8510,20 +8594,30 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
             <div style={{ height: '1px', background: '#f1f5f9' }} />
 
-            {/* Subscription Payment */}
+            {/* Subscriptions & History */}
             <div
-              onClick={() => openProfileDetail('subscription')}
+              onClick={() => {
+                const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0];
+                if (primarySub) {
+                  setSelectedSubForDetails(primarySub);
+                } else {
+                  navigateToPage('subscription');
+                }
+              }}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: '#e2f1ea', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <CreditCard size={17} />
                 </div>
-                <span style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscription Payment</span>
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscriptions & History</strong>
+                  <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>All plan details, pause/stop & history</span>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0d5c3a', background: '#e2f1ea', padding: '2px 8px', borderRadius: '10px' }}>
-                  Prepaid
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isPaused ? '#d97706' : '#0d5c3a', background: isPaused ? '#fef3c7' : '#e2f1ea', padding: '2px 8px', borderRadius: '10px' }}>
+                  {isPaused ? 'Paused' : hasPaidSubscription ? 'Active' : 'Manage'}
                 </span>
                 <ChevronRight size={18} color="#9ca3af" />
               </div>
@@ -8685,7 +8779,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
             {/* Delete Account (red) */}
             <div
-              onClick={() => setShowDeleteModal(true)}
+              onClick={() => {
+                setDeleteConfirmation('');
+                setDeletePassword('');
+                setDeleteError('');
+                setShowDeleteConfirm(true);
+              }}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -8704,7 +8803,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderModernEditProfile = () => {
     const customerInitial = (profileForm.name || currentCustomer.name || user?.name || 'C').charAt(0).toUpperCase();
-    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const customerId = currentCustomer.customerId || user?.customerId || '';
     const handleTag = profileForm.username || (profileForm.name ? `@${profileForm.name.toLowerCase().replace(/\s+/g, '')}` : `@${customerId.toLowerCase()}`);
 
     return (
@@ -8941,7 +9040,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const customerName = currentCustomer.name || user?.name || 'Customer';
     const customerPhone = currentCustomer.mobile || user?.mobile || 'Not provided';
     const customerEmail = currentCustomer.email || user?.email || 'Not provided';
-    const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+    const customerId = currentCustomer.customerId || user?.customerId || '';
     const totalDeliveries = customerDeliveries.length || ledgerEntries.filter((e) => e.type === 'delivery').length;
 
     return (
@@ -9108,8 +9207,25 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 className="profile-card-action-btn"
                 onClick={() => onOpenTempQtyModal?.(currentCustomer)}
               >
-                <RefreshCw size={15} />
+                <Sliders size={15} />
                 <span>Change Qty</span>
+              </button>
+              <button
+                type="button"
+                className="profile-card-action-btn"
+                style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2' }}
+                onClick={() => setShowStopFullPage(true)}
+              >
+                <X size={15} />
+                <span>Stop Plan</span>
+              </button>
+              <button
+                type="button"
+                className="profile-card-action-btn"
+                onClick={() => setShowSubHistoryModal(true)}
+              >
+                <FileText size={15} />
+                <span>History</span>
               </button>
             </div>
           </div>
@@ -9532,7 +9648,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           {(!isMobile || activePage !== 'profile') && !(activePage === 'products' && selectedProductDetails) && (
             <div className="customer-page-heading">
               <div>
-                <span className="customer-section-kicker">CUSTOMER PORTAL · ID {currentCustomer.customerId || 'CUST-101'}</span>
+                <span className="customer-section-kicker">CUSTOMER PORTAL{currentCustomer.customerId ? ` · ID ${currentCustomer.customerId}` : ''}</span>
                 <h1>{activePage === 'profile' ? 'Profile & Settings' : (activePage === 'dashboard' ? 'Dashboard' : (activePage === 'products' ? 'Products & Bookings' : currentPage.label))}</h1>
                 <p>
                   {activePage === 'dashboard' && 'Your daily essentials, all in one place.'}
@@ -9680,7 +9796,11 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {/* Delete Account Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="modal-overlay" onClick={() => !deletingAccount && setShowDeleteConfirm(false)}>
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 999999 }}
+          onClick={() => !deletingAccount && setShowDeleteConfirm(false)}
+        >
           <div
             className="modal-content"
             onClick={(e) => e.stopPropagation()}

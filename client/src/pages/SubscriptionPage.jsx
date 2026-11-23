@@ -94,8 +94,7 @@ export default function SubscriptionPage({ setActiveTab }) {
     if (raw) {
       targetDate = new Date(raw);
     } else {
-      const now = new Date();
-      targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 28);
+      return null;
     }
     const now = new Date();
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -130,6 +129,7 @@ export default function SubscriptionPage({ setActiveTab }) {
   }, [activeSubscription, user]);
 
   const renderExpiryCard = (compact = false) => {
+    if (!expiryInfo) return null;
     const { formattedDate, countdownText, isExpired, isExpiringSoon } = expiryInfo;
     const badgeBg = isExpired ? '#fef2f2' : isExpiringSoon ? '#fffbeb' : '#e2f1ea';
     const badgeBorder = isExpired ? '#fecaca' : isExpiringSoon ? '#fde68a' : '#bbf7d0';
@@ -666,7 +666,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                 </span>
               </div>
               <span style={{ fontSize: '0.74rem', color: '#6b7280', fontWeight: 600 }}>
-                ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
+                {user?.customerId ? `ID: ${user.customerId} • ` : ''}{user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
               </span>
             </div>
           </div>
@@ -1068,7 +1068,7 @@ export default function SubscriptionPage({ setActiveTab }) {
             </h2>
           </div>
 
-          {isLoggedInCustomer && (
+          {isLoggedInCustomer && activeSubscription && expiryInfo && (
             <button
               type="button"
               onClick={() => setShowHistoryModal(true)}
@@ -1160,7 +1160,7 @@ export default function SubscriptionPage({ setActiveTab }) {
           </div>
 
           {/* Logged-In Active Subscription OR Guest Subscription Plans */}
-          {isLoggedInCustomer ? (
+          {isLoggedInCustomer && activeSubscription ? (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 900, color: '#0c2340' }}>
@@ -1220,7 +1220,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                       </span>
                     </div>
                     <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                      ID: {user?.customerId || 'CUST-101'} • {user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
+                      {user?.customerId ? `ID: ${user.customerId} • ` : ''}{user?.deliveryPlan?.frequency === 'alternate' ? 'Alternate Days' : 'Daily Morning'}
                     </span>
                   </div>
                 </div>
@@ -1907,7 +1907,7 @@ export default function SubscriptionPage({ setActiveTab }) {
           </div>
 
           {/* User Status Bar if Logged In */}
-          {isLoggedInCustomer && (
+          {isLoggedInCustomer && activeSubscription && expiryInfo && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '8px' }}>
               <div style={{
                 display: 'inline-flex',
@@ -1994,7 +1994,7 @@ export default function SubscriptionPage({ setActiveTab }) {
         </div>
 
         {/* Desktop Active Subscription Summary & Expiry Card */}
-        {isLoggedInCustomer && (
+        {isLoggedInCustomer && activeSubscription && (
           <div
             style={{
               background: '#ffffff',
@@ -2022,7 +2022,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                       Active Doorstep Subscription
                     </h3>
                     <span style={{ background: '#e2f1ea', color: '#0d5c3a', borderRadius: '20px', padding: '3px 10px', fontSize: '0.72rem', fontWeight: 800 }}>
-                      Active • ID {user?.customerId || 'CUST-101'}
+                      Active{user?.customerId ? ` • ID ${user.customerId}` : ''}
                     </span>
                   </div>
                   <p style={{ margin: '4px 0 0 0', fontSize: '0.84rem', color: '#64748b' }}>

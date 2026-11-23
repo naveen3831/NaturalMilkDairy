@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:natural_milk_dairy/data/models/product_model.dart';
 import 'package:natural_milk_dairy/providers/auth_provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
+import 'package:natural_milk_dairy/providers/product_provider.dart';
 import 'contact_support_screen.dart';
 import 'select_location_map_screen.dart';
 import '../auth/login_screen.dart';
@@ -35,6 +36,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   late double _selectedMilkQty;
   int _selectedCurdQty = 0;
+  final Map<String, int> _selectedAddons = {}; // productId -> quantity
   String _orderFrequency = 'subscription'; // 'one_time' or 'subscription'
   String _subscriptionSchedule = 'daily'; // 'daily', 'alternate', 'selected', 'weekends'
   String _alternateSchedule = 'tomorrow'; // 'tomorrow' or 'day_after'
@@ -91,10 +93,68 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return parsed ?? 60.0;
   }
 
+  int get _selectedAddonsCount => _selectedAddons.values.fold(0, (sum, q) => sum + q);
+
+  double get _addonsDailyCost {
+    final products = Provider.of<ProductProvider>(context, listen: false).products;
+    double cost = 0;
+    _selectedAddons.forEach((pId, qty) {
+      if (qty > 0) {
+        final prod = products.firstWhere(
+          (p) => p.id == pId,
+          orElse: () => ProductModel(
+            id: pId,
+            name: 'Extra Product',
+            price: '₹0',
+            numericPrice: 0,
+            unit: 'pack',
+            category: 'other',
+            imageUrl: '',
+            description: '',
+          ),
+        );
+        cost += prod.numericPrice * qty;
+      }
+    });
+    return cost;
+  }
+
+  List<Map<String, dynamic>> get _addonsPayload {
+    final products = Provider.of<ProductProvider>(context, listen: false).products;
+    final List<Map<String, dynamic>> list = [];
+    _selectedAddons.forEach((pId, qty) {
+      if (qty > 0) {
+        final prod = products.firstWhere(
+          (p) => p.id == pId,
+          orElse: () => ProductModel(
+            id: pId,
+            name: 'Extra Product',
+            price: '₹0',
+            numericPrice: 0,
+            unit: 'pack',
+            category: 'other',
+            imageUrl: '',
+            description: '',
+          ),
+        );
+        list.add({
+          'productId': prod.id,
+          'name': prod.name,
+          'quantity': qty,
+          'unit': prod.unit,
+          'price': prod.numericPrice,
+          'image': prod.imageUrl,
+        });
+      }
+    });
+    return list;
+  }
+
   int get _dailyCost {
     final milkCost = (_selectedMilkQty * _unitPrice).round();
     final curdCost = ((_selectedCurdQty / 500) * 30).round();
-    return milkCost + curdCost;
+    final addonsCost = _addonsDailyCost.round();
+    return milkCost + curdCost + addonsCost;
   }
 
   int get _dropsCount {
@@ -138,6 +198,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
       final cp = context.read<CustomerProvider>();
+      context.read<ProductProvider>().loadProducts(silent: true);
       final prof = cp.customerData;
       final u = auth.user;
 
@@ -246,6 +307,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       final dynamic orderRes = await cp.createSubscriptionOrder(
         milkQty: _selectedMilkQty,
         curdQty: _selectedCurdQty,
+        extraProducts: _addonsPayload,
         frequency: freq,
         alternateSchedule: _alternateSchedule,
         purpose: isOneTime ? 'one_time' : 'new',
@@ -1244,135 +1306,140 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      Row(
-                        children: [
-                          // One-Time Order Card
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => setState(() => _orderFrequency = 'one_time'),
-                              borderRadius: BorderRadius.circular(16),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: _orderFrequency == 'one_time' ? const Color(0xFF0D5C3A) : Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: _orderFrequency == 'one_time' ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
-                                    width: 1.5,
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // One-Time Order Card
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setState(() => _orderFrequency = 'one_time'),
+                                borderRadius: BorderRadius.circular(16),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: _orderFrequency == 'one_time' ? const Color(0xFF0D5C3A) : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: _orderFrequency == 'one_time' ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: _orderFrequency == 'one_time'
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF0D5C3A).withValues(alpha: 0.22),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ]
+                                        : [],
                                   ),
-                                  boxShadow: _orderFrequency == 'one_time'
-                                      ? [
-                                          BoxShadow(
-                                            color: const Color(0xFF0D5C3A).withValues(alpha: 0.22),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 3),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.inventory_2_outlined,
+                                            size: 18,
+                                            color: _orderFrequency == 'one_time' ? Colors.white : const Color(0xFF0D5C3A),
                                           ),
-                                        ]
-                                      : [],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.inventory_2_outlined,
-                                          size: 18,
-                                          color: _orderFrequency == 'one_time' ? Colors.white : const Color(0xFF0D5C3A),
-                                        ),
-                                        const SizedBox(width: 7),
-                                        Text(
-                                          'One-Time',
-                                          style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w900,
-                                            color: _orderFrequency == 'one_time' ? Colors.white : const Color(0xFF0C2340),
+                                          const SizedBox(width: 7),
+                                          Text(
+                                            'One-Time',
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w900,
+                                              color: _orderFrequency == 'one_time' ? Colors.white : const Color(0xFF0C2340),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Single delivery tomorrow morning',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: _orderFrequency == 'one_time'
-                                            ? Colors.white.withValues(alpha: 0.9)
-                                            : const Color(0xFF6B7280),
-                                        height: 1.25,
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        'Single delivery tomorrow morning',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: _orderFrequency == 'one_time'
+                                              ? Colors.white.withValues(alpha: 0.9)
+                                              : const Color(0xFF6B7280),
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 10),
+                            const SizedBox(width: 10),
 
-                          // Daily Drop Card
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => setState(() => _orderFrequency = 'subscription'),
-                              borderRadius: BorderRadius.circular(16),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: _orderFrequency == 'subscription' ? const Color(0xFF0D5C3A) : Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: _orderFrequency == 'subscription' ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
-                                    width: 1.5,
+                            // Daily Drop Card
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setState(() => _orderFrequency = 'subscription'),
+                                borderRadius: BorderRadius.circular(16),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: _orderFrequency == 'subscription' ? const Color(0xFF0D5C3A) : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: _orderFrequency == 'subscription' ? const Color(0xFF0D5C3A) : const Color(0xFFDCE8DF),
+                                      width: 1.5,
+                                    ),
+                                    boxShadow: _orderFrequency == 'subscription'
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF0D5C3A).withValues(alpha: 0.22),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ]
+                                        : [],
                                   ),
-                                  boxShadow: _orderFrequency == 'subscription'
-                                      ? [
-                                          BoxShadow(
-                                            color: const Color(0xFF0D5C3A).withValues(alpha: 0.22),
-                                            blurRadius: 8,
-                                            offset: const Offset(0, 3),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.calendar_month_rounded,
+                                            size: 18,
+                                            color: _orderFrequency == 'subscription' ? Colors.white : const Color(0xFF0D5C3A),
                                           ),
-                                        ]
-                                      : [],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.calendar_month_rounded,
-                                          size: 18,
-                                          color: _orderFrequency == 'subscription' ? Colors.white : const Color(0xFF0D5C3A),
-                                        ),
-                                        const SizedBox(width: 7),
-                                        Text(
-                                          'Daily Drop',
-                                          style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w900,
-                                            color: _orderFrequency == 'subscription' ? Colors.white : const Color(0xFF0C2340),
+                                          const SizedBox(width: 7),
+                                          Text(
+                                            'Daily Drop',
+                                            style: TextStyle(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w900,
+                                              color: _orderFrequency == 'subscription' ? Colors.white : const Color(0xFF0C2340),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Every morning by 6:30 AM · Pause anytime',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: _orderFrequency == 'subscription'
-                                            ? Colors.white.withValues(alpha: 0.9)
-                                            : const Color(0xFF6B7280),
-                                        height: 1.25,
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 7),
+                                      Text(
+                                        'Every morning by 6:30 AM · Pause anytime',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: _orderFrequency == 'subscription'
+                                              ? Colors.white.withValues(alpha: 0.9)
+                                              : const Color(0xFF6B7280),
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1535,6 +1602,101 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         }).toList(),
                       ),
 
+                      // ── ALL AVAILABLE FARM PRODUCTS ADD-ONS ──
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Icon(Icons.shopping_bag_outlined, color: Color(0xFF0D5C3A), size: 16),
+                                const SizedBox(width: 6),
+                                const Flexible(
+                                  child: Text(
+                                    'Farm Add-ons',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (_selectedAddonsCount > 0) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0D5C3A),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      '$_selectedAddonsCount Added',
+                                      style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Colors.white),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: _showAddonsPickerBottomSheet,
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: const Color(0xFF86EFAC), width: 1.2),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(_selectedAddonsCount > 0 ? Icons.edit_outlined : Icons.add_rounded, size: 13, color: const Color(0xFF15803D)),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _selectedAddonsCount > 0 ? 'Edit Add-ons' : '+ Add-ons',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF15803D)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_selectedAddonsCount > 0) ...[
+                        const SizedBox(height: 10),
+                        Column(
+                          children: _buildSelectedAddonsList(),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: _showAddonsPickerBottomSheet,
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.add_circle_outline_rounded, color: Color(0xFF0D5C3A), size: 15),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Add Ghee, Paneer, Curd or other fresh dairy to this drop',
+                                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 16),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+
                       // Delivery Schedule Section (Subscription / Daily Drop)
                       if (_orderFrequency == 'subscription') ...[
                         const SizedBox(height: 20),
@@ -1543,58 +1705,64 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF4B5563)),
                         ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            // 1. Every Morning
-                            Expanded(
-                              child: _buildScheduleCard(
-                                id: 'daily',
-                                title: 'Every Morning',
-                                badge: 'Best Value',
-                                drops: 'Daily · 30 Drops',
-                                isSelected: _subscriptionSchedule == 'daily',
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // 1. Every Morning
+                              Expanded(
+                                child: _buildScheduleCard(
+                                  id: 'daily',
+                                  title: 'Every Morning',
+                                  badge: 'Best Value',
+                                  drops: 'Daily · 30 Drops',
+                                  isSelected: _subscriptionSchedule == 'daily',
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // 2. Alternate Days
-                            Expanded(
-                              child: _buildScheduleCard(
-                                id: 'alternate',
-                                title: 'Alternate Days',
-                                badge: null,
-                                drops: '1 Day Gap · 15 Drops',
-                                isSelected: _subscriptionSchedule == 'alternate',
+                              // 2. Alternate Days
+                              Expanded(
+                                child: _buildScheduleCard(
+                                  id: 'alternate',
+                                  title: 'Alternate Days',
+                                  badge: null,
+                                  drops: '1 Day Gap · 15 Drops',
+                                  isSelected: _subscriptionSchedule == 'alternate',
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            // 3. Weekdays Only
-                            Expanded(
-                              child: _buildScheduleCard(
-                                id: 'selected',
-                                title: 'Weekdays Only',
-                                badge: null,
-                                drops: 'Mon-Fri · 22 Drops',
-                                isSelected: _subscriptionSchedule == 'selected',
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // 3. Weekdays Only
+                              Expanded(
+                                child: _buildScheduleCard(
+                                  id: 'selected',
+                                  title: 'Weekdays Only',
+                                  badge: null,
+                                  drops: 'Mon-Fri · 22 Drops',
+                                  isSelected: _subscriptionSchedule == 'selected',
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
+                              const SizedBox(width: 8),
 
-                            // 4. Weekends Only
-                            Expanded(
-                              child: _buildScheduleCard(
-                                id: 'weekends',
-                                title: 'Weekends Only',
-                                badge: 'Sat & Sun',
-                                drops: 'Sat-Sun · 8 Drops',
-                                isSelected: _subscriptionSchedule == 'weekends',
+                              // 4. Weekends Only
+                              Expanded(
+                                child: _buildScheduleCard(
+                                  id: 'weekends',
+                                  title: 'Weekends Only',
+                                  badge: 'Sat & Sun',
+                                  drops: 'Sat-Sun · 8 Drops',
+                                  isSelected: _subscriptionSchedule == 'weekends',
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
 
                         // Sub-selector for Alternate Days
@@ -1621,26 +1789,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildAlternateOptionChip(
-                                        id: 'tomorrow',
-                                        title: 'Start Tomorrow',
-                                        subtitle: 'e.g. Mon, Wed, Fri',
-                                        isSelected: _alternateSchedule == 'tomorrow',
+                                IntrinsicHeight(
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Expanded(
+                                        child: _buildAlternateOptionChip(
+                                          id: 'tomorrow',
+                                          title: 'Start Tomorrow',
+                                          subtitle: 'e.g. Mon, Wed, Fri',
+                                          isSelected: _alternateSchedule == 'tomorrow',
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _buildAlternateOptionChip(
-                                        id: 'day_after',
-                                        title: 'Start Day After',
-                                        subtitle: 'e.g. Tue, Thu, Sat',
-                                        isSelected: _alternateSchedule == 'day_after',
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: _buildAlternateOptionChip(
+                                          id: 'day_after',
+                                          title: 'Start Day After',
+                                          subtitle: 'e.g. Tue, Thu, Sat',
+                                          isSelected: _alternateSchedule == 'day_after',
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -1681,26 +1852,29 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF4B5563)),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildOneTimeScheduleChip(
-                                id: 'tomorrow',
-                                title: 'Tomorrow Morning',
-                                subtitle: 'Before 6:30 AM drop',
-                                isSelected: _oneTimeDay == 'tomorrow',
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _buildOneTimeScheduleChip(
+                                  id: 'tomorrow',
+                                  title: 'Tomorrow Morning',
+                                  subtitle: 'Before 6:30 AM drop',
+                                  isSelected: _oneTimeDay == 'tomorrow',
+                                ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildOneTimeScheduleChip(
-                                id: 'weekend',
-                                title: 'This Weekend',
-                                subtitle: 'Saturday Morning',
-                                isSelected: _oneTimeDay == 'weekend',
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildOneTimeScheduleChip(
+                                  id: 'weekend',
+                                  title: 'This Weekend',
+                                  subtitle: 'Saturday Morning',
+                                  isSelected: _oneTimeDay == 'weekend',
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ],
                     ],
@@ -1835,6 +2009,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                           ],
                         ),
                       ],
+
+                      // Selected Add-ons Breakdown
+                      ..._buildAddonsBreakdownRows(),
 
                       const SizedBox(height: 7),
                       const Row(
@@ -2084,8 +2261,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         alignment: Alignment.topCenter,
         children: [
           Container(
-            margin: EdgeInsets.only(top: badge != null ? 7 : 0),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFFE2F1EA) : const Color(0xFFF9FAFB),
               borderRadius: BorderRadius.circular(12),
@@ -2096,7 +2274,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ),
             alignment: Alignment.center,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2118,7 +2296,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ],
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   drops,
                   textAlign: TextAlign.center,
@@ -2272,6 +2450,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       borderRadius: BorderRadius.circular(10),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
@@ -2283,6 +2462,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
               children: [
@@ -2327,6 +2507,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       borderRadius: BorderRadius.circular(10),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF0D5C3A) : Colors.white,
@@ -2338,6 +2519,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Row(
               children: [
@@ -2368,6 +2550,506 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  List<Widget> _buildSelectedAddonsList() {
+    final products = Provider.of<ProductProvider>(context, listen: false).products;
+    final List<Widget> widgets = [];
+    _selectedAddons.forEach((pId, qty) {
+      if (qty > 0) {
+        final prod = products.firstWhere(
+          (p) => p.id == pId,
+          orElse: () => ProductModel(
+            id: pId,
+            name: 'Extra Item',
+            price: '₹0',
+            numericPrice: 0,
+            unit: '',
+            category: 'other',
+            imageUrl: '',
+            description: '',
+          ),
+        );
+        widgets.add(
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    color: const Color(0xFFE2E8F0),
+                    child: prod.imageUrl.isNotEmpty
+                        ? Image.network(
+                            prod.imageUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.inventory_2_outlined, size: 18, color: Color(0xFF0D5C3A)),
+                          )
+                        : const Icon(Icons.inventory_2_outlined, size: 18, color: Color(0xFF0D5C3A)),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        prod.name,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '₹${prod.numericPrice.toInt()} × $qty = ₹${(prod.numericPrice * qty).toInt()}${_orderFrequency == 'one_time' ? '' : '/drop'}',
+                        style: const TextStyle(fontSize: 10.5, color: Color(0xFF0D5C3A), fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0D5C3A),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (qty <= 1) {
+                              _selectedAddons.remove(pId);
+                            } else {
+                              _selectedAddons[pId] = qty - 1;
+                            }
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: Icon(Icons.remove, size: 12, color: Colors.white),
+                        ),
+                      ),
+                      Text(
+                        '$qty',
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Colors.white),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          setState(() {
+                            _selectedAddons[pId] = qty + 1;
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          child: Icon(Icons.add, size: 12, color: Colors.white),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    });
+    return widgets;
+  }
+
+  List<Widget> _buildAddonsBreakdownRows() {
+    final products = Provider.of<ProductProvider>(context, listen: false).products;
+    final List<Widget> rows = [];
+    _selectedAddons.forEach((pId, qty) {
+      if (qty > 0) {
+        final prod = products.firstWhere(
+          (p) => p.id == pId,
+          orElse: () => ProductModel(
+            id: pId,
+            name: 'Extra Item',
+            price: '₹0',
+            numericPrice: 0,
+            unit: '',
+            category: 'other',
+            imageUrl: '',
+            description: '',
+          ),
+        );
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 7),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    '${prod.name} ($qty × ₹${prod.numericPrice.toInt()})',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '₹${(prod.numericPrice * qty).toInt()}${_orderFrequency == 'one_time' ? '' : '/drop'}',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0C2340)),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    });
+    return rows;
+  }
+
+  void _showAddonsPickerBottomSheet() {
+    final productProvider = Provider.of<ProductProvider>(context, listen: false);
+    final allProducts = productProvider.products;
+    String selectedCat = 'all';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final filtered = selectedCat == 'all'
+                ? allProducts
+                : allProducts.where((p) => p.category.toLowerCase() == selectedCat.toLowerCase()).toList();
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.85,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                    ),
+                    child: Column(
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFCBD5E1),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Farm Add-ons & Extra Products',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF0C2340),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Select pure farm items to accompany your delivery',
+                                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: () => Navigator.pop(sheetContext),
+                              icon: const Icon(Icons.close_rounded, size: 20),
+                              color: const Color(0xFF64748B),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: ['all', 'ghee', 'paneer', 'curd', 'milk', 'other'].map((cat) {
+                              final isSel = selectedCat == cat;
+                              final label = cat == 'all' ? 'All Products' : cat[0].toUpperCase() + cat.substring(1);
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: InkWell(
+                                  onTap: () => setSheetState(() => selectedCat = cat),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: isSel ? const Color(0xFF0D5C3A) : const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: isSel ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0)),
+                                    ),
+                                    child: Text(
+                                      label,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                                        color: isSel ? Colors.white : const Color(0xFF475569),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No products found in this category',
+                              style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            itemCount: filtered.length,
+                            separatorBuilder: (context, index) => const Divider(height: 16, color: Color(0xFFF1F5F9)),
+                            itemBuilder: (context, index) {
+                              final prod = filtered[index];
+                              final currentQty = _selectedAddons[prod.id] ?? 0;
+                              return Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: currentQty > 0 ? const Color(0xFFF0FDF4) : Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: currentQty > 0 ? const Color(0xFF86EFAC) : const Color(0xFFF1F5F9),
+                                    width: currentQty > 0 ? 1.4 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        width: 58,
+                                        height: 58,
+                                        color: const Color(0xFFF1F5F9),
+                                        child: prod.imageUrl.isNotEmpty
+                                            ? Image.network(
+                                                prod.imageUrl,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => const Icon(
+                                                  Icons.inventory_2_outlined,
+                                                  color: Color(0xFF0D5C3A),
+                                                ),
+                                              )
+                                            : const Icon(Icons.inventory_2_outlined, color: Color(0xFF0D5C3A)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            prod.name,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF0C2340),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '₹${prod.numericPrice.toInt()} · ${prod.unit}',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w900,
+                                              color: Color(0xFF0D5C3A),
+                                            ),
+                                          ),
+                                          if (prod.description.isNotEmpty) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              prod.description,
+                                              style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    if (currentQty == 0)
+                                      InkWell(
+                                        onTap: () {
+                                          setSheetState(() {
+                                            _selectedAddons[prod.id] = 1;
+                                          });
+                                          setState(() {});
+                                        },
+                                        borderRadius: BorderRadius.circular(18),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE2F1EA),
+                                            borderRadius: BorderRadius.circular(18),
+                                            border: Border.all(color: const Color(0xFFA5D6A7), width: 1.2),
+                                          ),
+                                          child: const Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.add, size: 14, color: Color(0xFF0D5C3A)),
+                                              SizedBox(width: 3),
+                                              Text(
+                                                'ADD',
+                                                style: TextStyle(
+                                                  fontSize: 11.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Color(0xFF0D5C3A),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF0D5C3A),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            InkWell(
+                                              onTap: () {
+                                                setSheetState(() {
+                                                  if (currentQty <= 1) {
+                                                    _selectedAddons.remove(prod.id);
+                                                  } else {
+                                                    _selectedAddons[prod.id] = currentQty - 1;
+                                                  }
+                                                });
+                                                setState(() {});
+                                              },
+                                              child: const Padding(
+                                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                child: Icon(Icons.remove, size: 14, color: Colors.white),
+                                              ),
+                                            ),
+                                            Text(
+                                              '$currentQty',
+                                              style: const TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w900,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            InkWell(
+                                              onTap: () {
+                                                setSheetState(() {
+                                                  _selectedAddons[prod.id] = currentQty + 1;
+                                                });
+                                                setState(() {});
+                                              },
+                                              child: const Padding(
+                                                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                child: Icon(Icons.add, size: 14, color: Colors.white),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          offset: const Offset(0, -3),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$_selectedAddonsCount Item${_selectedAddonsCount == 1 ? '' : 's'} Selected',
+                                style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                '+₹${_addonsDailyCost.round()}${_orderFrequency == 'one_time' ? '' : '/drop'}',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0D5C3A)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(sheetContext);
+                            setState(() {});
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0D5C3A),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Apply Add-ons', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

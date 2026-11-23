@@ -759,14 +759,38 @@ const googleLogin = async (req, res) => {
       passwordHash = await hashPassword(inputPassword);
     }
 
-    let foundCustomer = await Customer.findOne({
-      $or: [{ email: emailRegex }, { firebaseUid }],
-    });
+    const cleanGoogleEmail = (googleEmail || '').trim().toLowerCase();
+    const emailQuery = cleanGoogleEmail ? [{ email: new RegExp(`^\\s*${escapeRegex(cleanGoogleEmail)}\\s*$`, 'i') }] : [];
+    const uidQuery = (typeof firebaseUid === 'string' && firebaseUid.trim()) ? [{ firebaseUid: firebaseUid.trim() }] : [];
 
-    let foundUser = await User.findOne({
-      $or: [{ email: emailRegex }, { firebaseUid }],
-      role: { $in: ['customer', 'user'] },
-    });
+    let foundCustomer = null;
+    let foundUser = null;
+
+    if (emailQuery.length > 0 || uidQuery.length > 0) {
+      foundCustomer = await Customer.findOne({ $or: [...emailQuery, ...uidQuery] });
+      foundUser = await User.findOne({ $or: [...emailQuery, ...uidQuery], role: { $in: ['customer', 'user'] } });
+    }
+
+    // Cross-link Customer and User if one was found but not the other
+    if (foundCustomer && !foundUser) {
+      const custCleanMobile = (foundCustomer.mobile || '').replace(/\D/g, '').slice(-10);
+      const orConditions = [];
+      if (foundCustomer.email) orConditions.push({ email: new RegExp(`^\\s*${escapeRegex(foundCustomer.email.trim())}\\s*$`, 'i') });
+      if (custCleanMobile) orConditions.push({ mobile: new RegExp(custCleanMobile + '$') });
+      if (orConditions.length > 0) {
+        foundUser = await User.findOne({ $or: orConditions, role: { $in: ['customer', 'user'] } });
+      }
+    }
+    if (foundUser && !foundCustomer) {
+      const userCleanMobile = (foundUser.mobile || '').replace(/\D/g, '').slice(-10);
+      const orConditions = [];
+      if (foundUser.email) orConditions.push({ email: new RegExp(`^\\s*${escapeRegex(foundUser.email.trim())}\\s*$`, 'i') });
+      if (userCleanMobile) orConditions.push({ mobile: new RegExp(userCleanMobile + '$') });
+      if (foundUser.customerId) orConditions.push({ customerId: foundUser.customerId });
+      if (orConditions.length > 0) {
+        foundCustomer = await Customer.findOne({ $or: orConditions });
+      }
+    }
 
     // If not found by email/uid but client provided a phone number, check by mobile
     if (!foundCustomer && !foundUser && mobileDigits) {
@@ -899,9 +923,23 @@ const googleLogin = async (req, res) => {
       name: displayName,
       email: googleEmail,
       mobile: realMobile,
-      address: 'Doorstep Address, Hyderabad',
-      area: 'Madhapur',
-      status: 'active',
+      address: '',
+      area: '',
+      status: 'inactive',
+      subscription: { status: 'none', startDate: null, endDate: null, amount: 0 },
+      deliveryPlan: {
+        milkQty: 0,
+        milkUnit: 'L',
+        milkType: '',
+        planName: '',
+        curdQty: 0,
+        curdUnit: 'g',
+        frequency: 'daily',
+        deliveryDays: [],
+        deliveryBoyId: '',
+        deliveryBoyName: '',
+        startDate: null,
+      },
       firebaseUid,
       authProvider: 'google',
     });

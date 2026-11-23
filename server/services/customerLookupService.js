@@ -77,6 +77,46 @@ const findCustomerForRequest = async (req) => {
             return found;
           }
         }
+
+        // If authenticated user is a customer/user but has no Customer document yet, auto-create a clean Customer doc
+        if (['customer', 'user'].includes(userDoc.role)) {
+          const custCount = await Customer.countDocuments();
+          const newCustId = userDoc.customerId || `CUST-${custCount + 101}`;
+          try {
+            const createdCust = await Customer.create({
+              customerId: newCustId,
+              name: userDoc.name || 'Customer',
+              mobile: userDoc.mobile,
+              email: userDoc.email || '',
+              address: userDoc.address || '',
+              area: userDoc.assignedArea || 'Madhapur',
+              status: 'inactive',
+              subscription: { status: 'none', startDate: null, endDate: null, amount: 0, paymentId: '' },
+              deliveryPlan: {
+                milkQty: 0,
+                milkUnit: 'L',
+                milkType: '',
+                planName: '',
+                curdQty: 0,
+                curdUnit: 'g',
+                frequency: 'daily',
+                deliveryDays: [],
+                deliveryBoyId: '',
+                deliveryBoyName: '',
+                startDate: null,
+              },
+              paymentInfo: { paymentType: 'prepaid', paymentCycle: 'monthly' },
+              currentBalance: 0,
+              notes: 'Auto-created from authenticated user session',
+            });
+            if (!userDoc.customerId) {
+              await User.updateOne({ _id: userDoc._id }, { $set: { customerId: newCustId } });
+            }
+            return createdCust.toObject ? createdCust.toObject() : createdCust;
+          } catch (createErr) {
+            console.warn('Customer auto-create note in lookup:', createErr.message);
+          }
+        }
       }
     }
   }

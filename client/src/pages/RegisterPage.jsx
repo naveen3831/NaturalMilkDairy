@@ -60,8 +60,14 @@ export default function RegisterPage({ setActiveTab }) {
         localStorage.setItem('nmd_current_tab', 'delivery-boy-app');
         setActiveTab('delivery-boy-app');
       } else {
-        localStorage.setItem('nmd_current_tab', 'home');
-        setActiveTab('home');
+        if (window.innerWidth <= 768) {
+          localStorage.setItem('nmd_customer_page', 'dashboard');
+          localStorage.setItem('nmd_current_tab', 'customer-portal');
+          setActiveTab('customer-portal');
+        } else {
+          localStorage.setItem('nmd_current_tab', 'my-subscription');
+          setActiveTab('my-subscription');
+        }
       }
     } else {
       setError(res.message || 'Google account creation failed. Please try again.');
@@ -93,8 +99,14 @@ export default function RegisterPage({ setActiveTab }) {
             localStorage.setItem('nmd_current_tab', 'delivery-boy-app');
             setActiveTab('delivery-boy-app');
           } else {
-            localStorage.setItem('nmd_current_tab', 'home');
-            setActiveTab('home');
+            if (window.innerWidth <= 768) {
+              localStorage.setItem('nmd_customer_page', 'dashboard');
+              localStorage.setItem('nmd_current_tab', 'customer-portal');
+              setActiveTab('customer-portal');
+            } else {
+              localStorage.setItem('nmd_current_tab', 'my-subscription');
+              setActiveTab('my-subscription');
+            }
           }
         } else {
           setError(res.message || 'Google account creation failed. Please try again.');

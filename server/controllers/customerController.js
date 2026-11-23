@@ -1055,11 +1055,28 @@ const getCustomerLedger = async (req, res) => {
   try {
     const customer = await findCustomerForRequest(req);
     if (!customer) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
+      return res.json({
+        success: true,
+        ledgerEntries: [],
+        deliveries: [],
+        payments: [],
+        customer: null,
+        grossBill: 0,
+        totalPaid: 0,
+        currentBalance: 0,
+        totalMilkDelivered: '0 L',
+        totalCurdDelivered: '0 Kg',
+        summaryByPeriod: { all: { deliveriesCount: 0, totalAmount: 0 } },
+      });
     }
 
-    // Ensure all deliveries exist for this customer throughout their history/subscription
-    await ensureDeliveriesForCustomer(customer);
+    // Only ensure deliveries if customer has a real active paid subscription
+    const hasActiveSub = customer.status === 'active' &&
+      customer.subscription?.status === 'active' &&
+      Number(customer.deliveryPlan?.milkQty || 0) > 0;
+    if (hasActiveSub) {
+      await ensureDeliveriesForCustomer(customer);
+    }
 
     const custIds = [
       customer._id.toString(),
@@ -1562,75 +1579,113 @@ const deleteCustomer = async (req, res) => {
     const { id } = req.params;
     const { actor, customerId: bodyCustomerId } = req.body || {};
 
-    let customer = null;
-    const targetId = (id === 'me' || !id) ? (req.user?.id || bodyCustomerId) : (id || bodyCustomerId);
-
-    if (targetId && targetId.length === 24) {
-      try {
-        customer = await Customer.findById(targetId);
-      } catch (e) {
-        customer = null;
-      }
-    }
-    if (!customer && targetId) {
-      customer = await Customer.findOne({
-        $or: [{ customerId: targetId }, { mobile: targetId }, { email: targetId }],
-      });
-    }
-    if (!customer && req.user) {
-      if (req.user.id && req.user.id.length === 24) {
-        try {
-          customer = await Customer.findById(req.user.id);
-        } catch (e) {
-          customer = null;
-        }
-      }
-      if (!customer && req.user.mobile) {
-        customer = await Customer.findOne({ mobile: req.user.mobile });
-      }
-      if (!customer && req.user.email) {
-        customer = await Customer.findOne({ email: req.user.email });
-      }
-    }
+    let customer = await findCustomerForRequest(req);
+    const targetUserId = req.user?.id;
+    let userDoc = (targetUserId && targetUserId.length === 24) ? await User.findById(targetUserId).catch(() => null) : null;
 
     if (!customer) {
+      const targetId = (id === 'me' || id === 'account' || !id) ? (req.user?.id || bodyCustomerId) : (id || bodyCustomerId);
+      if (targetId && targetId.length === 24) {
+        customer = await Customer.findById(targetId).catch(() => null);
+      }
+      if (!customer && targetId) {
+        customer = await Customer.findOne({
+          $or: [{ customerId: targetId }, { mobile: targetId }, { email: targetId }],
+        });
+      }
+      if (!customer && userDoc?.customerId) {
+        customer = await Customer.findOne({ customerId: userDoc.customerId });
+      }
+      if (!customer && userDoc?.mobile) {
+        customer = await Customer.findOne({ mobile: userDoc.mobile });
+      }
+      if (!customer && userDoc?.email) {
+        customer = await Customer.findOne({ email: new RegExp(`^${escapeRegex(userDoc.email.trim())}$`, 'i') });
+      }
+    }
+
+    if (!customer && !userDoc) {
       return res.status(404).json({
         success: false,
         message: 'Customer account not found in database.',
       });
     }
 
-    const customerIds = [customer._id.toString(), customer.customerId].filter(Boolean);
+    const customerIds = [
+      customer?._id?.toString(),
+      customer?.customerId,
+      userDoc?.customerId,
+      req.user?.customerId,
+      bodyCustomerId,
+      id !== 'me' && id !== 'account' ? id : null,
+    ].filter(Boolean);
+
+    const mobiles = [
+      customer?.mobile,
+      userDoc?.mobile,
+      req.user?.mobile,
+    ].filter(Boolean);
+
+    const emails = [
+      customer?.email,
+      userDoc?.email,
+      req.user?.email,
+    ].filter(Boolean);
+
+    const firebaseUids = [
+      customer?.firebaseUid,
+      userDoc?.firebaseUid,
+    ].filter(Boolean);
 
     // 1. Permanently remove all deliveries
-    await Delivery.deleteMany({ customerId: { $in: customerIds } });
+    if (customerIds.length) {
+      await Delivery.deleteMany({ customerId: { $in: customerIds } });
+    }
 
     // 2. Permanently remove payments/ledger
-    await Payment.deleteMany({ customerId: { $in: customerIds } });
+    if (customerIds.length) {
+      await Payment.deleteMany({ customerId: { $in: customerIds } });
+    }
 
-    // 3. Permanently remove notifications
-    await Notification.deleteMany({
-      $or: [
-        { recipientRole: 'customer', recipientId: { $in: [customer._id.toString(), ...customerIds] } },
-        ...(req.user?.id ? [{ recipientId: req.user.id }] : []),
-      ],
-    });
+    // 3. Permanently remove subscriptions
+    const subConditions = [];
+    if (customer?._id) subConditions.push({ customer: customer._id });
+    if (customerIds.length) subConditions.push({ customerId: { $in: customerIds } });
+    if (targetUserId) subConditions.push({ user: targetUserId });
+    if (subConditions.length) {
+      await Subscription.deleteMany({ $or: subConditions });
+    }
 
-    // 4. Permanently remove user login credentials
-    await User.deleteMany({
-      $or: [
-        { mobile: customer.mobile },
-        ...(customer.email ? [{ email: customer.email }] : []),
-      ],
-    });
+    // 4. Permanently remove notifications
+    const notifConditions = [];
+    if (customerIds.length) notifConditions.push({ recipientId: { $in: customerIds } });
+    if (targetUserId) notifConditions.push({ recipientId: targetUserId });
+    if (notifConditions.length) {
+      await Notification.deleteMany({ $or: notifConditions });
+    }
 
-    // 5. Permanently remove customer document
-    await Customer.deleteOne({ _id: customer._id });
+    // 5. Permanently remove user login credentials
+    const userConditions = [];
+    if (targetUserId) userConditions.push({ _id: targetUserId });
+    if (mobiles.length) userConditions.push({ mobile: { $in: mobiles } });
+    if (emails.length) userConditions.push({ email: { $in: emails } });
+    if (firebaseUids.length) userConditions.push({ firebaseUid: { $in: firebaseUids } });
+    if (customerIds.length) userConditions.push({ customerId: { $in: customerIds } });
+    if (userConditions.length) {
+      await User.deleteMany({ $or: userConditions });
+    }
+
+    // 6. Permanently remove customer document
+    if (customer?._id) {
+      await Customer.deleteOne({ _id: customer._id });
+    }
+
+    const displayName = customer?.name || userDoc?.name || req.user?.name || 'Customer';
 
     await recordAudit(
       'Customer Account Permanently Deleted',
-      actor || customer.name || 'Customer',
-      `Permanently deleted customer account "${customer.name}" (${customer.customerId || customer.mobile}) and all associated records from database`,
+      actor || displayName,
+      `Permanently deleted customer account "${displayName}" and all associated records from database`,
       'system'
     );
 
@@ -1639,8 +1694,8 @@ const deleteCustomer = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Account for "${customer.name}" has been permanently deleted from the database.`,
-      id: customer._id,
+      message: `Account for "${displayName}" has been permanently deleted from the database.`,
+      id: customer?._id || userDoc?._id,
     });
   } catch (err) {
     console.error('Customer deletion failed:', err);

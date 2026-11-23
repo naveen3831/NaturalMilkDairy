@@ -35,9 +35,9 @@ const customerSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   }],
-  status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'active' },
+  status: { type: String, enum: ['active', 'paused', 'inactive'], default: 'inactive' },
   subscription: {
-    status: { type: String, enum: ['pending_payment', 'active', 'expired', 'cancelled', 'paused', 'stopped'], default: undefined },
+    status: { type: String, enum: ['pending_payment', 'active', 'expired', 'cancelled', 'paused', 'stopped', 'none'], default: 'none' },
     startDate: { type: Date, default: null },
     endDate: { type: Date, default: null },
     amount: { type: Number, default: 0 },
@@ -51,10 +51,10 @@ const customerSchema = new mongoose.Schema({
     curdQty: { type: Number, default: null },
   },
   deliveryPlan: {
-    milkQty: { type: Number, default: 1 },
+    milkQty: { type: Number, default: 0 },
     milkUnit: { type: String, default: 'L' },
-    milkType: { type: String, default: 'Pure A2 Cow Milk' },
-    planName: { type: String, default: 'Daily Farm Pure Milk Plan' },
+    milkType: { type: String, default: '' },
+    planName: { type: String, default: '' },
     curdQty: { type: Number, default: 0 },
     curdUnit: { type: String, default: 'g' },
     extraProducts: [{
@@ -68,7 +68,7 @@ const customerSchema = new mongoose.Schema({
     deliveryDays: [{ type: String }], // ['Mon', 'Wed', 'Fri']
     deliveryBoyId: { type: String, default: '' },
     deliveryBoyName: { type: String, default: '' },
-    startDate: { type: Date, default: Date.now },
+    startDate: { type: Date, default: null },
   },
   paymentInfo: {
     paymentType: { type: String, enum: ['credit', 'prepaid', 'cod'], default: 'credit' },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
 import 'subscribe_checkout_screen.dart';
+import 'subscription_details_screen.dart';
 
 class SubscriptionHistoryScreen extends StatefulWidget {
   const SubscriptionHistoryScreen({super.key});
@@ -11,8 +12,6 @@ class SubscriptionHistoryScreen extends StatefulWidget {
 }
 
 class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
-  bool _isRefreshing = false;
-
   @override
   void initState() {
     super.initState();
@@ -25,17 +24,13 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
   }
 
   Future<void> _handleRefresh() async {
-    setState(() => _isRefreshing = true);
     try {
       final dynamic cp = context.read<CustomerProvider>();
       final dynamic res = cp.fetchSubscriptionHistory();
       if (res is Future) {
         await res;
       }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _isRefreshing = false);
-    }
+    } catch (_) {}
   }
 
   String _formatDate(dynamic dateVal) {
@@ -101,19 +96,8 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0D5C3A)),
-                  )
-                : const Icon(Icons.refresh_rounded, color: Color(0xFF0D5C3A), size: 22),
-            tooltip: 'Refresh',
-            onPressed: _isRefreshing ? null : _handleRefresh,
-          ),
-          const SizedBox(width: 8),
+        actions: const [
+          SizedBox(width: 8),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -123,21 +107,232 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
       body: RefreshIndicator(
         color: const Color(0xFF0D5C3A),
         onRefresh: _handleRefresh,
-        child: customer.isLoading && history.isEmpty
+        child: customer.isLoading && history.isEmpty && !customer.hasActiveSubscription
             ? const Center(
                 child: CircularProgressIndicator(color: Color(0xFF0D5C3A)),
               )
-            : history.isEmpty
+            : (history.isEmpty && !customer.hasActiveSubscription)
                 ? _buildEmptyState()
-                : ListView.separated(
+                : ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                    itemCount: history.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      final item = history[index];
-                      return _buildSubscriptionCard(item);
-                    },
+                    children: [
+                      if (customer.hasActiveSubscription) ...[
+                        _buildActiveSubscriptionCard(customer),
+                        const SizedBox(height: 18),
+                        Row(
+                          children: [
+                            const Icon(Icons.receipt_long_rounded, size: 16, color: Color(0xFF64748B)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Subscription History & Orders (${history.length})',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF475569),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (history.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Center(
+                            child: Text(
+                              'No past invoices or payment receipts recorded yet.',
+                              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                        )
+                      else
+                        ...history.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final item = entry.value;
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: idx == history.length - 1 ? 0 : 14),
+                            child: _buildSubscriptionCard(item),
+                          );
+                        }),
+                    ],
                   ),
+      ),
+    );
+  }
+
+  Widget _buildActiveSubscriptionCard(dynamic customer) {
+    final bool isPaused = customer.isPaused == true;
+    final String planName = (customer.deliveryPlanName != null && customer.deliveryPlanName.toString().isNotEmpty)
+        ? customer.deliveryPlanName.toString()
+        : 'Daily Pure Farm Milk Plan';
+    final num milkQtyVal = customer.milkQuantity ?? 1;
+    final String milkQty = milkQtyVal > 0 ? '${milkQtyVal}L / day' : '1L / day';
+    final curdData = customer.customerData is Map ? customer.customerData['curdQuantity'] : null;
+    final String partnerName = (customer.deliveryBoyName != null && customer.deliveryBoyName.toString().isNotEmpty)
+        ? customer.deliveryBoyName.toString()
+        : 'Naveen';
+
+    final endDt = customer.subscriptionEndDate as DateTime?;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final int daysRemaining = endDt != null ? endDt.difference(today).inDays : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isPaused ? const Color(0xFFFDE68A) : const Color(0xFFCEE7D9),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0D5C3A).withValues(alpha: 0.06),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2F1EA),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.stars_rounded, color: Color(0xFF0D5C3A), size: 18),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Active Subscription',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0D5C3A),
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isPaused ? const Color(0xFFFEF3C7) : const Color(0xFFE2F1EA),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isPaused ? const Color(0xFFD97706) : const Color(0xFF0D5C3A),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      isPaused ? 'Paused' : (daysRemaining > 0 ? '$daysRemaining Days Left' : 'Active'),
+                      style: TextStyle(
+                        color: isPaused ? const Color(0xFFD97706) : const Color(0xFF0D5C3A),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            planName,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF0C2340),
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Daily Drop: $milkQty${curdData != null && curdData != 0 ? ' + ${curdData}g Curd' : ''} · Route Partner: $partnerName',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscriptionDetailsScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                  label: const Text(
+                    'Stop Subscription',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFDC2626),
+                    side: const BorderSide(color: Color(0xFFFECACA), width: 1.2),
+                    backgroundColor: const Color(0xFFFEF2F2),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscriptionDetailsScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.tune_rounded, size: 16),
+                  label: const Text(
+                    'All Plan Details',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0D5C3A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

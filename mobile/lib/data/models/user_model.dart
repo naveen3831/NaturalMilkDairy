@@ -50,7 +50,7 @@ class UserModel {
     if (rawCustomerId != null && rawCustomerId!.trim().isNotEmpty) {
       return rawCustomerId!.trim();
     }
-    if (id.isEmpty || isGuest) return 'CUST-101';
+    if (id.isEmpty || isGuest) return isGuest ? 'GUEST' : '';
     final clean = id.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
     return clean.length > 4 ? 'CUST-${clean.substring(clean.length - 4).toUpperCase()}' : 'CUST-$clean';
   }

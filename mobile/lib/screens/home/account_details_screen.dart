@@ -25,7 +25,7 @@ class AccountDetailsScreen extends StatelessWidget {
         ? 'GUEST-001'
         : (user.customerId.isNotEmpty
             ? user.customerId
-            : (customerProvider.customerData?['customerId']?.toString() ?? 'CUST-101'));
+            : (customerProvider.customerData?['customerId']?.toString() ?? ''));
 
     final String mobile = isGuest
         ? '+91 77022 33931'

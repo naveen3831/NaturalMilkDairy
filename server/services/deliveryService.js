@@ -271,7 +271,7 @@ const ensureDeliveriesForCustomer = async (customer, force = false) => {
   ) {
     return;
   }
-  const hasActiveSub = customer.subscription?.status === 'active' || customer.deliveryPlan?.isSubscribed === true;
+  const hasActiveSub = customer.subscription?.status === 'active' && Number(customer.deliveryPlan?.milkQty || 0) > 0;
   if (!hasActiveSub) {
     return;
   }

@@ -189,7 +189,7 @@ export const DairyProvider = ({ children }) => {
 
   // Fetch Customers
   const fetchCustomers = useCallback(async (search = '', status = 'all') => {
-    if (!token) return;
+    if (!token || user?.role === 'customer' || user?.role === 'user') return;
     try {
       const res = await fetch(`/api/customers?search=${encodeURIComponent(search)}&status=${status}`, {
         headers: getAuthHeaders(),

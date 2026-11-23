@@ -14,7 +14,6 @@ import 'widgets/notification_modal.dart';
 import 'contact_support_screen.dart';
 import 'product_details_screen.dart';
 import 'subscription_details_screen.dart';
-import 'subscription_history_screen.dart';
 import 'delivery_history_screen.dart';
 import 'account_details_screen.dart';
 import 'delivery_addresses_screen.dart';
@@ -2579,10 +2578,12 @@ class _HomeScreenState extends State<HomeScreen> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  const Expanded(
+                                  Expanded(
                                     child: Text(
-                                      'Daily Farm Pure Milk Plan',
-                                      style: TextStyle(
+                                      customerProvider.deliveryPlanName.isNotEmpty
+                                          ? customerProvider.deliveryPlanName
+                                          : 'Daily Farm Pure Milk Plan',
+                                      style: const TextStyle(
                                         fontSize: 14,
                                         fontWeight: FontWeight.w900,
                                         color: Color(0xFF0C2340),
@@ -2641,7 +2642,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                'ID: ${user?.customerId ?? "CUST-101"} \u2022 ${customerProvider.frequency == "alternate" ? "Alternate Days" : "Daily Morning"}',
+                                'ID: ${(user?.customerId.isNotEmpty == true ? user!.customerId : customerProvider.customerId)} \u2022 ${customerProvider.frequency == "alternate" ? "Alternate Days" : "Daily Morning"}',
                                 style: const TextStyle(
                                   fontSize: 11.5,
                                   color: Color(0xFF6B7280),
@@ -4361,9 +4362,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final customerProvider = context.watch<CustomerProvider>();
     final isGuest = user == null || user.isGuest == true;
 
-    final String name = isGuest ? 'Guest Explorer' : (user?.name ?? 'Naveen Kumar');
-    final String customerId = isGuest ? 'GUEST-001' : (user?.customerId ?? 'CUST-101');
-    final String mobile = isGuest ? '+91 77022 33931' : (user?.mobile ?? '7702233931');
+    final String name = isGuest ? 'Guest Explorer' : (user?.name ?? 'Customer');
+    final String customerId = isGuest ? 'GUEST-001' : (user?.customerId.isNotEmpty == true ? user!.customerId : customerProvider.customerId);
+    final String mobile = isGuest ? '' : (user?.mobile.isNotEmpty == true ? user!.mobile : customerProvider.mobile);
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -4540,18 +4541,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 _buildProfileItemRow(
                   icon: Icons.receipt_long_rounded,
-                  title: 'Subscription History & Orders',
-                  subtitle: 'View active, past, failed plans & retry Razorpay',
-                  badgeText: 'History',
-                  badgeBg: const Color(0xFFE2F1EA),
-                  badgeColor: const Color(0xFF0D5C3A),
+                  title: 'Subscriptions & History',
+                  subtitle: 'Manage active plan, stop/pause, partner & orders',
+                  badgeText: customerProvider.hasActiveSubscription
+                      ? (customerProvider.isPaused ? 'Paused' : 'Active')
+                      : 'Manage',
+                  badgeBg: customerProvider.isPaused
+                      ? const Color(0xFFFEF3C7)
+                      : const Color(0xFFE2F1EA),
+                  badgeColor: customerProvider.isPaused
+                      ? const Color(0xFFD97706)
+                      : const Color(0xFF0D5C3A),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SubscriptionHistoryScreen(),
-                      ),
-                    );
+                    _openSubscriptionDetails();
                   },
                 ),
                 _buildProfileItemRow(

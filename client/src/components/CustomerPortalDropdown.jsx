@@ -36,7 +36,7 @@ export default function CustomerPortalDropdown({
   const curdQty = deliveryPlan.curdQty ?? (plan.curdQty || 0);
 
   const initial = (currentCustomer.name || 'C').charAt(0).toUpperCase();
-  const customerId = currentCustomer.customerId || user?.customerId || 'CUST-101';
+  const customerId = currentCustomer.customerId || user?.customerId || '';
   const phone = currentCustomer.mobile || user?.mobile || '';
   const area = currentCustomer.area || user?.area || 'Madhapur';
   const addressPreview = currentCustomer.address

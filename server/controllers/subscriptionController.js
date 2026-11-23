@@ -49,18 +49,34 @@ const normalizePlan = (body) => {
   }
   const alternateSchedule = body.alternateSchedule === 'day_after' || body.alternateSchedule === 'even' ? 'day_after' : 'tomorrow';
 
+  const rawExtra = Array.isArray(body.extraProducts) ? body.extraProducts : (Array.isArray(body.addons) ? body.addons : []);
+  const extraProducts = rawExtra.map((p) => ({
+    productId: String(p.productId || p._id || p.id || ''),
+    name: String(p.name || 'Add-on Product'),
+    quantity: Number(p.quantity) || 1,
+    unit: String(p.unit || 'pack'),
+    price: Number(p.price) || 0,
+  })).filter((p) => p.quantity > 0);
+
+  const hasItems = (milkQty > 0 || curdQty > 0 || extraProducts.length > 0);
   if (!Number.isFinite(milkQty) || !Number.isFinite(curdQty) ||
       milkQty < 0 || milkQty > 10 || curdQty < 0 || curdQty > 5000 ||
-      milkQty + curdQty === 0 || !['daily', 'alternate', 'selected', 'weekends', 'once', 'single'].includes(frequency) ||
+      !hasItems || !['daily', 'alternate', 'selected', 'weekends', 'once', 'single'].includes(frequency) ||
       (frequency === 'selected' && deliveryDays.length === 0)) {
     return null;
   }
 
-  return { milkQty, curdQty, frequency, deliveryDays, alternateSchedule, isOneTime };
+  return { milkQty, curdQty, extraProducts, frequency, deliveryDays, alternateSchedule, isOneTime };
 };
 
 const estimateSubscriptionAmount = (plan, startDate) => {
-  const dailyCost = plan.milkQty * 60 + (plan.curdQty / 500) * 30;
+  let extraDailyCost = 0;
+  if (Array.isArray(plan.extraProducts)) {
+    for (const prod of plan.extraProducts) {
+      extraDailyCost += (Number(prod.price) || 0) * (Number(prod.quantity) || 1);
+    }
+  }
+  const dailyCost = (plan.milkQty || 0) * 60 + ((plan.curdQty || 0) / 500) * 30 + extraDailyCost;
   if (plan.frequency === 'once' || plan.frequency === 'single' || plan.isOneTime) {
     return Math.round(dailyCost * 1 * 100);
   }
@@ -694,6 +710,8 @@ const verifyPayment = async (req, res) => {
             actualMilk: subscription.plan.milkQty || 0,
             actualCurd: subscription.plan.curdQty || 0,
             extraItems: subscription.plan.extraProducts || [],
+            addons: subscription.plan.extraProducts || [],
+            addonsTotal: (subscription.plan.extraProducts || []).reduce((sum, p) => sum + ((Number(p.price) || 0) * (Number(p.quantity) || 1)), 0),
             milkPrice: 60,
             curdPrice: 30,
             totalAmount: subscription.amount / 100,

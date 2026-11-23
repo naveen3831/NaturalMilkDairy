@@ -17,11 +17,20 @@ const isLocalhost =
 export const LIVE_BACKEND_URL = 'https://naturalmilkdairy.speshway.site';
 
 // Smart Base URL resolver:
-// 1. Explicit VITE_API_URL if provided
+// 1. Explicit VITE_API_URL if provided (normalizing localhost:5000 to 127.0.0.1:5000 to prevent Windows IPv6 dual-stack socket collisions)
 // 2. If running on remote domain (e.g. Vercel), fallback to production backend
 // 3. If running on localhost/LAN, default to relative '' so Vite proxy forwards to port 5000
 const resolveBaseUrl = () => {
-  const envUrl = (import.meta.env.VITE_API_URL || '').trim();
+  let envUrl = (import.meta.env.VITE_API_URL || '').trim();
+
+  // Prevent Windows dual-stack IPv6 socket hijacking when multiple local servers run on port 5000:
+  // Normalize localhost to 127.0.0.1 so requests always hit the intended IPv4 server
+  if (envUrl.includes('localhost:5000')) {
+    envUrl = envUrl.replace('localhost:5000', '127.0.0.1:5000');
+  } else if (envUrl.includes('localhost:')) {
+    envUrl = envUrl.replace('localhost:', '127.0.0.1:');
+  }
+
   if (envUrl) return envUrl.replace(/\/+$/, '');
 
   if (isBrowser && !isLocalhost) {

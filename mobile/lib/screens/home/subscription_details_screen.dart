@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:natural_milk_dairy/providers/auth_provider.dart';
 import 'package:natural_milk_dairy/providers/customer_provider.dart';
-import 'widgets/notification_modal.dart';
 import 'subscription_history_screen.dart';
 import 'subscribe_checkout_screen.dart';
 
@@ -21,6 +20,40 @@ class SubscriptionDetailsScreen extends StatefulWidget {
 
 class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final dynamic cp = context.read<CustomerProvider>();
+        cp.fetchSubscriptionHistory();
+      } catch (_) {}
+    });
+  }
+
+  String _formatDate(dynamic dateVal) {
+    if (dateVal == null) return 'N/A';
+    try {
+      final dt = DateTime.parse(dateVal.toString());
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+      return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    } catch (_) {
+      return dateVal.toString();
+    }
+  }
+
+  double _parseAmount(dynamic amt) {
+    if (amt == null) return 0.0;
+    final numVal = num.tryParse(amt.toString()) ?? 0;
+    if (numVal > 500) {
+      return numVal / 100.0;
+    }
+    return numVal.toDouble();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.user;
@@ -31,7 +64,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         ? widget.subscription['planName'].toString()
         : (customerProvider.deliveryPlanName.isNotEmpty
             ? customerProvider.deliveryPlanName
-            : 'Daily Farm Pure Milk Plan');
+            : 'Farm Pure Milk Plan');
 
     final String customerId = customerProvider.customerId.isNotEmpty
         ? customerProvider.customerId
@@ -40,8 +73,8 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             : (user != null && user.id.isNotEmpty
                 ? 'CUST-${user.id.substring(0, user.id.length > 4 ? 4 : user.id.length).toUpperCase()}'
                 : ''));
-    final String partnerName = customerProvider.deliveryBoyName.isNotEmpty ? customerProvider.deliveryBoyName : 'Naveen';
-    final String areaName = (user != null && user.area != null && user.area!.isNotEmpty) ? user.area! : 'Madhapur';
+    final String partnerName = customerProvider.deliveryBoyName.isNotEmpty ? customerProvider.deliveryBoyName : 'Assigned Partner';
+    final String areaName = (user != null && user.area != null && user.area!.isNotEmpty) ? user.area! : (customerProvider.area.isNotEmpty ? customerProvider.area : '');
     final String milkQty = customerProvider.milkQuantity > 0
         ? '${customerProvider.milkQuantity} L / day'
         : '1 L / day';
@@ -136,69 +169,12 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             letterSpacing: -0.2,
           ),
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14.0),
-            child: GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (ctx) => const NotificationModal(),
-                  ),
-                );
-              },
-              child: Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F7F4),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE2EBE5), width: 1),
-                      ),
-                      child: const Icon(
-                        Icons.notifications_none_rounded,
-                        color: Color(0xFF0D5C3A),
-                        size: 20,
-                      ),
-                    ),
-                    Positioned(
-                      top: -2,
-                      right: -2,
-                      child: Container(
-                        width: 17,
-                        height: 17,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE53935),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 1.5),
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '1',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w900,
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+        actions: const [
+          SizedBox(width: 48),
         ],
       ),
       bottomNavigationBar: _buildCustomBottomNav(context),
-      body: !hasActiveSubscription
+      body: (!hasActiveSubscription && subHistory.isEmpty)
           ? Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -260,42 +236,19 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const SubscriptionHistoryScreen(),
-                            ),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF0D5C3A), width: 1.2),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text(
-                          'View Subscription History',
-                          style: TextStyle(
-                            color: Color(0xFF0D5C3A),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
             )
           : SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!hasActiveSubscription) ...[
+                    _buildInactivePlanBanner(context),
+                    const SizedBox(height: 16),
+                  ],
             // Top Failed Notice Banner (If subscription failed)
             if (isFailed) ...[
               Container(
@@ -1222,7 +1175,76 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
             ),
             const SizedBox(height: 20),
 
-            // 6. BOTTOM BUTTON: Explore More Plans (Matching Image 2)
+            // 6. SUBSCRIPTION & ORDER HISTORY SECTION
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2F1EA),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.receipt_long_rounded, color: Color(0xFF0D5C3A), size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Subscription & Order History',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF0C2340),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                  ],
+                ),
+                if (subHistory.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2F1EA),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      '${subHistory.length} Record${subHistory.length == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0D5C3A),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (subHistory.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2EBE5)),
+                ),
+                child: const Center(
+                  child: Text(
+                    'No past subscription orders recorded yet.',
+                    style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                  ),
+                ),
+              )
+            else
+              ...subHistory.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _buildHistoryCard(item),
+              )),
+            const SizedBox(height: 16),
+
+            // 7. BOTTOM BUTTON: Explore More Plans (Matching Image 2)
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -1249,6 +1271,311 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
               ),
             ),
             const SizedBox(height: 36),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInactivePlanBanner(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.info_outline_rounded, color: Color(0xFFB45309), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'No Active Subscription Currently',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Start a fresh plan anytime below, or review past order history.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Color(0xFFB45309),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SubscribeCheckoutScreen(),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0D5C3A),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Subscribe', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryCard(Map<String, dynamic> item) {
+    final status = (item['status']?.toString() ?? 'pending').toLowerCase();
+    final plan = item['plan'] is Map ? Map<String, dynamic>.from(item['plan'] as Map) : <String, dynamic>{};
+    final milkQty = plan['milkQty'] != null ? plan['milkQty'].toString() : '1';
+    final curdQty = plan['curdQty'] != null ? plan['curdQty'].toString() : '0';
+    final freq = plan['frequency']?.toString() ?? 'daily';
+    final freqLabel = freq == 'alternate' ? 'Alternate Days' : freq == 'selected' ? 'Custom Days' : 'Daily Morning';
+
+    final startDate = _formatDate(item['startDate'] ?? item['createdAt']);
+    final endDate = _formatDate(item['endDate']);
+    final amount = _parseAmount(item['amount']);
+    final orderId = item['providerOrderId']?.toString() ?? item['orderId']?.toString() ?? item['_id']?.toString() ?? '';
+    final paymentId = item['providerPaymentId']?.toString() ?? '';
+    final address = item['deliveryAddress']?.toString() ?? item['address']?.toString() ?? '';
+    final area = item['area']?.toString() ?? '';
+
+    Color statusColor;
+    Color statusBg;
+    IconData statusIcon;
+    String statusLabel;
+
+    switch (status) {
+      case 'active':
+        statusColor = const Color(0xFF0D5C3A);
+        statusBg = const Color(0xFFE2F1EA);
+        statusIcon = Icons.check_circle_rounded;
+        statusLabel = 'Active';
+        break;
+      case 'failed':
+        statusColor = const Color(0xFFDC2626);
+        statusBg = const Color(0xFFFEE2E2);
+        statusIcon = Icons.cancel_rounded;
+        statusLabel = 'Failed';
+        break;
+      case 'paused':
+        statusColor = const Color(0xFFD97706);
+        statusBg = const Color(0xFFFEF3C7);
+        statusIcon = Icons.pause_circle_rounded;
+        statusLabel = 'Paused';
+        break;
+      case 'pending':
+        statusColor = const Color(0xFF2563EB);
+        statusBg = const Color(0xFFEFF6FF);
+        statusIcon = Icons.hourglass_top_rounded;
+        statusLabel = 'Pending Payment';
+        break;
+      default:
+        statusColor = const Color(0xFF64748B);
+        statusBg = const Color(0xFFF1F5F9);
+        statusIcon = Icons.info_outline_rounded;
+        statusLabel = status.isNotEmpty ? (status[0].toUpperCase() + status.substring(1)) : 'Recorded';
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: status == 'failed' ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+          width: status == 'failed' ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${milkQty}L Pure A2 Cow Milk $freqLabel',
+                        style: const TextStyle(
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0C2340),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      if (curdQty != '0' && curdQty != '0.0') ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '+ ${curdQty}g Traditional Claypot Curd',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF0D5C3A),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(statusIcon, color: statusColor, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Divider(color: Color(0xFFF1F5F9), height: 1),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.calendar_month_outlined, size: 14, color: Color(0xFF64748B)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    status == 'failed' ? 'Attempted: $startDate' : '$startDate  →  $endDate',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (address.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF64748B)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      area.isNotEmpty ? '$address ($area)' : address,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF475569),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                const Icon(Icons.receipt_outlined, size: 14, color: Color(0xFF64748B)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    amount > 0 ? 'Total: ₹${amount.toStringAsFixed(0)} · Order: $orderId' : 'Order: $orderId',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64748B),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            if (paymentId.isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Row(
+                children: [
+                  const Icon(Icons.verified_outlined, size: 14, color: Color(0xFF0D5C3A)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Payment ID: $paymentId',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0D5C3A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (status == 'failed') ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SubscribeCheckoutScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  label: const Text('Retry Payment', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFDC2626),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -14,7 +14,6 @@ import {
   ChevronDown,
   Wifi,
   WifiOff,
-  RefreshCw,
   CheckCircle,
   Globe,
   User,
@@ -189,14 +188,15 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
   // If in public view, show the clean white navbar with Home, Our products, Our story, FAQs, Contact, and Login/Register
   if (isPublicView) {
-    // On mobile: remove the top nav bar on products, subscription, deliveries, profile screens
+    // On mobile: remove the top nav bar on products, subscription, deliveries, profile screens, and google-complete-profile
     const hideTopHeader =
       isMobile &&
       (isProductDetailsActive ||
         activeTab === 'products' ||
         activeTab === 'subscription' ||
         activeTab === 'deliveries' ||
-        activeTab === 'profile');
+        activeTab === 'profile' ||
+        activeTab === 'google-complete-profile');
 
     return (
       <>
@@ -647,39 +647,41 @@ export default function Navbar({ activeTab, setActiveTab }) {
 
         </div>
         </header>
-        <CustomerBottomNav
-          className="public-mobile-bottom-nav"
-          ariaLabel="Main navigation"
-          items={CUSTOMER_HOME_NAV_ITEMS}
-          activePage={activeTab === 'my-deliveries' ? 'deliveries' : activeTab === 'landing' ? 'home' : activeTab}
-          onNavigate={(page) => {
-            if (page === 'profile') {
-              if (user?.role === 'customer') {
-                openUserPortal('profile');
+        {activeTab !== 'google-complete-profile' && (
+          <CustomerBottomNav
+            className="public-mobile-bottom-nav"
+            ariaLabel="Main navigation"
+            items={CUSTOMER_HOME_NAV_ITEMS}
+            activePage={activeTab === 'my-deliveries' ? 'deliveries' : activeTab === 'landing' ? 'home' : activeTab}
+            onNavigate={(page) => {
+              if (page === 'profile') {
+                if (user?.role === 'customer') {
+                  openUserPortal('profile');
+                  return;
+                }
+                navigatePage('login');
                 return;
               }
-              navigatePage('login');
-              return;
-            }
-            if (page === 'subscription') {
-              if (user?.role === 'customer') {
-                openUserPortal('subscription');
+              if (page === 'subscription') {
+                if (user?.role === 'customer') {
+                  openUserPortal('subscription');
+                  return;
+                }
+                navigatePage('subscription');
                 return;
               }
-              navigatePage('subscription');
-              return;
-            }
-            if (page === 'deliveries') {
-              if (user?.role === 'customer') {
-                openUserPortal('deliveries');
+              if (page === 'deliveries') {
+                if (user?.role === 'customer') {
+                  openUserPortal('deliveries');
+                  return;
+                }
+                navigatePage('my-deliveries');
                 return;
               }
-              navigatePage('my-deliveries');
-              return;
-            }
-            navigatePage(page);
-          }}
-        />
+              navigatePage(page);
+            }}
+          />
+        )}
 
         {/* Customer Portal Public Modals - Displayed directly on public pages */}
         <CustomerDeliveriesPublicModal

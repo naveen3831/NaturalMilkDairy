@@ -154,7 +154,7 @@ export const AuthProvider = ({ children }) => {
 
   const [pendingGoogleAuth, setPendingGoogleAuthState] = useState(() => {
     try {
-      const stored = sessionStorage.getItem('nmd_pending_google_auth');
+      const stored = sessionStorage.getItem('nmd_pending_google_auth') || localStorage.getItem('nmd_pending_google_auth');
       return stored ? JSON.parse(stored) : null;
     } catch (_) {
       return null;
@@ -164,9 +164,11 @@ export const AuthProvider = ({ children }) => {
   const savePendingGoogleAuth = (data) => {
     setPendingGoogleAuthState(data);
     if (data) {
-      sessionStorage.setItem('nmd_pending_google_auth', JSON.stringify(data));
+      try { sessionStorage.setItem('nmd_pending_google_auth', JSON.stringify(data)); } catch (_) {}
+      try { localStorage.setItem('nmd_pending_google_auth', JSON.stringify(data)); } catch (_) {}
     } else {
-      sessionStorage.removeItem('nmd_pending_google_auth');
+      try { sessionStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
+      try { localStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
     }
   };
 
@@ -242,7 +244,11 @@ export const AuthProvider = ({ children }) => {
   const completeGoogleProfile = async ({ name, mobile, password, portal = 'customer' }) => {
     const currentPending = pendingGoogleAuth || (() => {
       try {
-        return JSON.parse(sessionStorage.getItem('nmd_pending_google_auth') || 'null');
+        return JSON.parse(
+          sessionStorage.getItem('nmd_pending_google_auth') ||
+          localStorage.getItem('nmd_pending_google_auth') ||
+          'null'
+        );
       } catch (_) {
         return null;
       }

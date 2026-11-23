@@ -40,7 +40,7 @@ export default function LoginPage({ setActiveTab }) {
       if (window.innerWidth <= 768) {
         const targetPage = ['dashboard', 'products', 'subscription', 'deliveries', 'profile'].includes(postLoginCustomerPage)
           ? postLoginCustomerPage
-          : 'profile';
+          : 'dashboard';
         localStorage.setItem('nmd_customer_page', targetPage);
         localStorage.setItem('nmd_current_tab', 'customer-portal');
         setActiveTab('customer-portal');
@@ -48,8 +48,8 @@ export default function LoginPage({ setActiveTab }) {
         localStorage.setItem('nmd_current_tab', 'my-deliveries');
         setActiveTab('my-deliveries');
       } else {
-        localStorage.setItem('nmd_current_tab', 'home');
-        setActiveTab('home');
+        localStorage.setItem('nmd_current_tab', 'my-subscription');
+        setActiveTab('my-subscription');
       }
     }
   };

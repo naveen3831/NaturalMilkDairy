@@ -414,30 +414,40 @@ class DeliveryProofFullScreenViewer extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF059669),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              '✓ DOORSTEP DROP VERIFIED',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.4,
+                          Flexible(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF059669),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                '✓ DROP VERIFIED',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
                             ),
                           ),
-                          const Spacer(),
-                          Text(
-                            formattedIstTime,
-                            style: const TextStyle(
-                              color: Color(0xFFA7F3D0),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              formattedIstTime,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: const TextStyle(
+                                color: Color(0xFFA7F3D0),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],
@@ -462,9 +472,13 @@ class DeliveryProofFullScreenViewer extends StatelessWidget {
                           children: [
                             const Icon(Icons.two_wheeler_rounded, size: 15, color: Color(0xFF34D399)),
                             const SizedBox(width: 6),
-                            Text(
-                              'Delivered by: $partnerName',
-                              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5, fontWeight: FontWeight.w600),
+                            Expanded(
+                              child: Text(
+                                'Delivered by: $partnerName',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5, fontWeight: FontWeight.w600),
+                              ),
                             ),
                           ],
                         ),
@@ -478,6 +492,8 @@ class DeliveryProofFullScreenViewer extends StatelessWidget {
                             icon: const Icon(Icons.navigation_rounded, size: 16),
                             label: Text(
                               'Open GPS in Google Maps (${lat!.toStringAsFixed(3)}, ${lng!.toStringAsFixed(3)})',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
                             ),
                             style: ElevatedButton.styleFrom(

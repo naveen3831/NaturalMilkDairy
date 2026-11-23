@@ -32,7 +32,18 @@ router.post('/me/subscription/verify', optionalToken, verifyPayment);
 router.post('/me/subscription/fail', optionalToken, failSubscription);
 router.get('/me/subscriptions', optionalToken, getMySubscriptions);
 router.put('/me/profile', verifyToken, requireCustomer, updateOwnCustomerProfile);
-router.delete('/me/account', verifyToken, requireCustomer, deleteOwnCustomerAccount);
+const allowAuthenticatedSelf = (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required. Please sign in.',
+    });
+  }
+  next();
+};
+
+router.delete('/me/account', verifyToken, allowAuthenticatedSelf, deleteOwnCustomerAccount);
+router.delete('/me', verifyToken, allowAuthenticatedSelf, deleteOwnCustomerAccount);
 
 // Customer Delivery Addresses CRUD
 router.get('/me/addresses', verifyToken, requireCustomer, getCustomerAddresses);
@@ -44,7 +55,18 @@ router.get('/', verifyToken, requireDeliveryStaff, getCustomers);
 router.get('/:id', verifyToken, authorizeCustomerAccess, getCustomerById);
 router.post('/', verifyToken, requireDeliveryStaff, createCustomer);
 router.put('/:id', verifyToken, requireDeliveryStaff, authorizeCustomerAccess, updateCustomer);
-router.delete('/:id', verifyToken, requireAdmin, deleteCustomer);
+router.delete('/:id', verifyToken, (req, res, next) => {
+  if (req.params.id === 'me' || req.params.id === 'account') {
+    return deleteOwnCustomerAccount(req, res, next);
+  }
+  if (req.user?.role === 'admin') {
+    return deleteCustomer(req, res, next);
+  }
+  return authorizeCustomerAccess(req, res, (err) => {
+    if (err) return next(err);
+    return deleteCustomer(req, res, next);
+  });
+});
 router.put('/:id/assign-partner', verifyToken, requireAdmin, assignPartner);
 router.post('/:id/pause', verifyToken, authorizeCustomerAccess, pauseDelivery);
 router.post('/:id/resume', verifyToken, authorizeCustomerAccess, resumeDelivery);

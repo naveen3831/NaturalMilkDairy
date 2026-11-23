@@ -17,6 +17,9 @@ import {
   Check,
   Crosshair,
   Navigation,
+  ShoppingBag,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import { useDairy } from '../context/DairyContext';
 import { useAuth } from '../context/AuthContext';
@@ -55,7 +58,7 @@ const loadRazorpay = () => new Promise((resolve) => {
 });
 
 export default function SubscribeModal({ isOpen, onClose, preselectedProduct = null }) {
-  const { refreshAll, notifyRealtimeSync } = useDairy();
+  const { products, refreshAll, notifyRealtimeSync } = useDairy();
   const { user, getAuthHeaders } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -74,6 +77,10 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     paymentType: 'credit',
     paymentCycle: 'monthly',
   });
+
+  const [selectedAddons, setSelectedAddons] = useState({}); // { [productId]: quantity }
+  const [isAddonsModalOpen, setIsAddonsModalOpen] = useState(false);
+  const [addonCategory, setAddonCategory] = useState('all');
 
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -167,11 +174,49 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
     }
   }, [preselectedProduct]);
 
+  const availableCatalog = useMemo(() => {
+    return Array.isArray(products) ? products.filter((p) => p.status !== 'inactive') : [];
+  }, [products]);
+
+  const selectedAddonsCount = useMemo(() => {
+    return Object.values(selectedAddons).reduce((sum, q) => sum + (Number(q) || 0), 0);
+  }, [selectedAddons]);
+
+  const addonsDailyCost = useMemo(() => {
+    let cost = 0;
+    Object.entries(selectedAddons).forEach(([pId, qty]) => {
+      if (qty > 0) {
+        const prod = availableCatalog.find((p) => String(p.id || p._id) === String(pId));
+        const pPrice = Number(prod?.price || prod?.numericPrice) || 0;
+        cost += pPrice * qty;
+      }
+    });
+    return cost;
+  }, [selectedAddons, availableCatalog]);
+
+  const extraProductsPayload = useMemo(() => {
+    const list = [];
+    Object.entries(selectedAddons).forEach(([pId, qty]) => {
+      if (qty > 0) {
+        const prod = availableCatalog.find((p) => String(p.id || p._id) === String(pId));
+        list.push({
+          productId: pId,
+          name: prod?.name || 'Extra Item',
+          quantity: qty,
+          unit: prod?.unit || 'pack',
+          price: Number(prod?.price || prod?.numericPrice) || 0,
+          image: prod?.image || prod?.imageUrl || '',
+        });
+      }
+    });
+    return list;
+  }, [selectedAddons, availableCatalog]);
+
   // Live calculation of drops and price matching backend logic
   const planSummary = useMemo(() => {
     const milk = Number(formData.milkQty) || 0;
     const curd = Number(formData.curdQty) || 0;
-    const dailyCost = milk * 60 + (curd / 500) * 30;
+    const dailyCost = milk * 60 + (curd / 500) * 30 + addonsDailyCost;
 
     let dropsCount = 30;
     if (formData.frequency === 'once' || formData.frequency === 'single') {
@@ -190,7 +235,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
       dropsCount,
       totalAmount,
     };
-  }, [formData.milkQty, formData.curdQty, formData.frequency]);
+  }, [formData.milkQty, formData.curdQty, formData.frequency, addonsDailyCost]);
 
   if (!isOpen) return null;
 
@@ -220,6 +265,7 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           whatsapp: formData.mobile || user.mobile,
           milkQty: Number(formData.milkQty),
           curdQty: Number(formData.curdQty),
+          extraProducts: extraProductsPayload,
           frequency: formData.frequency,
           alternateSchedule: formData.alternateSchedule || 'tomorrow',
           purpose: formData.frequency === 'once' ? 'one_time' : 'new',
@@ -714,6 +760,128 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                 </div>
               </div>
 
+              {/* Extra Farm Products & Add-ons */}
+              <div className="subscribe-field-group">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label className="subscribe-field-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShoppingBag size={14} color="#0d5c3a" />
+                    <span>Farm Add-ons & Extra Products</span>
+                    {selectedAddonsCount > 0 && (
+                      <span style={{ fontSize: '10px', background: '#0d5c3a', color: '#fff', padding: '2px 6px', borderRadius: '10px', fontWeight: 800 }}>
+                        {selectedAddonsCount} Added
+                      </span>
+                    )}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddonsModalOpen(true)}
+                    style={{
+                      background: '#f0fdf4',
+                      border: '1.2px solid #86efac',
+                      color: '#15803d',
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      fontSize: '0.75rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <Plus size={12} />
+                    <span>{selectedAddonsCount > 0 ? 'Edit Add-ons' : '+ Add-ons'}</span>
+                  </button>
+                </div>
+
+                {selectedAddonsCount > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {extraProductsPayload.map((item) => (
+                      <div
+                        key={item.productId}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '12px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} style={{ width: '36px', height: '36px', borderRadius: '8px', objectFit: 'cover' }} />
+                          ) : (
+                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a' }}>
+                              <ShoppingBag size={18} />
+                            </div>
+                          )}
+                          <div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0c2340' }}>{item.name}</div>
+                            <div style={{ fontSize: '0.72rem', color: '#0d5c3a', fontWeight: 700 }}>
+                              ₹{item.price} × {item.quantity} = ₹{item.price * item.quantity}{formData.frequency === 'once' ? '' : '/drop'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#0d5c3a', borderRadius: '14px', padding: '2px 4px', color: '#fff' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => {
+                                const next = { ...prev };
+                                if ((next[item.productId] || 0) <= 1) {
+                                  delete next[item.productId];
+                                } else {
+                                  next[item.productId] = next[item.productId] - 1;
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 900, padding: '0 4px' }}>{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => ({ ...prev, [item.productId]: (prev[item.productId] || 0) + 1 }));
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => setIsAddonsModalOpen(true)}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Plus size={14} color="#0d5c3a" />
+                      <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                        Add Ghee, Paneer, Curd or other fresh dairy to this drop
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0d5c3a' }}>Browse</span>
+                  </div>
+                )}
+              </div>
+
               {/* Delivery Frequency Selector */}
               <div className="subscribe-field-group">
                 <label className="subscribe-field-label">Delivery Schedule</label>
@@ -826,6 +994,12 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
                     <strong>₹{(Number(formData.curdQty) / 500) * 30}{formData.frequency === 'once' ? '' : '/drop'}</strong>
                   </div>
                 )}
+                {extraProductsPayload.map((addon) => (
+                  <div key={addon.productId} className="subscribe-calc-row">
+                    <span>{addon.name} ({addon.quantity} × ₹{addon.price})</span>
+                    <strong>₹{addon.quantity * addon.price}{formData.frequency === 'once' ? '' : '/drop'}</strong>
+                  </div>
+                ))}
                 <div className="subscribe-calc-row">
                   <span>Doorstep Drop (Before 6:30 AM)</span>
                   <span className="subscribe-free-tag">FREE</span>
@@ -892,6 +1066,228 @@ export default function SubscribeModal({ isOpen, onClose, preselectedProduct = n
           </form>
         )}
       </div>
+
+      {/* ── ALL AVAILABLE FARM ADD-ONS PICKER MODAL ── */}
+      {isAddonsModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 120,
+            background: 'rgba(0, 0, 0, 0.55)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setIsAddonsModalOpen(false)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '24px',
+              maxWidth: '520px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '16px', fontWeight: 900, color: '#0c2340' }}>
+                  Farm Add-ons & Extra Products
+                </h4>
+                <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: '#64748b' }}>
+                  Select pure farm dairy to accompany your delivery
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddonsModalOpen(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '4px' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Category Filter Chips */}
+            <div style={{ padding: '10px 20px', borderBottom: '1px solid #f8fafc', display: 'flex', gap: '6px', overflowX: 'auto' }}>
+              {['all', 'ghee', 'paneer', 'curd', 'milk', 'other'].map((cat) => {
+                const isSel = addonCategory === cat;
+                const label = cat === 'all' ? 'All Products' : cat.charAt(0).toUpperCase() + cat.slice(1);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setAddonCategory(cat)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '20px',
+                      border: isSel ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
+                      background: isSel ? '#0d5c3a' : '#f8fafc',
+                      color: isSel ? '#ffffff' : '#475569',
+                      fontSize: '11.5px',
+                      fontWeight: isSel ? 800 : 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Products List */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {availableCatalog
+                .filter((p) => addonCategory === 'all' || (p.category || '').toLowerCase() === addonCategory.toLowerCase())
+                .map((prod) => {
+                  const pId = prod.id || prod._id;
+                  const currentQty = selectedAddons[pId] || 0;
+                  const price = Number(prod.price || prod.numericPrice) || 0;
+
+                  return (
+                    <div
+                      key={pId}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '14px',
+                        border: currentQty > 0 ? '1.5px solid #86efac' : '1px solid #f1f5f9',
+                        background: currentQty > 0 ? '#f0fdf4' : '#ffffff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+                        {prod.image || prod.imageUrl ? (
+                          <img
+                            src={prod.image || prod.imageUrl}
+                            alt={prod.name}
+                            style={{ width: '48px', height: '48px', borderRadius: '10px', objectFit: 'cover', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: '#e2f1ea', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0d5c3a', flexShrink: 0 }}>
+                            <ShoppingBag size={20} />
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '13px', fontWeight: 800, color: '#0c2340', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {prod.name}
+                          </div>
+                          <div style={{ fontSize: '11.5px', fontWeight: 900, color: '#0d5c3a' }}>
+                            ₹{price} <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 500 }}>· {prod.unit || 'pack'}</span>
+                          </div>
+                          {prod.description && (
+                            <div style={{ fontSize: '10px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {prod.description}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {currentQty === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedAddons((prev) => ({ ...prev, [pId]: 1 }));
+                          }}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '18px',
+                            background: '#e2f1ea',
+                            border: '1.2px solid #a5d6a7',
+                            color: '#0d5c3a',
+                            fontSize: '11.5px',
+                            fontWeight: 900,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          + ADD
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            background: '#0d5c3a',
+                            borderRadius: '20px',
+                            padding: '3px 6px',
+                            color: '#ffffff',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => {
+                                const next = { ...prev };
+                                if ((next[pId] || 0) <= 1) {
+                                  delete next[pId];
+                                } else {
+                                  next[pId] = next[pId] - 1;
+                                }
+                                return next;
+                              });
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span style={{ fontSize: '12px', fontWeight: 900, padding: '0 6px' }}>{currentQty}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddons((prev) => ({ ...prev, [pId]: (prev[pId] || 0) + 1 }));
+                            }}
+                            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>
+                  {selectedAddonsCount} Item{selectedAddonsCount === 1 ? '' : 's'} Selected
+                </div>
+                <div style={{ fontSize: '15px', fontWeight: 900, color: '#0d5c3a' }}>
+                  +₹{addonsDailyCost}{formData.frequency === 'once' ? '' : '/drop'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddonsModalOpen(false)}
+                style={{
+                  padding: '10px 22px',
+                  borderRadius: '12px',
+                  background: '#0d5c3a',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                Apply Add-ons
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

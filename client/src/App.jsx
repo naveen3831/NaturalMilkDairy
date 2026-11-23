@@ -353,7 +353,7 @@ export default function App() {
       }
       const pathTab = pathParts[0] || 'home';
       const routeTabs = [
-        'home', 'products', 'story', 'faqs', 'contact', 'register', 'subscription',
+        'home', 'products', 'story', 'faqs', 'contact', 'login', 'register', 'google-complete-profile', 'subscription',
         'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'contact-settings', 'profile', 'add-delivery-boy',
@@ -836,6 +836,7 @@ export default function App() {
               'contact',
               'login',
               'register',
+              'google-complete-profile',
               'my-subscription',
               'my-deliveries',
               'my-address',
@@ -847,7 +848,7 @@ export default function App() {
           </main>
 
           {/* Floating Contact Us Action Button (Mobile Responsive Only) */}
-          {(!isMobile || activeTab !== 'customer-portal') && (
+          {(!isMobile || (activeTab !== 'customer-portal' && activeTab !== 'google-complete-profile')) && (
             <FloatingContactButton activeTab={activeTab} setActiveTab={navigateToTab} />
           )}
         </>
