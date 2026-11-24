@@ -7,6 +7,7 @@ const deliveryBoySchema = new mongoose.Schema({
   password: { type: String, default: '' },
   assignedArea: { type: String, default: '' },
   vehicleNumber: { type: String, default: '' },
+  vehicleModel: { type: String, default: '' },
   bloodGroup: { type: String, default: '' },
   drivingLicense: { type: String, default: '' },
   emergencyContact: { type: String, default: '' },

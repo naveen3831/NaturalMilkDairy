@@ -4555,9 +4555,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             // Rich Route Statistics
             const totalPlannedMilk = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedMilk) || 0), 0);
             const totalPlannedCurd = myDeliveries.reduce((sum, d) => sum + (Number(d.plannedCurd) || 0), 0);
-            const subscriptionsList = myDeliveries.filter((d) => Boolean(d.subscriptionEndDate) || d.paymentMethod === 'prepaid');
+            const subscriptionsList = myDeliveries.filter((d) => Boolean(d.subscriptionEndDate) || d.hasSubscription || d.isExistingCustomerSubscribed || d.paymentMethod === 'prepaid');
             const totalCashDue = myDeliveries
-              .filter((d) => d.status === 'pending' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid')
+              .filter((d) => d.status === 'pending' && !d.subscriptionEndDate && !d.hasSubscription && !d.isExistingCustomerSubscribed && d.paymentMethod !== 'prepaid')
               .reduce((sum, d) => sum + (Number(d.totalAmount) || 0), 0);
 
             // Enrich & compute distance for every stop
@@ -4641,7 +4641,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               const d = e.item;
               if (routeFilter === 'pending' && d.status !== 'pending') return false;
               if (routeFilter === 'delivered' && d.status !== 'delivered') return false;
-              if (routeFilter === 'subscriptions' && !d.subscriptionEndDate && d.paymentMethod !== 'prepaid') return false;
+              if (routeFilter === 'subscriptions' && !d.subscriptionEndDate && !d.hasSubscription && !d.isExistingCustomerSubscribed && d.paymentMethod !== 'prepaid') return false;
               if (activeAreaFilter !== 'All' && e.areaName.toLowerCase() !== activeAreaFilter.toLowerCase()) return false;
               if (routeSearch.trim()) {
                 const q = routeSearch.toLowerCase();
@@ -4678,6 +4678,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               const isPending = item.status === 'pending';
               const isNearestPending = Boolean(nearestPendingEntry && nearestPendingEntry.item === item);
               const isSubscription = Boolean(item.subscriptionEndDate) ||
+                item.hasSubscription ||
+                item.isExistingCustomerSubscribed ||
                 customerInfo?.subscription?.status === 'active' ||
                 item.paymentMethod === 'prepaid';
               const customerPhone = item.customerPhone || customerInfo?.mobile || '';
@@ -4775,12 +4777,12 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                               fontWeight: 800,
                               padding: '1px 6px',
                               borderRadius: '4px',
-                              background: '#fffbeb',
-                              color: '#b45309',
-                              border: '1px solid #fde68a',
+                              background: '#ecfdf5',
+                              color: '#047857',
+                              border: '1px solid #a7f3d0',
                             }}
                           >
-                            Prepaid
+                            ⭐ Active Sub{item.subscriptionEndDate ? ` · to ${new Date(item.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
                           </span>
                         )}
                       </div>
@@ -9675,32 +9677,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
                       <ChevronRight size={18} color="#9ca3af" />
                     </div>
-
-                    {/* Delete Account */}
-                    <div
-                      onClick={() => {
-                        setDeletePartnerError('');
-                        setShowDeletePartnerModal(true);
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fee2e2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <Trash2 size={18} color="#dc2626" />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#dc2626' }}>Delete Account</div>
-                          <div style={{ fontSize: '0.74rem', color: '#6b7280' }}>Permanently delete partner account & records</div>
-                        </div>
-                      </div>
-                      <ChevronRight size={18} color="#9ca3af" />
-                    </div>
                   </div>
                 </div>
               </div>
@@ -10194,29 +10170,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     >
                       <LogOut size={15} />
                       <span>Log out</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeletePartnerError('');
-                        setShowDeletePartnerModal(true);
-                      }}
-                      style={{
-                        background: '#fff1f2',
-                        color: '#e11d48',
-                        border: '1px solid #fecdd3',
-                        borderRadius: '10px',
-                        padding: '10px 16px',
-                        fontSize: '0.84rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <Trash2 size={15} />
-                      <span>Delete Account</span>
                     </button>
                   </div>
                 </div>
@@ -12526,6 +12479,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         const isMissed = item.status === 'not_delivered';
         const isPending = item.status === 'pending';
         const isSubscription = Boolean(item.subscriptionEndDate) ||
+          item.hasSubscription ||
+          item.isExistingCustomerSubscribed ||
           customerInfo?.subscription?.status === 'active' ||
           item.paymentMethod === 'prepaid';
         const subDateText = item.subscriptionEndDate

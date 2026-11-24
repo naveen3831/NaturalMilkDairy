@@ -193,7 +193,7 @@ const getDeliveries = async (req, res) => {
     const custIds = [...new Set(list.map((d) => d.customerId).filter(Boolean))];
     const objectCustIds = custIds.filter((id) => /^[a-f\d]{24}$/i.test(id));
     const phones = [...new Set(list.map((d) => d.customerPhone).filter(Boolean))];
-    const [custDocs, locDocs] = await Promise.all([
+    const [custDocs, locDocs, activeSubs] = await Promise.all([
       (custIds.length || phones.length)
         ? Customer.find({
             $or: [
@@ -201,9 +201,18 @@ const getDeliveries = async (req, res) => {
               ...(objectCustIds.length ? [{ _id: { $in: objectCustIds } }] : []),
               ...(phones.length ? [{ mobile: { $in: phones } }] : []),
             ],
-          }).select('customerId mobile area landmark latitude longitude addresses').lean()
+          }).select('customerId mobile area landmark latitude longitude addresses subscription deliveryPlan paymentInfo status currentBalance name').lean()
         : [],
       DeliveryLocation.find({ isActive: true }).select('name latitude longitude').lean().catch(() => []),
+      (custIds.length || objectCustIds.length)
+        ? Subscription.find({
+            $or: [
+              ...(custIds.length ? [{ customerId: { $in: custIds } }] : []),
+              ...(objectCustIds.length ? [{ customer: { $in: objectCustIds } }] : []),
+            ],
+            status: { $in: ['active', 'paused'] },
+          }).sort({ createdAt: -1 }).lean().catch(() => [])
+        : [],
     ]);
 
     const custMap = new Map();
@@ -216,9 +225,27 @@ const getDeliveries = async (req, res) => {
     for (const loc of locDocs) {
       if (loc.name) locMap.set(loc.name.trim().toLowerCase(), loc);
     }
+    const subMap = new Map();
+    for (const s of (activeSubs || [])) {
+      if (s.customerId && !subMap.has(s.customerId)) subMap.set(s.customerId, s);
+      if (s.customer && !subMap.has(s.customer.toString())) subMap.set(s.customer.toString(), s);
+    }
 
     const enrichedDeliveries = list.map((d) => {
       const cust = custMap.get(d.customerId) || custMap.get(d.customerPhone) || null;
+      const activeSub = (cust?.customerId && subMap.get(cust.customerId)) || (cust?._id && subMap.get(cust._id.toString())) || (d.customerId && subMap.get(d.customerId)) || null;
+      const sub = activeSub || cust?.subscription || null;
+      const plan = cust?.deliveryPlan || activeSub?.plan || null;
+      const subEnd = d.subscriptionEndDate || sub?.endDate || cust?.subscription?.endDate || null;
+      const subStart = d.subscriptionStartDate || sub?.startDate || cust?.subscription?.startDate || null;
+      const hasSub = Boolean(
+        subEnd ||
+        (sub && (sub.status === 'active' || sub.status === 'paused')) ||
+        cust?.subscription?.status === 'active' ||
+        cust?.paymentInfo?.paymentType === 'prepaid' ||
+        (d.subscriptionPaymentAmount && Number(d.subscriptionPaymentAmount) > 0)
+      );
+
       const areaName = (d.customerArea || cust?.area || '').trim();
       const loc = areaName ? locMap.get(areaName.toLowerCase()) : null;
       const lat = d.latitude ?? d.customerLatitude ?? cust?.latitude ?? cust?.addresses?.[0]?.latitude ?? loc?.latitude ?? null;
@@ -233,6 +260,21 @@ const getDeliveries = async (req, res) => {
         longitude: lng,
         customerLatitude: lat,
         customerLongitude: lng,
+        hasSubscription: hasSub,
+        hasActiveSubscription: hasSub,
+        isExistingCustomerSubscribed: hasSub,
+        subscriptionStatus: sub?.status || cust?.subscription?.status || (hasSub ? 'active' : 'none'),
+        subscriptionEndDate: subEnd,
+        subscriptionEnd: subEnd ? (typeof subEnd === 'string' ? subEnd : new Date(subEnd).toISOString()) : (hasSub ? 'Active Subscription' : ''),
+        subscriptionStartDate: subStart,
+        subscriptionPaymentAmount: d.subscriptionPaymentAmount || sub?.amount || cust?.subscription?.amount || 0,
+        subscriptionPaymentMethod: d.subscriptionPaymentMethod || (sub?.paymentId ? 'razorpay' : (cust?.paymentInfo?.paymentType || 'prepaid')),
+        subscriptionPaymentId: d.subscriptionPaymentId || sub?.paymentId || cust?.subscription?.paymentId || '',
+        subscriptionPlanName: plan?.planName || sub?.plan?.planName || `${d.actualMilk || d.plannedMilk || 1}L Daily Pure Milk`,
+        subscriptionFrequency: plan?.frequency || sub?.plan?.frequency || 'daily',
+        subscriptionDays: plan?.deliveryDays || sub?.plan?.deliveryDays || ['Everyday'],
+        customerCurrentBalance: cust?.currentBalance ?? null,
+        customerStatus: cust?.status || 'active',
       };
     });
 
@@ -409,6 +451,9 @@ const markDelivered = async (req, res) => {
       actor,
       collectedAmount,
       proofImage,
+      reason,
+      deliveredReason,
+      markedBy,
     } = req.body;
 
     const query = id.length === 24 ? { _id: id } : { customerId: id };
@@ -629,7 +674,20 @@ const markDelivered = async (req, res) => {
       delivery.longitude = Number(customer.longitude);
       delivery.customerLongitude = Number(customer.longitude);
     }
-    if (notes) delivery.notes = notes;
+    const effReason = (deliveredReason || reason || '').trim();
+    if (effReason) {
+      delivery.deliveredReason = effReason;
+      delivery.notDeliveredReason = '';
+    }
+    const effMarkedBy = (markedBy || actor || (isAdmin ? 'Admin' : 'Delivery Partner')).trim();
+    delivery.markedBy = effMarkedBy;
+    if (notes && effReason) {
+      delivery.notes = `${notes} (Reason: ${effReason})`;
+    } else if (effReason) {
+      delivery.notes = effReason;
+    } else if (notes) {
+      delivery.notes = notes;
+    }
     await delivery.save();
 
     let newCustomerBalance = 0;
@@ -801,6 +859,8 @@ const markDelivered = async (req, res) => {
       deliveryDate: delivery.deliveryDate || 'Today',
       date: delivery.deliveryDate || 'Today',
       deliveredAt: delivery.deliveredAt,
+      deliveredReason: delivery.deliveredReason || '',
+      markedBy: delivery.markedBy || '',
       title: '🥛 Delivery Completed!',
       message: `${delivery.customerName}: ${milk}L Milk${curd > 0 ? ` + ${curd}g Curd` : ''}${addonsDesc} delivered to doorstep.`,
     };

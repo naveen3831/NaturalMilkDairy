@@ -24,6 +24,7 @@ import {
   User,
   Users,
   X,
+  Sparkles,
 } from 'lucide-react';
 
 export default function TodayDeliveries({ onSelectCustomerLedger }) {
@@ -67,6 +68,8 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
   const [paymentMode, setPaymentMode] = useState('credit');
   const [collectedAmount, setCollectedAmount] = useState(0);
   const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [adminDeliveryReason, setAdminDeliveryReason] = useState('Received the product in the dairy');
+  const [customAdminReason, setCustomAdminReason] = useState('');
 
   // Form states for Not Delivered modal
   const [notDeliveredReason, setNotDeliveredReason] = useState('Customer Not Home');
@@ -93,16 +96,19 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
 
   const openDeliveredModal = (item) => {
     setDeliveringItem(item);
-    setActualMilk(item.plannedMilk);
-    setActualCurd(item.plannedCurd);
+    setActualMilk(item.plannedMilk ?? item.actualMilk ?? 1);
+    setActualCurd(item.plannedCurd ?? item.actualCurd ?? 0);
     setPaymentMode(item.paymentMethod || 'credit');
-    const total = item.plannedMilk * (item.milkPrice || 60) + (item.plannedCurd / 500) * (item.curdPrice || 30);
+    const total = (item.plannedMilk ?? item.actualMilk ?? 1) * (item.milkPrice || 60) + ((item.plannedCurd ?? item.actualCurd ?? 0) / 500) * (item.curdPrice || 30);
     setCollectedAmount(total);
     setDeliveryNotes('');
+    setAdminDeliveryReason('Received the product in the dairy');
+    setCustomAdminReason('');
   };
 
   const handleConfirmDelivered = async () => {
     if (!deliveringItem) return;
+    const finalReason = adminDeliveryReason === 'Other' ? (customAdminReason.trim() || 'Direct delivery by Admin') : adminDeliveryReason;
     await markDelivered(deliveringItem.id, {
       actualMilk: Number(actualMilk),
       actualCurd: Number(actualCurd),
@@ -110,6 +116,9 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
       collectedAmount: paymentMode === 'cash' || paymentMode === 'upi' ? Number(collectedAmount) : 0,
       notes: deliveryNotes,
       actor: 'Admin',
+      reason: finalReason,
+      deliveredReason: finalReason,
+      markedBy: 'Admin',
     });
     setDeliveringItem(null);
   };
@@ -311,6 +320,39 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     type="number"
                     value={collectedAmount}
                     onChange={(e) => setCollectedAmount(e.target.value)}
+                    style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                  Delivery Reason / Fulfillment Mode
+                </label>
+                <select
+                  value={adminDeliveryReason}
+                  onChange={(e) => setAdminDeliveryReason(e.target.value)}
+                  style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%', fontSize: '0.82rem', fontWeight: 600, color: '#0f172a' }}
+                >
+                  <option value="Received the product in the dairy">Received the product in the dairy</option>
+                  <option value="Partner forgot delivery">Partner forgot delivery</option>
+                  <option value="Direct delivery by dairy staff">Direct delivery by dairy staff</option>
+                  <option value="Customer collected from depot">Customer collected from depot</option>
+                  <option value="Other">Other (Custom Reason)</option>
+                </select>
+              </div>
+
+              {adminDeliveryReason === 'Other' && (
+                <div>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: '4px' }}>
+                    Custom Reason Explanation
+                  </label>
+                  <input
+                    type="text"
+                    value={customAdminReason}
+                    onChange={(e) => setCustomAdminReason(e.target.value)}
+                    placeholder="Enter reason for marking delivery..."
                     style={{ borderRadius: '8px', border: '1px solid #e2e8f0', padding: '8px 12px', width: '100%' }}
                     required
                   />
@@ -793,6 +835,72 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     </span>
                   </div>
 
+                  {(d.hasSubscription || d.subscriptionEndDate || d.isExistingCustomerSubscribed) && (
+                    <div
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        color: '#047857',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        borderRadius: '6px',
+                        padding: '2px 7px',
+                        marginTop: '3px',
+                        width: 'fit-content',
+                      }}
+                    >
+                      <Sparkles size={11} color="#059669" />
+                      <span>
+                        ⭐ Active Subscription • Valid {d.subscriptionEndDate ? `till ${new Date(d.subscriptionEndDate).toLocaleDateString('en-IN')}` : 'through plan'}
+                        {d.subscriptionPlanName ? ` (${d.subscriptionPlanName})` : ''}
+                      </span>
+                    </div>
+                  )}
+
+                  {isDelivered && (d.deliveredReason || d.markedBy) && (
+                    <div
+                      style={{
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        color: '#065f46',
+                        background: '#ecfdf5',
+                        border: '1px solid #a7f3d0',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        marginTop: '3px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span>✓ Reason: {d.deliveredReason || 'Delivered'}</span>
+                      {d.markedBy && <span style={{ opacity: 0.85 }}>({d.markedBy === 'Admin' ? 'Admin Override' : d.markedBy})</span>}
+                    </div>
+                  )}
+
+                  {d.status === 'not_delivered' && d.notDeliveredReason && (
+                    <div
+                      style={{
+                        fontSize: '0.70rem',
+                        fontWeight: 700,
+                        color: '#991b1b',
+                        background: '#fee2e2',
+                        border: '1px solid #fecaca',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        marginTop: '3px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <span>✕ Missed: {d.notDeliveredReason}</span>
+                    </div>
+                  )}
+
                   {/* Address */}
                   <div style={{ fontSize: '0.76rem', color: '#64748b', marginTop: '2px', lineHeight: 1.35 }}>
                     {d.customerAddress || 'Madhapur Doorstep Drop'}
@@ -891,8 +999,8 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     </span>
                   </div>
 
-                  {/* Pending quick actions */}
-                  {isPending && (
+                  {/* Pending / Missed quick actions */}
+                  {!isDelivered && (
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                       <button
                         type="button"
@@ -914,25 +1022,27 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                         }}
                       >
                         <Check size={13} />
-                        <span>Deliver</span>
+                        <span>Mark Delivery</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => openNotDeliveredModal(d)}
-                        style={{
-                          flex: 1,
-                          padding: '7px 10px',
-                          borderRadius: '8px',
-                          border: '1px solid #fee2e2',
-                          background: '#fef2f2',
-                          color: '#dc2626',
-                          fontSize: '0.74rem',
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <span>Skip</span>
-                      </button>
+                      {isPending && (
+                        <button
+                          type="button"
+                          onClick={() => openNotDeliveredModal(d)}
+                          style={{
+                            flex: 1,
+                            padding: '7px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #fee2e2',
+                            background: '#fef2f2',
+                            color: '#dc2626',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span>Skip</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1080,8 +1190,22 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
                     <span style={{ color: '#64748b' }}>Subscription Plan</span>
-                    <span style={{ fontWeight: 700, color: '#059669' }}>{milkQty}L Daily Milk • {plan.deliveryDays || 'Everyday'}</span>
+                    <span style={{ fontWeight: 700, color: '#059669' }}>{d.subscriptionPlanName || `${milkQty}L Daily Milk • ${plan.deliveryDays || 'Everyday'}`}</span>
                   </div>
+                  {(d.hasSubscription || d.subscriptionEndDate || d.isExistingCustomerSubscribed) && (
+                    <div style={{ marginTop: '8px', padding: '10px 12px', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 800, fontSize: '0.78rem', color: '#065f46', marginBottom: '4px' }}>
+                        <Sparkles size={13} color="#059669" />
+                        <span>Active Customer Subscription</span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#047857', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span>• Status: <strong style={{ color: '#059669' }}>Active & Ongoing</strong></span>
+                        {d.subscriptionEndDate && <span>• Valid Through: <strong>{new Date(d.subscriptionEndDate).toLocaleDateString('en-IN')}</strong></span>}
+                        {d.subscriptionPaymentAmount > 0 && <span>• Prepaid Amount: <strong>₹{Number(d.subscriptionPaymentAmount).toLocaleString('en-IN')}</strong> ({d.subscriptionPaymentMethod?.toUpperCase() || 'ONLINE'})</span>}
+                        {d.subscriptionPaymentId && <span>• Reference ID: <strong>{d.subscriptionPaymentId}</strong></span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Section 2: Delivery & Fulfillment Details */}
@@ -1116,6 +1240,20 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                     <span style={{ color: '#64748b' }}>Assigned Partner</span>
                     <span style={{ fontWeight: 800, color: '#0f172a' }}>{driverName}</span>
                   </div>
+                  {(d.deliveredReason || d.markedBy) && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#64748b' }}>Completion Reason</span>
+                      <span style={{ fontWeight: 800, color: '#059669' }}>
+                        {d.deliveredReason || 'Delivered'} {d.markedBy ? `(${d.markedBy === 'Admin' ? 'Admin Override' : d.markedBy})` : ''}
+                      </span>
+                    </div>
+                  )}
+                  {d.status === 'not_delivered' && d.notDeliveredReason && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                      <span style={{ color: '#64748b' }}>Missed Reason</span>
+                      <span style={{ fontWeight: 800, color: '#dc2626' }}>{d.notDeliveredReason}</span>
+                    </div>
+                  )}
                   {proofUrl && (
                     <div style={{ marginTop: '8px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
@@ -1159,6 +1297,35 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                 </div>
 
                 {/* Section 3: Action Buttons */}
+                {!isDelivered && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const item = d;
+                      setSelectedDeliveryDetails(null);
+                      openDeliveredModal(item);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: '#059669',
+                      color: '#ffffff',
+                      fontWeight: 800,
+                      fontSize: '0.80rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Check size={14} />
+                    <span>Mark Delivery as Delivered</span>
+                  </button>
+                )}
+
                 {typeof onSelectCustomerLedger === 'function' && matchingCust._id && (
                   <button
                     type="button"
@@ -1546,9 +1713,14 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                       </span>
                     )}
                   </div>
-                  {item.subscriptionEndDate && (
-                    <div style={{ fontSize: '0.76rem', color: '#047857', fontWeight: 700, marginBottom: '4px' }}>
-                      Prepaid subscription: ₹{Number(item.subscriptionPaymentAmount || 0).toLocaleString('en-IN')} via {item.subscriptionPaymentMethod?.toUpperCase() || 'RAZORPAY'} · through {new Date(item.subscriptionEndDate).toLocaleDateString('en-IN')}{item.subscriptionPaymentId ? ` · ref ${item.subscriptionPaymentId}` : ''}
+                  {(item.hasSubscription || item.subscriptionEndDate || item.isExistingCustomerSubscribed) && (
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', color: '#047857', fontWeight: 700, background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px', marginBottom: '6px' }}>
+                      <Sparkles size={12} color="#059669" />
+                      <span>
+                        ⭐ Active Subscription: {item.subscriptionPlanName || 'Prepaid Plan'} · Valid {item.subscriptionEndDate ? `through ${new Date(item.subscriptionEndDate).toLocaleDateString('en-IN')}` : 'Active'}
+                        {item.subscriptionPaymentAmount > 0 ? ` · ₹${Number(item.subscriptionPaymentAmount).toLocaleString('en-IN')} (${item.subscriptionPaymentMethod?.toUpperCase() || 'PREPAID'})` : ''}
+                        {item.subscriptionPaymentId ? ` · ref ${item.subscriptionPaymentId}` : ''}
+                      </span>
                     </div>
                   )}
 
@@ -1625,6 +1797,12 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   {isMissed && item.notDeliveredReason && (
                     <div style={{ fontSize: '0.74rem', color: '#991b1b', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
                       Reason: {item.notDeliveredReason}
+                    </div>
+                  )}
+
+                  {isDone && (item.deliveredReason || item.markedBy) && (
+                    <div style={{ fontSize: '0.74rem', color: '#065f46', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', marginTop: '4px', display: 'inline-block', fontWeight: 600 }}>
+                      ✓ Reason: {item.deliveredReason || 'Delivered'} {item.markedBy ? `(${item.markedBy === 'Admin' ? 'Admin Override' : item.markedBy})` : ''}
                     </div>
                   )}
                 </div>
@@ -1715,22 +1893,43 @@ export default function TodayDeliveries({ onSelectCustomerLedger }) {
                   )}
 
                   {isMissed && (
-                    <span
-                      style={{
-                        padding: '6px 12px',
-                        background: '#fef2f2',
-                        border: '1px solid #fecaca',
-                        borderRadius: '6px',
-                        color: '#b91c1c',
-                        fontWeight: 700,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                      }}
-                    >
-                      <XCircle size={14} color="#dc2626" /> Missed
-                    </span>
+                    <>
+                      <span
+                        style={{
+                          padding: '6px 12px',
+                          background: '#fef2f2',
+                          border: '1px solid #fecaca',
+                          borderRadius: '6px',
+                          color: '#b91c1c',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        <XCircle size={14} color="#dc2626" /> Missed
+                      </span>
+                      <button
+                        onClick={() => openDeliveredModal(item)}
+                        style={{
+                          background: '#059669',
+                          border: 'none',
+                          color: '#ffffff',
+                          fontWeight: 600,
+                          fontSize: '0.78rem',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          cursor: 'pointer',
+                        }}
+                        title="Partner missed delivery - Admin mark delivered with reason"
+                      >
+                        <Check size={14} /> Mark Delivery
+                      </button>
+                    </>
                   )}
 
                   {isPending && (

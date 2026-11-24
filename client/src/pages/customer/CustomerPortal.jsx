@@ -227,14 +227,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const subscriptionThrough = currentCustomer.subscription?.endDate
     ? new Date(currentCustomer.subscription.endDate)
     : null;
-  const hasPaidSubscription = currentCustomer.subscription?.status === 'active';
+  const hasPaidSubscription = Boolean(
+    (currentCustomer.subscription?.status === 'active' || currentCustomer.subscription?.status === 'paused') &&
+    currentCustomer.subscription?.endDate &&
+    new Date(currentCustomer.subscription.endDate) > new Date() &&
+    (Boolean(currentCustomer.subscription?.paymentId) || Number(currentCustomer.subscription?.amount) > 0)
+  );
   const subscriptionStatusLabel = currentCustomer.subscription?.status === 'pending_payment'
     ? 'Payment pending'
-    : currentCustomer.subscription?.status === 'expired'
+    : currentCustomer.subscription?.status === 'expired' || (currentCustomer.subscription?.endDate && new Date(currentCustomer.subscription.endDate) <= new Date())
       ? 'Expired'
       : isPaused
         ? 'Paused'
-        : currentCustomer.subscription?.status === 'active'
+        : hasPaidSubscription
           ? 'Active'
           : 'Not subscribed';
   const address = [currentCustomer.address, currentCustomer.area]
@@ -271,6 +276,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
   const [showQtyFullPage, setShowQtyFullPage] = useState(false);
   const [showAddressFullPage, setShowAddressFullPage] = useState(false);
   const [showStopFullPage, setShowStopFullPage] = useState(false);
+  const [showNoSubModal, setShowNoSubModal] = useState(false);
   const [profileOriginPage, setProfileOriginPage] = useState('profile');
 
   const serviceableLocations = useMemo(() => {
@@ -936,18 +942,36 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     const subInfo = currentCustomer.subscription || {};
 
     if (list.length > 0) {
-      return list.map((item) => ({
-        ...item,
-        status: item.status === 'failed' ? 'failed' : (isPaused ? 'paused' : (item.status || 'active')),
-        deliveryBoyName: item.deliveryBoyName || plan.deliveryBoyName || '',
-        area: item.area || currentCustomer.area || '',
-        deliveryAddress: item.deliveryAddress || currentCustomer.address || '',
-      }));
+      return list
+        .filter((item) => {
+          if (!item) return false;
+          // Filter out dummy/unpaid records that have no valid dates and no payment
+          const hasEndDate = Boolean(item.endDate);
+          const hasPayment = Boolean(item.providerPaymentId || item.paymentId || (Number(item.amount) > 0));
+          return hasEndDate || hasPayment;
+        })
+        .map((item) => {
+          const isExpiredByDate = item.endDate && new Date(item.endDate) <= new Date();
+          const effectiveStatus = item.status === 'failed'
+            ? 'failed'
+            : isExpiredByDate
+              ? 'expired'
+              : isPaused
+                ? 'paused'
+                : (item.status || 'active');
+          return {
+            ...item,
+            status: effectiveStatus,
+            deliveryBoyName: item.deliveryBoyName || plan.deliveryBoyName || '',
+            area: item.area || currentCustomer.area || '',
+            deliveryAddress: item.deliveryAddress || currentCustomer.address || '',
+          };
+        });
     }
 
     // Strictly verify if customer has a real active paid subscription in the database
     // NEVER invent synthetic subscriptions for new users or customers without active subscriptions!
-    const isActuallyActive = subInfo.status === 'active' &&
+    const isActuallyActive = (subInfo.status === 'active' || subInfo.status === 'paused') &&
       subInfo.endDate &&
       new Date(subInfo.endDate) > new Date() &&
       (Boolean(subInfo.paymentId) || Number(subInfo.amount) > 0);
@@ -987,6 +1011,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
       deliveryBoyName: plan.deliveryBoyName || '',
     }];
   }, [customerSubscriptions, currentCustomer, isPaused, milkQuantity, milkUnit, curdQuantity, curdUnit, subscriptionThrough, user?.name]);
+
+  const hasActiveSubscription = useMemo(() => {
+    if (hasPaidSubscription) return true;
+    if (Array.isArray(allCustomerSubscriptions) && allCustomerSubscriptions.length > 0) {
+      return allCustomerSubscriptions.some((s) => {
+        const isPausedOrActive = s.status === 'active' || s.status === 'paused';
+        const hasValidFutureEnd = Boolean(s.endDate && new Date(s.endDate) > new Date());
+        const hasPayment = Boolean(s.providerPaymentId || s.paymentId || (Number(s.amount) > 0));
+        return isPausedOrActive && hasValidFutureEnd && hasPayment;
+      });
+    }
+    return false;
+  }, [hasPaidSubscription, allCustomerSubscriptions]);
 
   const handleToggleCustomerSub = async (sub, targetAction) => {
     setSubToggling(true);
@@ -1620,7 +1657,61 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
     }
   };
 
-  const renderPlanCard = () => (
+  const renderPlanCard = () => {
+    const hasAnyActiveSub = allCustomerSubscriptions.length > 0;
+    if (!hasAnyActiveSub) {
+      return (
+        <article className="customer-dashboard-card customer-plan-card" style={{ textAlign: 'center', padding: '36px 20px' }}>
+          <div
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              background: '#f0fdf4',
+              color: '#0d5c3a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px',
+            }}
+          >
+            <Calendar size={28} />
+          </div>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 900, color: '#0c2340', margin: '0 0 8px' }}>
+            No Active Doorstep Subscription
+          </h2>
+          <p style={{ margin: '0 auto 20px', fontSize: '0.86rem', color: '#64748b', maxWidth: '420px', lineHeight: 1.5 }}>
+            You haven't subscribed to any doorstep milk or dairy plan yet. Subscribe today to receive 100% farm-pure milk delivered fresh before 6:30 AM every morning!
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setActivePage('subscription');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            style={{
+              background: '#0d5c3a',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '12px',
+              padding: '11px 24px',
+              fontSize: '0.88rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+            }}
+          >
+            <Sparkles size={16} />
+            <span>Choose a Plan & Subscribe</span>
+          </button>
+        </article>
+      );
+    }
+
+    return (
     <article className="customer-dashboard-card customer-plan-card">
       <div className="customer-card-heading">
         <div>
@@ -1722,85 +1813,223 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         </div>
       )}
     </article>
-  );
+    );
+  };
 
-  const renderDeliveryActions = () => (
-    <article className="customer-dashboard-card customer-actions-card">
-      <div className="customer-card-heading">
-        <div>
-          <span className="customer-section-kicker">FLEXIBLE AT YOUR FINGERTIPS</span>
-          <h2>Manage your delivery</h2>
+  const renderDeliveryActions = () => {
+    if (!hasActiveSubscription) return null;
+
+    return (
+      <article className="customer-dashboard-card customer-actions-card">
+        <div className="customer-card-heading">
+          <div>
+            <span className="customer-section-kicker">FLEXIBLE AT YOUR FINGERTIPS</span>
+            <h2>Manage Subscription</h2>
+          </div>
         </div>
-      </div>
-      <p className="customer-actions-intro">Plans change. Update your next delivery whenever you need to.</p>
-      <div className="customer-action-list">
-        {isPaused ? (
-          <>
-            <button
-              type="button"
-              className="customer-action-button"
-              style={{
-                background: '#f0fdf4',
-                borderColor: '#86efac',
-              }}
-              disabled={restartingDelivery}
-              onClick={handleRestartDelivery}
-            >
-              <span className="customer-action-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
-                <PlayCircle size={19} aria-hidden="true" />
-              </span>
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <strong style={{ color: '#15803d', display: 'block', fontSize: '0.92rem' }}>
-                  {restartingDelivery ? 'Restarting delivery...' : 'Restart / Resume Delivery'}
-                </strong>
-                <small style={{ color: '#475569', fontSize: '0.74rem' }}>
-                  End pause and resume doorstep milk delivery
-                </small>
-              </div>
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
+        <p className="customer-actions-intro">Plans change. Update your next delivery or doorstep subscription whenever you need to.</p>
+        <div className="customer-action-list">
+          {isPaused ? (
+            <>
+              <button
+                type="button"
+                className="customer-action-button"
+                style={{
+                  background: '#f0fdf4',
+                  borderColor: '#86efac',
+                }}
+                disabled={restartingDelivery}
+                onClick={handleRestartDelivery}
+              >
+                <span className="customer-action-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
+                  <PlayCircle size={19} aria-hidden="true" />
+                </span>
+                <div style={{ flex: 1, textAlign: 'left' }}>
+                  <strong style={{ color: '#15803d', display: 'block', fontSize: '0.92rem' }}>
+                    {restartingDelivery ? 'Restarting delivery...' : 'Restart / Resume Delivery'}
+                  </strong>
+                  <small style={{ color: '#475569', fontSize: '0.74rem' }}>
+                    End pause and resume doorstep milk delivery
+                  </small>
+                </div>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="customer-action-button customer-action-pause"
+                onClick={() => onOpenPauseModal?.(currentCustomer)}
+              >
+                <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
+                <span>Change vacation return date</span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               className="customer-action-button customer-action-pause"
               onClick={() => onOpenPauseModal?.(currentCustomer)}
             >
               <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
-              <span>Change vacation return date</span>
+              <span>Pause delivery for a trip</span>
               <ChevronRight size={18} aria-hidden="true" />
             </button>
-          </>
-        ) : (
+          )}
           <button
             type="button"
-            className="customer-action-button customer-action-pause"
-            onClick={() => onOpenPauseModal?.(currentCustomer)}
+            className="customer-action-button customer-action-quantity"
+            onClick={() => onOpenTempQtyModal?.(currentCustomer)}
           >
-            <span className="customer-action-icon"><PauseCircle size={19} aria-hidden="true" /></span>
-            <span>Pause delivery for a trip</span>
+            <span className="customer-action-icon"><PlusCircle size={19} aria-hidden="true" /></span>
+            <span>Change tomorrow's quantity</span>
             <ChevronRight size={18} aria-hidden="true" />
           </button>
-        )}
-        <button
-          type="button"
-          className="customer-action-button customer-action-quantity"
-          onClick={() => onOpenTempQtyModal?.(currentCustomer)}
+          <button
+            type="button"
+            className="customer-action-button customer-action-products"
+            onClick={() => setActiveTab('products')}
+          >
+            <span className="customer-action-icon"><Milk size={19} aria-hidden="true" /></span>
+            <span>Explore ghee, paneer & more</span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </div>
+      </article>
+    );
+  };
+
+  const renderNoSubscriptionModal = () => {
+    if (!showNoSubModal) return null;
+    return (
+      <div
+        className="customer-modal-backdrop"
+        onClick={() => setShowNoSubModal(false)}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(12, 35, 64, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px',
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            background: '#ffffff',
+            borderRadius: '24px',
+            maxWidth: '420px',
+            width: '100%',
+            padding: '28px 22px',
+            textAlign: 'center',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
+            position: 'relative',
+            animation: 'fadeInScale 0.2s ease-out',
+          }}
         >
-          <span className="customer-action-icon"><PlusCircle size={19} aria-hidden="true" /></span>
-          <span>Change tomorrow's quantity</span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="customer-action-button customer-action-products"
-          onClick={() => setActiveTab('products')}
-        >
-          <span className="customer-action-icon"><Milk size={19} aria-hidden="true" /></span>
-          <span>Explore ghee, paneer & more</span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowNoSubModal(false)}
+            aria-label="Close"
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              background: '#f1f5f9',
+              border: 'none',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: '#64748b',
+            }}
+          >
+            <X size={18} />
+          </button>
+
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: '#e2f1ea',
+              color: '#0d5c3a',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+            }}
+          >
+            <Milk size={32} />
+          </div>
+
+          <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 900, color: '#0c2340' }}>
+            No subscriptions are there
+          </h3>
+          <p style={{ margin: '0 0 22px', fontSize: '0.86rem', color: '#64748b', lineHeight: 1.5 }}>
+            You do not have any active doorstep dairy subscriptions right now. Subscribe today to receive 100% farm-pure milk delivered fresh to your doorstep every morning!
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowNoSubModal(false);
+                navigateToPage('subscription');
+                setTimeout(() => {
+                  const el = document.getElementById('more-subscription-plans');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
+              }}
+              style={{
+                width: '100%',
+                padding: '13px 20px',
+                borderRadius: '14px',
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 800,
+                fontSize: '0.92rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+              }}
+            >
+              <Sparkles size={18} />
+              <span>Subscribe Now</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowNoSubModal(false)}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                borderRadius: '14px',
+                background: 'transparent',
+                color: '#64748b',
+                border: '1.2px solid #e2e8f0',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                cursor: 'pointer',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
       </div>
-    </article>
-  );
+    );
+  };
 
   const toTitle = (str = '') => String(str || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -1900,51 +2129,19 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '4px',
-                padding: '6px 10px',
+                gap: '5px',
+                padding: '6px 12px',
                 borderRadius: '20px',
                 background: '#e2f1ea',
                 border: '1px solid #b7dfca',
                 color: '#0d5c3a',
                 fontWeight: 800,
-                fontSize: '0.74rem',
+                fontSize: '0.78rem',
                 cursor: 'pointer',
               }}
             >
-              <Clock3 size={13} />
-              <span>History</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsNotificationOpen(true)}
-              aria-label="Notifications"
-              style={{
-                position: 'relative',
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                background: '#f3f7f4',
-                border: '1px solid #e2ebe5',
-                color: '#0d5c3a',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-              }}
-            >
-              <Bell size={19} />
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: '#e53935',
-                }}
-              />
+              <Clock3 size={14} />
+              <span>View History</span>
             </button>
           </div>
         </div>
@@ -1978,7 +2175,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '3px' }}>
                 <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 900, color: '#0c2340', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  Daily Farm Pure Milk Plan
+                  {sub.planName || sub.plan?.planName || currentCustomer?.deliveryPlan?.planName || 'Daily Farm Pure Milk Plan'}
                 </h4>
                 <span
                   style={{
@@ -2229,7 +2426,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 <CalendarDays size={19} />
               </div>
               <div>
-                <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>Tomorrow, 28 Oct 2026</strong>
+                <strong style={{ display: 'block', fontSize: '0.86rem', color: '#0c2340', fontWeight: 800 }}>
+                  {(() => {
+                    const tmrw = new Date();
+                    tmrw.setDate(tmrw.getDate() + 1);
+                    return `Tomorrow, ${tmrw.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+                  })()}
+                </strong>
                 <span style={{ fontSize: '0.76rem', color: '#4b5563' }}>Before 6:30 AM</span>
               </div>
             </div>
@@ -2252,6 +2455,41 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
             <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Manage Subscription</strong>
           </div>
 
+          {!isSubActive ? (
+            <div style={{ textAlign: 'center', padding: '16px 12px' }}>
+              <p style={{ margin: '0 0 12px', fontSize: '0.84rem', color: '#64748b' }}>
+                No subscriptions are there to manage.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSubForDetails(null);
+                  navigateToPage('subscription');
+                  setTimeout(() => {
+                    const el = document.getElementById('more-subscription-plans');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                <Sparkles size={15} />
+                <span>Subscribe Now</span>
+              </button>
+            </div>
+          ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {/* Upgrade Plan Option */}
             <div
@@ -2421,6 +2659,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
               <ChevronRight size={18} color="#f87171" />
             </div>
           </div>
+          )}
         </div>
 
         {/* 6. Explore More Plans Button */}
@@ -2731,9 +2970,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           <button
             type="button"
             onClick={() => {
+              const activeSub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused');
               setSelectedUpcomingDelivery(null);
-              if (typeof setActiveTab === 'function') {
-                setActiveTab('subscription');
+              if (activeSub) {
+                setSelectedSubForDetails(activeSub);
+              } else {
+                setShowNoSubModal(true);
               }
             }}
             style={{
@@ -2839,7 +3081,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
   const renderSubscriptionPage = () => {
     const latestFailedSub = customerSubscriptions.find((s) => s.status === 'failed');
-    const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0] || null;
+    const primarySub = hasActiveSubscription
+      ? (allCustomerSubscriptions.find((s) => (s.status === 'active' || s.status === 'paused') && s.endDate && new Date(s.endDate) > new Date()) || allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || null)
+      : null;
 
     return (
       <section className="customer-dashboard-main customer-subscription-page" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -3332,9 +3576,9 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                 </div>
               </div>
 
-              {/* Expiry Date Badge - Only show if real endDate exists */}
+              {/* Expiry Date Badge - Only show if real endDate exists on active subscription */}
               {(() => {
-                const subEnd = primarySub?.endDate || currentCustomer.subscription?.endDate;
+                const subEnd = primarySub?.endDate;
                 if (!subEnd) return null;
                 const target = new Date(subEnd);
                 const now = new Date();
@@ -3641,8 +3885,8 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
           </div>
         </div>
 
-        {/* Quick Delivery Actions */}
-        {renderDeliveryActions()}
+        {/* Manage Subscription / Quick Actions - Only show if active or paused subscription exists */}
+        {hasActiveSubscription && renderDeliveryActions()}
       </section>
     );
   };
@@ -5435,24 +5679,26 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         </div>
       </section>
 
-      <section className="customer-dashboard-overview" aria-label="Subscription overview">
-        <article className="customer-overview-card">
-          <span className="customer-dashboard-icon customer-dashboard-icon-green"><Milk size={20} aria-hidden="true" /></span>
-          <div><p>Daily milk</p><strong>{milkQuantity} {milkUnit}</strong></div>
-        </article>
-        <article className="customer-overview-card">
-          <span className="customer-dashboard-icon customer-dashboard-icon-blue"><CalendarDays size={20} aria-hidden="true" /></span>
-          <div><p>Delivery schedule</p><strong>{deliveryFrequency.charAt(0).toUpperCase() + deliveryFrequency.slice(1)}</strong></div>
-        </article>
-        <article className="customer-overview-card">
-          <span className="customer-dashboard-icon customer-dashboard-icon-amber"><Truck size={20} aria-hidden="true" /></span>
-          <div><p>Your delivery partner</p><strong>{currentCustomer.deliveryPlan?.deliveryBoyName || 'To be assigned'}</strong></div>
-        </article>
-      </section>
+      {hasActiveSubscription && (
+        <section className="customer-dashboard-overview" aria-label="Subscription overview">
+          <article className="customer-overview-card">
+            <span className="customer-dashboard-icon customer-dashboard-icon-green"><Milk size={20} aria-hidden="true" /></span>
+            <div><p>Daily milk</p><strong>{milkQuantity} {milkUnit}</strong></div>
+          </article>
+          <article className="customer-overview-card">
+            <span className="customer-dashboard-icon customer-dashboard-icon-blue"><CalendarDays size={20} aria-hidden="true" /></span>
+            <div><p>Delivery schedule</p><strong>{deliveryFrequency.charAt(0).toUpperCase() + deliveryFrequency.slice(1)}</strong></div>
+          </article>
+          <article className="customer-overview-card">
+            <span className="customer-dashboard-icon customer-dashboard-icon-amber"><Truck size={20} aria-hidden="true" /></span>
+            <div><p>Your delivery partner</p><strong>{currentCustomer.deliveryPlan?.deliveryBoyName || 'To be assigned'}</strong></div>
+          </article>
+        </section>
+      )}
 
       <section className="customer-dashboard-main">
         {renderPlanCard()}
-        {renderDeliveryActions()}
+        {hasActiveSubscription && renderDeliveryActions()}
       </section>
 
       {/* Bookings & Products Section in Dashboard */}
@@ -8594,14 +8840,14 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
             <div style={{ height: '1px', background: '#f1f5f9' }} />
 
-            {/* Subscriptions & History */}
+            {/* Manage Subscription */}
             <div
               onClick={() => {
-                const primarySub = allCustomerSubscriptions.find((s) => s.status === 'active' || s.status === 'paused') || allCustomerSubscriptions[0];
-                if (primarySub) {
-                  setSelectedSubForDetails(primarySub);
+                const activeSub = allCustomerSubscriptions.find((s) => (s.status === 'active' || s.status === 'paused') && (!s.endDate || new Date(s.endDate) > new Date())) || (hasPaidSubscription ? allCustomerSubscriptions[0] : null);
+                if (activeSub && hasActiveSubscription) {
+                  setSelectedSubForDetails(activeSub);
                 } else {
-                  navigateToPage('subscription');
+                  setShowNoSubModal(true);
                 }
               }}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
@@ -8611,13 +8857,13 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                   <CreditCard size={17} />
                 </div>
                 <div>
-                  <strong style={{ display: 'block', fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Subscriptions & History</strong>
+                  <strong style={{ display: 'block', fontSize: '0.86rem', fontWeight: 800, color: '#0c2340' }}>Manage Subscription</strong>
                   <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>All plan details, pause/stop & history</span>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isPaused ? '#d97706' : '#0d5c3a', background: isPaused ? '#fef3c7' : '#e2f1ea', padding: '2px 8px', borderRadius: '10px' }}>
-                  {isPaused ? 'Paused' : hasPaidSubscription ? 'Active' : 'Manage'}
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: isPaused ? '#d97706' : (hasActiveSubscription ? '#0d5c3a' : '#64748b'), background: isPaused ? '#fef3c7' : (hasActiveSubscription ? '#e2f1ea' : '#f1f5f9'), padding: '2px 8px', borderRadius: '10px' }}>
+                  {isPaused ? 'Paused' : (hasActiveSubscription ? 'Active' : 'Manage')}
                 </span>
                 <ChevronRight size={18} color="#9ca3af" />
               </div>
@@ -9084,12 +9330,12 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
                     borderRadius: '12px',
                     fontSize: '0.74rem',
                     fontWeight: 700,
-                    background: isPaused ? '#fef3c7' : '#ecfdf5',
-                    color: isPaused ? '#92400e' : '#065f46',
-                    border: `1px solid ${isPaused ? '#fde68a' : '#a7f3d0'}`,
+                    background: isPaused ? '#fef3c7' : (hasActiveSubscription ? '#ecfdf5' : '#f1f5f9'),
+                    color: isPaused ? '#92400e' : (hasActiveSubscription ? '#065f46' : '#64748b'),
+                    border: `1px solid ${isPaused ? '#fde68a' : (hasActiveSubscription ? '#a7f3d0' : '#e2e8f0')}`,
                   }}
                 >
-                  {isPaused ? '⏸ Delivery Paused' : '✓ Active Subscription'}
+                  {isPaused ? '⏸ Delivery Paused' : (hasActiveSubscription ? '✓ Active Subscription' : 'No Active Plan')}
                 </span>
               </div>
               <div className="profile-hero-meta">
@@ -9165,70 +9411,111 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
         {/* 2. Customer Data Responsive Cards Grid */}
         <div className="profile-desktop-grid">
           {/* Card 1: Daily Milk Subscription */}
-          <div className="profile-desktop-card">
-            <div>
-              <div className="profile-card-header">
-                <div>
-                  <h3 className="profile-card-title">My Milk Subscription</h3>
-                  <p className="profile-card-desc">Pure A2 Gir Cow & Buffalo Milk Plan</p>
+          {hasActiveSubscription ? (
+            <div className="profile-desktop-card">
+              <div>
+                <div className="profile-card-header">
+                  <div>
+                    <h3 className="profile-card-title">Manage Subscription</h3>
+                    <p className="profile-card-desc">Pure A2 Gir Cow & Buffalo Milk Plan</p>
+                  </div>
+                  <div className="profile-card-icon-wrap">
+                    <Milk size={22} />
+                  </div>
                 </div>
-                <div className="profile-card-icon-wrap">
-                  <Milk size={22} />
+                <div className="profile-card-body">
+                  <div className="profile-card-data-row">
+                    <span className="profile-card-data-label">Daily Quantity</span>
+                    <span className="profile-card-data-val">{milkQuantity} {milkUnit} Fresh Milk</span>
+                  </div>
+                  <div className="profile-card-data-row">
+                    <span className="profile-card-data-label">Delivery Schedule</span>
+                    <span className="profile-card-data-val" style={{ textTransform: 'capitalize' }}>{deliveryFrequency}</span>
+                  </div>
+                  <div className="profile-card-data-row">
+                    <span className="profile-card-data-label">Current Status</span>
+                    <span className="profile-card-data-val" style={{ color: isPaused ? '#d97706' : '#059669' }}>
+                      {isPaused ? 'Paused for Vacation' : 'Active Doorstep Drop'}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="profile-card-body">
-                <div className="profile-card-data-row">
-                  <span className="profile-card-data-label">Daily Quantity</span>
-                  <span className="profile-card-data-val">{milkQuantity} {milkUnit} Fresh Milk</span>
-                </div>
-                <div className="profile-card-data-row">
-                  <span className="profile-card-data-label">Delivery Schedule</span>
-                  <span className="profile-card-data-val" style={{ textTransform: 'capitalize' }}>{deliveryFrequency}</span>
-                </div>
-                <div className="profile-card-data-row">
-                  <span className="profile-card-data-label">Current Status</span>
-                  <span className="profile-card-data-val" style={{ color: isPaused ? '#d97706' : '#059669' }}>
-                    {isPaused ? 'Paused for Vacation' : 'Active Doorstep Drop'}
-                  </span>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="profile-card-action-btn"
+                  onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
+                >
+                  {isPaused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}
+                  <span>{isPaused ? 'Restart' : 'Pause / Vacation'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="profile-card-action-btn"
+                  onClick={() => onOpenTempQtyModal?.(currentCustomer)}
+                >
+                  <Sliders size={15} />
+                  <span>Change Qty</span>
+                </button>
+                <button
+                  type="button"
+                  className="profile-card-action-btn"
+                  style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2' }}
+                  onClick={() => setShowStopFullPage(true)}
+                >
+                  <X size={15} />
+                  <span>Stop Plan</span>
+                </button>
+                <button
+                  type="button"
+                  className="profile-card-action-btn"
+                  onClick={() => setShowSubHistoryModal(true)}
+                >
+                  <FileText size={15} />
+                  <span>History</span>
+                </button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          ) : (
+            <div className="profile-desktop-card" style={{ textAlign: 'center', padding: '32px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: '#f0fdf4', color: '#0d5c3a', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '14px' }}>
+                <Calendar size={26} />
+              </div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 900, color: '#0c2340', margin: '0 0 6px' }}>
+                No subscriptions are there
+              </h3>
+              <p style={{ fontSize: '0.84rem', color: '#6b7280', maxWidth: '340px', margin: '0 auto 18px', lineHeight: 1.45 }}>
+                You do not have any active doorstep dairy subscriptions right now. Subscribe today to receive 100% farm-pure milk delivered fresh to your doorstep every morning!
+              </p>
               <button
                 type="button"
-                className="profile-card-action-btn"
-                onClick={isPaused ? handleRestartDelivery : () => onOpenPauseModal?.(currentCustomer)}
+                onClick={() => {
+                  navigateToPage('subscription');
+                  setTimeout(() => {
+                    const el = document.getElementById('more-subscription-plans');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }, 100);
+                }}
+                style={{
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '11px 22px',
+                  fontSize: '0.86rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+                }}
               >
-                {isPaused ? <PlayCircle size={15} /> : <PauseCircle size={15} />}
-                <span>{isPaused ? 'Restart' : 'Pause / Vacation'}</span>
-              </button>
-              <button
-                type="button"
-                className="profile-card-action-btn"
-                onClick={() => onOpenTempQtyModal?.(currentCustomer)}
-              >
-                <Sliders size={15} />
-                <span>Change Qty</span>
-              </button>
-              <button
-                type="button"
-                className="profile-card-action-btn"
-                style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2' }}
-                onClick={() => setShowStopFullPage(true)}
-              >
-                <X size={15} />
-                <span>Stop Plan</span>
-              </button>
-              <button
-                type="button"
-                className="profile-card-action-btn"
-                onClick={() => setShowSubHistoryModal(true)}
-              >
-                <FileText size={15} />
-                <span>History</span>
+                <Sparkles size={16} />
+                <span>Subscribe Now</span>
               </button>
             </div>
-          </div>
+          )}
 
           {/* Card 2: Doorstep Delivery Address */}
           <div className="profile-desktop-card">
@@ -9936,6 +10223,7 @@ export default function CustomerPortal({ setActiveTab, onOpenPauseModal, onOpenT
 
       {/* Upcoming Delivery Details Modal */}
       {selectedUpcomingDelivery && renderUpcomingDeliveryDetailsModal()}
+      {showNoSubModal && renderNoSubscriptionModal()}
       {showUpgradeModal && renderUpgradePlanModal()}
       {showExtendModal && renderExtendSubscriptionModal()}
       {showPauseFullPage && (

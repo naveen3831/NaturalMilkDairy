@@ -528,6 +528,103 @@ export default function SubscriptionPage({ setActiveTab }) {
 
   // Mobile Subscription Details Screen (Image 2)
   const renderMobileDetails = () => {
+    if (!activeSubscription) {
+      return (
+        <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 105px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Top Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '4px' }}>
+            <button
+              type="button"
+              onClick={() => setShowMobileDetails(false)}
+              aria-label="Back"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                background: '#ffffff',
+                border: '1.2px solid #e2ebe5',
+                color: '#0c2340',
+                fontWeight: 700,
+                fontSize: '0.80rem',
+                cursor: 'pointer',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.02)',
+              }}
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#0c2340', textAlign: 'center' }}>
+              Subscription Details
+            </h3>
+
+            <div style={{ width: '48px' }} />
+          </div>
+
+          <div
+            style={{
+              background: '#ffffff',
+              borderRadius: '20px',
+              border: '1px solid #e2ebe5',
+              padding: '36px 20px',
+              textAlign: 'center',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.03)',
+              marginTop: '16px',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: '#e2f1ea',
+                color: '#0d5c3a',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
+            >
+              <Calendar size={30} />
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 900, color: '#0c2340' }}>
+              No subscriptions are there
+            </h3>
+            <p style={{ margin: '0 0 22px', fontSize: '0.86rem', color: '#64748b', lineHeight: 1.5, maxWidth: '340px', marginInline: 'auto' }}>
+              You do not have any active doorstep dairy subscriptions right now. Subscribe today to receive fresh, pure milk every morning!
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowMobileDetails(false);
+                const el = document.getElementById('plans-section') || document.querySelector('.subscription-plans');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '14px',
+                background: '#0d5c3a',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 800,
+                fontSize: '0.90rem',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 12px rgba(13, 92, 58, 0.25)',
+              }}
+            >
+              <Sparkles size={16} />
+              <span>Subscribe Now</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return (
       <div style={{ minHeight: '100vh', background: '#f9faf9', padding: '16px 16px 105px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -839,6 +936,38 @@ export default function SubscriptionPage({ setActiveTab }) {
             <strong style={{ fontSize: '0.94rem', fontWeight: 900, color: '#0c2340' }}>Manage Subscription</strong>
           </div>
 
+          {!activeSubscription ? (
+            <div style={{ textAlign: 'center', padding: '16px 12px' }}>
+              <p style={{ margin: '0 0 12px', fontSize: '0.84rem', color: '#64748b' }}>
+                No subscriptions are there to manage.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileDetails(false);
+                  const el = document.getElementById('plans-section') || document.querySelector('.subscription-plans');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '10px',
+                  background: '#0d5c3a',
+                  color: '#ffffff',
+                  border: 'none',
+                  fontWeight: 800,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 8px rgba(13, 92, 58, 0.25)',
+                }}
+              >
+                <Sparkles size={15} />
+                <span>Subscribe Now</span>
+              </button>
+            </div>
+          ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {/* Option 1: Upgrade Plan */}
             <div
@@ -996,6 +1125,7 @@ export default function SubscriptionPage({ setActiveTab }) {
               <ChevronRight size={18} color="#f87171" />
             </div>
           </div>
+          )}
         </div>
 
         {/* 6. Explore More Plans Button */}
@@ -2231,7 +2361,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                     transition: 'all 0.2s ease',
                   }}
                 >
-                  <span>{isLoggedInCustomer ? 'Manage This Subscription' : 'Start Daily Delivery'}</span>
+                  <span>{isLoggedInCustomer && activeSubscription ? 'Manage This Subscription' : 'Subscribe Now'}</span>
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -2371,7 +2501,7 @@ export default function SubscriptionPage({ setActiveTab }) {
                 boxShadow: '0 4px 14px rgba(13, 92, 58, 0.2)',
               }}
             >
-              <span>{isLoggedInCustomer ? 'Open Subscription Manager' : 'Subscribe Now'}</span>
+              <span>{isLoggedInCustomer && activeSubscription ? 'Manage Subscription' : 'Subscribe Now'}</span>
               <ArrowRight size={17} />
             </button>
             <button

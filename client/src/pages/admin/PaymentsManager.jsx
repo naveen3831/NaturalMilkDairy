@@ -25,6 +25,7 @@ import {
   BadgeAlert,
   Sparkles,
   Trash2,
+  Bike,
 } from 'lucide-react';
 
 export default function PaymentsManager({ onOpenPaymentModal }) {
@@ -88,10 +89,34 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
     }
   }, [token]);
 
+  // Partners cash state
+  const [partners, setPartners] = useState([]);
+  const [isLoadingPartners, setIsLoadingPartners] = useState(false);
+  const [partnerSearch, setPartnerSearch] = useState('');
+
+  // Load Partners
+  const fetchPartners = useCallback(async () => {
+    try {
+      setIsLoadingPartners(true);
+      const res = await fetch('/api/delivery-boys', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.deliveryBoys)) {
+        setPartners(data.deliveryBoys);
+      }
+    } catch (err) {
+      console.error('fetchPartners error:', err);
+    } finally {
+      setIsLoadingPartners(false);
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchHandovers();
     fetchPayments();
-  }, [fetchHandovers, fetchPayments]);
+    fetchPartners();
+  }, [fetchHandovers, fetchPayments, fetchPartners]);
 
   // Real-time WebSocket Listeners
   useEffect(() => {
@@ -99,6 +124,7 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
 
     const unsubHandoverSub = wsSubscribe('CASH_HANDOVER_SUBMITTED', () => {
       fetchHandovers();
+      fetchPartners();
       setFeedbackMsg({
         type: 'info',
         text: 'New driver cash handover received! List refreshed.',
@@ -108,18 +134,26 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
 
     const unsubHandoverUpd = wsSubscribe('CASH_HANDOVER_UPDATED', () => {
       fetchHandovers();
+      fetchPartners();
     });
 
     const unsubPayment = wsSubscribe('PAYMENT_RECORDED', () => {
       fetchPayments();
+      fetchPartners();
     });
 
     const unsubPaymentUpd = wsSubscribe('PAYMENT_UPDATED', () => {
       fetchPayments();
+      fetchPartners();
     });
 
     const unsubDeliveryUpd = wsSubscribe('DELIVERY_UPDATED', () => {
       fetchPayments();
+      fetchPartners();
+    });
+
+    const unsubBoyUpd = wsSubscribe('DELIVERY_BOY_UPDATED', () => {
+      fetchPartners();
     });
 
     return () => {
@@ -128,8 +162,9 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
       if (typeof unsubPayment === 'function') unsubPayment();
       if (typeof unsubPaymentUpd === 'function') unsubPaymentUpd();
       if (typeof unsubDeliveryUpd === 'function') unsubDeliveryUpd();
+      if (typeof unsubBoyUpd === 'function') unsubBoyUpd();
     };
-  }, [wsSubscribe, fetchHandovers, fetchPayments]);
+  }, [wsSubscribe, fetchHandovers, fetchPayments, fetchPartners]);
 
   // Handle Accept Handover
   const handleAcceptHandover = async (item) => {
@@ -243,6 +278,30 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
     () => payments.reduce((sum, p) => sum + (p.amount || 0), 0),
     [payments]
   );
+
+  const totalPartnerCashInHand = useMemo(
+    () => partners.reduce((sum, b) => sum + (Number(b.todayCashCollected) || 0), 0),
+    [partners]
+  );
+
+  const totalPartnerUpiCollected = useMemo(
+    () => partners.reduce((sum, b) => sum + (Number(b.todayUpiCollected) || 0), 0),
+    [partners]
+  );
+
+  // Filtered Partners List
+  const displayedPartners = useMemo(() => {
+    return partners.filter((b) => {
+      if (partnerSearch.trim()) {
+        const q = partnerSearch.toLowerCase();
+        const matchName = b.name?.toLowerCase().includes(q);
+        const matchMobile = b.mobile?.toLowerCase().includes(q);
+        const matchArea = b.assignedArea?.toLowerCase().includes(q);
+        return matchName || matchMobile || matchArea;
+      }
+      return true;
+    });
+  }, [partners, partnerSearch]);
 
   // Filtered Handovers List
   const displayedHandovers = useMemo(() => {
@@ -540,6 +599,45 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
             </div>
           </div>
         </div>
+
+        {/* Driver Cash in Hand Card */}
+        <div
+          style={{
+            background: '#ffffff',
+            border: totalPartnerCashInHand > 0 ? '1.5px solid #a7f3d0' : '1px solid #e2e8f0',
+            borderRadius: '16px',
+            padding: '16px 18px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: '#0d5c3a', textTransform: 'uppercase' }}>
+                Driver Cash In Hand
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#0d5c3a', marginTop: '4px' }}>
+                ₹{totalPartnerCashInHand.toLocaleString()}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                {partners.filter((p) => Number(p.todayCashCollected || 0) > 0).length} drivers holding cash today
+              </div>
+            </div>
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '10px',
+                background: '#e2f1ea',
+                color: '#0d5c3a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Bike size={20} />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 3. Main Navigation Tabs */}
@@ -619,6 +717,40 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
             }}
           >
             {payments.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('partners')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '10px 18px',
+            fontSize: '0.9rem',
+            fontWeight: 700,
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'partners' ? '2.5px solid #059669' : '2.5px solid transparent',
+            color: activeTab === 'partners' ? '#059669' : '#64748b',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <Bike size={17} />
+          <span>Partner Cash & Settlements</span>
+          <span
+            style={{
+              background: '#f1f5f9',
+              color: '#475569',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              padding: '2px 7px',
+              borderRadius: '999px',
+            }}
+          >
+            {partners.length}
           </span>
         </button>
       </div>
@@ -1191,6 +1323,280 @@ export default function PaymentsManager({ onOpenPaymentModal }) {
                         </td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* TAB 3: PARTNER CASH & SETTLEMENTS                        */}
+      {/* ======================================================== */}
+      {activeTab === 'partners' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Partner Search & Quick Stats */}
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '14px',
+              padding: '12px 16px',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>
+                Delivery Partners ({displayedPartners.length})
+              </span>
+              <span
+                style={{
+                  background: '#e2f1ea',
+                  color: '#0d5c3a',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  padding: '3px 9px',
+                  borderRadius: '20px',
+                }}
+              >
+                Cash with Drivers: ₹{totalPartnerCashInHand.toLocaleString()}
+              </span>
+              <span
+                style={{
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  padding: '3px 9px',
+                  borderRadius: '20px',
+                }}
+              >
+                Today's UPI: ₹{totalPartnerUpiCollected.toLocaleString()}
+              </span>
+            </div>
+
+            <div style={{ position: 'relative', width: '280px' }}>
+              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '11px', top: '10px' }} />
+              <input
+                type="text"
+                placeholder="Search driver by name, phone, area..."
+                value={partnerSearch}
+                onChange={(e) => setPartnerSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px 8px 34px',
+                  borderRadius: '9px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '0.82rem',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Partners Table / Cards */}
+          {displayedPartners.length === 0 ? (
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '48px 24px',
+                textAlign: 'center',
+                color: '#64748b',
+              }}
+            >
+              <Bike size={36} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
+              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b' }}>No delivery partners found</div>
+              <div style={{ fontSize: '0.82rem', marginTop: '4px' }}>
+                {partnerSearch ? 'Try a different search term.' : 'No delivery partners are registered in the system.'}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '16px',
+                overflow: 'hidden',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: '0.74rem', textTransform: 'uppercase' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Driver Partner</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Assigned Area</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Cash In Hand</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Today's UPI</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Pending Handover</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedPartners.map((b) => {
+                      const boyId = b.id || b._id;
+                      const boyPendingHandover = pendingHandovers.find(
+                        (h) => (h.deliveryBoyId && String(h.deliveryBoyId) === String(boyId)) ||
+                               (h.deliveryBoyMobile && b.mobile && String(h.deliveryBoyMobile).slice(-10) === String(b.mobile).slice(-10))
+                      );
+                      const cashInHand = Number(b.todayCashCollected) || 0;
+                      const upiCollected = Number(b.todayUpiCollected) || 0;
+
+                      return (
+                        <tr key={boyId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                          <td style={{ padding: '14px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div
+                                style={{
+                                  width: '36px',
+                                  height: '36px',
+                                  borderRadius: '50%',
+                                  background: '#e2f1ea',
+                                  color: '#0d5c3a',
+                                  fontWeight: 800,
+                                  fontSize: '0.85rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {(b.name || 'D').charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <strong style={{ color: '#0f172a', display: 'block', fontSize: '0.88rem' }}>
+                                  {b.name || 'Delivery Partner'}
+                                </strong>
+                                <span style={{ color: '#64748b', fontSize: '0.76rem' }}>
+                                  {b.mobile || '—'}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: '14px 16px', color: '#334155', fontWeight: 600 }}>
+                            {b.assignedArea || 'All Hubs'}
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                padding: '3px 8px',
+                                borderRadius: '999px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                background: b.status === 'active' || b.isActive ? '#ecfdf5' : '#f1f5f9',
+                                color: b.status === 'active' || b.isActive ? '#065f46' : '#64748b',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: '6px',
+                                  height: '6px',
+                                  borderRadius: '50%',
+                                  background: b.status === 'active' || b.isActive ? '#10b981' : '#94a3b8',
+                                }}
+                              />
+                              {b.status === 'active' || b.isActive ? 'Active Duty' : 'Off Duty'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                            <span
+                              style={{
+                                fontWeight: 800,
+                                fontSize: '0.92rem',
+                                color: cashInHand > 0 ? '#0d5c3a' : '#94a3b8',
+                              }}
+                            >
+                              ₹{cashInHand.toLocaleString()}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                            <span style={{ fontWeight: 700, color: '#2563eb' }}>
+                              ₹{upiCollected.toLocaleString()}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>
+                            {boyPendingHandover ? (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '4px 9px',
+                                  borderRadius: '8px',
+                                  background: '#ffedd5',
+                                  color: '#ea580c',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 800,
+                                }}
+                              >
+                                <Clock size={13} />
+                                <span>₹{boyPendingHandover.amount} submitted</span>
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.78rem' }}>None pending</span>
+                            )}
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'right' }}>
+                            {boyPendingHandover ? (
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === (boyPendingHandover.id || boyPendingHandover._id)}
+                                onClick={() => handleAcceptHandover(boyPendingHandover)}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: 'none',
+                                  background: '#059669',
+                                  color: '#ffffff',
+                                  fontSize: '0.78rem',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  boxShadow: '0 1px 4px rgba(5, 150, 105, 0.25)',
+                                }}
+                              >
+                                <Check size={14} />
+                                <span>Verify Cash</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab('handovers');
+                                  setHandoverSearch(b.name || '');
+                                }}
+                                style={{
+                                  padding: '6px 12px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #e2e8f0',
+                                  background: '#ffffff',
+                                  color: '#475569',
+                                  fontSize: '0.76rem',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                View History
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

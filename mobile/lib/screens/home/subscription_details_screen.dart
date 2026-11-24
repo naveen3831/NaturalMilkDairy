@@ -174,7 +174,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
         ],
       ),
       bottomNavigationBar: _buildCustomBottomNav(context),
-      body: (!hasActiveSubscription && subHistory.isEmpty)
+      body: !hasActiveSubscription
           ? Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
@@ -192,7 +192,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'No Active Subscription Yet',
+                      'No Subscriptions Are There',
                       style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w900,
@@ -224,7 +224,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                         },
                         icon: const Icon(Icons.add_shopping_cart_rounded, size: 19),
                         label: const Text(
-                          'Choose a Plan & Subscribe',
+                          'Subscribe Now',
                           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -1021,7 +1021,54 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                                    // Option 1: Upgrade Plan (Green/Emerald badge)
+                  if (!hasActiveSubscription) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAF9),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE2EBE5)),
+                      ),
+                      child: Column(
+                        children: [
+                          const Text(
+                            'No subscriptions are there to manage.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF6B7280),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SubscribeCheckoutScreen(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 16),
+                            label: const Text(
+                              'Subscribe Now',
+                              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0D5C3A),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    // Option 1: Upgrade Plan (Green/Emerald badge)
                   _buildManageOptionRow(
                     context: context,
                     icon: Icons.stars_rounded,
@@ -1170,6 +1217,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                       );
                     },
                   ),
+                  ],
                 ],
               ),
             ),

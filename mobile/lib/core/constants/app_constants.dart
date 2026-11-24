@@ -10,9 +10,8 @@ class AppConstants {
 
   /// Candidate backend URLs tested automatically by ApiService
   static List<String> get candidateBaseUrls => const [
-        'http://192.168.88.6:5000', // Wi-Fi local network IP (physical phone & PC)
+        'http://192.168.1.68:5000', // Wi-Fi local network IP (physical phone & PC)
         'http://127.0.0.1:5000', // USB reverse port forwarding (physical phone)
-        'http://192.168.1.68:5000', // Alternative Wi-Fi local network IP
         'http://10.0.2.2:5000', // Android Emulator loopback
         'http://localhost:5000', // Desktop & Web
       ];

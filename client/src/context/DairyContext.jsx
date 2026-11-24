@@ -201,7 +201,7 @@ export const DairyProvider = ({ children }) => {
     } catch (err) {
       console.warn('Customers fetch error:', err);
     }
-  }, [getAuthHeaders, token]);
+  }, [getAuthHeaders, token, user?.role]);
 
   // Fetch Products
   const fetchProducts = useCallback(async (force = false) => {

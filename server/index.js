@@ -160,6 +160,9 @@ app.use((err, req, res, next) => {
   if (err.message === 'Origin is not allowed by CORS.') {
     return res.status(403).json({ success: false, message: 'Request origin is not allowed.' });
   }
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, message: 'Invalid JSON payload received.' });
+  }
   if (err.type === 'entity.too.large') {
     return res.status(413).json({ success: false, message: 'Request body is too large.' });
   }

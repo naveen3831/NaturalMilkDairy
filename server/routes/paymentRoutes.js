@@ -7,10 +7,12 @@ const {
   getCashHandovers,
   updateHandoverStatus,
   deleteCashHandover,
+  getAdminPaymentsOverview,
 } = require('../controllers/paymentController');
 
 const { verifyToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
+router.get('/admin-overview', verifyToken, requireAdmin, getAdminPaymentsOverview);
 router.get('/', verifyToken, requireDeliveryStaff, getAllPayments);
 router.post('/', verifyToken, requireDeliveryStaff, recordPayment);
 

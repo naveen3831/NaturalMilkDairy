@@ -1,4 +1,4 @@
-const Payment = require('../models/Payment');
+  const Payment = require('../models/Payment');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const CashHandover = require('../models/CashHandover');
@@ -488,6 +488,92 @@ const deleteCashHandover = async (req, res) => {
   }
 };
 
+/**
+ * Admin Comprehensive Payments & History Overview
+ * Returns unified data of all partner collections, customer payments, cash handovers & summary
+ */
+const getAdminPaymentsOverview = async (req, res) => {
+  try {
+    const [payments, handovers, partners, customers] = await Promise.all([
+      Payment.find({}).sort({ paymentDate: -1, createdAt: -1 }).lean(),
+      CashHandover.find({}).sort({ createdAt: -1 }).lean(),
+      DeliveryBoy.find({}).sort({ name: 1 }).lean(),
+      Customer.find({}).select('name mobile customerId currentBalance totalPaid subscription deliveryPlan area').lean(),
+    ]);
+
+    // Metrics calculation
+    const totalPaymentsAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const upiPaymentsAmount = payments
+      .filter((p) => ['upi', 'razorpay', 'bank_transfer'].includes((p.paymentMethod || '').toLowerCase()))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const cashPaymentsAmount = payments
+      .filter((p) => (p.paymentMethod || '').toLowerCase() === 'cash')
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    const totalHandoverPending = handovers
+      .filter((h) => h.status === 'pending')
+      .reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+    const totalHandoverAccepted = handovers
+      .filter((h) => h.status === 'accepted')
+      .reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+
+    const totalPartnerCashInHand = partners.reduce(
+      (sum, b) => sum + (Number(b.todayCashCollected) || 0),
+      0
+    );
+    const totalCustomerReceivables = customers.reduce(
+      (sum, c) => sum + Math.max(0, Number(c.currentBalance) || 0),
+      0
+    );
+
+    return res.json({
+      success: true,
+      summary: {
+        totalRevenue: totalPaymentsAmount,
+        upiRevenue: upiPaymentsAmount,
+        cashRevenue: cashPaymentsAmount,
+        partnerCashInHand: totalPartnerCashInHand,
+        pendingHandoverAmount: totalHandoverPending,
+        acceptedHandoverAmount: totalHandoverAccepted,
+        customerReceivables: totalCustomerReceivables,
+        totalTransactions: payments.length,
+        totalHandovers: handovers.length,
+      },
+      payments: payments.map((p) => ({
+        ...p,
+        id: p._id.toString(),
+      })),
+      handovers: handovers.map((h) => ({
+        ...h,
+        id: h._id.toString(),
+      })),
+      partners: partners.map((b) => ({
+        id: b._id.toString(),
+        name: b.name,
+        mobile: b.mobile,
+        assignedArea: b.assignedArea || '',
+        todayCashCollected: Number(b.todayCashCollected) || 0,
+        todayUpiCollected: Number(b.todayUpiCollected) || 0,
+        status: b.status || 'Active',
+        isOnline: Boolean(b.isOnline),
+      })),
+      customers: customers.map((c) => ({
+        id: c._id.toString(),
+        customerId: c.customerId || '',
+        name: c.name || 'Customer',
+        mobile: c.mobile || '',
+        currentBalance: Number(c.currentBalance) || 0,
+        totalPaid: Number(c.totalPaid) || 0,
+        area: c.area || '',
+        subscriptionStatus: c.subscription?.status || 'none',
+      })),
+    });
+  } catch (err) {
+    console.error('getAdminPaymentsOverview error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   recordPayment,
   getAllPayments,
@@ -495,4 +581,5 @@ module.exports = {
   getCashHandovers,
   updateHandoverStatus,
   deleteCashHandover,
+  getAdminPaymentsOverview,
 };

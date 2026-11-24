@@ -113,18 +113,35 @@ class CustomerProvider extends ChangeNotifier {
 
   bool get hasActiveSubscription {
     final sub = _customerData?['subscription'];
-    if (sub is Map && sub['status']?.toString().toLowerCase() == 'active') {
-      final end = subscriptionEndDate;
-      if (end != null) {
-        final today = DateTime.now();
-        final todayStart = DateTime(today.year, today.month, today.day);
-        return !end.isBefore(todayStart);
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    if (sub is Map) {
+      final status = sub['status']?.toString().toLowerCase();
+      if (status == 'active' || status == 'paused') {
+        final end = subscriptionEndDate;
+        final hasPayment = (sub['paymentId']?.toString().isNotEmpty == true) ||
+            (num.tryParse(sub['amount']?.toString() ?? '0') ?? 0) > 0;
+        if (end != null && !end.isBefore(todayStart) && hasPayment) {
+          return true;
+        }
       }
-      return true;
     }
-    final hasActiveInList = _subscriptions.any((s) => s['status']?.toString().toLowerCase() == 'active') ||
-        _subscriptionsHistory.any((s) => s['status']?.toString().toLowerCase() == 'active');
-    return hasActiveInList;
+    bool checkSubList(List<dynamic> list) {
+      return list.any((s) {
+        if (s is! Map) return false;
+        final st = s['status']?.toString().toLowerCase();
+        if (st != 'active' && st != 'paused') return false;
+        final rawEnd = s['endDate'];
+        if (rawEnd == null) return false;
+        final d = DateTime.tryParse(rawEnd.toString());
+        if (d == null || d.isBefore(todayStart)) return false;
+        final hasPayment = (s['providerPaymentId']?.toString().isNotEmpty == true) ||
+            (s['paymentId']?.toString().isNotEmpty == true) ||
+            (num.tryParse(s['amount']?.toString() ?? '0') ?? 0) > 0;
+        return hasPayment;
+      });
+    }
+    return checkSubList(_subscriptions) || checkSubList(_subscriptionsHistory);
   }
 
   DateTime? get subscriptionEndDate {

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const Delivery = require('../models/Delivery');
@@ -14,6 +15,8 @@ const cleanPhoneDigits = (p) => {
   const digits = String(p).replace(/[^0-9]/g, '');
   return digits.length > 10 ? digits.slice(-10) : digits;
 };
+
+const escapeRegex = (text) => (text || '').replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
 
 const getDeliveryBoys = async (req, res) => {
   try {
@@ -108,6 +111,7 @@ const getDeliveryBoys = async (req, res) => {
         mobile: boy.mobile,
         assignedArea: boy.assignedArea || 'Madhapur',
         vehicleNumber: boy.vehicleNumber || '',
+      vehicleModel: boy.vehicleModel || '',
         status: boy.status || 'active',
         isOnline,
         lastOnlineAt,
@@ -282,7 +286,7 @@ const updateDeliveryBoy = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Delivery partner details must be an object.' });
     }
     const { id } = req.params;
-    const { name, email, mobile, assignedArea, vehicleNumber, password, status, resendEmail, actor } = req.body;
+    const { name, email, mobile, assignedArea, vehicleNumber, vehicleModel, bloodGroup, drivingLicense, emergencyContact, password, status, resendEmail, actor } = req.body;
 
     const query = id.length === 24 ? { _id: id } : { mobile: id };
     const boy = await DeliveryBoy.findOne(query);
@@ -341,6 +345,10 @@ const updateDeliveryBoy = async (req, res) => {
     if (mobile !== undefined) boy.mobile = mobile.trim();
     if (assignedArea !== undefined) boy.assignedArea = assignedArea.trim();
     if (vehicleNumber !== undefined) boy.vehicleNumber = vehicleNumber.trim();
+    if (vehicleModel !== undefined) boy.vehicleModel = (vehicleModel || '').trim();
+    if (bloodGroup !== undefined) boy.bloodGroup = (bloodGroup || '').trim();
+    if (drivingLicense !== undefined) boy.drivingLicense = (drivingLicense || '').trim();
+    if (emergencyContact !== undefined) boy.emergencyContact = (emergencyContact || '').trim();
     if (status !== undefined) boy.status = status;
     if (passwordHash) boy.password = passwordHash;
     await boy.save();
@@ -916,7 +924,7 @@ const updateMyProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Delivery partner record not found.' });
     }
 
-    const { name, email, mobile, assignedArea, vehicleNumber, password, bloodGroup, drivingLicense, emergencyContact } = req.body;
+    const { name, email, mobile, assignedArea, vehicleNumber, vehicleModel, password, bloodGroup, drivingLicense, emergencyContact } = req.body;
 
     // Check duplicate mobile if changing mobile
     if (mobile && mobile.trim() !== boy.mobile) {
@@ -936,6 +944,7 @@ const updateMyProfile = async (req, res) => {
     if (email !== undefined) boy.email = (email || '').trim().toLowerCase();
     if (assignedArea !== undefined) boy.assignedArea = (assignedArea || '').trim();
     if (vehicleNumber !== undefined) boy.vehicleNumber = (vehicleNumber || '').trim();
+    if (vehicleModel !== undefined) boy.vehicleModel = (vehicleModel || '').trim();
     if (bloodGroup !== undefined) boy.bloodGroup = (bloodGroup || '').trim();
     if (drivingLicense !== undefined) boy.drivingLicense = (drivingLicense || '').trim();
     if (emergencyContact !== undefined) boy.emergencyContact = (emergencyContact || '').trim();
@@ -981,6 +990,7 @@ const updateMyProfile = async (req, res) => {
       email: boy.email || '',
       assignedArea: boy.assignedArea || '',
       vehicleNumber: boy.vehicleNumber || '',
+      vehicleModel: boy.vehicleModel || '',
       bloodGroup: boy.bloodGroup || '',
       drivingLicense: boy.drivingLicense || '',
       emergencyContact: boy.emergencyContact || '',

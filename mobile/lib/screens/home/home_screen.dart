@@ -301,6 +301,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
 
   Future<void> _openSubscriptionDetails() async {
+    final customerProvider = context.read<CustomerProvider>();
+    if (!customerProvider.hasActiveSubscription) {
+      _showNoSubscriptionBottomSheet();
+      return;
+    }
     final targetIndex = await Navigator.push<int>(
       context,
       MaterialPageRoute(
@@ -310,6 +315,102 @@ class _HomeScreenState extends State<HomeScreen> {
     if (targetIndex != null && mounted) {
       setState(() => _currentIndex = targetIndex);
     }
+  }
+
+  void _showNoSubscriptionBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE2E8F0),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F5EE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.calendar_today_rounded, color: Color(0xFF0D5C3A), size: 34),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'No subscriptions are there',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0C2340),
+                letterSpacing: -0.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'You do not have any active doorstep dairy subscriptions right now. Subscribe today to receive 100% farm-pure milk delivered fresh to your doorstep every morning!',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Color(0xFF6B7280),
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  setState(() => _currentIndex = 1);
+                },
+                icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                label: const Text(
+                  'Subscribe Now',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0D5C3A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF6B7280),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text(
+                  'Close',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showUpcomingDeliveryDetails(Map<String, dynamic> delivery) {
@@ -857,9 +958,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         child: OutlinedButton.icon(
                           onPressed: () {
                             Navigator.pop(ctx);
-                            setState(() {
-                              _currentIndex = 2; // Switch to Subscription tab
-                            });
+                            final cp = context.read<CustomerProvider>();
+                            if (cp.hasActiveSubscription) {
+                              _openSubscriptionDetails();
+                            } else {
+                              _showNoSubscriptionBottomSheet();
+                            }
                           },
                           icon: const Icon(Icons.calendar_today_rounded, size: 16, color: Color(0xFF0D5C3A)),
                           label: const Text('Manage Plan', style: TextStyle(color: Color(0xFF0D5C3A), fontWeight: FontWeight.w800, fontSize: 13)),
@@ -4548,12 +4652,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       : 'Manage',
                   badgeBg: customerProvider.isPaused
                       ? const Color(0xFFFEF3C7)
-                      : const Color(0xFFE2F1EA),
+                      : (customerProvider.hasActiveSubscription ? const Color(0xFFE2F1EA) : const Color(0xFFF1F5F9)),
                   badgeColor: customerProvider.isPaused
                       ? const Color(0xFFD97706)
-                      : const Color(0xFF0D5C3A),
+                      : (customerProvider.hasActiveSubscription ? const Color(0xFF0D5C3A) : const Color(0xFF64748B)),
                   onTap: () {
-                    _openSubscriptionDetails();
+                    if (customerProvider.hasActiveSubscription) {
+                      _openSubscriptionDetails();
+                    } else {
+                      _showNoSubscriptionBottomSheet();
+                    }
                   },
                 ),
                 _buildProfileItemRow(

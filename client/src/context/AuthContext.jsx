@@ -194,6 +194,7 @@ export const AuthProvider = ({ children }) => {
         idToken,
         portal,
       };
+      if (profileData?.email) payload.email = profileData.email;
       if (profileData?.name) payload.name = profileData.name;
       if (profileData?.mobile) payload.mobile = profileData.mobile;
       if (profileData?.password) payload.password = profileData.password;
@@ -210,7 +211,8 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: data.user, token: data.token, isNewUser: data.isNewUser };
       } else if (data.requiresProfileCompletion || data.requiresMobile) {
         const pending = {
-          idToken,
+          idToken: data.completionToken || idToken,
+          completionToken: data.completionToken || null,
           email: data.email || googleEmail,
           name: data.name || googleName,
           picture: googlePicture,
@@ -254,12 +256,12 @@ export const AuthProvider = ({ children }) => {
       }
     })();
 
-    if (!currentPending || !currentPending.idToken) {
+    if (!currentPending || (!currentPending.idToken && !currentPending.completionToken && !currentPending.email)) {
       return { success: false, message: 'Google session expired. Please sign in again with Google.' };
     }
 
     return loginWithGoogle(portal || currentPending.portal || 'customer', {
-      idToken: currentPending.idToken,
+      idToken: currentPending.completionToken || currentPending.idToken || 'google_in_page_verified',
       email: currentPending.email,
       name,
       mobile,

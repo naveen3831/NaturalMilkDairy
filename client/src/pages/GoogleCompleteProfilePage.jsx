@@ -519,7 +519,7 @@ export default function GoogleCompleteProfilePage({ setActiveTab }) {
         </div>
 
         {/* If no active Google session is found, show session expired / reconnect card */}
-        {!effectiveGoogleAuth || !effectiveGoogleAuth.idToken ? (
+        {!effectiveGoogleAuth || (!effectiveGoogleAuth.idToken && !effectiveGoogleAuth.completionToken && !effectiveGoogleAuth.email) ? (
           <div className="gcp-fallback-card">
             <div className="gcp-fallback-icon">
               <Mail size={28} />
@@ -589,7 +589,29 @@ export default function GoogleCompleteProfilePage({ setActiveTab }) {
               {error && (
                 <div className="gcp-error-box">
                   <AlertCircle size={18} style={{ flexShrink: 0 }} />
-                  <span>{error}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+                    <span>{error}</span>
+                    {(error.toLowerCase().includes('session') || error.toLowerCase().includes('google') || error.toLowerCase().includes('again')) && (
+                      <button
+                        type="button"
+                        onClick={handleReLoginGoogle}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#b91c1c',
+                          textDecoration: 'underline',
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          padding: 0,
+                          marginTop: '2px',
+                        }}
+                      >
+                        Click here to re-verify with Google
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

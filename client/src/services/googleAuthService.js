@@ -152,7 +152,7 @@ export async function renderGoogleButton(container, options = {}) {
       type: 'standard',
       theme: 'outline',
       size: 'large',
-      text: 'continue_with',
+      text: 'signin_with',
       shape: 'rectangular',
       logo_alignment: 'left',
       width: defaultWidth,
@@ -234,7 +234,7 @@ export async function triggerGoogleSignIn(portal = 'customer') {
           },
           error_callback: (err) => {
             if (settled) return;
-            // If popup was blocked (e.g. inside simulator iframe), try One Tap prompt immediately
+            // If popup was blocked, fallback to in-page ID client prompt
             if (idClient) {
               try {
                 activeCredentialCallback = (cred) => {
@@ -246,11 +246,7 @@ export async function triggerGoogleSignIn(portal = 'customer') {
                   if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
                     if (!settled) {
                       settled = true;
-                      reject(
-                        new Error(
-                          'Google Sign-In popup was prevented by the Mobile Simulator extension sandbox. Please test directly in Chrome (press Ctrl+Shift+M for mobile view).'
-                        )
-                      );
+                      reject(new Error('Google Sign-In prompt was closed. Please try again.'));
                     }
                   }
                 });
@@ -258,12 +254,7 @@ export async function triggerGoogleSignIn(portal = 'customer') {
               } catch (_) {}
             }
             settled = true;
-            reject(
-              new Error(
-                err?.message ||
-                  'Google Sign-In popup was prevented by the Mobile Simulator extension sandbox. Please test directly in Chrome (press Ctrl+Shift+M for mobile view).'
-              )
-            );
+            reject(new Error(err?.message || 'Google Sign-In was closed. Please try again.'));
           },
         });
 

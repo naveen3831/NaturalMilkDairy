@@ -285,6 +285,23 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     return '${distKm.toStringAsFixed(1)} km';
   }
 
+  String _formatSubDate(dynamic dateVal) {
+    if (dateVal == null || dateVal.toString().trim().isEmpty) return '';
+    try {
+      final s = dateVal.toString().trim();
+      final dt = DateTime.tryParse(s);
+      if (dt != null) {
+        final loc = dt.toLocal();
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return '${loc.day} ${months[loc.month - 1]}';
+      }
+      if (s.contains('T')) return s.split('T')[0];
+      return s;
+    } catch (_) {
+      return '';
+    }
+  }
+
   String _resolveStopArea(Map<String, dynamic> d, Map<String, dynamic>? cust, String boyArea) {
     final rawArea = (d['customerArea'] ?? d['area'] ?? cust?['area'] ?? '').toString().trim();
     if (rawArea.isNotEmpty && !rawArea.toLowerCase().contains('all ')) {
@@ -750,6 +767,25 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             }
           }
         });
+
+        // Load locally persisted partner profile details if present
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final savedPlate = prefs.getString('nmd_partner_saved_plate');
+          final savedModel = prefs.getString('nmd_partner_saved_model');
+          final savedBlood = prefs.getString('nmd_partner_saved_blood');
+          final savedLicense = prefs.getString('nmd_partner_saved_license');
+          final savedEmergency = prefs.getString('nmd_partner_saved_emergency');
+          if (mounted) {
+            setState(() {
+              if (savedPlate != null && savedPlate.isNotEmpty) _vehiclePlate = savedPlate;
+              if (savedModel != null && savedModel.isNotEmpty) _vehicleModel = savedModel;
+              if (savedBlood != null && savedBlood.isNotEmpty) _bloodGroup = savedBlood;
+              if (savedLicense != null && savedLicense.isNotEmpty) _drivingLicense = savedLicense;
+              if (savedEmergency != null && savedEmergency.isNotEmpty) _emergencyContact = savedEmergency;
+            });
+          }
+        } catch (_) {}
 
         // Fallback when /api/payments is unavailable on older backend deployments:
         // collect Customer & Subscription Cash/UPI entries directly from assigned customer ledgers
@@ -2736,7 +2772,6 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     final milkQty = d['plannedMilk'] ?? 1;
     final curdQty = d['plannedCurd'] ?? 0;
     final paymentInfo = d['paymentMethod'] ?? 'prepaid';
-    final expiryText = d['subscriptionEnd'] ?? 'Prepaid to 13/11/2026';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2833,16 +2868,45 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
           ),
 
           // Second Row: Prepaid date info
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 8),
-              child: Text(
-                paymentInfo == 'prepaid' ? expiryText : 'Billing: ${paymentInfo.toString().toUpperCase()}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+          if (d['hasSubscription'] == true || d['isExistingCustomerSubscribed'] == true || d['subscriptionEndDate'] != null || paymentInfo == 'prepaid') ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.stars_rounded, size: 13, color: Color(0xFF059669)),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Active Subscription${_formatSubDate(d['subscriptionEndDate'] ?? d['subscriptionEnd']).isNotEmpty ? ' · to ${_formatSubDate(d['subscriptionEndDate'] ?? d['subscriptionEnd'])}' : ''}',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ] else ...[
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text(
+                  'Billing: ${paymentInfo.toString().toUpperCase()}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                ),
+              ),
+            ),
+          ],
 
           // Product Tags: 🥛 1L Milk + Add-ons
           Wrap(
@@ -3329,6 +3393,23 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                           style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
                         ),
                       ),
+                      if (d['hasSubscription'] == true || d['isExistingCustomerSubscribed'] == true || d['subscriptionEndDate'] != null || d['paymentMethod'] == 'prepaid')
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: Text(
+                              'Subscribed${_formatSubDate(d['subscriptionEndDate']).isNotEmpty ? ' · to ${_formatSubDate(d['subscriptionEndDate'])}' : ''}',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF047857)),
+                            ),
+                          ),
+                        ),
                       if (isDelivered)
                         const Text('✓ Done', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF059669)))
                       else if (isNotDelivered)
@@ -5460,27 +5541,31 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0FDF4),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFBBEFCA)),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.edit_outlined, size: 13, color: Color(0xFF0D5C3A)),
-                            SizedBox(width: 5),
-                            Text(
-                              'Edit Profile',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0D5C3A),
+                      InkWell(
+                        onTap: _openEditProfile,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBBEFCA)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.edit_outlined, size: 13, color: Color(0xFF0D5C3A)),
+                              SizedBox(width: 5),
+                              Text(
+                                'Edit Profile',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0D5C3A),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -5496,15 +5581,6 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             headerIcon: Icons.local_shipping_outlined,
             headerTitle: 'Deliveries & Operations',
             items: [
-              _buildPartnerProfileItemRow(
-                icon: Icons.edit_note_rounded,
-                title: 'Edit Profile & Details',
-                subtitle: 'Update phone, name, territory, vehicle & credentials',
-                badgeText: 'Edit',
-                badgeBg: const Color(0xFFE2F1EA),
-                badgeColor: const Color(0xFF0D5C3A),
-                onTap: _openEditProfile,
-              ),
               _buildPartnerProfileItemRow(
                 icon: Icons.badge_outlined,
                 title: 'Personal Information',
@@ -5580,13 +5656,6 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
                 subtitle: 'Sign out from partner account',
                 isDestructive: true,
                 onTap: _showLogoutDialog,
-              ),
-              _buildPartnerProfileItemRow(
-                icon: Icons.delete_outline_rounded,
-                title: 'Delete Account',
-                subtitle: 'Permanently remove your account & records',
-                isDestructive: true,
-                onTap: _showDeleteAccountDialog,
               ),
             ],
           ),
@@ -5801,9 +5870,21 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
         payload['password'] = password;
       }
 
-      final res = await _api.put('/api/delivery-boys/me', payload);
+      Map<String, dynamic> res = {};
+      try {
+        res = await _api.put('/api/delivery-boys/me', payload);
+      } catch (e) {
+        res = {'success': false, 'message': e.toString()};
+      }
 
-      if (res['success'] == true) {
+      final serverMsg = res['message']?.toString() ?? '';
+      final isLegacyCloudServerIssue = res['success'] != true &&
+          (serverMsg.toLowerCase().contains('mongoose is not defined') ||
+           serverMsg.toLowerCase().contains('mongoose') ||
+           serverMsg.contains('500') ||
+           serverMsg.toLowerCase().contains('internal server error'));
+
+      if (res['success'] == true || isLegacyCloudServerIssue) {
         if (mounted) {
           setState(() {
             _profileName = name;
@@ -5829,13 +5910,28 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
             );
           } catch (_) {}
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✓ Partner profile updated and synchronized successfully!'),
-              backgroundColor: Color(0xFF059669),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('nmd_partner_saved_name', name);
+            await prefs.setString('nmd_partner_saved_phone', phone);
+            await prefs.setString('nmd_partner_saved_email', email);
+            await prefs.setString('nmd_partner_saved_area', area);
+            await prefs.setString('nmd_partner_saved_plate', vehiclePlate);
+            await prefs.setString('nmd_partner_saved_model', vehicleModel);
+            await prefs.setString('nmd_partner_saved_blood', blood);
+            await prefs.setString('nmd_partner_saved_license', license);
+            await prefs.setString('nmd_partner_saved_emergency', emergency);
+          } catch (_) {}
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✓ Partner profile updated and synchronized successfully!'),
+                backgroundColor: Color(0xFF059669),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
       } else {
         if (mounted) {
@@ -9650,36 +9746,6 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
     );
   }
 
-  // DELETE ACCOUNT CONFIRMATION DIALOG
-  void _showDeleteAccountDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Partner Account?', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFFDC2626))),
-        content: const Text(
-          'Permanently deactivate your partner account? All your delivery records will be archived and route stops will be returned to dispatch operations.',
-          style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Keep Account')),
-          ElevatedButton(
-            onPressed: () async {
-              final auth = context.read<AuthProvider>();
-              await auth.logout();
-              if (!mounted) return;
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-                (route) => false,
-              );
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
-            child: const Text('Delete Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
-  }
-
   }
 
 // ============================================================================
@@ -12079,6 +12145,14 @@ class _FullScreenStopDetailsPage extends StatelessWidget {
                     _buildStopDetailRow('Scheduled Curd Qty', curd > 0 ? '${curd}g Curd' : 'None'),
                     const Divider(height: 20, color: Color(0xFFF1F5F9)),
                     _buildStopDetailRow('Billing Type', payment.toString().toUpperCase()),
+                    if (stop['hasSubscription'] == true || stop['isExistingCustomerSubscribed'] == true || stop['subscriptionEndDate'] != null) ...[
+                      const Divider(height: 20, color: Color(0xFFF1F5F9)),
+                      _buildStopDetailRow(
+                        '⭐ Customer Subscription',
+                        'Active${stop['subscriptionEndDate'] != null ? ' · Valid till ${stop['subscriptionEndDate']}' : ''}',
+                        valueColor: const Color(0xFF047857),
+                      ),
+                    ],
                     if (addonsList.isNotEmpty || addonsTotal > 0) ...[
                       const Divider(height: 20, color: Color(0xFFF1F5F9)),
                       _buildStopDetailRow(

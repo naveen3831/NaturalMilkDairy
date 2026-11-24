@@ -38,6 +38,8 @@ const deliverySchema = new mongoose.Schema({
   totalAmount: { type: Number, default: 0 },
   status: { type: String, enum: ['pending', 'delivered', 'not_delivered'], default: 'pending' },
   notDeliveredReason: { type: String, default: '' },
+  deliveredReason: { type: String, default: '' },
+  markedBy: { type: String, default: '' },
   paymentStatus: { type: String, enum: ['credit', 'paid', 'advance', 'pending'], default: 'credit' },
   paymentAmount: { type: Number, default: 0 },
   paymentMethod: { type: String, enum: ['credit', 'cash', 'upi', 'advance', 'none'], default: 'credit' },

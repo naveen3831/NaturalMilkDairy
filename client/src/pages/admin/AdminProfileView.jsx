@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useDairy } from '../../context/DairyContext';
 import {
@@ -16,12 +16,26 @@ import {
   ChevronRight,
   Bike,
   Share2,
+  ArrowLeft,
+  DollarSign,
+  Wallet,
+  CreditCard,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
-import { CLOUDINARY_MEDIA } from '../../constants/cloudinaryMedia';
+import TodayDeliveries from './TodayDeliveries';
+import DeliveryBoysManager from './DeliveryBoysManager';
+import CustomerList from './CustomerList';
+import ContactSettingsView from './ContactSettingsView';
+import PaymentsManager from './PaymentsManager';
 
 export default function AdminProfileView({ setActiveTab }) {
   const { user, logout } = useAuth();
   const { dashboardSummary, deliveries, deliveryBoys, customers, refreshAll, fetchDashboard, fetchDeliveries } = useDairy();
+
+  // Dedicated sub-screen navigation state for mobile and responsive views
+  const [activeSubView, setActiveSubView] = useState(null);
 
   const summary = dashboardSummary || {};
   const adminName = user?.name || 'Dairy Owner';
@@ -36,6 +50,11 @@ export default function AdminProfileView({ setActiveTab }) {
   const onlinePartners = (deliveryBoys || []).filter((b) => b.isOnline).length;
   const totalCustomers = customers?.length || summary.totalCustomers || 0;
   const todayMilk = summary.todayMilkLitres || '0.0';
+  const todayCurd = summary.todayCurdGrams || '0';
+  const todaySales = summary.todaySales || 0;
+  const totalCredit = summary.totalCredit || 0;
+  const todayCash = summary.todayCash || 0;
+  const todayUpi = summary.todayUpi || 0;
 
   const handleRefresh = async () => {
     if (fetchDashboard) await fetchDashboard();
@@ -52,6 +71,229 @@ export default function AdminProfileView({ setActiveTab }) {
     }
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // FULL SUB-SCREEN RENDERER (Mobile Responsive & In-place Navigation)
+  // ══════════════════════════════════════════════════════════════════════════
+  if (activeSubView) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', paddingBottom: '24px' }}>
+        {/* Sticky Sub-Screen Top Navigation Bar */}
+        <div
+          style={{
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+            background: '#ffffff',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            padding: '10px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveSubView(null)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#f1f5f9',
+              border: 'none',
+              borderRadius: '10px',
+              padding: '8px 12px',
+              color: '#0f172a',
+              fontSize: '0.82rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+            }}
+          >
+            <ArrowLeft size={16} />
+            <span>Back to Profile</span>
+          </button>
+
+          <div style={{ textAlign: 'center', padding: '0 8px' }}>
+            <strong style={{ display: 'block', fontSize: '0.90rem', color: '#0f172a', fontWeight: 900, whiteSpace: 'nowrap' }}>
+              {activeSubView === 'deliveries' && 'Today Deliveries Dispatch'}
+              {activeSubView === 'fleet' && 'Fleet & Driver Attendance'}
+              {activeSubView === 'customers' && 'Customer Directory & Accounts'}
+              {activeSubView === 'payments' && 'Payments & History'}
+              {activeSubView === 'finance' && 'Financial & Performance'}
+              {activeSubView === 'contact' && 'Contact & Social Links'}
+            </strong>
+            <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669', display: 'inline-block' }} />
+              Realtime WebSocket Sync
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRefresh}
+            style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '10px',
+              padding: '8px 12px',
+              color: '#059669',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+            }}
+          >
+            <RefreshCw size={14} />
+            <span style={{ display: 'inline-block' }}>Refresh</span>
+          </button>
+        </div>
+
+        {/* View Content */}
+        {activeSubView === 'deliveries' && (
+          <TodayDeliveries
+            onSelectCustomerLedger={(id) => {
+              if (setActiveTab) setActiveTab('customers');
+            }}
+          />
+        )}
+
+        {activeSubView === 'fleet' && (
+          <DeliveryBoysManager
+            onNavigateToAdd={() => {
+              if (setActiveTab) setActiveTab('add-delivery-boy');
+            }}
+            onNavigateToEdit={(boyId) => {
+              if (setActiveTab) setActiveTab('edit-delivery-boy');
+            }}
+          />
+        )}
+
+        {activeSubView === 'customers' && <CustomerList />}
+
+        {activeSubView === 'payments' && <PaymentsManager />}
+
+        {activeSubView === 'contact' && <ContactSettingsView />}
+
+        {activeSubView === 'finance' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Sales & Revenue Hero Card */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #064e3b 0%, #047857 100%)',
+                borderRadius: '18px',
+                padding: '20px',
+                color: '#ffffff',
+                boxShadow: '0 4px 16px rgba(5,150,105,0.22)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#a7f3d0' }}>
+                  TODAY TOTAL SALES
+                </span>
+                <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>
+                  ● Realtime Ledger
+                </span>
+              </div>
+              <div style={{ fontSize: '2rem', fontWeight: 900 }}>₹{todaySales}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                <div>
+                  <span style={{ fontSize: '0.72rem', color: '#d1fae5', display: 'block' }}>Cash Collections</span>
+                  <strong style={{ fontSize: '1.05rem', fontWeight: 900 }}>₹{todayCash}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.72rem', color: '#d1fae5', display: 'block' }}>UPI & Digital</span>
+                  <strong style={{ fontSize: '1.05rem', fontWeight: 900 }}>₹{todayUpi}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Volume Breakdown Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <Droplet size={17} color="#2563eb" />
+                  <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700 }}>Milk Dispatched</span>
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{todayMilk} L</div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>Doorstep drops today</div>
+              </div>
+
+              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <TrendingUp size={17} color="#d97706" />
+                  <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700 }}>Curd Produced</span>
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{todayCurd} g</div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>Clay pots & jars</div>
+              </div>
+            </div>
+
+            {/* Outstanding Credit Card */}
+            <div
+              style={{
+                background: totalCredit > 0 ? '#fff1f2' : '#ffffff',
+                borderRadius: '16px',
+                border: totalCredit > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
+                padding: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
+                  Total Outstanding Balance
+                </span>
+                <strong style={{ fontSize: '1.25rem', fontWeight: 900, color: totalCredit > 0 ? '#dc2626' : '#059669' }}>
+                  ₹{totalCredit}
+                </strong>
+              </div>
+              <span
+                style={{
+                  background: totalCredit > 0 ? '#dc2626' : '#059669',
+                  color: '#ffffff',
+                  padding: '4px 10px',
+                  borderRadius: '10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                }}
+              >
+                {totalCredit > 0 ? 'Recovery Due' : 'All Clear'}
+              </span>
+            </div>
+
+            {/* Active Operations Stats */}
+            <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '16px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '0.90rem', fontWeight: 800, color: '#0f172a' }}>
+                Operational Fulfillment Snapshot
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
+                <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>{totalDeliveries}</div>
+                  <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
+                </div>
+                <div style={{ background: '#ecfdf5', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669' }}>{onlinePartners}</div>
+                  <div style={{ fontSize: '0.70rem', color: '#059669', fontWeight: 700 }}>Online Drivers</div>
+                </div>
+                <div style={{ background: '#f5f3ff', padding: '10px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#7c3aed' }}>{totalCustomers}</div>
+                  <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700 }}>Households</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DEFAULT PROFILE MENU (Main View)
+  // ══════════════════════════════════════════════════════════════════════════
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '20px' }}>
       {/* 1. Admin Identity Card */}
@@ -113,14 +355,14 @@ export default function AdminProfileView({ setActiveTab }) {
         </div>
       </div>
 
-      {/* 2. Operations Snapshot (4 Mini Cards Grid) */}
+      {/* 2. Operations Snapshot (4 Mini Cards Grid - Clickable to open full screen) */}
       <div>
         <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
           Live Operations Snapshot
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <div
-            onClick={() => setActiveTab('deliveries')}
+            onClick={() => setActiveSubView('deliveries')}
             style={{
               background: '#ffffff',
               borderRadius: '14px',
@@ -142,7 +384,7 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('delivery-boys')}
+            onClick={() => setActiveSubView('fleet')}
             style={{
               background: '#ffffff',
               borderRadius: '14px',
@@ -164,7 +406,7 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('customers')}
+            onClick={() => setActiveSubView('customers')}
             style={{
               background: '#ffffff',
               borderRadius: '14px',
@@ -186,7 +428,7 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('dashboard')}
+            onClick={() => setActiveSubView('finance')}
             style={{
               background: '#ffffff',
               borderRadius: '14px',
@@ -199,17 +441,17 @@ export default function AdminProfileView({ setActiveTab }) {
             }}
           >
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Droplet size={18} color="#d97706" />
+              <TrendingUp size={18} color="#d97706" />
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Today Volume</div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a' }}>{todayMilk} L Milk</div>
+              <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Financial Ledger</div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a' }}>View Audit →</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Management Shortcuts */}
+      {/* 4. Management Shortcuts */}
       <div
         style={{
           background: '#ffffff',
@@ -225,7 +467,7 @@ export default function AdminProfileView({ setActiveTab }) {
 
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div
-            onClick={() => setActiveTab('deliveries')}
+            onClick={() => setActiveSubView('deliveries')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -241,7 +483,7 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('delivery-boys')}
+            onClick={() => setActiveSubView('fleet')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -257,7 +499,7 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('customers')}
+            onClick={() => setActiveSubView('customers')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -273,8 +515,45 @@ export default function AdminProfileView({ setActiveTab }) {
           </div>
 
           <div
-            onClick={() => setActiveTab('contact-settings')}
+            onClick={() => setActiveSubView('payments')}
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <CreditCard size={17} color="#059669" />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Payments & History</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>All partner cash, user payments, handovers & audit logs</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#059669', background: '#d1fae5', padding: '2px 8px', borderRadius: '10px' }}>
+                Live
+              </span>
+              <ChevronRight size={18} color="#94a3b8" />
+            </div>
+          </div>
+
+          <div
+            onClick={() => setActiveSubView('finance')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <TrendingUp size={17} color="#059669" />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Financial & Ledger Performance</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Tap to view live sales, cash/UPI audit & customer ledgers</div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#94a3b8" />
+          </div>
+
+          <div
+            onClick={() => setActiveSubView('contact')}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#ecfdf5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -287,26 +566,10 @@ export default function AdminProfileView({ setActiveTab }) {
             </div>
             <ChevronRight size={18} color="#94a3b8" />
           </div>
-
-          <div
-            onClick={handleRefresh}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <RefreshCw size={17} color="#059669" />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Refresh System Data</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Sync latest orders, payments & telemetry</div>
-              </div>
-            </div>
-            <ChevronRight size={18} color="#94a3b8" />
-          </div>
         </div>
       </div>
 
-      {/* 4. Sign Out Button */}
+      {/* 5. Sign Out Button */}
       <button
         type="button"
         onClick={handleSignOut}

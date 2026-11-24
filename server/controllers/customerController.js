@@ -87,12 +87,46 @@ const getCustomers = async (req, res) => {
 
     const customers = await Customer.find(filter).sort({ createdAt: -1 }).lean();
 
+    const custIds = customers.map((c) => c.customerId).filter(Boolean);
+    const custObjIds = customers.map((c) => c._id).filter(Boolean);
+    const activeSubs = (custIds.length || custObjIds.length)
+      ? await Subscription.find({
+          $or: [
+            { customerId: { $in: custIds } },
+            { customer: { $in: custObjIds } },
+          ],
+          status: { $in: ['active', 'paused'] },
+        }).sort({ createdAt: -1 }).lean().catch(() => [])
+      : [];
+
+    const subMap = new Map();
+    for (const s of activeSubs) {
+      if (s.customerId && !subMap.has(s.customerId)) subMap.set(s.customerId, s);
+      if (s.customer && !subMap.has(s.customer.toString())) subMap.set(s.customer.toString(), s);
+    }
+
     return res.json({
       success: true,
       count: customers.length,
       customers: customers.map((customer) => {
         const safeCustomer = { ...customer };
         delete safeCustomer.password;
+        const activeSub = subMap.get(customer.customerId) || subMap.get(customer._id.toString());
+        if (activeSub) {
+          safeCustomer.subscription = {
+            ...(safeCustomer.subscription || {}),
+            status: activeSub.status || 'active',
+            startDate: activeSub.startDate || safeCustomer.subscription?.startDate,
+            endDate: activeSub.endDate || safeCustomer.subscription?.endDate,
+            amount: activeSub.amount || safeCustomer.subscription?.amount,
+            plan: activeSub.plan || safeCustomer.deliveryPlan,
+          };
+          safeCustomer.hasActiveSubscription = true;
+          safeCustomer.subscriptionEndDate = activeSub.endDate;
+        } else if (safeCustomer.subscription?.status === 'active' || safeCustomer.subscription?.endDate) {
+          safeCustomer.hasActiveSubscription = true;
+          safeCustomer.subscriptionEndDate = safeCustomer.subscription?.endDate;
+        }
         return { ...safeCustomer, id: safeCustomer._id.toString() };
       }),
     });
@@ -242,10 +276,26 @@ const createCustomer = async (req, res) => {
     // Duplicate check for mobile
     const existingByMobile = await Customer.findOne({ mobile: cleanMobile });
     if (existingByMobile) {
+      const activeSub = await Subscription.findOne({
+        $or: [{ customerId: existingByMobile.customerId }, { customer: existingByMobile._id }],
+        status: { $in: ['active', 'paused'] },
+      }).sort({ createdAt: -1 }).lean().catch(() => null);
+      const sub = activeSub || existingByMobile.subscription;
+      const subEndDate = sub?.endDate || activeSub?.endDate;
+      const subInfoText = subEndDate ? ` Has active subscription valid until ${formatDate(new Date(subEndDate))}.` : (sub?.status === 'active' ? ' Has an active subscription.' : '');
       return res.status(400).json({
         success: false,
-        message: `Phone number (${cleanMobile}) is already registered with customer "${existingByMobile.name}". Please change the phone number.`,
+        message: `Phone number (${cleanMobile}) is already registered with customer "${existingByMobile.name}".${subInfoText}`,
         field: 'mobile',
+        existingCustomer: {
+          id: existingByMobile._id.toString(),
+          customerId: existingByMobile.customerId,
+          name: existingByMobile.name,
+          mobile: existingByMobile.mobile,
+          subscription: sub,
+          hasActiveSubscription: Boolean(subEndDate || sub?.status === 'active'),
+          subscriptionEndDate: subEndDate,
+        },
       });
     }
 
