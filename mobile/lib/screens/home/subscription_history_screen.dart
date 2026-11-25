@@ -23,16 +23,6 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
     });
   }
 
-  Future<void> _handleRefresh() async {
-    try {
-      final dynamic cp = context.read<CustomerProvider>();
-      final dynamic res = cp.fetchSubscriptionHistory();
-      if (res is Future) {
-        await res;
-      }
-    } catch (_) {}
-  }
-
   String _formatDate(dynamic dateVal) {
     if (dateVal == null) return 'N/A';
     try {
@@ -104,10 +94,7 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
           child: Container(color: const Color(0xFFE2E8F0), height: 1),
         ),
       ),
-      body: RefreshIndicator(
-        color: const Color(0xFF0D5C3A),
-        onRefresh: _handleRefresh,
-        child: customer.isLoading && history.isEmpty && !customer.hasActiveSubscription
+      body: customer.isLoading && history.isEmpty && !customer.hasActiveSubscription
             ? const Center(
                 child: CircularProgressIndicator(color: Color(0xFF0D5C3A)),
               )
@@ -161,7 +148,6 @@ class _SubscriptionHistoryScreenState extends State<SubscriptionHistoryScreen> {
                         }),
                     ],
                   ),
-      ),
     );
   }
 

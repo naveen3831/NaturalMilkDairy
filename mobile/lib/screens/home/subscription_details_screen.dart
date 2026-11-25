@@ -1612,7 +1612,7 @@ class _SubscriptionDetailsScreenState extends State<SubscriptionDetailsScreen> {
                       ),
                     );
                   },
-                  icon: const Icon(Icons.refresh_rounded, size: 14),
+                  icon: const Icon(Icons.payment_rounded, size: 14),
                   label: const Text('Retry Payment', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFDC2626),
@@ -2253,7 +2253,7 @@ void _showRazorpayFailedDialog({
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
+              icon: const Icon(Icons.payment_rounded, size: 18),
               label: const Text('Retry Payment', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5)),
             ),
           ),

@@ -119,8 +119,7 @@ export default function AdminProfileView({ setActiveTab }) {
               {activeSubView === 'deliveries' && 'Today Deliveries Dispatch'}
               {activeSubView === 'fleet' && 'Fleet & Driver Attendance'}
               {activeSubView === 'customers' && 'Customer Directory & Accounts'}
-              {activeSubView === 'payments' && 'Payments & History'}
-              {activeSubView === 'finance' && 'Financial & Performance'}
+              {(activeSubView === 'payments' || activeSubView === 'finance') && 'Finance, Payments & History'}
               {activeSubView === 'contact' && 'Contact & Social Links'}
             </strong>
             <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -173,120 +172,9 @@ export default function AdminProfileView({ setActiveTab }) {
 
         {activeSubView === 'customers' && <CustomerList />}
 
-        {activeSubView === 'payments' && <PaymentsManager />}
+        {(activeSubView === 'payments' || activeSubView === 'finance') && <PaymentsManager />}
 
         {activeSubView === 'contact' && <ContactSettingsView />}
-
-        {activeSubView === 'finance' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Sales & Revenue Hero Card */}
-            <div
-              style={{
-                background: 'linear-gradient(135deg, #064e3b 0%, #047857 100%)',
-                borderRadius: '18px',
-                padding: '20px',
-                color: '#ffffff',
-                boxShadow: '0 4px 16px rgba(5,150,105,0.22)',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#a7f3d0' }}>
-                  TODAY TOTAL SALES
-                </span>
-                <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '10px', fontWeight: 800 }}>
-                  ● Realtime Ledger
-                </span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 900 }}>₹{todaySales}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '14px', paddingTop: '14px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
-                <div>
-                  <span style={{ fontSize: '0.72rem', color: '#d1fae5', display: 'block' }}>Cash Collections</span>
-                  <strong style={{ fontSize: '1.05rem', fontWeight: 900 }}>₹{todayCash}</strong>
-                </div>
-                <div>
-                  <span style={{ fontSize: '0.72rem', color: '#d1fae5', display: 'block' }}>UPI & Digital</span>
-                  <strong style={{ fontSize: '1.05rem', fontWeight: 900 }}>₹{todayUpi}</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Volume Breakdown Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <Droplet size={17} color="#2563eb" />
-                  <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700 }}>Milk Dispatched</span>
-                </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{todayMilk} L</div>
-                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>Doorstep drops today</div>
-              </div>
-
-              <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <TrendingUp size={17} color="#d97706" />
-                  <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700 }}>Curd Produced</span>
-                </div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{todayCurd} g</div>
-                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>Clay pots & jars</div>
-              </div>
-            </div>
-
-            {/* Outstanding Credit Card */}
-            <div
-              style={{
-                background: totalCredit > 0 ? '#fff1f2' : '#ffffff',
-                borderRadius: '16px',
-                border: totalCredit > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0',
-                padding: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div>
-                <span style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 700, display: 'block' }}>
-                  Total Outstanding Balance
-                </span>
-                <strong style={{ fontSize: '1.25rem', fontWeight: 900, color: totalCredit > 0 ? '#dc2626' : '#059669' }}>
-                  ₹{totalCredit}
-                </strong>
-              </div>
-              <span
-                style={{
-                  background: totalCredit > 0 ? '#dc2626' : '#059669',
-                  color: '#ffffff',
-                  padding: '4px 10px',
-                  borderRadius: '10px',
-                  fontSize: '0.75rem',
-                  fontWeight: 800,
-                }}
-              >
-                {totalCredit > 0 ? 'Recovery Due' : 'All Clear'}
-              </span>
-            </div>
-
-            {/* Active Operations Stats */}
-            <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '16px' }}>
-              <h4 style={{ margin: '0 0 12px 0', fontSize: '0.90rem', fontWeight: 800, color: '#0f172a' }}>
-                Operational Fulfillment Snapshot
-              </h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', textAlign: 'center' }}>
-                <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>{totalDeliveries}</div>
-                  <div style={{ fontSize: '0.70rem', color: '#64748b', fontWeight: 700 }}>Total Drops</div>
-                </div>
-                <div style={{ background: '#ecfdf5', padding: '10px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669' }}>{onlinePartners}</div>
-                  <div style={{ fontSize: '0.70rem', color: '#059669', fontWeight: 700 }}>Online Drivers</div>
-                </div>
-                <div style={{ background: '#f5f3ff', padding: '10px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#7c3aed' }}>{totalCustomers}</div>
-                  <div style={{ fontSize: '0.70rem', color: '#7c3aed', fontWeight: 700 }}>Households</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -523,8 +411,8 @@ export default function AdminProfileView({ setActiveTab }) {
                 <CreditCard size={17} color="#059669" />
               </div>
               <div>
-                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Payments & History</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>All partner cash, user payments, handovers & audit logs</div>
+                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Finance, Payments & History</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Earnings, date-range audit, partner settlements & customer ledgers</div>
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -533,22 +421,6 @@ export default function AdminProfileView({ setActiveTab }) {
               </span>
               <ChevronRight size={18} color="#94a3b8" />
             </div>
-          </div>
-
-          <div
-            onClick={() => setActiveSubView('finance')}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <TrendingUp size={17} color="#059669" />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Financial & Ledger Performance</div>
-                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Tap to view live sales, cash/UPI audit & customer ledgers</div>
-              </div>
-            </div>
-            <ChevronRight size={18} color="#94a3b8" />
           </div>
 
           <div

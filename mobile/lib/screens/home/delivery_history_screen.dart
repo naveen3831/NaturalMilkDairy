@@ -59,13 +59,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
     super.dispose();
   }
 
-  Future<void> _handleRefresh() async {
-    try {
-      final customerProvider = context.read<CustomerProvider>();
-      await customerProvider.loadAllCustomerData(silent: true);
-    } catch (_) {}
-  }
-
   Map<String, String> _parseDateParts(String raw) {
     if (raw.isEmpty) {
       return {'day': 'Wed', 'dayNum': '28', 'monthYear': 'Oct 2026', 'full': 'Morning Drop'};
@@ -347,10 +340,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _handleRefresh,
-        color: const Color(0xFF0D5C3A),
-        child: CustomScrollView(
+      body: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
@@ -640,7 +630,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
                       const SizedBox(height: 4),
                       Text(
                         _searchQuery.isNotEmpty
-                            ? 'Try clearing search filters or pull down to refresh history.'
+                            ? 'Try clearing search filters.'
                             : 'Your morning doorstep deliveries will appear here once orders begin.',
                         style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                         textAlign: TextAlign.center,
@@ -663,7 +653,6 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         ),
     ],
   ),
-),
 );
 }
 

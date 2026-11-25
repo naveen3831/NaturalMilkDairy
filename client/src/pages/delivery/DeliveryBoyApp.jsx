@@ -17,7 +17,8 @@ import {
   AlertCircle,
   Wifi,
   WifiOff,
-  RefreshCw,
+  Loader2,
+  Repeat,
   Wallet,
   LogOut,
   Calendar,
@@ -967,7 +968,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
         });
         setIsLocatingGps(false);
         if (!silent) {
-          setRouteGpsNotice('📍 Live GPS detected — nearest customers shown first!');
+          setRouteGpsNotice('Live GPS updated — nearest stops shown first.');
           setTimeout(() => setRouteGpsNotice(''), 3500);
         }
       },
@@ -1326,37 +1327,35 @@ export default function DeliveryBoyApp({ setActiveTab }) {
     loadAssignedCustomers();
   }, [loadAssignedCustomers]);
 
-  // Real-time synchronization for deliveries and customers
+  // Real-time synchronization for deliveries, customers, and subscriptions
   useEffect(() => {
     if (!wsSubscribe) return;
-    const unsub = wsSubscribe('DELIVERY_UPDATED', () => {
+    const syncDeliveriesAndCustomers = () => {
       fetchDeliveries(selectedDate, 'all', boyId);
       fetchAllPartnerDeliveries();
       loadAssignedCustomers();
-    });
-    const unsubCust = wsSubscribe('CUSTOMER_UPDATED', () => {
-      loadAssignedCustomers();
-      fetchDeliveries(selectedDate, 'all', boyId);
-      fetchAllPartnerDeliveries();
-    });
-    const unsubCustCreated = wsSubscribe('CUSTOMER_CREATED', () => {
-      loadAssignedCustomers();
-      fetchDeliveries(selectedDate, 'all', boyId);
-      fetchAllPartnerDeliveries();
-    });
+    };
+    const unsub1 = wsSubscribe('DELIVERY_UPDATED', syncDeliveriesAndCustomers);
+    const unsub2 = wsSubscribe('DELIVERY_CREATED', syncDeliveriesAndCustomers);
+    const unsub3 = wsSubscribe('DELIVERY_ASSIGNED', syncDeliveriesAndCustomers);
+    const unsub4 = wsSubscribe('CUSTOMER_UPDATED', syncDeliveriesAndCustomers);
+    const unsub5 = wsSubscribe('CUSTOMER_CREATED', syncDeliveriesAndCustomers);
+    const unsub6 = wsSubscribe('CUSTOMER_DELETED', syncDeliveriesAndCustomers);
+    const unsub7 = wsSubscribe('SUBSCRIPTION_UPDATED', syncDeliveriesAndCustomers);
+    const unsub8 = wsSubscribe('SUBSCRIPTION_ACTIVATED', syncDeliveriesAndCustomers);
+    const unsub9 = wsSubscribe('SUBSCRIPTION_EXTENDED', syncDeliveriesAndCustomers);
+    const unsub10 = wsSubscribe('SUBSCRIPTION_PAUSED', syncDeliveriesAndCustomers);
+    const unsub11 = wsSubscribe('SUBSCRIPTION_RESUMED', syncDeliveriesAndCustomers);
     const unsubLoc = wsSubscribe('LOCATION_UPDATED', (payload) => {
-      loadAssignedCustomers();
-      fetchDeliveries(selectedDate, 'all', boyId);
-      fetchAllPartnerDeliveries();
+      syncDeliveriesAndCustomers();
       if (payload && payload.customerName) {
-        showToast(`📍 Location updated for ${payload.customerName}!`);
+        showToast(`Location updated for ${payload.customerName}`);
       }
     });
     return () => {
-      if (typeof unsub === 'function') unsub();
-      if (typeof unsubCust === 'function') unsubCust();
-      if (typeof unsubCustCreated === 'function') unsubCustCreated();
-      if (typeof unsubLoc === 'function') unsubLoc();
+      [unsub1, unsub2, unsub3, unsub4, unsub5, unsub6, unsub7, unsub8, unsub9, unsub10, unsub11, unsubLoc].forEach((u) => {
+        if (typeof u === 'function') u();
+      });
     };
   }, [wsSubscribe, selectedDate, boyId, fetchDeliveries, fetchAllPartnerDeliveries, loadAssignedCustomers]);
 
@@ -2234,74 +2233,19 @@ export default function DeliveryBoyApp({ setActiveTab }) {
             max-width: 100% !important;
             width: 100% !important;
           }
-          /* Route & Stops Mobile View Redesign */
+          /* Route & Stops Mobile View */
           .driver-route-page {
-            gap: 10px !important;
-          }
-          .driver-route-header-banner {
-            padding: 12px 14px !important;
-            border-radius: 14px !important;
-            gap: 10px !important;
-          }
-          .driver-route-header-desc {
-            display: none !important;
-          }
-          .driver-route-header-actions {
-            width: 100% !important;
-            display: flex !important;
-            gap: 8px !important;
-          }
-          .driver-route-nav-btn {
-            flex: 1 !important;
-            justify-content: center !important;
-            padding: 10px 14px !important;
-            font-size: 0.84rem !important;
-          }
-          .driver-route-kpi-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 8px !important;
-          }
-          .driver-route-kpi-card {
-            padding: 10px 12px !important;
-            border-radius: 12px !important;
-          }
-          .driver-route-kpi-val {
-            font-size: 1.25rem !important;
-            margin-top: 2px !important;
-          }
-          .driver-route-kpi-sub {
-            font-size: 0.68rem !important;
-            margin-top: 2px !important;
-          }
-          .driver-route-progress-card {
-            padding: 10px 12px !important;
-            border-radius: 12px !important;
-          }
-          .driver-route-filter-bar {
-            padding: 8px 10px !important;
-            border-radius: 12px !important;
-            flex-direction: column !important;
-            align-items: stretch !important;
-            gap: 8px !important;
+            gap: 12px !important;
           }
           .driver-route-filter-scroll {
             display: flex !important;
             gap: 6px !important;
             overflow-x: auto !important;
-            padding-bottom: 2px !important;
             scrollbar-width: none !important;
             width: 100% !important;
           }
           .driver-route-filter-scroll::-webkit-scrollbar {
             display: none !important;
-          }
-          .driver-route-search-wrap {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-          .driver-route-stop-card {
-            padding: 14px 14px !important;
-            border-radius: 14px !important;
           }
           /* Customer Page 2 Cards Per Row on Mobile */
           .driver-customers-stat-grid {
@@ -3842,29 +3786,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
                     No Deliveries Assigned Today
                   </h3>
-                  <p style={{ color: '#64748b', fontSize: '0.84rem', maxWidth: '380px', margin: '0 auto 16px auto', lineHeight: 1.5 }}>
-                    Route: <strong>{boyArea}</strong> • Date: <strong>{selectedDate}</strong><br />
-                    Check with dairy owner or switch date.
+                  <p style={{ color: '#64748b', fontSize: '0.84rem', maxWidth: '380px', margin: '0 auto', lineHeight: 1.5 }}>
+                    Route: <strong>{boyArea}</strong> · Date: <strong>{selectedDate}</strong><br />
+                    Stops update automatically in real time as assigned.
                   </p>
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    style={{
-                      padding: '8px 18px',
-                      borderRadius: '8px',
-                      background: '#059669',
-                      color: '#ffffff',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                  >
-                    <RefreshCw size={13} className={isRefreshing ? 'animate-spin' : ''} /> Refresh Deliveries
-                  </button>
                 </div>
               ) : (
                 <div className="driver-delivery-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -4692,177 +4617,170 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               return (
                 <div
                   key={item.id || item._id || rawIdx}
-                  className="driver-customer-card"
                   onClick={() => setSelectedRouteStop({ ...item, originalIndex: rankIdx, customerInfo })}
                   style={{
                     background: '#ffffff',
                     border: isNearestPending ? '1.5px solid #059669' : '1px solid #e2e8f0',
                     borderRadius: '14px',
-                    padding: isMobile ? '12px 13px' : '14px 16px',
-                    boxShadow: isNearestPending ? '0 3px 10px rgba(5,150,105,0.1)' : '0 1px 3px rgba(0,0,0,0.02)',
+                    padding: isMobile ? '12px 14px' : '14px 16px',
+                    boxShadow: isNearestPending ? '0 2px 10px rgba(5,150,105,0.08)' : '0 1px 2px rgba(15,23,42,0.03)',
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '10px',
+                    flexDirection: 'column',
+                    gap: '8px',
                     cursor: 'pointer',
-                    transition: 'all 0.15s ease',
+                    transition: 'border-color 0.15s ease',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                    <div style={{ position: 'relative', flexShrink: 0 }}>
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '50%',
-                          background: isDone
-                            ? 'linear-gradient(135deg, #059669, #10b981)'
-                            : isMissed
-                            ? 'linear-gradient(135deg, #dc2626, #ef4444)'
-                            : isNearestPending
-                            ? 'linear-gradient(135deg, #065f46, #059669)'
-                            : 'linear-gradient(135deg, #2563eb, #3b82f6)',
-                          color: '#ffffff',
-                          fontWeight: 800,
-                          fontSize: '0.95rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        {(item.customerName || 'C').charAt(0).toUpperCase()}
-                      </div>
+                  {/* Top Row: Rank + Customer Name + Status */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                       <span
                         style={{
-                          position: 'absolute',
-                          bottom: '-3px',
-                          right: '-4px',
-                          background: '#0f172a',
-                          color: '#ffffff',
-                          fontSize: '0.62rem',
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '8px',
+                          background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : isNearestPending ? '#059669' : '#f1f5f9',
+                          color: isDone ? '#059669' : isMissed ? '#dc2626' : isNearestPending ? '#ffffff' : '#334155',
+                          fontSize: '0.74rem',
                           fontWeight: 800,
-                          padding: '1px 5px',
-                          borderRadius: '999px',
-                          border: '1.5px solid #ffffff',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
                         }}
                       >
                         #{rankIdx + 1}
                       </span>
-                    </div>
-
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.94rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {item.customerName}
-                        </span>
-                        {isNearestPending && (
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span
                             style={{
-                              fontSize: '0.62rem',
-                              fontWeight: 900,
-                              padding: '1px 6px',
-                              borderRadius: '5px',
-                              background: '#dcfce7',
-                              color: '#047857',
-                              border: '1px solid #86efac',
-                            }}
-                          >
-                            NEAREST
-                          </span>
-                        )}
-                        {isSubscription && (
-                          <span
-                            style={{
-                              fontSize: '0.62rem',
                               fontWeight: 800,
-                              padding: '1px 6px',
-                              borderRadius: '4px',
-                              background: '#ecfdf5',
-                              color: '#047857',
-                              border: '1px solid #a7f3d0',
+                              fontSize: '0.94rem',
+                              color: '#0f172a',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: '100%',
                             }}
                           >
-                            ⭐ Active Sub{item.subscriptionEndDate ? ` · to ${new Date(item.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}
+                            {item.customerName}
                           </span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                        <span
-                          style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            color: '#1d4ed8',
-                            background: '#eff6ff',
-                            padding: '1px 6px',
-                            borderRadius: '5px',
-                            border: '1px solid #bfdbfe',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '3px',
-                          }}
-                        >
-                          <Navigation size={10} />
-                          <span>{distLabel}</span>
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            color: '#475569',
-                            background: '#f1f5f9',
-                            padding: '1px 6px',
-                            borderRadius: '5px',
-                          }}
-                        >
-                          {areaName}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            color: '#059669',
-                            background: '#ecfdf5',
-                            padding: '1px 6px',
-                            borderRadius: '5px',
-                            border: '1px solid #d1fae5',
-                          }}
-                        >
-                          🥛 {item.actualMilk || item.plannedMilk || 1}L
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', fontSize: '0.73rem', color: '#64748b' }}>
-                        <MapPin size={11} color="#94a3b8" style={{ flexShrink: 0 }} />
-                        <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {doorstepAddress}{customerPhone ? ` · ${customerPhone}` : ''}
-                        </span>
+                          {isNearestPending && (
+                            <span
+                              style={{
+                                fontSize: '0.64rem',
+                                fontWeight: 800,
+                                padding: '1px 6px',
+                                borderRadius: '999px',
+                                background: '#ecfdf5',
+                                color: '#047857',
+                                border: '1px solid #a7f3d0',
+                              }}
+                            >
+                              Next
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap', fontSize: '0.74rem', color: '#64748b' }}>
+                          <span style={{ fontWeight: 700, color: '#047857' }}>
+                            {item.actualMilk || item.plannedMilk || 1}L Milk
+                          </span>
+                          {(item.actualCurd || item.plannedCurd) > 0 && (
+                            <span>· {item.actualCurd || item.plannedCurd}g Curd</span>
+                          )}
+                          <span>· {distLabel}</span>
+                          <span>· {areaName}</span>
+                          {isSubscription && (
+                            <span style={{ color: '#4f46e5', fontWeight: 700 }}>· Prepaid</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    <a
-                      href={mapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      title="Navigate to customer"
+                    <span
                       style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '8px',
-                        background: '#eff6ff',
-                        border: '1px solid #bfdbfe',
-                        color: '#1d4ed8',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textDecoration: 'none',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        padding: '3px 8px',
+                        borderRadius: '999px',
+                        background: isDone ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
+                        color: isDone ? '#047857' : isMissed ? '#b91c1c' : '#b45309',
+                        border: `1px solid ${isDone ? '#bbf7d0' : isMissed ? '#fecaca' : '#fde68a'}`,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      <Navigation size={14} />
-                    </a>
+                      {isDone ? 'Delivered' : isMissed ? 'Skipped' : 'Pending'}
+                    </span>
+                  </div>
+
+                  {/* Address Line */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.76rem', color: '#475569', lineHeight: 1.4 }}>
+                    <MapPin size={13} color="#94a3b8" style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span style={{ minWidth: 0, wordBreak: 'break-word' }}>
+                      {doorstepAddress}{customerPhone ? ` · ${customerPhone}` : ''}
+                    </span>
+                  </div>
+
+                  {/* Clean Footer Actions */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px',
+                      paddingTop: '8px',
+                      borderTop: '1px solid #f1f5f9',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {customerPhone && (
+                        <a
+                          href={`tel:${customerPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            color: '#334155',
+                            fontSize: '0.74rem',
+                            fontWeight: 700,
+                            textDecoration: 'none',
+                          }}
+                        >
+                          <Phone size={12} />
+                          <span>Call</span>
+                        </a>
+                      )}
+                      <a
+                        href={mapUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          padding: '6px 10px',
+                          borderRadius: '8px',
+                          background: '#eff6ff',
+                          border: '1px solid #bfdbfe',
+                          color: '#1d4ed8',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                          textDecoration: 'none',
+                        }}
+                      >
+                        <Navigation size={12} />
+                        <span>Map</span>
+                      </a>
+                    </div>
+
                     {isPending ? (
                       <button
                         type="button"
@@ -4873,14 +4791,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '4px',
-                          padding: '6px 10px',
+                          gap: '5px',
+                          padding: '7px 14px',
                           borderRadius: '8px',
                           border: 'none',
                           background: '#059669',
                           color: '#ffffff',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
+                          fontSize: '0.76rem',
+                          fontWeight: 800,
                           cursor: 'pointer',
                         }}
                       >
@@ -4888,27 +4806,18 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         <span>Deliver</span>
                       </button>
                     ) : (
-                      <span
-                        style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: '999px',
-                          background: isDone ? '#dcfce7' : '#fee2e2',
-                          color: isDone ? '#166534' : '#991b1b',
-                        }}
-                      >
-                        {isDone ? '✓ Done' : '✕ Skipped'}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', fontWeight: 700, color: '#64748b' }}>
+                        <span>View Details</span>
+                        <ChevronRight size={14} />
                       </span>
                     )}
-                    {!isMobile && <ChevronRight size={18} color="#94a3b8" />}
                   </div>
                 </div>
               );
             };
 
             return (
-              <div className="driver-route-page" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '16px' }}>
+              <div className="driver-route-page" style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
                 {routeGpsNotice && (
                   <div
                     style={{
@@ -4917,7 +4826,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       color: '#065f46',
                       borderRadius: '10px',
                       padding: '8px 12px',
-                      fontSize: '0.78rem',
+                      fontSize: '0.76rem',
                       fontWeight: 700,
                     }}
                   >
@@ -4925,67 +4834,34 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 )}
 
-                {/* 1. Header Banner */}
+                {/* 1. Clean Minimal Route Header */}
                 <div
-                  className="driver-route-header-banner"
                   style={{
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: isMobile ? '14px' : '16px',
-                    padding: isMobile ? '12px 14px' : '18px 20px',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: isMobile ? 'stretch' : 'center',
-                    flexDirection: isMobile ? 'column' : 'row',
-                    gap: isMobile ? '10px' : '14px',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: isMobile ? '2px 2px 0' : '4px 2px',
                   }}
                 >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '999px',
-                          fontSize: '0.72rem',
-                          fontWeight: 800,
-                          background: partnerGps ? '#ecfdf5' : '#eff6ff',
-                          color: partnerGps ? '#065f46' : '#1d4ed8',
-                          border: `1px solid ${partnerGps ? '#a7f3d0' : '#bfdbfe'}`,
-                        }}
-                      >
-                        <Navigation size={11} /> {partnerGps ? 'Live GPS Nearest Sort' : `${boyArea || 'Madhapur'} Hub Sort`}
-                      </span>
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          padding: '3px 8px',
-                          borderRadius: '999px',
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          background: '#f8fafc',
-                          color: '#475569',
-                          border: '1px solid #e2e8f0',
-                        }}
-                      >
-                        <Calendar size={11} /> {selectedDate}
-                      </span>
-                    </div>
-
-                    <h1 className="driver-route-header-title" style={{ fontSize: isMobile ? '1.12rem' : '1.28rem', fontWeight: 800, color: '#0f172a', margin: '2px 0 0 0' }}>
-                      Location-Wise Nearest Route
+                  <div style={{ minWidth: 0 }}>
+                    <h1
+                      style={{
+                        fontSize: isMobile ? '1.12rem' : '1.3rem',
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        margin: 0,
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      Delivery Route
                     </h1>
-                    <p className="driver-route-header-desc" style={{ color: '#64748b', fontSize: '0.82rem', margin: '3px 0 0 0', lineHeight: 1.45 }}>
-                      {sortedLocations.length} locations • {myDeliveries.length} drops sorted closest customer first.
-                    </p>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                      {sortedLocations.length} {sortedLocations.length === 1 ? 'area' : 'areas'} · {myDeliveries.length} stops
+                    </div>
                   </div>
 
-                  <div className="driver-route-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                     <button
                       type="button"
                       onClick={() => detectRouteGps(false)}
@@ -4993,121 +4869,166 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
                         gap: '5px',
-                        padding: isMobile ? '9px 11px' : '9px 12px',
-                        borderRadius: '10px',
-                        border: `1px solid ${partnerGps ? '#86efac' : '#bfdbfe'}`,
+                        padding: '5px 10px',
+                        borderRadius: '999px',
+                        border: `1px solid ${partnerGps ? '#a7f3d0' : '#bfdbfe'}`,
                         background: partnerGps ? '#ecfdf5' : '#eff6ff',
-                        color: partnerGps ? '#065f46' : '#1d4ed8',
-                        fontSize: '0.78rem',
-                        fontWeight: 800,
+                        color: partnerGps ? '#047857' : '#1d4ed8',
+                        fontSize: '0.71rem',
+                        fontWeight: 700,
                         cursor: isLocatingGps ? 'wait' : 'pointer',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      <MapPin size={14} />
-                      <span>{isLocatingGps ? 'Locating...' : (partnerGps ? 'Refresh GPS' : 'Use Live GPS')}</span>
+                      <Navigation size={11} />
+                      <span>{isLocatingGps ? 'Locating...' : (partnerGps ? 'Live GPS' : `${boyArea || 'Hub'} Sort`)}</span>
                     </button>
-
-                    <a
-                      href={googleNavUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="driver-route-nav-btn"
+                    <span
                       style={{
                         display: 'inline-flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: isMobile ? '9px 12px' : '9px 14px',
-                        borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
-                        color: '#ffffff',
-                        fontSize: '0.8rem',
-                        fontWeight: 800,
-                        textDecoration: 'none',
-                        boxShadow: '0 2px 8px rgba(5, 150, 105, 0.22)',
-                        flex: isMobile ? '1' : 'initial',
-                      }}
-                    >
-                      <Navigation size={14} />
-                      <span>Navigate Nearest</span>
-                    </a>
-
-                    <button
-                      type="button"
-                      onClick={handleRefresh}
-                      title="Refresh Stops"
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        padding: isMobile ? '9px 10px' : '9px 12px',
-                        borderRadius: '10px',
-                        border: '1px solid #cbd5e1',
+                        gap: '4px',
+                        padding: '5px 9px',
+                        borderRadius: '999px',
+                        fontSize: '0.71rem',
+                        fontWeight: 700,
                         background: '#ffffff',
                         color: '#475569',
-                        fontSize: '0.8rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
+                        border: '1px solid #e2e8f0',
+                        whiteSpace: 'nowrap',
                       }}
                     >
-                      <RefreshCw size={14} className={isRefreshing ? 'spin-animation' : ''} />
-                      {!isMobile && <span>Refresh</span>}
-                    </button>
+                      <Calendar size={11} />
+                      <span>{selectedDate}</span>
+                    </span>
                   </div>
                 </div>
 
-                {/* Nearest Next Pending Stop Hero Card */}
+                {/* 2. Unified Compact Route Summary Strip */}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: isMobile ? '11px 6px 10px' : '14px 12px 12px',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {[
+                      { label: 'Stops', value: myDeliveries.length, sub: `${sortedLocations.length} areas`, color: '#0f172a' },
+                      { label: 'Remaining', value: pendingList.length, sub: `${completedList.length} done`, color: pendingList.length > 0 ? '#d97706' : '#059669' },
+                      { label: 'Milk Load', value: `${totalPlannedMilk}L`, sub: totalPlannedCurd > 0 ? `+${totalPlannedCurd}g curd` : 'Fresh Milk', color: '#0f172a' },
+                      { label: 'Cash Due', value: `₹${totalCashDue}`, sub: `${subscriptionsList.length} prepaid`, color: '#0f172a' },
+                    ].map((stat, idx) => (
+                      <div
+                        key={stat.label}
+                        style={{
+                          textAlign: 'center',
+                          padding: '0 4px',
+                          borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                          minWidth: 0,
+                        }}
+                      >
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                          {stat.label}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: isMobile ? '1.08rem' : '1.22rem',
+                            fontWeight: 900,
+                            color: stat.color,
+                            lineHeight: 1.2,
+                            marginTop: '2px',
+                            fontVariantNumeric: 'tabular-nums',
+                          }}
+                        >
+                          {stat.value}
+                        </div>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {stat.sub}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ padding: isMobile ? '8px 8px 0' : '10px 8px 0' }}>
+                    <div style={{ height: '4px', width: '100%', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${progressPercent}%`,
+                          height: '100%',
+                          background: '#059669',
+                          borderRadius: '999px',
+                          transition: 'width 0.25s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Next Stop Card */}
                 {nearestPendingEntry && !routeSearch.trim() && (
                   <div
                     style={{
-                      background: 'linear-gradient(135deg, #064e3b 0%, #059669 100%)',
+                      background: 'linear-gradient(135deg, #065f46 0%, #047857 100%)',
                       borderRadius: '14px',
-                      padding: isMobile ? '12px 14px' : '16px 18px',
+                      padding: isMobile ? '13px 14px' : '16px 18px',
                       color: '#ffffff',
                       display: 'flex',
                       flexDirection: isMobile ? 'column' : 'row',
                       justifyContent: 'space-between',
                       alignItems: isMobile ? 'stretch' : 'center',
-                      gap: '12px',
-                      boxShadow: '0 4px 12px rgba(5, 150, 105, 0.22)',
+                      gap: '11px',
+                      boxShadow: '0 4px 12px rgba(6, 95, 70, 0.16)',
                     }}
                   >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                        <span style={{ background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 900 }}>
-                          🧭 NEAREST NEXT • {nearestPendingEntry.distLabel.toUpperCase()} AWAY
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#d1fae5' }}>
+                          <Navigation size={11} />
+                          <span>Next Stop · {nearestPendingEntry.distLabel}</span>
                         </span>
-                        <span style={{ background: '#ffffff', color: '#065f46', padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800 }}>
-                          📍 {nearestPendingEntry.areaName}
+                        <span style={{ background: 'rgba(255,255,255,0.16)', color: '#ffffff', padding: '2px 8px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          {nearestPendingEntry.areaName}
                         </span>
                       </div>
-                      <div style={{ fontSize: '1.05rem', fontWeight: 900 }}>
-                        {nearestPendingEntry.item.customerName} · {nearestPendingEntry.item.plannedMilk || 1}L Milk
+                      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '8px' }}>
+                        <div style={{ fontSize: '1.02rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {nearestPendingEntry.item.customerName}
+                        </div>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#d1fae5', flexShrink: 0 }}>
+                          {nearestPendingEntry.item.plannedMilk || 1}L Milk
+                        </span>
                       </div>
-                      <div style={{ fontSize: '0.78rem', opacity: 0.9, marginTop: '2px' }}>
+                      <div style={{ fontSize: '0.76rem', color: 'rgba(255,255,255,0.88)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {nearestPendingEntry.item.customerAddress || `${nearestPendingEntry.areaName} Doorstep`}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1.25fr' : 'auto auto', gap: '8px', flexShrink: 0 }}>
                       <a
                         href={googleNavUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{
-                          flex: isMobile ? 1 : 'initial',
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                           gap: '5px',
                           padding: '8px 12px',
                           borderRadius: '9px',
-                          border: '1px solid rgba(255,255,255,0.55)',
+                          border: '1px solid rgba(255,255,255,0.35)',
+                          background: 'rgba(255,255,255,0.1)',
                           color: '#ffffff',
                           fontSize: '0.76rem',
-                          fontWeight: 800,
+                          fontWeight: 700,
                           textDecoration: 'none',
                         }}
                       >
@@ -5118,7 +5039,6 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         type="button"
                         onClick={() => openDeliverModal(nearestPendingEntry.item)}
                         style={{
-                          flex: isMobile ? 1 : 'initial',
                           display: 'inline-flex',
                           alignItems: 'center',
                           justifyContent: 'center',
@@ -5129,7 +5049,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           background: '#ffffff',
                           color: '#065f46',
                           fontSize: '0.76rem',
-                          fontWeight: 900,
+                          fontWeight: 800,
                           cursor: 'pointer',
                         }}
                       >
@@ -5140,140 +5060,170 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   </div>
                 )}
 
-                {/* 2. Route Metrics Overview */}
+                {/* 4. Simple Segmented Sort, Search & Non-Clipping Filters */}
                 <div
-                  className="driver-route-kpi-grid"
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: isMobile ? '8px' : '12px',
-                  }}
-                >
-                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Locations / Stops</span>
-                      <MapPin size={15} color="#059669" />
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{myDeliveries.length}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{sortedLocations.length} active locations</div>
-                  </div>
-
-                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Remaining</span>
-                      <Clock size={15} color="#d97706" />
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: pendingList.length > 0 ? '#d97706' : '#059669' }}>{pendingList.length}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>{completedList.length} done ({progressPercent}%)</div>
-                  </div>
-
-                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Milk load</span>
-                      <Truck size={15} color="#2563eb" />
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>{totalPlannedMilk} L</div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{totalPlannedCurd > 0 ? `+ ${totalPlannedCurd}g Curd` : 'Fresh Cow Milk'}</div>
-                  </div>
-
-                  <div className="driver-route-kpi-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: isMobile ? '12px' : '14px', padding: isMobile ? '10px 12px' : '14px 16px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#64748b' }}>Collections</span>
-                      <Wallet size={15} color="#7c3aed" />
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>₹{totalCashDue}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 700 }}>{subscriptionsList.length} Prepaid Subs</div>
-                  </div>
-                </div>
-
-                {/* 3. Mode Toggle (Nearest First vs Location Wise) + Location Chips + Search */}
-                <div
-                  className="driver-route-filter-bar"
                   style={{
                     background: '#ffffff',
                     border: '1px solid #e2e8f0',
-                    borderRadius: isMobile ? '12px' : '14px',
+                    borderRadius: '14px',
                     padding: isMobile ? '10px' : '12px 14px',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '10px',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                    gap: '9px',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                   }}
                 >
-                  {/* Sort Mode Switcher */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setRouteSortMode('nearest')}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '9px',
-                        border: `1.5px solid ${routeSortMode === 'nearest' ? '#059669' : '#cbd5e1'}`,
-                        background: routeSortMode === 'nearest' ? '#059669' : '#ffffff',
-                        color: routeSortMode === 'nearest' ? '#ffffff' : '#475569',
-                        fontWeight: 800,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Navigation size={14} />
-                      <span>Nearest First</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setRouteSortMode('location')}
-                      style={{
-                        padding: '8px 10px',
-                        borderRadius: '9px',
-                        border: `1.5px solid ${routeSortMode === 'location' ? '#059669' : '#cbd5e1'}`,
-                        background: routeSortMode === 'location' ? '#059669' : '#ffffff',
-                        color: routeSortMode === 'location' ? '#ffffff' : '#475569',
-                        fontWeight: 800,
-                        fontSize: '0.78rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <MapPin size={14} />
-                      <span>Location Wise</span>
-                    </button>
-                  </div>
-
-                  {/* Location Filter Chips Ordered Nearest Location First */}
-                  {sortedLocations.length > 0 && (
+                  {/* Segmented Mode Control + Desktop Search */}
+                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between' }}>
                     <div
                       style={{
-                        display: 'flex',
-                        gap: '6px',
-                        overflowX: 'auto',
-                        scrollbarWidth: 'none',
-                        paddingBottom: '2px',
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        background: '#f1f5f9',
+                        padding: '3px',
+                        borderRadius: '10px',
+                        gap: '3px',
+                        flex: isMobile ? 'initial' : '0 0 280px',
                       }}
                     >
+                      {[
+                        { id: 'nearest', label: 'Nearest First', Icon: Navigation },
+                        { id: 'location', label: 'Location Wise', Icon: MapPin },
+                      ].map((mode) => {
+                        const active = routeSortMode === mode.id;
+                        const ModeIcon = mode.Icon;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={() => setRouteSortMode(mode.id)}
+                            style={{
+                              padding: '7px 8px',
+                              borderRadius: '8px',
+                              border: 'none',
+                              background: active ? '#ffffff' : 'transparent',
+                              color: active ? '#0f172a' : '#64748b',
+                              fontWeight: active ? 800 : 600,
+                              fontSize: '0.75rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '5px',
+                              cursor: 'pointer',
+                              boxShadow: active ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <ModeIcon size={13} color={active ? '#059669' : '#64748b'} />
+                            <span>{mode.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ position: 'relative', flex: isMobile ? 'initial' : '1', maxWidth: isMobile ? '100%' : '320px' }}>
+                      <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                      <input
+                        type="text"
+                        placeholder="Search stop, area, phone..."
+                        value={routeSearch}
+                        onChange={(e) => setRouteSearch(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 30px 8px 32px',
+                          borderRadius: '9px',
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          fontSize: '0.8rem',
+                          color: '#0f172a',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      {routeSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setRouteSearch('')}
+                          aria-label="Clear search"
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Balanced 4-Column Status Filter Row (Zero Horizontal Clipping) */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+                      gap: '5px',
+                    }}
+                  >
+                    {[
+                      { id: 'all', label: `All (${myDeliveries.length})` },
+                      { id: 'pending', label: `Pending (${pendingList.length})` },
+                      { id: 'delivered', label: `Done (${completedList.length})` },
+                      { id: 'subscriptions', label: `Prepaid (${subscriptionsList.length})` },
+                    ].map((btn) => {
+                      const isSel = routeFilter === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => setRouteFilter(btn.id)}
+                          style={{
+                            padding: isMobile ? '6px 4px' : '6px 10px',
+                            borderRadius: '8px',
+                            fontSize: isMobile ? '0.69rem' : '0.74rem',
+                            fontWeight: isSel ? 800 : 600,
+                            border: `1px solid ${isSel ? '#059669' : '#e2e8f0'}`,
+                            background: isSel ? '#ecfdf5' : '#ffffff',
+                            color: isSel ? '#065f46' : '#475569',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {btn.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Wrapping Area Chips (Visible cleanly without cut-off text) */}
+                  {sortedLocations.length > 1 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       <button
                         type="button"
                         onClick={() => setRouteAreaFilter('All')}
                         style={{
-                          padding: '5px 11px',
+                          padding: '4px 10px',
                           borderRadius: '999px',
-                          fontSize: '0.74rem',
-                          fontWeight: 800,
-                          border: `1px solid ${activeAreaFilter === 'All' ? '#059669' : '#cbd5e1'}`,
+                          fontSize: '0.71rem',
+                          fontWeight: activeAreaFilter === 'All' ? 800 : 600,
+                          border: `1px solid ${activeAreaFilter === 'All' ? '#059669' : '#e2e8f0'}`,
                           background: activeAreaFilter === 'All' ? '#ecfdf5' : '#f8fafc',
                           color: activeAreaFilter === 'All' ? '#065f46' : '#475569',
-                          whiteSpace: 'nowrap',
                           cursor: 'pointer',
-                          flexShrink: 0,
                         }}
                       >
-                        All Locations ({enrichedAll.length})
+                        All Areas ({enrichedAll.length})
                       </button>
                       {sortedLocations.map((loc) => {
                         const dKm = Number.isFinite(loc.minPendingDist) ? loc.minPendingDist : loc.minDist;
@@ -5284,90 +5234,36 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             type="button"
                             onClick={() => setRouteAreaFilter(loc.name)}
                             style={{
-                              padding: '5px 11px',
+                              padding: '4px 10px',
                               borderRadius: '999px',
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              border: `1px solid ${isSel ? '#059669' : '#cbd5e1'}`,
+                              fontSize: '0.71rem',
+                              fontWeight: isSel ? 800 : 600,
+                              border: `1px solid ${isSel ? '#059669' : '#e2e8f0'}`,
                               background: isSel ? '#ecfdf5' : '#ffffff',
                               color: isSel ? '#065f46' : '#475569',
-                              whiteSpace: 'nowrap',
                               cursor: 'pointer',
-                              flexShrink: 0,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
                             }}
                           >
-                            📍 {loc.name} · {formatDist(dKm)} ({loc.count})
+                            <MapPin size={10} color={isSel ? '#059669' : '#94a3b8'} />
+                            <span>{loc.name} · {formatDist(dKm)} ({loc.count})</span>
                           </button>
                         );
                       })}
                     </div>
                   )}
-
-                  {/* Status Pills + Search */}
-                  <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '8px', alignItems: isMobile ? 'stretch' : 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-                      {[
-                        { id: 'pending', label: `Pending (${pendingList.length})` },
-                        { id: 'delivered', label: `Completed (${completedList.length})` },
-                        { id: 'subscriptions', label: `Prepaid (${subscriptionsList.length})` },
-                        { id: 'all', label: `All Stops (${myDeliveries.length})` },
-                      ].map((btn) => {
-                        const isSel = routeFilter === btn.id;
-                        return (
-                          <button
-                            key={btn.id}
-                            type="button"
-                            onClick={() => setRouteFilter(btn.id)}
-                            style={{
-                              padding: '5px 11px',
-                              borderRadius: '8px',
-                              fontSize: '0.74rem',
-                              fontWeight: isSel ? 800 : 600,
-                              border: `1px solid ${isSel ? '#059669' : '#cbd5e1'}`,
-                              background: isSel ? '#ecfdf5' : '#ffffff',
-                              color: isSel ? '#065f46' : '#475569',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {btn.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div style={{ position: 'relative', flex: isMobile ? 'initial' : '1', maxWidth: isMobile ? '100%' : '300px' }}>
-                      <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '9px' }} />
-                      <input
-                        type="text"
-                        placeholder="Search stop, location, address, phone..."
-                        value={routeSearch}
-                        onChange={(e) => setRouteSearch(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '6px 10px 6px 30px',
-                          borderRadius: '8px',
-                          border: '1px solid #cbd5e1',
-                          background: '#f8fafc',
-                          fontSize: '0.82rem',
-                          color: '#0f172a',
-                          outline: 'none',
-                          boxSizing: 'border-box',
-                        }}
-                      />
-                    </div>
-                  </div>
                 </div>
 
-                {/* 4. Route Stops List (Nearest First OR Location Wise Grouped) */}
+                {/* 5. Route Stops List (Nearest First OR Location Wise Grouped) */}
                 {filteredEntries.length === 0 ? (
-                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '44px 20px', textAlign: 'center' }}>
-                    <MapPin size={28} color="#94a3b8" style={{ marginBottom: '8px' }} />
-                    <h3 style={{ fontSize: '1.02rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '40px 20px', textAlign: 'center' }}>
+                    <MapPin size={26} color="#94a3b8" style={{ marginBottom: '8px' }} />
+                    <h3 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0 0 5px 0' }}>
                       No Matching Stops Found
                     </h3>
-                    <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 14px 0' }}>
+                    <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '0 0 14px 0' }}>
                       {routeSearch.trim() ? `No route stops match "${routeSearch}".` : 'No stops in this location or status filter.'}
                     </p>
                     <button
@@ -5379,7 +5275,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         border: '1px solid #cbd5e1',
                         background: '#ffffff',
                         color: '#059669',
-                        fontSize: '0.8rem',
+                        fontSize: '0.78rem',
                         fontWeight: 700,
                         cursor: 'pointer',
                       }}
@@ -5388,7 +5284,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </button>
                   </div>
                 ) : routeSortMode === 'location' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     {groupedLocationEntries.map((group) => {
                       const closestLabel = group.stops[0]?.distLabel || 'Location';
                       const pendingLeft = group.stops.filter((s) => s.item.status === 'pending').length;
@@ -5396,31 +5292,26 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         <div key={group.name} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div
                             style={{
-                              background: '#ecfdf5',
-                              border: '1px solid #a7f3d0',
-                              borderRadius: '10px',
-                              padding: '9px 13px',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              flexWrap: 'wrap',
-                              gap: '6px',
+                              padding: '4px 4px 0',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 900, fontSize: '0.88rem', color: '#065f46' }}>
-                                <MapPin size={15} color="#059669" />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <MapPin size={14} color="#059669" />
+                              <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0f172a' }}>
                                 {group.name}
                               </span>
-                              <span style={{ background: '#ffffff', color: '#1d4ed8', fontSize: '0.7rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px' }}>
-                                Nearest: {closestLabel}
+                              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#64748b' }}>
+                                · {closestLabel}
                               </span>
                             </div>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#047857' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#059669' }}>
                               {pendingLeft}/{group.stops.length} left
                             </span>
                           </div>
-                          <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {group.stops.map((entry, idx) => renderRouteStopCard(entry, idx))}
                           </div>
                         </div>
@@ -5428,7 +5319,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     })}
                   </div>
                 ) : (
-                  <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div className="driver-route-stop-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {filteredEntries.map((entry, idx) => renderRouteStopCard(entry, idx))}
                   </div>
                 )}
@@ -5439,574 +5330,706 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {/* ========================================================= */}
           {/* TAB: ROUTE CUSTOMERS & SUBSCRIPTIONS (CRUD)              */}
           {/* ========================================================= */}
-          {navTab === 'customers' && (
-            <div className="driver-customers-page" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* 1. Header Banner & Actions */}
-              <div
-                className="driver-customers-header"
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '18px 20px',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      Route Customers & Subscriptions
-                    </h3>
-                    <span
-                      style={{
-                        background: '#ecfdf5',
-                        color: '#059669',
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: '999px',
-                        border: '1px solid #a7f3d0',
-                      }}
-                    >
-                      {assignedCustomers.length} Total
-                    </span>
-                  </div>
-                  <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '4px 0 0 0' }}>
-                    Doorstep deliveries, subscriber plans, and customer management across {boyArea}
-                  </p>
-                </div>
+          {navTab === 'customers' && (() => {
+            const totalCustCount = assignedCustomers.length;
+            const activeSubCount = assignedCustomers.filter(
+              (c) => c.subscription?.status === 'active' || c.paymentInfo?.paymentType === 'prepaid'
+            ).length;
+            const driverCreatedCount = assignedCustomers.filter(
+              (c) => c.createdBy === 'driver' || c.createdByDriverId === boyId
+            ).length;
+            const adminAssignedCount = Math.max(0, totalCustCount - driverCreatedCount);
+            const totalDailyMilk = assignedCustomers.reduce((sum, c) => sum + (c.deliveryPlan?.milkQty || 0), 0);
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            const filtered = assignedCustomers.filter((c) => {
+              const isDriverCreated = c.createdBy === 'driver' || (c.createdByDriverId && c.createdByDriverId === boyId);
+              const hasSub =
+                c.subscription?.status === 'active' ||
+                (c.subscription?.endDate && new Date(c.subscription.endDate) >= new Date()) ||
+                c.paymentInfo?.paymentType === 'prepaid';
+
+              if (customerCategory === 'assigned' && isDriverCreated) return false;
+              if (customerCategory === 'driver' && !isDriverCreated) return false;
+              if (customerCategory === 'subscription' && !hasSub) return false;
+
+              if (customerSearch) {
+                const q = customerSearch.trim().toLowerCase();
+                const matchName = (c.name || '').toLowerCase().includes(q);
+                const matchMobile = (c.mobile || '').includes(q);
+                const matchAddress = (c.address || '').toLowerCase().includes(q);
+                const matchArea = (c.area || '').toLowerCase().includes(q);
+                const matchId = (c.customerId || '').toLowerCase().includes(q);
+                if (!matchName && !matchMobile && !matchAddress && !matchArea && !matchId) {
+                  return false;
+                }
+              }
+              return true;
+            });
+
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+                {/* 1. Minimal Page Header */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: isMobile ? '2px 2px 0' : '4px 2px',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <h1 style={{ fontSize: isMobile ? '1.12rem' : '1.3rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                      Customers
+                    </h1>
+                    <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                      {totalCustCount} assigned · {boyArea || 'Route'}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={openAddCustomer}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
-                      gap: '7px',
-                      padding: '8px 16px',
-                      borderRadius: '9px',
+                      gap: '5px',
+                      padding: isMobile ? '8px 12px' : '8px 15px',
+                      borderRadius: '10px',
                       border: 'none',
-                      background: 'linear-gradient(135deg, #059669, #047857)',
+                      background: '#059669',
                       color: '#ffffff',
-                      fontSize: '0.84rem',
-                      fontWeight: 700,
+                      fontSize: '0.78rem',
+                      fontWeight: 800,
                       cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(5,150,105,0.2)',
-                      transition: 'all 0.15s ease',
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <UserPlus size={16} />
+                    <UserPlus size={14} />
                     <span>Add Customer</span>
                   </button>
                 </div>
-              </div>
 
-              {/* Success Notification Alert */}
-              {customerSuccessBanner && (
+                {/* Success Notification Alert */}
+                {customerSuccessBanner && (
+                  <div
+                    style={{
+                      background: '#ecfdf5',
+                      border: '1px solid #a7f3d0',
+                      color: '#065f46',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <CheckCircle2 size={16} color="#059669" />
+                    <span>{customerSuccessBanner}</span>
+                  </div>
+                )}
+
+                {/* 2. Unified 4-Column Summary Strip */}
                 <div
-                  className="driver-customers-stats"
                   style={{
-                    background: '#ecfdf5',
-                    border: '1px solid #a7f3d0',
-                    color: '#065f46',
-                    padding: '12px 16px',
-                    borderRadius: '12px',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 1px 3px rgba(5,150,105,0.08)',
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: isMobile ? '11px 6px' : '14px 12px',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                   }}
                 >
-                  <CheckCircle2 size={18} color="#059669" />
-                  <span>{customerSuccessBanner}</span>
-                </div>
-              )}
-
-              {/* 2. KPI Summary Cards Strip (4 Metrics) */}
-              <div
-                className="driver-customers-stat-grid"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: '12px',
-                }}
-              >
-                {[
-                  {
-                    label: 'Total Route Customers',
-                    value: assignedCustomers.length,
-                    icon: Users,
-                    color: '#2563eb',
-                    bg: '#eff6ff',
-                  },
-                  {
-                    label: 'Active Subscriptions',
-                    value: assignedCustomers.filter((c) => c.subscription?.status === 'active' || c.paymentInfo?.paymentType === 'prepaid').length,
-                    icon: Award,
-                    color: '#7c3aed',
-                    bg: '#f5f3ff',
-                  },
-                  {
-                    label: 'Created by You',
-                    value: assignedCustomers.filter((c) => c.createdBy === 'driver' || c.createdByDriverId === boyId).length,
-                    icon: UserCheck,
-                    color: '#059669',
-                    bg: '#ecfdf5',
-                  },
-                  {
-                    label: 'Daily Milk Planned',
-                    value: `${assignedCustomers.reduce((sum, c) => sum + (c.deliveryPlan?.milkQty || 0), 0)} L`,
-                    icon: Truck,
-                    color: '#0284c7',
-                    bg: '#f0f9ff',
-                  },
-                ].map((stat, idx) => {
-                  const Icon = stat.icon;
-                  return (
-                    <div
-                      key={idx}
-                      className="driver-customers-stat"
-                      style={{
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        padding: '14px 16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                        minWidth: 0,
-                      }}
-                    >
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', alignItems: 'center' }}>
+                    {[
+                      { label: 'Total', value: totalCustCount, sub: 'Customers', color: '#0f172a' },
+                      { label: 'Prepaid', value: activeSubCount, sub: 'Active subs', color: '#059669' },
+                      { label: 'Added', value: driverCreatedCount, sub: 'By you', color: '#0f172a' },
+                      { label: 'Demand', value: `${totalDailyMilk}L`, sub: 'Daily milk', color: '#0f172a' },
+                    ].map((stat, idx) => (
                       <div
-                        className="driver-customers-stat-icon"
+                        key={stat.label}
                         style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '10px',
-                          background: stat.bg,
-                          color: stat.color,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
+                          textAlign: 'center',
+                          padding: '0 4px',
+                          borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                          minWidth: 0,
                         }}
                       >
-                        <Icon size={20} />
-                      </div>
-                      <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                        <div
-                          className="driver-customers-stat-val"
-                          style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.15 }}
-                        >
-                          {stat.value}
-                        </div>
-                        <div
-                          className="driver-customers-stat-label"
-                          style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}
-                          title={stat.label}
-                        >
+                        <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                           {stat.label}
                         </div>
+                        <div style={{ fontSize: isMobile ? '1.08rem' : '1.22rem', fontWeight: 900, color: stat.color, lineHeight: 1.2, marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                          {stat.value}
+                        </div>
+                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: '#64748b', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {stat.sub}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* 3. Category Filter & Search Strip */}
-              <div
-                style={{
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '14px',
-                  padding: '12px 16px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                {/* Category Chips */}
-                <div className="driver-customers-category-list" style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {[
-                    { id: 'all', label: 'All Customers', count: assignedCustomers.length },
-                    {
-                      id: 'assigned',
-                      label: 'Assigned by Admin',
-                      count: assignedCustomers.filter((c) => c.createdBy !== 'driver' && c.createdByDriverId !== boyId).length,
-                    },
-                    {
-                      id: 'driver',
-                      label: 'Created by Driver',
-                      count: assignedCustomers.filter((c) => c.createdBy === 'driver' || c.createdByDriverId === boyId).length,
-                    },
-                    {
-                      id: 'subscription',
-                      label: 'Subscriptions',
-                      count: assignedCustomers.filter((c) => c.subscription?.status === 'active' || c.paymentInfo?.paymentType === 'prepaid').length,
-                    },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setCustomerCategory(cat.id)}
-                      style={{
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        fontSize: '0.78rem',
-                        fontWeight: 700,
-                        border: '1px solid',
-                        borderColor: customerCategory === cat.id ? '#059669' : '#e2e8f0',
-                        background: customerCategory === cat.id ? '#ecfdf5' : '#ffffff',
-                        color: customerCategory === cat.id ? '#065f46' : '#64748b',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <span>{cat.label}</span>
-                      <span
-                        style={{
-                          background: customerCategory === cat.id ? '#059669' : '#f1f5f9',
-                          color: customerCategory === cat.id ? '#ffffff' : '#64748b',
-                          fontSize: '0.68rem',
-                          fontWeight: 800,
-                          padding: '1px 6px',
-                          borderRadius: '999px',
-                        }}
-                      >
-                        {cat.count}
-                      </span>
-                    </button>
-                  ))}
+                    ))}
+                  </div>
                 </div>
 
-                {/* Search Box */}
-                <div style={{ position: 'relative', minWidth: '240px', flex: '1 1 240px' }}>
-                  <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '10px' }} />
-                  <input
-                    type="text"
-                    value={customerSearch}
-                    onChange={(e) => setCustomerSearch(e.target.value)}
-                    placeholder="Search by customer, phone, address, ID..."
-                    style={{
-                      width: '100%',
-                      boxSizing: 'border-box',
-                      paddingLeft: '34px',
-                      paddingRight: '12px',
-                      paddingTop: '7px',
-                      paddingBottom: '7px',
-                      fontSize: '0.82rem',
-                      borderRadius: '8px',
-                      border: '1px solid #e2e8f0',
-                      background: '#f8fafc',
-                      color: '#0f172a',
-                      outline: 'none',
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* 4. Customer Cards Grid / List */}
-              {(() => {
-                const filtered = assignedCustomers.filter((c) => {
-                  const isDriverCreated = c.createdBy === 'driver' || (c.createdByDriverId && c.createdByDriverId === boyId);
-                  const hasSub = c.subscription?.status === 'active' || (c.subscription?.endDate && new Date(c.subscription.endDate) >= new Date()) || c.paymentInfo?.paymentType === 'prepaid';
-
-                  if (customerCategory === 'assigned' && isDriverCreated) return false;
-                  if (customerCategory === 'driver' && !isDriverCreated) return false;
-                  if (customerCategory === 'subscription' && !hasSub) return false;
-
-                  if (customerSearch) {
-                    const q = customerSearch.trim().toLowerCase();
-                    const matchName = (c.name || '').toLowerCase().includes(q);
-                    const matchMobile = (c.mobile || '').includes(q);
-                    const matchAddress = (c.address || '').toLowerCase().includes(q);
-                    const matchArea = (c.area || '').toLowerCase().includes(q);
-                    const matchId = (c.customerId || '').toLowerCase().includes(q);
-                    if (!matchName && !matchMobile && !matchAddress && !matchArea && !matchId) {
-                      return false;
-                    }
-                  }
-                  return true;
-                });
-
-                if (filtered.length === 0) {
-                  return (
-                    <div
-                      className="driver-customers-grid"
+                {/* 3. Search & Balanced 4-Column Category Filters */}
+                <div
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '14px',
+                    padding: isMobile ? '10px' : '12px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '9px',
+                    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                  }}
+                >
+                  <div style={{ position: 'relative' }}>
+                    <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                    <input
+                      type="text"
+                      value={customerSearch}
+                      onChange={(e) => setCustomerSearch(e.target.value)}
+                      placeholder="Search name, phone, area, ID..."
                       style={{
-                        background: '#ffffff',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '8px 30px 8px 32px',
+                        fontSize: '0.8rem',
+                        borderRadius: '9px',
                         border: '1px solid #e2e8f0',
-                        borderRadius: '16px',
-                        padding: '48px 20px',
-                        textAlign: 'center',
+                        background: '#f8fafc',
+                        color: '#0f172a',
+                        outline: 'none',
                       }}
-                    >
-                      <Users size={40} color="#94a3b8" style={{ margin: '0 auto 12px auto' }} />
-                      <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0f172a', margin: '0 0 6px 0' }}>
-                        No customers match this category
-                      </h4>
-                      <p style={{ color: '#64748b', fontSize: '0.82rem', margin: '0 0 16px 0' }}>
-                        {customerSearch ? 'Try a different search term.' : 'You can add new customers on your route anytime.'}
-                      </p>
+                    />
+                    {customerSearch && (
                       <button
                         type="button"
-                        onClick={openAddCustomer}
+                        onClick={() => setCustomerSearch('')}
+                        aria-label="Clear search"
                         style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                          padding: '8px 16px',
-                          borderRadius: '8px',
+                          position: 'absolute',
+                          right: '8px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'transparent',
                           border: 'none',
-                          background: '#059669',
-                          color: '#ffffff',
-                          fontSize: '0.82rem',
-                          fontWeight: 700,
+                          color: '#94a3b8',
                           cursor: 'pointer',
+                          padding: '2px',
+                          display: 'flex',
+                          alignItems: 'center',
                         }}
                       >
-                        <UserPlus size={15} /> Add First Customer
+                        <X size={14} />
                       </button>
-                    </div>
-                  );
-                }
+                    )}
+                  </div>
 
-                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '5px' }}>
+                    {[
+                      { id: 'all', label: `All (${totalCustCount})` },
+                      { id: 'assigned', label: `Admin (${adminAssignedCount})` },
+                      { id: 'driver', label: `Added (${driverCreatedCount})` },
+                      { id: 'subscription', label: `Subs (${activeSubCount})` },
+                    ].map((cat) => {
+                      const isSel = customerCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setCustomerCategory(cat.id)}
+                          style={{
+                            padding: isMobile ? '6px 4px' : '7px 10px',
+                            borderRadius: '8px',
+                            fontSize: isMobile ? '0.69rem' : '0.75rem',
+                            fontWeight: isSel ? 800 : 600,
+                            border: `1px solid ${isSel ? '#059669' : '#e2e8f0'}`,
+                            background: isSel ? '#ecfdf5' : '#ffffff',
+                            color: isSel ? '#065f46' : '#475569',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            textAlign: 'center',
+                          }}
+                        >
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. Customer Cards List */}
+                {filtered.length === 0 ? (
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: '40px 20px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Users size={32} color="#94a3b8" style={{ margin: '0 auto 10px auto' }} />
+                    <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0f172a', margin: '0 0 4px 0' }}>
+                      No matching customers
+                    </h4>
+                    <p style={{ color: '#64748b', fontSize: '0.8rem', margin: '0 0 14px 0' }}>
+                      {customerSearch ? 'Try clearing or changing your search query.' : 'Add a customer on your route anytime.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={openAddCustomer}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 14px',
+                        borderRadius: '9px',
+                        border: 'none',
+                        background: '#059669',
+                        color: '#ffffff',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <UserPlus size={14} />
+                      <span>Add Customer</span>
+                    </button>
+                  </div>
+                ) : (
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))',
-                      gap: '14px',
+                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(330px, 1fr))',
+                      gap: isMobile ? '8px' : '12px',
                     }}
                   >
                     {filtered.map((cust) => {
                       const isDriverCreated = cust.createdBy === 'driver' || (cust.createdByDriverId && cust.createdByDriverId === boyId);
-                      const hasActiveSub = cust.subscription?.status === 'active' || (cust.subscription?.endDate && new Date(cust.subscription.endDate) >= new Date());
-                      const isPrepaid = cust.paymentInfo?.paymentType === 'prepaid' || cust.subscription?.amount > 0;
                       const plan = cust.deliveryPlan || {};
+                      const milkQty =
+                        Number(plan.milkQty) > 0
+                          ? plan.milkQty
+                          : Number(cust.subscription?.plan?.milkQty) > 0
+                          ? cust.subscription.plan.milkQty
+                          : Number(cust.subscription?.milkQty) > 0
+                          ? cust.subscription.milkQty
+                          : 1;
+                      const milkUnit = plan.milkUnit || 'L';
+                      const milkType = plan.milkType || 'Pure Cow Milk';
+                      const curdQty = Number(plan.curdQty) || 0;
+                      const curdUnit = plan.curdUnit || 'g';
+                      const frequency = plan.frequency || cust.subscription?.frequency || 'Daily';
+                      const slot = plan.slot || cust.subscription?.slot || 'Morning (5:00 - 7:30 AM)';
+
+                      const rawEnd = cust.subscription?.endDate || cust.subscriptionEnd || cust.plan?.endDate;
+                      const endD = rawEnd ? new Date(rawEnd) : null;
+                      const isExpired = endD ? endD.getTime() < new Date().setHours(0, 0, 0, 0) : false;
+                      const daysLeft = endD ? Math.ceil((endD.getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)) : null;
+
+                      let subLabel = 'Active Plan';
+                      let subColor = '#4f46e5';
+                      let subBg = '#eef2ff';
+                      if (isExpired) {
+                        subLabel = `Expired (${endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`;
+                        subColor = '#dc2626';
+                        subBg = '#fef2f2';
+                      } else if (daysLeft !== null) {
+                        if (daysLeft <= 5) {
+                          subLabel = `Expiring in ${daysLeft}d`;
+                          subColor = '#b45309';
+                          subBg = '#fffbeb';
+                        } else {
+                          subLabel = `Till ${endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+                        }
+                      }
+                      const overdue = Number(cust.currentBalance || 0);
+                      const isPaused = cust.status === 'paused';
+                      const custMobile = cust.mobile || cust.phone || '';
+                      const cleanPhone = custMobile.replace(/[^0-9]/g, '').slice(-10);
+                      const fullAddress = [cust.address, cust.area, cust.city].filter(Boolean).join(', ') || cust.address || 'Doorstep delivery';
+                      const mapQuery = cust.coordinates?.lat && cust.coordinates?.lng
+                        ? `${cust.coordinates.lat},${cust.coordinates.lng}`
+                        : encodeURIComponent(fullAddress);
 
                       return (
                         <div
                           key={cust.id || cust._id}
-                          className="driver-customer-card"
                           onClick={() => setSelectedCustomer(cust)}
                           style={{
                             background: '#ffffff',
                             border: '1px solid #e2e8f0',
-                            borderRadius: '14px',
-                            padding: '14px 16px',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                            borderRadius: '16px',
+                            padding: isMobile ? '13px 12px 11px' : '16px',
+                            boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '12px',
+                            flexDirection: 'column',
+                            gap: '10px',
                             cursor: 'pointer',
-                            transition: 'all 0.15s ease',
+                            boxSizing: 'border-box',
+                            width: '100%',
+                            transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
-                            {/* Avatar */}
-                            <div
-                              style={{
-                                width: '42px',
-                                height: '42px',
-                                borderRadius: '50%',
-                                background: isDriverCreated ? 'linear-gradient(135deg, #059669, #10b981)' : 'linear-gradient(135deg, #2563eb, #3b82f6)',
-                                color: '#ffffff',
-                                fontWeight: 800,
-                                fontSize: '1rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                flexShrink: 0,
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-                              }}
-                            >
-                              {(cust.name || 'C').charAt(0).toUpperCase()}
+                          {/* 1. Header Row: Customer Identity + Status Badge */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  width: isMobile ? '38px' : '42px',
+                                  height: isMobile ? '38px' : '42px',
+                                  borderRadius: '12px',
+                                  background: isDriverCreated ? '#ecfdf5' : '#eff6ff',
+                                  color: isDriverCreated ? '#047857' : '#1d4ed8',
+                                  border: `1px solid ${isDriverCreated ? '#a7f3d0' : '#bfdbfe'}`,
+                                  fontWeight: 800,
+                                  fontSize: isMobile ? '0.94rem' : '1.02rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {(cust.name || 'C').charAt(0).toUpperCase()}
+                              </div>
+
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <h4 style={{ margin: 0, fontWeight: 800, fontSize: isMobile ? '0.94rem' : '1rem', color: '#0f172a', lineHeight: 1.25 }}>
+                                    {cust.name}
+                                  </h4>
+                                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 700, background: '#f1f5f9', padding: '1px 6px', borderRadius: '5px' }}>
+                                    {cust.customerId || `#${(cust.id || '').slice(-6)}`}
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '0.65rem',
+                                      fontWeight: 700,
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: isDriverCreated ? '#ecfdf5' : '#eff6ff',
+                                      color: isDriverCreated ? '#059669' : '#2563eb',
+                                    }}
+                                  >
+                                    {isDriverCreated ? 'Added by You' : 'Admin Assigned'}
+                                  </span>
+                                  {cust.area && (
+                                    <span style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 600 }}>
+                                      · {cust.area}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Name, ID, Area & Plan Pill */}
-                            <div style={{ minWidth: 0, flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontWeight: 800, fontSize: '0.96rem', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {cust.name}
-                                </span>
-                                <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600 }}>
-                                  {cust.customerId || `#${(cust.id || '').slice(-6)}`}
-                                </span>
-                              </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 800,
+                                  padding: '3px 8px',
+                                  borderRadius: '999px',
+                                  background: isPaused ? '#fffbeb' : '#ecfdf5',
+                                  color: isPaused ? '#b45309' : '#047857',
+                                  border: `1px solid ${isPaused ? '#fde68a' : '#bbf7d0'}`,
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {isPaused ? '⏸ Paused' : '✓ Active'}
+                              </span>
+                              <ChevronRight size={15} color="#94a3b8" style={{ flexShrink: 0 }} />
+                            </div>
+                          </div>
 
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.74rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                  <MapPin size={11} color="#94a3b8" />
-                                  <span>{cust.area || cust.address || 'Doorstep route'}</span>
+                          {/* 2. Milk Plan & Subscription Highlight Box */}
+                          <div
+                            style={{
+                              background: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              borderRadius: '12px',
+                              padding: '9px 11px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.96rem' }}>🥛</span>
+                                <span style={{ fontWeight: 800, fontSize: '0.82rem', color: '#0f172a' }}>
+                                  {milkQty}{milkUnit} {milkType}
                                 </span>
-                                {cust.mobile && (
-                                  <>
-                                    <span style={{ fontSize: '0.72rem', color: '#cbd5e1' }}>•</span>
-                                    <span style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600 }}>
-                                      {cust.mobile}
-                                    </span>
-                                  </>
+                                {curdQty > 0 && (
+                                  <span style={{ fontWeight: 700, fontSize: '0.78rem', color: '#047857' }}>
+                                    + {curdQty}{curdUnit} Curd
+                                  </span>
                                 )}
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                  color: '#065f46',
+                                  background: '#d1fae5',
+                                  padding: '2px 7px',
+                                  borderRadius: '6px',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.02em',
+                                }}
+                              >
+                                {frequency}
+                              </span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px dashed #e2e8f0', fontSize: '0.72rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569' }}>
+                                <Clock size={12} color="#64748b" />
+                                <span>{slot}</span>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span
                                   style={{
-                                    fontSize: '0.7rem',
+                                    fontSize: '0.67rem',
                                     fontWeight: 700,
-                                    color: '#059669',
-                                    background: '#ecfdf5',
+                                    color: subColor,
+                                    background: subBg,
                                     padding: '2px 7px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #d1fae5',
+                                    borderRadius: '5px',
                                   }}
                                 >
-                                  🥛 {Number(plan.milkQty) > 0 ? plan.milkQty : (Number(cust.subscription?.plan?.milkQty) > 0 ? cust.subscription.plan.milkQty : (Number(cust.subscription?.milkQty) > 0 ? cust.subscription.milkQty : 1))}{plan.milkUnit || 'L'} Milk · {plan.frequency || 'Daily'}
+                                  {subLabel}
                                 </span>
-                              </div>
-
-                              {/* Expiry Date & Overdue Row */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-                                {(() => {
-                                  const rawEnd = cust.subscription?.endDate || cust.subscriptionEnd || cust.plan?.endDate;
-                                  const endD = rawEnd ? new Date(rawEnd) : null;
-                                  const isExpired = endD ? (endD.getTime() < new Date().setHours(0, 0, 0, 0)) : false;
-                                  const daysLeft = endD ? Math.ceil((endD.getTime() - new Date().setHours(0, 0, 0, 0)) / (1000 * 60 * 60 * 24)) : null;
-
-                                  let badgeBg = '#f5f3ff';
-                                  let badgeBorder = '#ddd6fe';
-                                  let badgeColor = '#7c3aed';
-                                  let badgeText = '📅 Active';
-
-                                  if (isExpired) {
-                                    badgeBg = '#fef2f2';
-                                    badgeBorder = '#fecaca';
-                                    badgeColor = '#dc2626';
-                                    badgeText = `⚠️ Expired (${endD ? endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : ''})`;
-                                  } else if (daysLeft !== null) {
-                                    if (daysLeft <= 5) {
-                                      badgeBg = '#fffbeb';
-                                      badgeBorder = '#fde68a';
-                                      badgeColor = '#b45309';
-                                      badgeText = `⏳ Expiring (${daysLeft}d)`;
-                                    } else {
-                                      badgeBg = '#f5f3ff';
-                                      badgeBorder = '#ddd6fe';
-                                      badgeColor = '#7c3aed';
-                                      badgeText = `📅 Till ${endD.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
-                                    }
-                                  }
-
-                                  const overdue = Number(cust.currentBalance || 0);
-
-                                  return (
-                                    <>
-                                      <span
-                                        style={{
-                                          fontSize: '0.68rem',
-                                          fontWeight: 700,
-                                          color: badgeColor,
-                                          background: badgeBg,
-                                          border: `1px solid ${badgeBorder}`,
-                                          padding: '2px 7px',
-                                          borderRadius: '6px',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '3px',
-                                        }}
-                                      >
-                                        {badgeText}
-                                      </span>
-
-                                      {overdue > 0 ? (
-                                        <span
-                                          style={{
-                                            fontSize: '0.68rem',
-                                            fontWeight: 800,
-                                            color: '#dc2626',
-                                            background: '#fef2f2',
-                                            border: '1px solid #fecaca',
-                                            padding: '2px 7px',
-                                            borderRadius: '6px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '3px',
-                                          }}
-                                        >
-                                          ⚠️ ₹{overdue} Due
-                                        </span>
-                                      ) : (
-                                        <span
-                                          style={{
-                                            fontSize: '0.68rem',
-                                            fontWeight: 700,
-                                            color: '#166534',
-                                            background: '#f0fdf4',
-                                            border: '1px solid #bbf7d0',
-                                            padding: '2px 7px',
-                                            borderRadius: '6px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '3px',
-                                          }}
-                                        >
-                                          ✓ Settled
-                                        </span>
-                                      )}
-                                    </>
-                                  );
-                                })()}
+                                <span
+                                  style={{
+                                    fontSize: '0.67rem',
+                                    fontWeight: 700,
+                                    color: overdue > 0 ? '#dc2626' : '#047857',
+                                    background: overdue > 0 ? '#fef2f2' : '#ecfdf5',
+                                    padding: '2px 7px',
+                                    borderRadius: '5px',
+                                  }}
+                                >
+                                  {overdue > 0 ? `₹${overdue} Due` : '₹0 Settled'}
+                                </span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Right: Status Pill + Chevron */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                            <span
-                              className="driver-customer-status"
+                          {/* 3. Doorstep Address Details */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', fontSize: '0.76rem', color: '#334155', lineHeight: 1.38 }}>
+                            <MapPin size={13} color="#059669" style={{ flexShrink: 0, marginTop: '2px' }} />
+                            <div style={{ minWidth: 0, wordBreak: 'break-word', flex: 1 }}>
+                              <span style={{ fontWeight: 600 }}>{fullAddress}</span>
+                              {cust.landmark && (
+                                <span style={{ color: '#64748b', marginLeft: '4px' }}>
+                                  (Near {cust.landmark})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* 4. Contact Phone Info */}
+                          {custMobile && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#475569' }}>
+                              <Phone size={12} color="#64748b" style={{ flexShrink: 0 }} />
+                              <span style={{ fontWeight: 600, color: '#0f172a' }}>{custMobile}</span>
+                              {cust.alternatePhone && (
+                                <span style={{ color: '#64748b', fontSize: '0.72rem' }}>
+                                  · Alt: {cust.alternatePhone}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* 5. Clean Action Buttons Footer */}
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: custMobile ? 'repeat(4, minmax(0, 1fr))' : 'repeat(2, minmax(0, 1fr))',
+                              gap: '6px',
+                              paddingTop: '8px',
+                              borderTop: '1px solid #f1f5f9',
+                            }}
+                          >
+                            {custMobile && (
+                              <a
+                                href={`tel:${custMobile}`}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  padding: '7px 4px',
+                                  borderRadius: '9px',
+                                  background: '#ecfdf5',
+                                  border: '1px solid #a7f3d0',
+                                  color: '#065f46',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  textDecoration: 'none',
+                                  textAlign: 'center',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <Phone size={12} color="#059669" />
+                                <span>Call</span>
+                              </a>
+                            )}
+
+                            {custMobile && (
+                              <a
+                                href={`https://wa.me/91${cleanPhone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '4px',
+                                  padding: '7px 4px',
+                                  borderRadius: '9px',
+                                  background: '#f0fdf4',
+                                  border: '1px solid #bbf7d0',
+                                  color: '#15803d',
+                                  fontSize: '0.72rem',
+                                  fontWeight: 700,
+                                  textDecoration: 'none',
+                                  textAlign: 'center',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <MessageCircle size={12} color="#16a34a" />
+                                <span>WhatsApp</span>
+                              </a>
+                            )}
+
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               style={{
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                padding: '3px 9px',
-                                borderRadius: '999px',
-                                background: cust.status === 'paused' ? '#fef3c7' : '#dcfce7',
-                                color: cust.status === 'paused' ? '#92400e' : '#166534',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '3px',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                padding: '7px 4px',
+                                borderRadius: '9px',
+                                background: '#f8fafc',
+                                border: '1px solid #cbd5e1',
+                                color: '#1e293b',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              {cust.status === 'paused' ? '⏸ Paused' : '✓ Active'}
-                            </span>
-                            <ChevronRight size={18} color="#94a3b8" />
+                              <Navigation size={12} color="#2563eb" />
+                              <span>Map</span>
+                            </a>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedCustomer(cust);
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                                padding: '7px 4px',
+                                borderRadius: '9px',
+                                background: '#f1f5f9',
+                                border: '1px solid #e2e8f0',
+                                color: '#334155',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              <Eye size={12} color="#475569" />
+                              <span>Details</span>
+                            </button>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                );
-              })()}
-            </div>
-          )}
+                )}
+              </div>
+            );
+          })()}
 
           {/* ========================================================= */}
           {/* TAB: CASH SUMMARY & HANDOVER TO ADMIN                      */}
           {/* ========================================================= */}
           {navTab === 'cash' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+              {/* Minimal Page Header (Real-time, no manual sync button) */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: isMobile ? '2px 2px 0' : '4px 2px',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <h1 style={{ fontSize: isMobile ? '1.12rem' : '1.3rem', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                    Cash & Handover
+                  </h1>
+                  <div style={{ fontSize: '0.74rem', color: '#64748b', fontWeight: 600, marginTop: '2px' }}>
+                    {partnerCashPeriod === 'today'
+                      ? "Today's route collections & deposit"
+                      : partnerCashPeriod === 'weekly'
+                      ? 'Last 7 days route collections'
+                      : partnerCashPeriod === 'monthly'
+                      ? 'Last 30 days route collections'
+                      : partnerCashPeriod === 'custom'
+                      ? `${partnerCustomStartDate} to ${partnerCustomEndDate}`
+                      : 'All-time route collections'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerReportModal(true)}
+                  style={{
+                    background: '#ffffff',
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    padding: '7px 12px',
+                    fontSize: '0.76rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Download size={14} color="#059669" />
+                  <span>{isMobile ? 'PDF' : 'Download PDF'}</span>
+                </button>
+              </div>
+
               {/* Feedback Alert Banner */}
               {handoverFeedback.text && (
                 <div
@@ -6014,20 +6037,19 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     background: handoverFeedback.type === 'success' ? '#ecfdf5' : '#fef2f2',
                     border: handoverFeedback.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fecaca',
                     color: handoverFeedback.type === 'success' ? '#065f46' : '#991b1b',
-                    padding: '12px 16px',
-                    borderRadius: '12px',
-                    fontSize: '0.86rem',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    gap: '8px',
                   }}
                 >
                   {handoverFeedback.type === 'success' ? (
-                    <CheckCircle2 size={18} color="#059669" />
+                    <CheckCircle2 size={16} color="#059669" />
                   ) : (
-                    <AlertCircle size={18} color="#dc2626" />
+                    <AlertCircle size={16} color="#dc2626" />
                   )}
                   <span>{handoverFeedback.text}</span>
                 </div>
@@ -6038,92 +6060,29 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 style={{
                   background: '#ffffff',
                   border: '1px solid #e2e8f0',
-                  borderRadius: '16px',
-                  padding: '18px 16px',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                  borderRadius: '14px',
+                  padding: isMobile ? '12px' : '18px 16px',
+                  boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                      {partnerCashPeriod === 'today'
-                        ? "Today's Route Cash Collection"
-                        : partnerCashPeriod === 'weekly'
-                        ? 'Last 7 Days Route Collection'
-                        : partnerCashPeriod === 'monthly'
-                        ? 'Last 30 Days Route Collection'
-                        : partnerCashPeriod === 'custom'
-                        ? `Custom Route Collection (${partnerCustomStartDate} to ${partnerCustomEndDate})`
-                        : 'All-Time Route Collection'}
-                    </h3>
-                    <div style={{ fontSize: '0.74rem', color: '#64748b', marginTop: '2px' }}>
-                      Reconcile shift collections and handover physical cash to admin
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowPartnerReportModal(true)}
-                      style={{
-                        background: '#0d5c3a',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '8px',
-                        padding: '6px 12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        boxShadow: '0 2px 4px rgba(13,92,58,0.2)',
-                      }}
-                    >
-                      <Download size={13} />
-                      <span>Download PDF</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={loadDriverHandovers}
-                      title="Refresh Status"
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        padding: '6px 10px',
-                        color: '#64748b',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                      }}
-                    >
-                      <RefreshCw size={13} className={isLoadingDriverHandovers ? 'spin' : ''} />
-                      <span>Sync</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Timeframe Selector Pills */}
+                {/* Single-Row Timeframe Switcher */}
                 <div
                   style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
                     background: '#f1f5f9',
                     borderRadius: '10px',
                     padding: '3px',
-                    marginBottom: partnerCashPeriod === 'custom' ? '8px' : '14px',
-                    gap: '4px',
+                    marginBottom: partnerCashPeriod === 'custom' ? '10px' : '12px',
+                    gap: '2px',
                   }}
                 >
                   {[
                     { id: 'today', label: 'Today' },
-                    { id: 'weekly', label: 'Weekly (7 Days)' },
-                    { id: 'monthly', label: 'Monthly (30 Days)' },
-                    { id: 'all', label: 'All Time' },
-                    { id: 'custom', label: 'Custom (From - To)' },
+                    { id: 'weekly', label: isMobile ? '7D' : 'Weekly' },
+                    { id: 'monthly', label: isMobile ? '30D' : 'Monthly' },
+                    { id: 'all', label: 'All' },
+                    { id: 'custom', label: 'Custom' },
                   ].map((p) => {
                     const active = partnerCashPeriod === p.id;
                     return (
@@ -6132,18 +6091,16 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         type="button"
                         onClick={() => setPartnerCashPeriod(p.id)}
                         style={{
-                          flex: '1 1 auto',
-                          minWidth: '60px',
-                          padding: '6px 8px',
+                          padding: isMobile ? '6px 2px' : '7px 8px',
                           borderRadius: '8px',
                           border: 'none',
                           background: active ? '#ffffff' : 'transparent',
-                          color: active ? '#059669' : '#64748b',
+                          color: active ? '#0f172a' : '#64748b',
                           fontWeight: active ? 800 : 600,
-                          fontSize: '0.75rem',
+                          fontSize: isMobile ? '0.72rem' : '0.76rem',
                           cursor: 'pointer',
-                          boxShadow: active ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
-                          transition: 'all 0.15s ease',
+                          boxShadow: active ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
+                          whiteSpace: 'nowrap',
                         }}
                       >
                         {p.label}
@@ -6156,45 +6113,48 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 {partnerCashPeriod === 'custom' && (
                   <div
                     style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '10px 14px',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      gap: '8px',
+                      padding: '10px',
                       background: '#f8fafc',
                       borderRadius: '10px',
                       border: '1px solid #e2e8f0',
-                      marginBottom: '14px',
+                      marginBottom: '12px',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>From:</span>
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', marginBottom: '3px' }}>From</span>
                       <input
                         type="date"
                         value={partnerCustomStartDate}
                         onChange={(e) => setPartnerCustomStartDate(e.target.value)}
                         style={{
-                          padding: '5px 10px',
-                          borderRadius: '6px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          padding: '6px 8px',
+                          borderRadius: '7px',
                           border: '1px solid #cbd5e1',
-                          fontSize: '0.8rem',
+                          fontSize: '0.76rem',
                           color: '#0f172a',
                           background: '#ffffff',
                           fontWeight: 600,
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>To:</span>
+                    <div>
+                      <span style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: '#64748b', marginBottom: '3px' }}>To</span>
                       <input
                         type="date"
                         value={partnerCustomEndDate}
                         onChange={(e) => setPartnerCustomEndDate(e.target.value)}
                         style={{
-                          padding: '5px 10px',
-                          borderRadius: '6px',
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          padding: '6px 8px',
+                          borderRadius: '7px',
                           border: '1px solid #cbd5e1',
-                          fontSize: '0.8rem',
+                          fontSize: '0.76rem',
                           color: '#0f172a',
                           background: '#ffffff',
                           fontWeight: 600,
@@ -6206,67 +6166,65 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                 {/* Cash Metrics & Handover State Calculation */}
                 {(() => {
-                  // Calculate total cash already handed over or pending handover today
                   const totalHandedOver = driverHandovers
                     .filter((h) => h.status === 'accepted' || h.status === 'pending')
                     .reduce((sum, h) => sum + (h.amount || 0), 0);
 
-                  // Physical cash remaining in hand that can still be handed over
                   const remainingCashInHand = Math.max(0, totalCashCollected - totalHandedOver);
                   const pendingHandover = driverHandovers.find((h) => h.status === 'pending');
                   const acceptedHandover = driverHandovers.find((h) => h.status === 'accepted');
 
                   return (
                     <>
-                      {/* 2-Column Responsive Collection Metric Cards */}
+                      {/* 2-Column Collection Metric Cards */}
                       <div
                         style={{
                           display: 'grid',
                           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                          gap: '10px',
-                          marginBottom: '12px',
+                          gap: '8px',
+                          marginBottom: '10px',
                         }}
                       >
-                        {/* Physical Cash Card - Shows remaining cash in hand (0 if already handed over) */}
                         <div
                           style={{
                             background: '#f8fafc',
                             border: '1px solid #e2e8f0',
-                            borderRadius: '12px',
-                            padding: '12px',
+                            borderRadius: '11px',
+                            padding: '11px 12px',
                           }}
                         >
-                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                            💵 Physical Cash
+                          <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            Physical Cash
                           </div>
                           <div
                             style={{
-                              fontSize: '1.45rem',
-                              fontWeight: 800,
+                              fontSize: '1.35rem',
+                              fontWeight: 900,
                               color: remainingCashInHand > 0 ? '#059669' : '#0f172a',
                               marginTop: '3px',
                               lineHeight: 1.15,
+                              fontVariantNumeric: 'tabular-nums',
                             }}
                           >
                             ₹{remainingCashInHand.toLocaleString()}
                           </div>
                           <div
                             style={{
-                              fontSize: '0.67rem',
+                              fontSize: '0.68rem',
                               color: remainingCashInHand > 0 ? '#64748b' : '#059669',
                               marginTop: '3px',
-                              fontWeight: remainingCashInHand === 0 ? 700 : 400,
+                              fontWeight: remainingCashInHand === 0 ? 700 : 500,
                             }}
                           >
-                            {remainingCashInHand > 0 ? 'To deposit at counter' : '✓ All cash handed over'}
+                            {remainingCashInHand > 0 ? 'Pending handover' : 'Settled'}
                           </div>
                           {totalAddonCashCollected > 0 && (
                             <div
                               style={{
                                 marginTop: '5px',
                                 display: 'inline-block',
-                                fontSize: '0.66rem',
-                                fontWeight: 800,
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
                                 color: '#92400e',
                                 background: '#fffbeb',
                                 border: '1px solid #fde68a',
@@ -6274,36 +6232,44 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 padding: '2px 6px',
                               }}
                             >
-                              Includes +₹{totalAddonCashCollected.toLocaleString()} Add-ons Cash
+                              +₹{totalAddonCashCollected.toLocaleString()} Add-ons
                             </div>
                           )}
                         </div>
 
-                        {/* UPI Direct Card */}
                         <div
                           style={{
                             background: '#f8fafc',
                             border: '1px solid #e2e8f0',
-                            borderRadius: '12px',
-                            padding: '12px',
+                            borderRadius: '11px',
+                            padding: '11px 12px',
                           }}
                         >
-                          <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
-                            📱 UPI Direct
+                          <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            UPI Direct
                           </div>
-                          <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#2563eb', marginTop: '3px', lineHeight: 1.15 }}>
+                          <div
+                            style={{
+                              fontSize: '1.35rem',
+                              fontWeight: 900,
+                              color: '#1d4ed8',
+                              marginTop: '3px',
+                              lineHeight: 1.15,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
                             ₹{totalUpiCollected.toLocaleString()}
                           </div>
-                          <div style={{ fontSize: '0.67rem', color: '#64748b', marginTop: '3px' }}>
-                            Direct in Dairy account
+                          <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '3px' }}>
+                            Direct to Dairy
                           </div>
                           {totalAddonUpiCollected > 0 && (
                             <div
                               style={{
                                 marginTop: '5px',
                                 display: 'inline-block',
-                                fontSize: '0.66rem',
-                                fontWeight: 800,
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
                                 color: '#1d4ed8',
                                 background: '#eff6ff',
                                 border: '1px solid #bfdbfe',
@@ -6311,7 +6277,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 padding: '2px 6px',
                               }}
                             >
-                              Includes +₹{totalAddonUpiCollected.toLocaleString()} Add-ons UPI
+                              +₹{totalAddonUpiCollected.toLocaleString()} Add-ons
                             </div>
                           )}
                         </div>
@@ -6321,49 +6287,43 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       <div
                         style={{
                           background: '#f0fdf4',
-                          border: '1.5px solid #bbf7d0',
-                          borderRadius: '12px',
+                          border: '1px solid #bbf7d0',
+                          borderRadius: '11px',
                           padding: '12px 14px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          gap: '10px',
                         }}
                       >
                         <div>
-                          <div
-                            style={{
-                              fontSize: '0.68rem',
-                              fontWeight: 800,
-                              color: '#059669',
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em',
-                            }}
-                          >
-                            TOTAL ROUTE TURNOVER
+                          <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            Total Route Turnover
                           </div>
-                          <div style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', marginTop: '2px', lineHeight: 1.1 }}>
+                          <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#0f172a', marginTop: '2px', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
                             ₹{totalRevenue.toLocaleString()}
                           </div>
-                          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#047857', marginTop: '3px' }}>
-                            Cash ₹{totalCashCollected.toLocaleString()} • UPI ₹{totalUpiCollected.toLocaleString()}
+                          <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#047857', marginTop: '3px' }}>
+                            Cash ₹{totalCashCollected.toLocaleString()} · UPI ₹{totalUpiCollected.toLocaleString()}
                             {totalCustomerCashCollected + totalCustomerUpiCollected > 0
-                              ? ` (+₹${(totalCustomerCashCollected + totalCustomerUpiCollected).toLocaleString()} Sub/Customer)`
+                              ? ` · +₹${(totalCustomerCashCollected + totalCustomerUpiCollected).toLocaleString()} Sub`
                               : ''}
                           </div>
                         </div>
                         <div
                           style={{
-                            width: '38px',
-                            height: '38px',
+                            width: '36px',
+                            height: '36px',
                             borderRadius: '9px',
                             background: '#dcfce7',
                             color: '#059669',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
+                            flexShrink: 0,
                           }}
                         >
-                          <Wallet size={20} />
+                          <Wallet size={18} />
                         </div>
                       </div>
 
@@ -6371,51 +6331,31 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       {pendingHandover && (
                         <div
                           style={{
-                            marginTop: '14px',
+                            marginTop: '10px',
                             background: '#fff7ed',
-                            border: '1.5px solid #fdba74',
-                            borderRadius: '12px',
-                            padding: '14px',
-                            boxShadow: '0 2px 8px rgba(234, 88, 12, 0.08)',
+                            border: '1px solid #fdba74',
+                            borderRadius: '11px',
+                            padding: '12px',
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span
-                              style={{
-                                background: '#ffedd5',
-                                color: '#c2410c',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                padding: '3px 8px',
-                                borderRadius: '999px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: '6px',
-                                  height: '6px',
-                                  borderRadius: '50%',
-                                  background: '#ea580c',
-                                }}
-                              />
+                            <span style={{ color: '#c2410c', fontSize: '0.74rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ea580c' }} />
                               Pending Admin Verification
                             </span>
-                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#c2410c' }}>
+                            <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#c2410c' }}>
                               ₹{pendingHandover.amount}
                             </span>
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: '#9a3412', marginTop: '6px', lineHeight: 1.45 }}>
-                            Handover submitted at{' '}
+                          <div style={{ fontSize: '0.74rem', color: '#9a3412', marginTop: '4px' }}>
+                            Submitted at{' '}
                             <strong>
                               {new Date(pendingHandover.handoverDate || pendingHandover.createdAt).toLocaleTimeString([], {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}
                             </strong>
-                            . Please proceed to the dairy counter to deposit physical notes with the manager.
+                            · Deposit notes at counter.
                           </div>
                         </div>
                       )}
@@ -6424,100 +6364,63 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       {!pendingHandover && acceptedHandover && (
                         <div
                           style={{
-                            marginTop: '14px',
+                            marginTop: '10px',
                             background: '#ecfdf5',
-                            border: '1.5px solid #a7f3d0',
-                            borderRadius: '12px',
-                            padding: '14px',
-                            boxShadow: '0 2px 8px rgba(5, 150, 105, 0.06)',
+                            border: '1px solid #a7f3d0',
+                            borderRadius: '11px',
+                            padding: '12px',
                           }}
                         >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span
-                              style={{
-                                background: '#dcfce7',
-                                color: '#065f46',
-                                fontSize: '0.72rem',
-                                fontWeight: 800,
-                                padding: '3px 8px',
-                                borderRadius: '999px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                              }}
-                            >
-                              <CheckCircle2 size={13} color="#059669" />
-                              Shift Cash Handover Verified
+                            <span style={{ color: '#065f46', fontSize: '0.74rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                              <CheckCircle2 size={14} color="#059669" />
+                              Handover Verified
                             </span>
-                            <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#059669' }}>
+                            <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#059669' }}>
                               ₹{acceptedHandover.amount}
                             </span>
                           </div>
-                          <div style={{ fontSize: '0.76rem', color: '#065f46', marginTop: '6px' }}>
-                            Verified & signed off by{' '}
-                            <strong>{acceptedHandover.verifiedBy || 'Dairy Admin'}</strong>. Shift audit cleared!
+                          <div style={{ fontSize: '0.74rem', color: '#065f46', marginTop: '3px' }}>
+                            Signed off by <strong>{acceptedHandover.verifiedBy || 'Dairy Admin'}</strong>
                           </div>
                         </div>
                       )}
 
-                      {/* Handover Action Hero Button - ONLY SHOWN IF CASH AVAILABLE (>0) AND NO PENDING HANDOVER */}
+                      {/* Handover Action CTA */}
                       {remainingCashInHand > 0 && !pendingHandover && (
-                        <div style={{ marginTop: '14px' }}>
+                        <div style={{ marginTop: '12px' }}>
                           <button
                             type="button"
                             onClick={() => handleOpenHandoverModal(remainingCashInHand)}
                             style={{
                               width: '100%',
-                              padding: '13px 18px',
-                              background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                              padding: '12px 16px',
+                              background: '#059669',
                               color: '#ffffff',
                               border: 'none',
-                              borderRadius: '12px',
-                              fontSize: '0.92rem',
+                              borderRadius: '11px',
+                              fontSize: '0.88rem',
                               fontWeight: 800,
                               cursor: 'pointer',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               gap: '8px',
-                              boxShadow: '0 3px 12px rgba(5, 150, 105, 0.3)',
-                              transition: 'all 0.15s ease',
                             }}
                           >
-                            <Wallet size={18} />
+                            <Wallet size={16} />
                             <span>Handover Amount to Admin (₹{remainingCashInHand})</span>
                           </button>
                         </div>
                       )}
 
-                      {/* Instruction / Status Notice */}
-                      <div
-                        style={{
-                          marginTop: '12px',
-                          background: '#f8fafc',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '10px',
-                          padding: '10px 12px',
-                          fontSize: '0.75rem',
-                          color: '#64748b',
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {remainingCashInHand > 0 ? (
-                          <>
-                            💡 <strong>Deposit Instruction:</strong> Click the button above to request handover of{' '}
-                            <strong style={{ color: '#059669' }}>₹{remainingCashInHand}</strong>. Your submission will immediately appear in the Admin Dashboard Payments sidebar for live verification.
-                          </>
-                        ) : pendingHandover ? (
-                          <>
-                            ⏳ <strong>Verification in Progress:</strong> Your handover of{' '}
-                            <strong style={{ color: '#ea580c' }}>₹{pendingHandover.amount}</strong> is awaiting admin verification. Please deposit physical cash notes at the counter.
-                          </>
-                        ) : (
-                          <>
-                            ✅ <strong>Settlement Cleared:</strong> All physical cash collections for today's deliveries have been handed over to Admin. Remaining cash in hand is <strong style={{ color: '#059669' }}>₹0</strong>.
-                          </>
-                        )}
+                      {/* Concise Status Line */}
+                      <div style={{ marginTop: '8px', fontSize: '0.72rem', color: '#64748b', textAlign: 'center' }}>
+                        {remainingCashInHand > 0
+                          ? `Submitting ₹${remainingCashInHand} notifies Admin in real time for verification.`
+                          : pendingHandover
+                          ? `₹${pendingHandover.amount} awaiting counter verification.`
+                          : 'All collected physical cash is settled (₹0 in hand).'}
                       </div>
                     </>
                   );
@@ -7092,94 +6995,152 @@ export default function DeliveryBoyApp({ setActiveTab }) {
           {navTab === 'profile' && (
             profileDetailView ? (
                             profileDetailView === 'deliveries-details' ? (
-                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: '0 4px 28px' }}>
-                  {/* Top Bar with Back Button */}
-                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 18px' }}>
+                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 4px 28px', display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+                  {/* Compact Header */}
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 0' }}>
                     <button
                       type="button"
                       className="modern-profile-header-btn"
                       onClick={backToDriverProfile}
                       aria-label="Back to profile"
                     >
-                      <ArrowLeft size={21} />
+                      <ArrowLeft size={20} />
                     </button>
-                    <div style={{ flex: 1 }}>
-                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem', fontWeight: 800 }}>
-                        All Deliveries & Route Stops
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: isMobile ? '1.1rem' : '1.22rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        All Deliveries
                       </h2>
-                      <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
-                        {boyArea || 'Madhapur'} • {myDeliveries.length} doorstep stops scheduled for today
+                      <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.76rem', fontWeight: 600 }}>
+                        {boyArea || 'Madhapur'} · {myDeliveries.length} stops assigned today
                       </p>
                     </div>
                   </header>
 
-                  {/* KPI Metrics Cards Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
-                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Total Drops</span>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0f172a', marginTop: '2px' }}>{myDeliveries.length}</div>
+                  {/* Unified Summary & Collections Strip */}
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: isMobile ? '12px 8px 10px' : '14px 14px 12px',
+                      boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                    }}
+                  >
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', alignItems: 'center' }}>
+                      {[
+                        { label: 'Total', value: myDeliveries.length, color: '#0f172a' },
+                        { label: 'Delivered', value: completedList.length, color: '#059669' },
+                        { label: 'Pending', value: pendingList.length, color: '#d97706' },
+                        { label: 'Missed', value: missedList.length, color: '#dc2626' },
+                      ].map((stat, idx) => (
+                        <div
+                          key={stat.label}
+                          style={{
+                            textAlign: 'center',
+                            padding: '0 4px',
+                            borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                            minWidth: 0,
+                          }}
+                        >
+                          <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            {stat.label}
+                          </div>
+                          <div style={{ fontSize: isMobile ? '1.12rem' : '1.25rem', fontWeight: 900, color: stat.color, lineHeight: 1.2, marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
+                            {stat.value}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '14px', padding: '12px 14px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Delivered</span>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803d', marginTop: '2px' }}>{completedList.length}</div>
-                    </div>
-                    <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '14px', padding: '12px 14px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>Pending</span>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b45309', marginTop: '2px' }}>{pendingList.length}</div>
-                    </div>
-                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '14px', padding: '12px 14px' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#b91c1c', textTransform: 'uppercase' }}>Missed</span>
-                      <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#b91c1c', marginTop: '2px' }}>{missedList.length}</div>
+
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        paddingTop: '9px',
+                        borderTop: '1px solid #f1f5f9',
+                        paddingLeft: '8px',
+                        paddingRight: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        fontSize: '0.74rem',
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color: '#475569' }}>
+                        Collections: <strong style={{ color: '#0f172a' }}>₹{(totalCashCollected + totalUpiCollected).toLocaleString()}</strong>
+                      </span>
+                      <span style={{ color: '#64748b', fontWeight: 600 }}>
+                        Cash ₹{totalCashCollected.toLocaleString()} · UPI ₹{totalUpiCollected.toLocaleString()}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Collections Summary Banner */}
-                  <div style={{ background: 'linear-gradient(135deg, #0d5c3a 0%, #064e3b 100%)', borderRadius: '16px', padding: '16px 20px', color: '#ffffff', marginBottom: '16px', boxShadow: '0 4px 12px rgba(13,92,58,0.15)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                      <div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>TODAY'S COLLECTIONS</span>
-                        <div style={{ fontSize: '1.4rem', fontWeight: 900, marginTop: '2px' }}>
-                          ₹{totalCashCollected + totalUpiCollected}
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '14px' }}>
-                        <div style={{ background: 'rgba(255,255,255,0.14)', padding: '6px 14px', borderRadius: '10px' }}>
-                          <span style={{ fontSize: '0.68rem', opacity: 0.85, display: 'block' }}>CASH IN HAND</span>
-                          <strong style={{ fontSize: '0.95rem' }}>₹{totalCashCollected}</strong>
-                        </div>
-                        <div style={{ background: 'rgba(255,255,255,0.14)', padding: '6px 14px', borderRadius: '10px' }}>
-                          <span style={{ fontSize: '0.68rem', opacity: 0.85, display: 'block' }}>UPI RECEIVED</span>
-                          <strong style={{ fontSize: '0.95rem' }}>₹{totalUpiCollected}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Search Bar & Filter Chips */}
-                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '8px 12px', marginBottom: '12px' }}>
-                      <Search size={16} color="#94a3b8" />
+                  {/* Search & Non-Clipping Wrapping Filter Chips */}
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: isMobile ? '10px' : '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '9px',
+                      boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                    }}
+                  >
+                    <div style={{ position: 'relative' }}>
+                      <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
                       <input
                         type="text"
                         value={profileDelSearch}
                         onChange={(e) => setProfileDelSearch(e.target.value)}
-                        placeholder="Search deliveries by customer name, address or phone..."
-                        style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.85rem', color: '#0f172a' }}
+                        placeholder="Search name, address, phone..."
+                        style={{
+                          width: '100%',
+                          boxSizing: 'border-box',
+                          padding: '8px 30px 8px 32px',
+                          borderRadius: '9px',
+                          border: '1px solid #e2e8f0',
+                          background: '#f8fafc',
+                          fontSize: '0.8rem',
+                          color: '#0f172a',
+                          outline: 'none',
+                        }}
                       />
                       {profileDelSearch && (
-                        <button type="button" onClick={() => setProfileDelSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: 0 }}>✕</button>
+                        <button
+                          type="button"
+                          onClick={() => setProfileDelSearch('')}
+                          aria-label="Clear search"
+                          style={{
+                            position: 'absolute',
+                            right: '8px',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            color: '#94a3b8',
+                            padding: '2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={14} />
+                        </button>
                       )}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '2px' }}>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {[
                         { key: 'today', label: `Today (${partnerTodayDeliveries.length})` },
                         { key: 'pending', label: `Pending (${pendingList.length})` },
                         { key: 'delivered', label: `Delivered (${completedList.length})` },
                         { key: 'not_delivered', label: `Missed (${missedList.length})` },
-                        { key: 'cash', label: 'Cash Only' },
-                        { key: 'upi', label: 'UPI / Online' },
-                        { key: 'all', label: `All Deliveries (${allKnownPartnerDeliveries.length || myDeliveries.length})` },
+                        { key: 'cash', label: 'Cash' },
+                        { key: 'upi', label: 'UPI' },
+                        { key: 'all', label: `All (${allKnownPartnerDeliveries.length || myDeliveries.length})` },
                       ].map((chip) => {
                         const isChipActive = profileDelFilter === chip.key;
                         return (
@@ -7188,16 +7149,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             type="button"
                             onClick={() => setProfileDelFilter(chip.key)}
                             style={{
-                              padding: '5px 12px',
+                              padding: '5px 10px',
                               borderRadius: '999px',
-                              border: isChipActive ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
-                              background: isChipActive ? '#0d5c3a' : '#f8fafc',
-                              color: isChipActive ? '#ffffff' : '#64748b',
-                              fontSize: '0.74rem',
-                              fontWeight: 700,
+                              border: `1px solid ${isChipActive ? '#059669' : '#e2e8f0'}`,
+                              background: isChipActive ? '#ecfdf5' : '#ffffff',
+                              color: isChipActive ? '#065f46' : '#475569',
+                              fontSize: '0.72rem',
+                              fontWeight: isChipActive ? 800 : 600,
                               cursor: 'pointer',
                               whiteSpace: 'nowrap',
-                              transition: 'all 0.15s ease',
                             }}
                           >
                             {chip.label}
@@ -7230,16 +7190,16 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                     if (filtered.length === 0) {
                       return (
-                        <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#64748b' }}>
-                          <Truck size={36} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
-                          <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>No Deliveries Found</h3>
-                          <p style={{ margin: 0, fontSize: '0.82rem' }}>No stops match your active search or filter criteria.</p>
+                        <div style={{ textAlign: 'center', padding: '40px 20px', background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', color: '#64748b' }}>
+                          <Truck size={32} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
+                          <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>No Deliveries Found</h3>
+                          <p style={{ margin: 0, fontSize: '0.8rem' }}>No stops match your active search or filter criteria.</p>
                         </div>
                       );
                     }
 
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {filtered.map((d, idx) => {
                           const isDelivered = d.status === 'delivered';
                           const isMissed = d.status === 'not_delivered';
@@ -7250,39 +7210,42 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                               key={d._id || d.id || idx}
                               style={{
                                 background: '#ffffff',
-                                border: `1.5px solid ${isDelivered ? '#bbf7d0' : isMissed ? '#fecaca' : '#e2e8f0'}`,
-                                borderRadius: '16px',
-                                padding: '16px',
-                                boxShadow: '0 2px 6px rgba(15,23,42,0.03)',
+                                border: `1px solid ${isDelivered ? '#bbf7d0' : isMissed ? '#fecaca' : '#e2e8f0'}`,
+                                borderRadius: '14px',
+                                padding: isMobile ? '12px 13px' : '14px 16px',
+                                boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px',
                               }}
                             >
-                              {/* Card Top: Sequence, Name & Status */}
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {/* Top Row */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                                   <span
                                     style={{
-                                      width: '26px',
-                                      height: '26px',
-                                      borderRadius: '50%',
-                                      background: '#0d5c3a',
-                                      color: '#ffffff',
+                                      width: '28px',
+                                      height: '28px',
+                                      borderRadius: '8px',
+                                      background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#f1f5f9',
+                                      color: isDelivered ? '#047857' : isMissed ? '#b91c1c' : '#334155',
                                       fontSize: '0.74rem',
-                                      fontWeight: 900,
+                                      fontWeight: 800,
                                       display: 'inline-flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
                                       flexShrink: 0,
                                     }}
                                   >
-                                    {d.sequenceNumber || idx + 1}
+                                    #{d.sequenceNumber || idx + 1}
                                   </span>
-                                  <div>
-                                    <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>
+                                  <div style={{ minWidth: 0, flex: 1 }}>
+                                    <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                       {d.customerName || 'Customer'}
                                     </h4>
-                                    <span style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                                      {d.deliveryTime || '5:00 AM – 7:30 AM'} • {d.customerArea || boyArea}
-                                    </span>
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '1px' }}>
+                                      {d.deliveryTime || '5:00 AM – 7:30 AM'} · {d.customerArea || boyArea}
+                                    </div>
                                   </div>
                                 </div>
 
@@ -7290,101 +7253,50 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                   style={{
                                     fontSize: '0.68rem',
                                     fontWeight: 800,
-                                    padding: '4px 10px',
+                                    padding: '3px 8px',
                                     borderRadius: '999px',
                                     background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
                                     color: isDelivered ? '#047857' : isMissed ? '#b91c1c' : '#b45309',
-                                    border: `1px solid ${isDelivered ? '#86efac' : isMissed ? '#fca5a5' : '#fde68a'}`,
+                                    border: `1px solid ${isDelivered ? '#bbf7d0' : isMissed ? '#fecaca' : '#fde68a'}`,
                                     whiteSpace: 'nowrap',
+                                    flexShrink: 0,
                                   }}
                                 >
-                                  {isDelivered ? '✓ DELIVERED' : isMissed ? '✕ MISSED' : '⏱ PENDING'}
+                                  {isDelivered ? 'Delivered' : isMissed ? 'Missed' : 'Pending'}
                                 </span>
                               </div>
 
-                              {/* Customer Phone & Address Actions */}
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', color: '#475569', marginBottom: '12px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <Phone size={13} color="#059669" />
-                                    <strong>{d.customerPhone || 'No phone provided'}</strong>
+                              {/* Item & Payment Summary */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontWeight: 700, color: '#047857', background: '#ecfdf5', padding: '2px 8px', borderRadius: '6px' }}>
+                                    {d.plannedMilk || 1}L Milk
                                   </span>
-                                  {d.customerPhone && (
-                                    <a
-                                      href={`tel:${d.customerPhone}`}
-                                      style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        color: '#059669',
-                                        background: '#ecfdf5',
-                                        padding: '3px 9px',
-                                        borderRadius: '8px',
-                                        textDecoration: 'none',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                      }}
-                                    >
-                                      <PhoneCall size={11} /> Call Customer
-                                    </a>
+                                  {d.plannedCurd > 0 && (
+                                    <span style={{ fontWeight: 700, color: '#92400e', background: '#fffbeb', padding: '2px 8px', borderRadius: '6px' }}>
+                                      {d.plannedCurd}g Curd
+                                    </span>
                                   )}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                                  <span style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1 }}>
-                                    <MapPin size={13} color="#059669" style={{ marginTop: '2px', flexShrink: 0 }} />
-                                    <span>{d.customerAddress || 'Address on file'}</span>
-                                  </span>
-                                  {d.customerAddress && (
-                                    <a
-                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.customerAddress)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 800,
-                                        color: '#2563eb',
-                                        background: '#eff6ff',
-                                        padding: '3px 9px',
-                                        borderRadius: '8px',
-                                        textDecoration: 'none',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        flexShrink: 0,
-                                      }}
-                                    >
-                                      <Navigation size={11} /> Directions
-                                    </a>
-                                  )}
-                                </div>
+                                <span style={{ fontWeight: 800, color: '#0f172a' }}>
+                                  ₹{d.totalAmount || 60} · <span style={{ color: '#64748b', fontWeight: 700, textTransform: 'capitalize' }}>{d.paymentMethod || 'credit'}</span>
+                                  {d.addonPaymentMethod && d.addonPaidAmount > 0 ? ` (+₹${d.addonPaidAmount} ${d.addonPaymentMethod.toUpperCase()})` : ''}
+                                </span>
                               </div>
 
-                              {/* Itemized Order Details & Drop Instructions */}
-                              <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '10px 12px', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: (d.notes || d.doorstepDropNote) ? '8px' : '0' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0c2340', background: '#e2f1ea', padding: '2px 8px', borderRadius: '6px' }}>
-                                      🥛 {d.plannedMilk || 1}L Cow Milk
-                                    </span>
-                                    {d.plannedCurd > 0 && (
-                                      <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0c2340', background: '#fef3c7', padding: '2px 8px', borderRadius: '6px' }}>
-                                        🥣 {d.plannedCurd}g Curd
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0f172a' }}>
-                                    ₹{d.totalAmount || 60} • <span style={{ textTransform: 'uppercase', color: '#64748b' }}>{d.paymentMethod || 'credit'}</span>
-                                    {d.addonPaymentMethod && d.addonPaidAmount > 0 ? ` (+₹${d.addonPaidAmount} ${d.addonPaymentMethod.toUpperCase()} Add-ons)` : ''}
-                                  </span>
+                              {/* Address & Contact */}
+                              <div style={{ fontSize: '0.76rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                                  <MapPin size={13} color="#94a3b8" style={{ marginTop: '2px', flexShrink: 0 }} />
+                                  <span>{d.customerAddress || 'Address on file'}{d.customerPhone ? ` · ${d.customerPhone}` : ''}</span>
                                 </div>
                                 {Array.isArray(d.addons) && d.addons.length > 0 && (
-                                  <div style={{ marginTop: '6px', fontSize: '0.73rem', fontWeight: 700, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '4px 8px', borderRadius: '7px' }}>
-                                    + Add-ons: {d.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')} · ₹{Number(d.addonsTotal || 0)}
+                                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '4px 8px', borderRadius: '7px' }}>
+                                    Add-ons: {d.addons.map((a) => `${a.name} × ${a.quantity}`).join(', ')} · ₹{Number(d.addonsTotal || 0)}
                                   </div>
                                 )}
-
                                 {(d.notes || d.doorstepDropNote) && (
-                                  <div style={{ fontSize: '0.74rem', color: '#475569', borderTop: '1px dashed #e2e8f0', paddingTop: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
                                     <Info size={12} color="#059669" />
                                     <span>{d.doorstepDropNote || d.notes}</span>
                                   </div>
@@ -7393,19 +7305,18 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                               {/* Proof Image Thumbnail if exists */}
                               {d.proofImage && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                   <div
                                     onClick={() => setPreviewProofModal(d)}
                                     style={{
-                                      width: '48px',
-                                      height: '48px',
+                                      width: '40px',
+                                      height: '40px',
                                       borderRadius: '8px',
                                       overflow: 'hidden',
                                       border: '1px solid #cbd5e1',
                                       cursor: 'pointer',
-                                      position: 'relative',
                                     }}
-                                    title="Click to view doorstep proof photo"
+                                    title="View doorstep proof photo"
                                   >
                                     <img
                                       src={resolveProofUrl(d.proofImage)}
@@ -7414,57 +7325,108 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                     />
                                   </div>
                                   <span style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700 }}>
-                                    ✓ Doorstep photo recorded
+                                    Doorstep photo verified
                                   </span>
                                 </div>
                               )}
 
-                              {/* Action Buttons for Pending Stops */}
-                              {isPending && (
-                                <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => openDeliverModal(d)}
-                                    style={{
-                                      flex: 1,
-                                      padding: '9px 12px',
-                                      borderRadius: '10px',
-                                      border: 'none',
-                                      background: '#0d5c3a',
-                                      color: '#ffffff',
-                                      fontSize: '0.82rem',
-                                      fontWeight: 800,
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '6px',
-                                    }}
-                                  >
-                                    <Check size={15} /> Mark Delivered
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => openNotDeliveredModal(d)}
-                                    style={{
-                                      padding: '9px 12px',
-                                      borderRadius: '10px',
-                                      border: '1px solid #fca5a5',
-                                      background: '#fef2f2',
-                                      color: '#b91c1c',
-                                      fontSize: '0.82rem',
-                                      fontWeight: 700,
-                                      cursor: 'pointer',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center',
-                                      gap: '4px',
-                                    }}
-                                  >
-                                    <X size={15} /> Missed
-                                  </button>
+                              {/* Clean Footer Action Bar */}
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  flexWrap: 'wrap',
+                                  gap: '8px',
+                                  paddingTop: '8px',
+                                  borderTop: '1px solid #f1f5f9',
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {d.customerPhone && (
+                                    <a
+                                      href={`tel:${d.customerPhone}`}
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: '#334155',
+                                        background: '#f8fafc',
+                                        border: '1px solid #e2e8f0',
+                                        padding: '5px 10px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}
+                                    >
+                                      <Phone size={12} /> Call
+                                    </a>
+                                  )}
+                                  {d.customerAddress && (
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d.customerAddress)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        color: '#1d4ed8',
+                                        background: '#eff6ff',
+                                        border: '1px solid #bfdbfe',
+                                        padding: '5px 10px',
+                                        borderRadius: '8px',
+                                        textDecoration: 'none',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}
+                                    >
+                                      <Navigation size={12} /> Map
+                                    </a>
+                                  )}
                                 </div>
-                              )}
+
+                                {isPending && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => openNotDeliveredModal(d)}
+                                      style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #fecaca',
+                                        background: '#ffffff',
+                                        color: '#b91c1c',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                      }}
+                                    >
+                                      Missed
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => openDeliverModal(d)}
+                                      style={{
+                                        padding: '6px 12px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        background: '#059669',
+                                        color: '#ffffff',
+                                        fontSize: '0.74rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                      }}
+                                    >
+                                      <Check size={13} /> Deliver
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -7473,102 +7435,107 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   })()}
                 </section>
               ) : profileDetailView === 'subscriptions-history' ? (
-                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: '0 4px 28px' }}>
-                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 18px' }}>
+                <section style={{ width: '100%', maxWidth: '880px', margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 4px 28px', display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+                  {/* Compact Header */}
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 0' }}>
                     <button
                       type="button"
                       className="modern-profile-header-btn"
                       onClick={backToDriverProfile}
                       aria-label="Back to profile"
                     >
-                      <ArrowLeft size={21} />
+                      <ArrowLeft size={20} />
                     </button>
-                    <div style={{ flex: 1 }}>
-                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.2rem', fontWeight: 800 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: isMobile ? '1.1rem' : '1.22rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                         Subscriptions & Orders
                       </h2>
-                      <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
-                        Manage active household plans, daily fulfillment history, and crate counts.
+                      <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.76rem', fontWeight: 600 }}>
+                        {assignedCustomers.length || myDeliveries.length} households · {boyArea || 'Route'}
                       </p>
                     </div>
                   </header>
 
-                  {/* Clean 4-Metric Summary (Simple & Professional, replaces dark gradient) */}
+                  {/* Unified 4-Column Dispatch Strip */}
                   <div
                     style={{
                       background: '#ffffff',
                       border: '1px solid #e2e8f0',
-                      borderRadius: '16px',
-                      padding: '16px 18px',
-                      marginBottom: '16px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                      borderRadius: '14px',
+                      padding: isMobile ? '11px 6px' : '14px 12px',
+                      boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{ background: '#ecfdf5', borderRadius: '8px', padding: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Truck size={16} color="#0d5c3a" />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', alignItems: 'center' }}>
+                      {[
+                        {
+                          label: 'Active',
+                          value: assignedCustomers.filter((c) => c.status !== 'paused' && c.status !== 'inactive').length || myDeliveries.length,
+                          color: '#059669',
+                        },
+                        {
+                          label: 'On Hold',
+                          value: assignedCustomers.filter((c) => c.status === 'paused').length,
+                          color: '#d97706',
+                        },
+                        {
+                          label: 'Demand',
+                          value: `${myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)}L`,
+                          color: '#0f172a',
+                        },
+                        {
+                          label: 'Area',
+                          value: boyArea || 'Madhapur',
+                          color: '#1d4ed8',
+                        },
+                      ].map((stat, idx) => (
+                        <div
+                          key={stat.label}
+                          style={{
+                            textAlign: 'center',
+                            padding: '0 4px',
+                            borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                            minWidth: 0,
+                          }}
+                        >
+                          <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                            {stat.label}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: stat.label === 'Area' && isMobile ? '0.84rem' : isMobile ? '1.1rem' : '1.22rem',
+                              fontWeight: 900,
+                              color: stat.color,
+                              lineHeight: 1.25,
+                              marginTop: '2px',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {stat.value}
+                          </div>
                         </div>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                          ROUTE DISPATCH SUMMARY
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#64748b' }}>
-                        {assignedCustomers.length || myDeliveries.length} Households
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
-                      <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669', lineHeight: 1.2 }}>
-                          {assignedCustomers.filter(c => c.status !== 'paused' && c.status !== 'inactive').length || myDeliveries.length}
-                        </div>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                          ACTIVE PLANS
-                        </span>
-                      </div>
-                      <div style={{ background: '#fef3c7', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#d97706', lineHeight: 1.2 }}>
-                          {assignedCustomers.filter(c => c.status === 'paused').length}
-                        </div>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#b45309', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                          ON HOLD
-                        </span>
-                      </div>
-                      <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.2 }}>
-                          {myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)} L
-                        </div>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                          DAILY DEMAND
-                        </span>
-                      </div>
-                      <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1d4ed8', lineHeight: 1.2, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                          {boyArea || 'Madhapur'}
-                        </div>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e40af', letterSpacing: '0.3px', textTransform: 'uppercase' }}>
-                          ROUTE AREA
-                        </span>
-                      </div>
+                      ))}
                     </div>
                   </div>
 
-                  {/* 3-Segment Switcher (Pill Style) */}
+                  {/* Single-Line 3-Segment Switcher (No Refresh Icon, No Multi-line Wrapping) */}
                   <div
                     style={{
-                      display: 'flex',
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                       background: '#f1f5f9',
-                      padding: '4px',
-                      borderRadius: '14px',
-                      border: '1px solid #e2e8f0',
-                      marginBottom: '16px',
+                      padding: '3px',
+                      borderRadius: '10px',
+                      gap: '3px',
                     }}
                   >
                     {[
-                      { key: 'subscriptions', label: 'Subscriptions', icon: RefreshCw },
-                      { key: 'history', label: 'Order History', icon: FileText },
-                      { key: 'crates', label: 'Crates & Hub', icon: Package },
+                      { key: 'subscriptions', label: isMobile ? 'Plans' : 'Subscriptions', icon: Calendar },
+                      { key: 'history', label: isMobile ? 'Orders' : 'Order History', icon: FileText },
+                      { key: 'crates', label: isMobile ? 'Crates' : 'Crates & Hub', icon: Package },
                     ].map((tab) => {
                       const isTabActive = profileSubHistTab === tab.key;
                       const IconComp = tab.icon;
@@ -7578,24 +7545,23 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           type="button"
                           onClick={() => setProfileSubHistTab(tab.key)}
                           style={{
-                            flex: 1,
-                            padding: '10px 8px',
-                            borderRadius: '10px',
+                            padding: '8px 6px',
+                            borderRadius: '8px',
                             border: 'none',
-                            background: isTabActive ? '#0d5c3a' : 'transparent',
-                            color: isTabActive ? '#ffffff' : '#64748b',
-                            fontSize: '0.82rem',
-                            fontWeight: 800,
+                            background: isTabActive ? '#ffffff' : 'transparent',
+                            color: isTabActive ? '#0f172a' : '#64748b',
+                            fontSize: isMobile ? '0.76rem' : '0.8rem',
+                            fontWeight: isTabActive ? 800 : 600,
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: '6px',
-                            boxShadow: isTabActive ? '0 2px 6px rgba(13,92,58,0.2)' : 'none',
-                            transition: 'all 0.15s ease',
+                            gap: '5px',
+                            whiteSpace: 'nowrap',
+                            boxShadow: isTabActive ? '0 1px 3px rgba(15,23,42,0.08)' : 'none',
                           }}
                         >
-                          <IconComp size={15} />
+                          <IconComp size={14} color={isTabActive ? '#059669' : '#64748b'} />
                           <span>{tab.label}</span>
                         </button>
                       );
@@ -7604,28 +7570,68 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                   {/* SEGMENT 1: Subscriptions View */}
                   {profileSubHistTab === 'subscriptions' && (
-                    <div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                       {/* Search & Filter */}
-                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '12px 14px', marginBottom: '14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '8px 12px', marginBottom: '10px' }}>
-                          <Search size={16} color="#94a3b8" />
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '14px',
+                          padding: isMobile ? '10px' : '12px 14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '9px',
+                          boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                        }}
+                      >
+                        <div style={{ position: 'relative' }}>
+                          <Search size={14} color="#94a3b8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
                           <input
                             type="text"
                             value={profileSubSearch}
                             onChange={(e) => setProfileSubSearch(e.target.value)}
-                            placeholder="Search subscriptions by customer or phone..."
-                            style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '0.85rem', color: '#0f172a' }}
+                            placeholder="Search customer or phone..."
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              padding: '8px 30px 8px 32px',
+                              borderRadius: '9px',
+                              border: '1px solid #e2e8f0',
+                              background: '#f8fafc',
+                              fontSize: '0.8rem',
+                              color: '#0f172a',
+                              outline: 'none',
+                            }}
                           />
                           {profileSubSearch && (
-                            <button type="button" onClick={() => setProfileSubSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '1rem', padding: 0 }}>✕</button>
+                            <button
+                              type="button"
+                              onClick={() => setProfileSubSearch('')}
+                              aria-label="Clear search"
+                              style={{
+                                position: 'absolute',
+                                right: '8px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                border: 'none',
+                                background: 'transparent',
+                                cursor: 'pointer',
+                                color: '#94a3b8',
+                                padding: '2px',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <X size={14} />
+                            </button>
                           )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {[
-                            { key: 'all', label: `All Plans (${assignedCustomers.length || myDeliveries.length})` },
-                            { key: 'active', label: 'Active Only' },
-                            { key: 'paused', label: 'Paused / Holds' },
+                            { key: 'all', label: `All (${assignedCustomers.length || myDeliveries.length})` },
+                            { key: 'active', label: 'Active' },
+                            { key: 'paused', label: 'On Hold' },
                           ].map((chip) => {
                             const isActive = profileSubFilter === chip.key;
                             return (
@@ -7634,13 +7640,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 type="button"
                                 onClick={() => setProfileSubFilter(chip.key)}
                                 style={{
-                                  padding: '5px 12px',
+                                  padding: '5px 11px',
                                   borderRadius: '999px',
-                                  border: isActive ? '1px solid #0d5c3a' : '1px solid #e2e8f0',
-                                  background: isActive ? '#0d5c3a' : '#f8fafc',
-                                  color: isActive ? '#ffffff' : '#64748b',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
+                                  border: `1px solid ${isActive ? '#059669' : '#e2e8f0'}`,
+                                  background: isActive ? '#ecfdf5' : '#ffffff',
+                                  color: isActive ? '#065f46' : '#475569',
+                                  fontSize: '0.72rem',
+                                  fontWeight: isActive ? 800 : 600,
                                   cursor: 'pointer',
                                 }}
                               >
@@ -7670,24 +7676,24 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                         if (list.length === 0) {
                           return (
-                            <div style={{ textAlign: 'center', padding: '36px 20px', background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', color: '#64748b' }}>
-                              <RefreshCw size={32} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
-                              <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '1rem', fontWeight: 800 }}>No Subscriptions Match</h3>
-                              <p style={{ margin: 0, fontSize: '0.82rem' }}>Try clearing the search query or changing your filter.</p>
+                            <div style={{ textAlign: 'center', padding: '36px 20px', background: '#ffffff', borderRadius: '14px', border: '1px solid #e2e8f0', color: '#64748b' }}>
+                              <FileText size={30} color="#cbd5e1" style={{ margin: '0 auto 10px', display: 'block' }} />
+                              <h3 style={{ margin: '0 0 4px', color: '#0f172a', fontSize: '0.98rem', fontWeight: 800 }}>No Subscriptions Match</h3>
+                              <p style={{ margin: 0, fontSize: '0.8rem' }}>Try clearing the search query or changing your filter.</p>
                             </div>
                           );
                         }
 
                         return (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {list.map((c, idx) => {
                               const cName = c.name || c.customerName || `Customer #${idx + 1}`;
                               const cPhone = c.mobile || c.customerPhone || '';
                               const cAddr = c.address || c.customerAddress || 'Address on file';
                               const qty = c.deliveryPlan?.milkQty || c.plannedMilk || 1;
                               const isPaused = c.subscription?.status === 'paused' || c.status === 'paused';
-                              const startDate = c.subscription?.startDate ? new Date(c.subscription.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '01 Nov';
-                              const endDate = c.subscription?.endDate ? new Date(c.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '30 Nov';
+                              const startDate = c.subscription?.startDate ? new Date(c.subscription.startDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Active';
+                              const endDate = c.subscription?.endDate ? new Date(c.subscription.endDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Ongoing';
                               const initial = cName.trim() ? cName.trim()[0].toUpperCase() : 'S';
 
                               return (
@@ -7696,22 +7702,25 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                   style={{
                                     background: '#ffffff',
                                     border: `1px solid ${isPaused ? '#fde68a' : '#e2e8f0'}`,
-                                    borderRadius: '16px',
-                                    padding: '16px',
-                                    boxShadow: '0 1px 3px rgba(15,23,42,0.02)',
+                                    borderRadius: '14px',
+                                    padding: isMobile ? '12px 13px' : '14px 16px',
+                                    boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
                                   }}
                                 >
-                                  {/* Header: Initial Avatar, Name, Status */}
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                       <div
                                         style={{
-                                          width: '38px',
-                                          height: '38px',
+                                          width: '36px',
+                                          height: '36px',
                                           borderRadius: '10px',
-                                          background: isPaused ? '#fef3c7' : '#ecfdf5',
-                                          color: isPaused ? '#b45309' : '#0d5c3a',
-                                          fontSize: '0.92rem',
+                                          background: isPaused ? '#fffbeb' : '#ecfdf5',
+                                          color: isPaused ? '#b45309' : '#047857',
+                                          border: `1px solid ${isPaused ? '#fde68a' : '#a7f3d0'}`,
+                                          fontSize: '0.88rem',
                                           fontWeight: 800,
                                           display: 'flex',
                                           alignItems: 'center',
@@ -7722,112 +7731,93 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                         {initial}
                                       </div>
                                       <div style={{ minWidth: 0 }}>
-                                        <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                           {cName}
                                         </h4>
                                         <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                          ID: #{idx + 101} • {boyArea || 'Madhapur'}
+                                          {c.customerId || `#${idx + 101}`} · {c.area || boyArea || 'Madhapur'}
                                         </span>
                                       </div>
                                     </div>
                                     <span
                                       style={{
                                         fontSize: '0.68rem',
-                                        fontWeight: 800,
-                                        padding: '3px 10px',
+                                        fontWeight: 700,
+                                        padding: '3px 8px',
                                         borderRadius: '999px',
-                                        background: isPaused ? '#fef3c7' : '#ecfdf5',
-                                        color: isPaused ? '#92400e' : '#065f46',
-                                        border: `1px solid ${isPaused ? '#fde68a' : '#86efac'}`,
+                                        background: isPaused ? '#fffbeb' : '#ecfdf5',
+                                        color: isPaused ? '#b45309' : '#047857',
+                                        border: `1px solid ${isPaused ? '#fde68a' : '#a7f3d0'}`,
                                         flexShrink: 0,
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
                                       }}
                                     >
-                                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isPaused ? '#d97706' : '#059669' }} />
-                                      {isPaused ? 'Vacation Hold' : 'Active Plan'}
+                                      {isPaused ? 'On Hold' : 'Active'}
                                     </span>
                                   </div>
 
-                                  {/* Address */}
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', fontSize: '0.76rem', color: '#475569', marginBottom: '8px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '5px' }}>
-                                      <MapPin size={13} color="#0d5c3a" style={{ marginTop: '2px', flexShrink: 0 }} />
-                                      <span>{cAddr}</span>
-                                    </div>
-                                    {cAddr && (
-                                      <a
-                                        href={`https://maps.google.com/?q=${encodeURIComponent(cAddr)}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        style={{
-                                          fontSize: '0.68rem',
-                                          fontWeight: 700,
-                                          color: '#0d5c3a',
-                                          background: '#f0fdf4',
-                                          padding: '2px 8px',
-                                          borderRadius: '6px',
-                                          border: '1px solid #bbf7d0',
-                                          textDecoration: 'none',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '3px',
-                                          flexShrink: 0,
-                                        }}
-                                      >
-                                        <Navigation size={10} /> Map
-                                      </a>
-                                    )}
-                                  </div>
-
-                                  {/* Plan Box */}
-                                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '10px 12px', margin: '8px 0' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                      <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
-                                        🥛 {qty}L Pure Cow Milk
+                                  <div style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: '10px', padding: '9px 11px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#0f172a' }}>
+                                        {qty}L Cow Milk
                                       </span>
-                                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff', padding: '2px 7px', borderRadius: '4px' }}>
-                                        DAILY MORNING
+                                      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '2px 7px', borderRadius: '5px' }}>
+                                        Daily Morning
                                       </span>
                                     </div>
-                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '6px' }}>
-                                      Slot: 5:00 AM – 7:30 AM Doorstep Drop
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#64748b', marginTop: '6px' }}>
-                                      <span>Start: {startDate}</span>
-                                      <span style={{ fontWeight: 700, color: '#0d5c3a' }}>Renewal: {endDate}</span>
-                                    </div>
-                                    <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden', marginTop: '4px' }}>
-                                      <div style={{ width: '65%', height: '100%', background: '#059669', borderRadius: '999px' }} />
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.71rem', color: '#64748b', marginTop: '5px' }}>
+                                      <span>From: {startDate}</span>
+                                      <span style={{ fontWeight: 700, color: '#047857' }}>Until: {endDate}</span>
                                     </div>
                                   </div>
 
-                                  {/* Bottom Actions */}
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                                    <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                                      {cPhone ? `📞 ${cPhone}` : 'No phone registered'}
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '0.74rem', color: '#64748b', minWidth: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      {cAddr}
                                     </span>
-                                    {cPhone && (
-                                      <a
-                                        href={`tel:${cPhone}`}
-                                        style={{
-                                          fontSize: '0.72rem',
-                                          fontWeight: 800,
-                                          color: '#0d5c3a',
-                                          background: '#f0fdf4',
-                                          border: '1px solid #86efac',
-                                          padding: '4px 12px',
-                                          borderRadius: '8px',
-                                          textDecoration: 'none',
-                                          display: 'inline-flex',
-                                          alignItems: 'center',
-                                          gap: '5px',
-                                        }}
-                                      >
-                                        <PhoneCall size={12} /> Call Customer
-                                      </a>
-                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                      {cAddr && (
+                                        <a
+                                          href={`https://maps.google.com/?q=${encodeURIComponent(cAddr)}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            color: '#1d4ed8',
+                                            background: '#eff6ff',
+                                            padding: '4px 9px',
+                                            borderRadius: '7px',
+                                            border: '1px solid #bfdbfe',
+                                            textDecoration: 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '3px',
+                                          }}
+                                        >
+                                          <Navigation size={11} /> Map
+                                        </a>
+                                      )}
+                                      {cPhone && (
+                                        <a
+                                          href={`tel:${cPhone}`}
+                                          style={{
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            color: '#047857',
+                                            background: '#ecfdf5',
+                                            border: '1px solid #a7f3d0',
+                                            padding: '4px 9px',
+                                            borderRadius: '7px',
+                                            textDecoration: 'none',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px',
+                                          }}
+                                        >
+                                          <Phone size={11} /> Call
+                                        </a>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -7840,40 +7830,29 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                   {/* SEGMENT 2: Order History View */}
                   {profileSubHistTab === 'history' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       <div
                         style={{
                           background: '#ffffff',
-                          borderRadius: '16px',
+                          borderRadius: '14px',
                           border: '1px solid #e2e8f0',
-                          padding: '16px 18px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                          padding: '13px 14px',
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#059669', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                              TODAY'S FULFILLMENT LEDGER
-                            </span>
-                            <h4 style={{ margin: '2px 0 0', fontSize: '0.98rem', fontWeight: 900, color: '#0f172a' }}>
-                              {completedList.length} of {myDeliveries.length} Orders Delivered
-                            </h4>
+                            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+                              Fulfillment Progress
+                            </div>
+                            <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#0f172a', marginTop: '1px' }}>
+                              {completedList.length} of {myDeliveries.length} delivered
+                            </div>
                           </div>
-                          <span
-                            style={{
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              padding: '4px 10px',
-                              borderRadius: '999px',
-                              background: '#ecfdf5',
-                              color: '#065f46',
-                              border: '1px solid #86efac',
-                            }}
-                          >
-                            {myDeliveries.length > 0 ? Math.round((completedList.length / myDeliveries.length) * 100) : 0}% Done
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, padding: '3px 9px', borderRadius: '999px', background: '#ecfdf5', color: '#047857' }}>
+                            {myDeliveries.length > 0 ? Math.round((completedList.length / myDeliveries.length) * 100) : 0}%
                           </span>
                         </div>
-                        <div style={{ width: '100%', height: '5px', background: '#e2e8f0', borderRadius: '999px', overflow: 'hidden' }}>
+                        <div style={{ width: '100%', height: '4px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
                           <div
                             style={{
                               width: `${myDeliveries.length > 0 ? (completedList.length / myDeliveries.length) * 100 : 0}%`,
@@ -7893,24 +7872,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             key={d._id || d.id || idx}
                             style={{
                               background: '#ffffff',
-                              borderRadius: '14px',
+                              borderRadius: '12px',
                               border: '1px solid #e2e8f0',
-                              padding: '14px 16px',
+                              padding: '12px 14px',
                               display: 'flex',
                               justifyContent: 'space-between',
                               alignItems: 'center',
-                              flexWrap: 'wrap',
-                              gap: '12px',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.015)',
+                              gap: '10px',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
                               <div
                                 style={{
-                                  width: '38px',
-                                  height: '38px',
-                                  borderRadius: '10px',
-                                  background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fef3c7',
+                                  width: '34px',
+                                  height: '34px',
+                                  borderRadius: '9px',
+                                  background: isDelivered ? '#ecfdf5' : isMissed ? '#fef2f2' : '#fffbeb',
                                   color: isDelivered ? '#059669' : isMissed ? '#dc2626' : '#d97706',
                                   display: 'flex',
                                   alignItems: 'center',
@@ -7918,56 +7895,40 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                   flexShrink: 0,
                                 }}
                               >
-                                {isDelivered ? <CheckCircle2 size={20} /> : isMissed ? <AlertCircle size={20} /> : <Clock size={20} />}
+                                {isDelivered ? <CheckCircle2 size={17} /> : isMissed ? <AlertCircle size={17} /> : <Clock size={17} />}
                               </div>
-                              <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
-                                  <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{d.customerName}</strong>
-                                  <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: '4px' }}>
-                                    Stop #{d.sequenceNumber || idx + 1}
-                                  </span>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {d.customerName}
                                 </div>
-                                <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
-                                  {d.plannedMilk || 1}L Milk • {d.customerAddress || 'Madhapur'}
+                                <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {d.plannedMilk || 1}L Milk · {d.customerAddress || 'Madhapur'}
                                 </div>
-                                {isDelivered && (
-                                  <div style={{ fontSize: '0.72rem', color: '#059669', fontWeight: 700, marginTop: '2px' }}>
-                                    ✓ Delivered at {d.deliveryTime || '06:15 AM'}
-                                  </div>
-                                )}
                               </div>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <div style={{ textAlign: 'right' }}>
-                                <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#059669' }}>
-                                  ₹{d.totalAmount || 60}
-                                </div>
-                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', background: '#f1f5f9', padding: '2px 6px', borderRadius: '4px' }}>
-                                  {(d.paymentMethod || 'Prepaid').toUpperCase()}
-                                </span>
-                              </div>
-
-                              {d.proofImage && (
+                            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                              <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>₹{d.totalAmount || 60}</div>
+                              {d.proofImage ? (
                                 <button
                                   type="button"
                                   onClick={() => setPreviewProofModal(d)}
                                   style={{
-                                    border: '1px solid #cbd5e1',
-                                    background: '#f8fafc',
+                                    border: 'none',
+                                    background: 'transparent',
                                     color: '#059669',
-                                    borderRadius: '8px',
-                                    padding: '6px 10px',
-                                    fontSize: '0.72rem',
+                                    fontSize: '0.68rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
+                                    padding: 0,
                                   }}
                                 >
-                                  <Camera size={13} /> View Proof
+                                  View Proof
                                 </button>
+                              ) : (
+                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748b' }}>
+                                  {(d.paymentMethod || 'Prepaid').toUpperCase()}
+                                </span>
                               )}
                             </div>
                           </div>
@@ -7978,93 +7939,92 @@ export default function DeliveryBoyApp({ setActiveTab }) {
 
                   {/* SEGMENT 3: Crates & Hub View */}
                   {profileSubHistTab === 'crates' && (
-                    <div>
-                      {/* Crates Metric Cards */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {/* Unified 4-Column Crates Strip */}
                       <div
                         style={{
                           background: '#ffffff',
                           border: '1px solid #e2e8f0',
-                          borderRadius: '16px',
-                          padding: '16px 18px',
-                          marginBottom: '16px',
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+                          borderRadius: '14px',
+                          padding: isMobile ? '11px 6px' : '14px 12px',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                          <Package size={17} color="#0d5c3a" />
-                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                            CRATE & BOTTLE RECONCILIATION
-                          </span>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
-                          <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#0f172a' }}>
-                              {Math.ceil(myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) / 12) || 4}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', alignItems: 'center' }}>
+                          {[
+                            {
+                              label: 'Crates',
+                              value: Math.ceil(myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) / 12) || 4,
+                              color: '#0f172a',
+                            },
+                            {
+                              label: 'Bottles',
+                              value: myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 42,
+                              color: '#1d4ed8',
+                            },
+                            {
+                              label: 'Returned',
+                              value: completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 0,
+                              color: '#059669',
+                            },
+                            {
+                              label: 'Pending',
+                              value: Math.max(
+                                0,
+                                myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) -
+                                  completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)
+                              ),
+                              color: '#d97706',
+                            },
+                          ].map((stat, idx) => (
+                            <div
+                              key={stat.label}
+                              style={{
+                                textAlign: 'center',
+                                padding: '0 4px',
+                                borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                                minWidth: 0,
+                              }}
+                            >
+                              <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{stat.label}</div>
+                              <div style={{ fontSize: '1.12rem', fontWeight: 900, color: stat.color, marginTop: '2px' }}>{stat.value}</div>
                             </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                              CRATES OUT
-                            </span>
-                          </div>
-                          <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#1d4ed8' }}>
-                              {myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 42}
-                            </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
-                              BOTTLES OUT
-                            </span>
-                          </div>
-                          <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#059669' }}>
-                              {completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0) || 0}
-                            </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
-                              RETURNED
-                            </span>
-                          </div>
-                          <div style={{ background: '#fef3c7', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#d97706' }}>
-                              {Math.max(0, (myDeliveries.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)) - (completedList.reduce((sum, d) => sum + (d.plannedMilk || 1), 0)))}
-                            </div>
-                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#b45309', textTransform: 'uppercase' }}>
-                              PENDING
-                            </span>
-                          </div>
+                          ))}
                         </div>
                       </div>
 
                       {/* Dispatch Hub Card */}
-                      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '16px 18px', marginBottom: '16px' }}>
-                        <h4 style={{ margin: '0 0 4px', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
-                          {boyArea || 'Madhapur'} Hub Bay Instructions
-                        </h4>
-                        <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.45 }}>
-                          Please return crates and collected empty glass bottles to the depot bay by 8:30 AM after completing your morning drop sequence.
-                        </p>
-                        <a
-                          href={`tel:${profileEmergencyContact || '9876543210'}`}
-                          style={{
-                            padding: '6px 14px',
-                            borderRadius: '8px',
-                            background: '#f0fdf4',
-                            border: '1px solid #86efac',
-                            color: '#0d5c3a',
-                            fontSize: '0.76rem',
-                            fontWeight: 700,
-                            textDecoration: 'none',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                          }}
-                        >
-                          <PhoneCall size={13} /> Call Hub Supervisor
-                        </a>
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <div>
+                            <h4 style={{ margin: '0 0 2px', fontSize: '0.9rem', fontWeight: 800, color: '#0f172a' }}>
+                              {boyArea || 'Madhapur'} Depot Return
+                            </h4>
+                            <p style={{ margin: 0, fontSize: '0.74rem', color: '#64748b' }}>
+                              Return empty crates & bottles by 8:30 AM.
+                            </p>
+                          </div>
+                          <a
+                            href={`tel:${profileEmergencyContact || '9876543210'}`}
+                            style={{
+                              padding: '6px 12px',
+                              borderRadius: '8px',
+                              background: '#ecfdf5',
+                              border: '1px solid #a7f3d0',
+                              color: '#047857',
+                              fontSize: '0.74rem',
+                              fontWeight: 700,
+                              textDecoration: 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                            }}
+                          >
+                            <PhoneCall size={12} /> Call Supervisor
+                          </a>
+                        </div>
                       </div>
 
                       {/* Household Bottle Ledger */}
-                      <h4 style={{ margin: '0 0 10px', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
-                        Household Bottle Ledger
-                      </h4>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {(assignedCustomers.length > 0 ? assignedCustomers : myDeliveries).map((c, i) => {
                           const cName = c.name || c.customerName || `Household #${i + 1}`;
@@ -8078,21 +8038,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 background: '#ffffff',
                                 border: '1px solid #e2e8f0',
                                 borderRadius: '12px',
-                                padding: '12px 14px',
+                                padding: '11px 13px',
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
+                                gap: '10px',
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
                                 <div
                                   style={{
-                                    width: '34px',
-                                    height: '34px',
+                                    width: '32px',
+                                    height: '32px',
                                     borderRadius: '8px',
-                                    background: '#ecfdf5',
-                                    color: '#0d5c3a',
-                                    fontSize: '0.85rem',
+                                    background: '#f1f5f9',
+                                    color: '#334155',
+                                    fontSize: '0.82rem',
                                     fontWeight: 800,
                                     display: 'flex',
                                     alignItems: 'center',
@@ -8102,20 +8063,21 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 >
                                   {initial}
                                 </div>
-                                <div>
-                                  <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>{cName}</div>
-                                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{cAddr}</div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cName}</div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{cAddr}</div>
                                 </div>
                               </div>
                               <span
                                 style={{
-                                  fontSize: '0.72rem',
-                                  fontWeight: 800,
-                                  padding: '3px 10px',
-                                  borderRadius: '8px',
-                                  background: '#fef3c7',
-                                  color: '#92400e',
+                                  fontSize: '0.7rem',
+                                  fontWeight: 700,
+                                  padding: '3px 9px',
+                                  borderRadius: '7px',
+                                  background: '#fffbeb',
+                                  color: '#b45309',
                                   border: '1px solid #fde68a',
+                                  flexShrink: 0,
                                 }}
                               >
                                 {out} Due
@@ -8130,22 +8092,22 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               ) :
 
               profileDetailView === 'support' ? (
-                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
-                  <header style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '8px 0 20px' }}>
+                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 4px 24px', display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '4px 0' }}>
                     <button
                       type="button"
                       className="modern-profile-header-btn"
                       onClick={backToDriverProfile}
                       aria-label="Back to profile"
                     >
-                      <ArrowLeft size={21} />
+                      <ArrowLeft size={20} />
                     </button>
-                    <div>
-                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
-                        Help & Support Desk
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <h2 style={{ margin: 0, color: '#0f172a', fontSize: isMobile ? '1.1rem' : '1.22rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                        Help & Support
                       </h2>
-                      <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.84rem' }}>
-                        Send live messages to Dispatch Admin and access operations emergency hotlines.
+                      <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.76rem', fontWeight: 600 }}>
+                        Instant dispatch hotline & live message to Admin
                       </p>
                     </div>
                   </header>
@@ -8154,200 +8116,167 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   {supportSuccessMsg && (
                     <div
                       style={{
-                        padding: '14px 18px',
+                        padding: '10px 14px',
                         background: '#ecfdf5',
                         border: '1px solid #a7f3d0',
-                        borderRadius: '14px',
+                        borderRadius: '10px',
                         color: '#065f46',
-                        fontSize: '0.88rem',
+                        fontSize: '0.82rem',
                         fontWeight: 700,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '10px',
-                        marginBottom: '16px',
-                        boxShadow: '0 2px 6px rgba(5,150,105,0.1)',
+                        gap: '8px',
                       }}
                     >
-                      <CheckCircle2 size={18} color="#059669" />
+                      <CheckCircle2 size={16} color="#059669" />
                       <span>{supportSuccessMsg}</span>
                     </div>
                   )}
 
-                  {/* 1. Quick Emergency & Operations Hotlines */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-                      gap: '10px',
-                      marginBottom: '18px',
-                    }}
-                  >
-                    <a
-                      href={`tel:${profileEmergencyContact || '9876543210'}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '14px 16px',
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        textDecoration: 'none',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '10px',
-                          background: '#f0fdf4',
-                          border: '1px solid #bbf7d0',
-                          color: '#15803d',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <Phone size={18} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Call Operations Desk</div>
-                        <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 700 }}>{profileEmergencyContact || '+91 98765 43210'}</div>
-                      </div>
-                    </a>
-
-                    <a
-                      href={`https://wa.me/91${(profileEmergencyContact || '9876543210').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello Dispatch Admin, I am delivery partner ${profileName || boyName} (Area: ${profileArea || boyArea || 'Madhapur'}). I need assistance regarding:`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '14px 16px',
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        textDecoration: 'none',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '10px',
-                          background: '#ecfdf5',
-                          border: '1px solid #a7f3d0',
-                          color: '#047857',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <MessageCircle size={18} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>WhatsApp Admin</div>
-                        <div style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700 }}>Instant Chat Support</div>
-                      </div>
-                    </a>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '12px',
-                        padding: '14px 16px',
-                        background: '#ffffff',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '14px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: '10px',
-                          background: '#eff6ff',
-                          border: '1px solid #bfdbfe',
-                          color: '#2563eb',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <MapPin size={18} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0f172a' }}>Dispatch Hub</div>
-                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{profileArea || boyArea || 'Madhapur'} Depot · Pillar 42</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2. Text a Message to Admin Form */}
+                  {/* Quick Contacts Card (Compact & Responsive) */}
                   <div
                     style={{
                       background: '#ffffff',
                       border: '1px solid #e2e8f0',
-                      borderRadius: '18px',
-                      padding: isMobile ? '18px 16px' : '24px 26px',
-                      boxShadow: '0 4px 16px rgba(15, 23, 42, 0.04)',
-                      marginBottom: '18px',
+                      borderRadius: '14px',
+                      padding: isMobile ? '11px' : '14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px',
+                      boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(2, 1fr)', gap: '8px' }}>
+                      <a
+                        href={`tel:${profileEmergencyContact || '9876543210'}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 11px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '11px',
+                          textDecoration: 'none',
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '9px',
+                            background: '#ecfdf5',
+                            color: '#059669',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Phone size={16} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Call Desk</div>
+                          <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {profileEmergencyContact || '+91 98765 43210'}
+                          </div>
+                        </div>
+                      </a>
+
+                      <a
+                        href={`https://wa.me/91${(profileEmergencyContact || '9876543210').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello Dispatch Admin, I am delivery partner ${profileName || boyName} (Area: ${profileArea || boyArea || 'Madhapur'}). I need assistance regarding:`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          padding: '10px 11px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '11px',
+                          textDecoration: 'none',
+                          minWidth: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '34px',
+                            height: '34px',
+                            borderRadius: '9px',
+                            background: '#ecfdf5',
+                            color: '#047857',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <MessageCircle size={16} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>WhatsApp</div>
+                          <div style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 700 }}>Instant Chat</div>
+                        </div>
+                      </a>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 10px', background: '#f8fafc', borderRadius: '9px', fontSize: '0.74rem', color: '#475569' }}>
+                      <MapPin size={13} color="#2563eb" style={{ flexShrink: 0 }} />
+                      <span><strong>Hub:</strong> {profileArea || boyArea || 'Madhapur'} Depot · Pillar 42</span>
+                    </div>
+                  </div>
+
+                  {/* Message Admin Form */}
+                  <div
+                    style={{
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '14px',
+                      padding: isMobile ? '14px' : '20px 22px',
+                      boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                       <div
                         style={{
-                          width: '38px',
-                          height: '38px',
-                          borderRadius: '10px',
-                          background: 'linear-gradient(135deg, #059669, #10b981)',
-                          color: '#ffffff',
+                          width: '34px',
+                          height: '34px',
+                          borderRadius: '9px',
+                          background: '#ecfdf5',
+                          color: '#059669',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          boxShadow: '0 2px 6px rgba(5,150,105,0.25)',
+                          flexShrink: 0,
                         }}
                       >
-                        <Headphones size={20} />
+                        <Headphones size={18} />
                       </div>
                       <div>
-                        <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0f172a' }}>
-                          Text a Message to Admin
+                        <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0f172a' }}>
+                          Message Dispatch Admin
                         </h3>
-                        <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                          Directly notifies the admin dashboard and dispatch supervisor in real time.
+                        <p style={{ margin: '1px 0 0', fontSize: '0.74rem', color: '#64748b' }}>
+                          Sends directly to Admin Dashboard in real time.
                         </p>
                       </div>
                     </div>
 
                     <form onSubmit={handleSendAdminMessage}>
-                      {/* Topic Category Selection */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                          Select Topic / Issue Type
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Topic
                         </label>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '6px',
-                            flexWrap: 'wrap',
-                          }}
-                        >
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                           {[
-                            { id: 'Route & Delivery', label: '🚚 Route & Stops' },
-                            { id: 'Milk & Crates Shortage', label: '🥛 Milk Shortage' },
-                            { id: 'Customer Address Issue', label: '📍 Address Not Found' },
-                            { id: 'Cash & Handover', label: '💰 Cash / Payment' },
-                            { id: 'Vehicle Breakdown', label: '⚠️ Vehicle / EV Issue' },
-                            { id: 'General Query', label: '💬 General Query' },
+                            { id: 'Route & Delivery', label: 'Route & Stops' },
+                            { id: 'Milk & Crates Shortage', label: 'Milk Shortage' },
+                            { id: 'Customer Address Issue', label: 'Address Issue' },
+                            { id: 'Cash & Handover', label: 'Cash / Payment' },
+                            { id: 'Vehicle Breakdown', label: 'Vehicle Issue' },
+                            { id: 'General Query', label: 'General' },
                           ].map((cat) => {
                             const isSelected = supportCategory === cat.id;
                             return (
@@ -8356,15 +8285,14 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 type="button"
                                 onClick={() => setSupportCategory(cat.id)}
                                 style={{
-                                  padding: '6px 12px',
+                                  padding: '5px 10px',
                                   borderRadius: '8px',
-                                  fontSize: '0.76rem',
+                                  fontSize: '0.74rem',
                                   fontWeight: isSelected ? 800 : 600,
                                   background: isSelected ? '#ecfdf5' : '#f8fafc',
                                   color: isSelected ? '#065f46' : '#475569',
-                                  border: `1px solid ${isSelected ? '#10b981' : '#e2e8f0'}`,
+                                  border: `1px solid ${isSelected ? '#059669' : '#e2e8f0'}`,
                                   cursor: 'pointer',
-                                  transition: 'all 0.15s ease',
                                 }}
                               >
                                 {cat.label}
@@ -8374,16 +8302,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         </div>
                       </div>
 
-                      {/* Urgency Selector */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                          Urgency Level
+                      <div style={{ marginBottom: '12px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Urgency
                         </label>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '6px' }}>
                           {[
                             { id: 'normal', label: 'Normal', color: '#059669', bg: '#ecfdf5' },
                             { id: 'high', label: 'High Priority', color: '#b45309', bg: '#fffbeb' },
-                            { id: 'urgent', label: '🚨 Urgent / Road Emergency', color: '#b91c1c', bg: '#fef2f2' },
+                            { id: 'urgent', label: 'Urgent', color: '#b91c1c', bg: '#fef2f2' },
                           ].map((p) => {
                             const isSelected = supportPriority === p.id;
                             return (
@@ -8392,14 +8319,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 type="button"
                                 onClick={() => setSupportPriority(p.id)}
                                 style={{
-                                  padding: '5px 11px',
+                                  padding: '6px 6px',
                                   borderRadius: '8px',
-                                  fontSize: '0.74rem',
+                                  fontSize: '0.73rem',
                                   fontWeight: isSelected ? 800 : 600,
                                   background: isSelected ? p.bg : '#ffffff',
                                   color: isSelected ? p.color : '#64748b',
-                                  border: `1.5px solid ${isSelected ? p.color : '#e2e8f0'}`,
+                                  border: `1px solid ${isSelected ? p.color : '#e2e8f0'}`,
                                   cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
                                 {p.label}
@@ -8409,97 +8337,92 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         </div>
                       </div>
 
-                      {/* Message Textarea */}
-                      <div style={{ marginBottom: '16px' }}>
-                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                          Your Message to Admin
+                      <div style={{ marginBottom: '14px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                          Message
                         </label>
                         <textarea
-                          rows={4}
+                          rows={3}
                           value={supportText}
                           onChange={(e) => setSupportText(e.target.value)}
-                          placeholder="Type your message or issue for the admin here... (e.g. Stop #3 customer requested 1 extra liter of cow milk, or crate shortage at Madhapur depot)"
+                          placeholder="Describe the route issue, shortage, or customer request..."
                           style={{
                             width: '100%',
                             boxSizing: 'border-box',
-                            padding: '12px 14px',
-                            borderRadius: '12px',
+                            padding: '10px 12px',
+                            borderRadius: '10px',
                             border: '1px solid #cbd5e1',
                             background: '#f8fafc',
-                            fontSize: '0.86rem',
+                            fontSize: '0.82rem',
                             color: '#0f172a',
                             outline: 'none',
                             fontFamily: 'inherit',
                             resize: 'vertical',
                           }}
                         />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '0.72rem', color: '#94a3b8' }}>
-                          <span>Partner: {profileName || boyName} (ID: NMD-DRV-{(boyId || '').slice(-4).toUpperCase() || '8492'})</span>
-                          <span>{supportText.length} characters</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '0.7rem', color: '#94a3b8' }}>
+                          <span>ID: NMD-DRV-{(boyId || '').slice(-4).toUpperCase() || '8492'}</span>
+                          <span>{supportText.length} chars</span>
                         </div>
                       </div>
 
-                      {/* Send Button */}
                       <button
                         type="submit"
                         disabled={supportLoading || !supportText.trim()}
                         style={{
                           width: '100%',
-                          padding: '12px 20px',
-                          borderRadius: '12px',
+                          padding: '11px 16px',
+                          borderRadius: '10px',
                           border: 'none',
-                          background: supportText.trim() ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)' : '#cbd5e1',
+                          background: supportText.trim() ? '#059669' : '#cbd5e1',
                           color: '#ffffff',
-                          fontSize: '0.92rem',
+                          fontSize: '0.86rem',
                           fontWeight: 800,
                           cursor: supportText.trim() && !supportLoading ? 'pointer' : 'not-allowed',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '8px',
-                          boxShadow: supportText.trim() ? '0 4px 12px rgba(5,150,105,0.25)' : 'none',
-                          transition: 'all 0.15s ease',
+                          gap: '7px',
                         }}
                       >
-                        <Send size={16} />
-                        <span>{supportLoading ? 'Sending to Admin...' : 'Send Message to Admin'}</span>
+                        <Send size={15} />
+                        <span>{supportLoading ? 'Sending...' : 'Send Message to Admin'}</span>
                       </button>
                     </form>
                   </div>
 
-                  {/* 3. Recent Sent Messages to Admin Log */}
+                  {/* Sent Messages Log */}
                   {supportHistory.length > 0 && (
                     <div
                       style={{
                         background: '#ffffff',
                         border: '1px solid #e2e8f0',
-                        borderRadius: '18px',
-                        padding: isMobile ? '16px' : '20px 22px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        borderRadius: '14px',
+                        padding: isMobile ? '13px' : '18px 20px',
                       }}
                     >
-                      <h4 style={{ margin: '0 0 12px 0', fontSize: '0.92rem', fontWeight: 800, color: '#0f172a' }}>
-                        Your Sent Messages to Admin ({supportHistory.length})
+                      <h4 style={{ margin: '0 0 10px 0', fontSize: '0.88rem', fontWeight: 800, color: '#0f172a' }}>
+                        Sent Messages ({supportHistory.length})
                       </h4>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         {supportHistory.map((item) => (
                           <div
                             key={item.id}
                             style={{
                               background: '#f8fafc',
                               border: '1px solid #e2e8f0',
-                              borderRadius: '12px',
-                              padding: '12px 14px',
+                              borderRadius: '10px',
+                              padding: '10px 12px',
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '6px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#0f172a' }}>
                                   {item.category}
                                 </span>
                                 <span
                                   style={{
-                                    fontSize: '0.66rem',
+                                    fontSize: '0.64rem',
                                     fontWeight: 700,
                                     padding: '1px 6px',
                                     borderRadius: '4px',
@@ -8510,17 +8433,13 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                   {item.priority?.toUpperCase()}
                                 </span>
                               </div>
-                              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
-                                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {new Date(item.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                              <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+                                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                             </div>
-                            <p style={{ margin: 0, fontSize: '0.82rem', color: '#334155', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: '#334155', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
                               {item.text}
                             </p>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', fontSize: '0.7rem', color: '#059669', fontWeight: 700 }}>
-                              <CheckCheck size={13} />
-                              <span>Delivered to Admin Dashboard</span>
-                            </div>
                           </div>
                         ))}
                       </div>
@@ -8528,9 +8447,9 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   )}
                 </section>
               ) : profileDetailView === 'vehicle' ? (
-                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: '0 4px 24px' }}>
-                  <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 18px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <section style={{ width: '100%', maxWidth: '820px', margin: '0 auto', padding: isMobile ? '0 0 24px' : '0 4px 24px', display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '14px' }}>
+                  <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
                       <button
                         type="button"
                         className="modern-profile-header-btn"
@@ -8540,16 +8459,16 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         }}
                         aria-label="Back to profile"
                       >
-                        <ArrowLeft size={21} />
+                        <ArrowLeft size={20} />
                       </button>
-                      <div>
-                        <h2 style={{ margin: 0, color: '#0f172a', fontSize: '1.16rem', fontWeight: 800 }}>
-                          {isEditingBike ? 'Edit Vehicle Details' : 'Vehicle & Equipment'}
+                      <div style={{ minWidth: 0 }}>
+                        <h2 style={{ margin: 0, color: '#0f172a', fontSize: isMobile ? '1.1rem' : '1.22rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                          {isEditingBike ? 'Edit Vehicle' : 'Vehicle & Equipment'}
                         </h2>
-                        <p style={{ margin: '3px 0 0', color: '#64748b', fontSize: '0.82rem' }}>
+                        <p style={{ margin: '2px 0 0', color: '#64748b', fontSize: '0.76rem', fontWeight: 600 }}>
                           {isEditingBike
-                            ? 'Update vehicle number plate, model, and crate capacity.'
-                            : 'Delivery cargo vehicle specs, insulated crates & gear status.'}
+                            ? 'Update number plate, model, and crate capacity'
+                            : 'Cargo vehicle specs & safety checklist'}
                         </p>
                       </div>
                     </div>
@@ -8558,20 +8477,21 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         type="button"
                         onClick={() => setIsEditingBike(true)}
                         style={{
-                          display: 'flex',
+                          display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '6px',
-                          background: '#f0fdf4',
-                          border: '1px solid #86efac',
-                          borderRadius: '8px',
+                          gap: '5px',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '9px',
                           padding: '6px 12px',
-                          fontSize: '0.78rem',
+                          fontSize: '0.76rem',
                           fontWeight: 700,
-                          color: '#0d5c3a',
+                          color: '#0f172a',
                           cursor: 'pointer',
+                          flexShrink: 0,
                         }}
                       >
-                        <Edit2 size={13} />
+                        <Edit2 size={13} color="#059669" />
                         <span>Edit</span>
                       </button>
                     )}
@@ -8584,12 +8504,11 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       style={{
                         background: '#ffffff',
                         border: '1px solid #e2e8f0',
-                        borderRadius: '16px',
-                        padding: '20px',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                        borderRadius: '14px',
+                        padding: isMobile ? '16px' : '20px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '16px',
+                        gap: '14px',
                       }}
                     >
                       <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0f172a' }}>
@@ -8597,7 +8516,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </h4>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '5px' }}>
                           Vehicle Registration Plate *
                         </label>
                         <input
@@ -8608,10 +8527,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           required
                           style={{
                             width: '100%',
-                            padding: '10px 14px',
+                            padding: '10px 12px',
                             borderRadius: '10px',
                             border: '1px solid #cbd5e1',
-                            fontSize: '0.88rem',
+                            fontSize: '0.86rem',
                             fontWeight: 700,
                             letterSpacing: '0.5px',
                             outline: 'none',
@@ -8623,21 +8542,21 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '5px' }}>
                           Vehicle Model & Make *
                         </label>
                         <input
                           type="text"
                           value={bikeModel}
                           onChange={(e) => setBikeModel(e.target.value)}
-                          placeholder="e.g. Commercial Cargo EV / Hero Electric Nyx"
+                          placeholder="e.g. Commercial Cargo EV"
                           required
                           style={{
                             width: '100%',
-                            padding: '10px 14px',
+                            padding: '10px 12px',
                             borderRadius: '10px',
                             border: '1px solid #cbd5e1',
-                            fontSize: '0.88rem',
+                            fontSize: '0.86rem',
                             fontWeight: 700,
                             outline: 'none',
                             background: '#f8fafc',
@@ -8648,7 +8567,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '5px' }}>
                           Vehicle Propulsion / Type
                         </label>
                         <select
@@ -8656,10 +8575,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           onChange={(e) => setBikeType(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '10px 14px',
+                            padding: '10px 12px',
                             borderRadius: '10px',
                             border: '1px solid #cbd5e1',
-                            fontSize: '0.88rem',
+                            fontSize: '0.86rem',
                             fontWeight: 700,
                             outline: 'none',
                             background: '#f8fafc',
@@ -8675,7 +8594,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '5px' }}>
                           Crate Carrying Capacity
                         </label>
                         <select
@@ -8683,10 +8602,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           onChange={(e) => setBikeCratesCapacity(e.target.value)}
                           style={{
                             width: '100%',
-                            padding: '10px 14px',
+                            padding: '10px 12px',
                             borderRadius: '10px',
                             border: '1px solid #cbd5e1',
-                            fontSize: '0.88rem',
+                            fontSize: '0.86rem',
                             fontWeight: 700,
                             outline: 'none',
                             background: '#f8fafc',
@@ -8702,7 +8621,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
 
                       <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
+                        <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '5px' }}>
                           Commercial Driving License Number
                         </label>
                         <input
@@ -8712,10 +8631,10 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                           placeholder="e.g. TS-09-2023-0091"
                           style={{
                             width: '100%',
-                            padding: '10px 14px',
+                            padding: '10px 12px',
                             borderRadius: '10px',
                             border: '1px solid #cbd5e1',
-                            fontSize: '0.88rem',
+                            fontSize: '0.86rem',
                             fontWeight: 700,
                             letterSpacing: '0.5px',
                             outline: 'none',
@@ -8726,48 +8645,34 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                         />
                       </div>
 
-                      <div
-                        style={{
-                          background: '#fef3c7',
-                          border: '1px solid #fde68a',
-                          borderRadius: '12px',
-                          padding: '12px 14px',
-                          fontSize: '0.78rem',
-                          color: '#92400e',
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        Updated vehicle details will be saved to your delivery partner credentials and synced with the depot dispatch ledger.
-                      </div>
-
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                         <button
                           type="submit"
                           style={{
                             flex: 1,
-                            padding: '12px',
+                            padding: '11px',
                             borderRadius: '10px',
                             background: '#059669',
                             color: '#ffffff',
                             border: 'none',
                             fontWeight: 800,
-                            fontSize: '0.86rem',
+                            fontSize: '0.84rem',
                             cursor: 'pointer',
                           }}
                         >
-                          Save Vehicle Details
+                          Save Changes
                         </button>
                         <button
                           type="button"
                           onClick={() => setIsEditingBike(false)}
                           style={{
-                            padding: '12px 18px',
+                            padding: '11px 16px',
                             borderRadius: '10px',
                             background: '#f1f5f9',
                             color: '#475569',
                             border: '1px solid #cbd5e1',
                             fontWeight: 700,
-                            fontSize: '0.86rem',
+                            fontSize: '0.84rem',
                             cursor: 'pointer',
                           }}
                         >
@@ -8777,125 +8682,129 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     </form>
                   ) : (
                     /* ── VIEW VEHICLE DETAILS ── */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      {/* Vehicle Hero Card */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? '10px' : '12px' }}>
+                      {/* Clean Vehicle Header Card */}
                       <div
                         style={{
                           background: '#ffffff',
                           border: '1px solid #e2e8f0',
-                          borderRadius: '16px',
-                          padding: '16px 18px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                          borderRadius: '14px',
+                          padding: isMobile ? '13px' : '16px 18px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
                           flexWrap: 'wrap',
-                          gap: '12px',
+                          gap: '10px',
+                          boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                           <div
                             style={{
-                              width: '48px',
-                              height: '48px',
-                              borderRadius: '12px',
+                              width: '44px',
+                              height: '44px',
+                              borderRadius: '11px',
                               background: '#ecfdf5',
+                              color: '#047857',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              color: '#0d5c3a',
                               flexShrink: 0,
                             }}
                           >
-                            <Bike size={26} />
+                            <Bike size={22} />
                           </div>
-                          <div>
-                            {/* Indian HSRP Plate Replica */}
+                          <div style={{ minWidth: 0 }}>
                             <div
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px',
+                                gap: '5px',
                                 background: '#ffffff',
                                 border: '1.5px solid #0f172a',
                                 borderRadius: '6px',
-                                padding: '3px 8px',
+                                padding: '2px 8px',
                                 marginBottom: '4px',
                               }}
                             >
-                              <span style={{ fontSize: '0.62rem', fontWeight: 900, color: '#1d4ed8', letterSpacing: '-0.2px' }}>
-                                IND
-                              </span>
-                              <strong style={{ fontSize: '0.92rem', fontWeight: 900, color: '#0f172a', letterSpacing: '1px' }}>
+                              <span style={{ fontSize: '0.6rem', fontWeight: 900, color: '#1d4ed8' }}>IND</span>
+                              <strong style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0f172a', letterSpacing: '0.8px' }}>
                                 {(bikePlate || 'TS-09-EV-4412').toUpperCase()}
                               </strong>
                             </div>
-                            <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
-                              {bikeModel || 'Commercial Cargo EV'} • {bikeType || 'Electric Cargo EV'}
+                            <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600 }}>
+                              {bikeModel || 'Commercial Cargo EV'}
+                              {bikeType && bikeType.trim().toLowerCase() !== (bikeModel || '').trim().toLowerCase() ? ` · ${bikeType}` : ''}
                             </div>
                           </div>
                         </div>
 
                         <span
                           style={{
-                            fontSize: '0.72rem',
-                            fontWeight: 800,
-                            padding: '4px 10px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: '3px 9px',
                             borderRadius: '999px',
                             background: '#ecfdf5',
-                            color: '#065f46',
-                            border: '1px solid #86efac',
+                            color: '#047857',
+                            border: '1px solid #a7f3d0',
                             display: 'inline-flex',
                             alignItems: 'center',
-                            gap: '4px',
+                            gap: '5px',
                           }}
                         >
                           <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#059669' }} />
-                          Assigned & Active
+                          Active
                         </span>
                       </div>
 
-                      {/* 4-Card Quick Specs Grid */}
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: '10px' }}>
-                        <div style={{ background: '#f1f5f9', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0f172a' }}>4 Crates</div>
-                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>
-                            CAPACITY (48L)
-                          </span>
-                        </div>
-                        <div style={{ background: '#ecfdf5', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#059669' }}>88% ⚡</div>
-                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#047857', textTransform: 'uppercase' }}>
-                            BATTERY (45 KM)
-                          </span>
-                        </div>
-                        <div style={{ background: '#eff6ff', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#1d4ed8' }}>3.8°C</div>
-                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#1e40af', textTransform: 'uppercase' }}>
-                            COLD CHAIN OK
-                          </span>
-                        </div>
-                        <div style={{ background: '#f0fdf4', borderRadius: '10px', padding: '10px 12px', textAlign: 'center' }}>
-                          <div style={{ fontSize: '1.15rem', fontWeight: 900, color: '#0d5c3a' }}>5/5 OK</div>
-                          <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#065f46', textTransform: 'uppercase' }}>
-                            GEAR VERIFIED
-                          </span>
+                      {/* Unified 4-Column Quick Specs Strip */}
+                      <div
+                        style={{
+                          background: '#ffffff',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '14px',
+                          padding: isMobile ? '11px 6px' : '14px 12px',
+                          boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+                        }}
+                      >
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', alignItems: 'center' }}>
+                          {[
+                            { label: 'Capacity', value: '4 Crates', sub: '48L', color: '#0f172a' },
+                            { label: 'Battery', value: '88%', sub: '45 km', color: '#059669' },
+                            { label: 'Cold Box', value: '3.8°C', sub: 'Optimal', color: '#1d4ed8' },
+                            { label: 'Safety', value: '5/5', sub: 'Verified', color: '#047857' },
+                          ].map((spec, idx) => (
+                            <div
+                              key={spec.label}
+                              style={{
+                                textAlign: 'center',
+                                padding: '0 4px',
+                                borderRight: idx < 3 ? '1px solid #f1f5f9' : 'none',
+                                minWidth: 0,
+                              }}
+                            >
+                              <div style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>{spec.label}</div>
+                              <div style={{ fontSize: isMobile ? '0.96rem' : '1.1rem', fontWeight: 900, color: spec.color, marginTop: '2px' }}>{spec.value}</div>
+                              <div style={{ fontSize: '0.64rem', fontWeight: 600, color: '#64748b' }}>{spec.sub}</div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
-                      {/* Technical Specs Card */}
-                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                          VEHICLE SPECIFICATIONS
+                      {/* Vehicle Specifications Card */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: isMobile ? '13px' : '16px 18px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: '0.76rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Specifications
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           {[
                             ['Registration Plate', bikePlate || 'TS-09-EV-4412'],
-                            ['Vehicle Model & Make', bikeModel || 'Commercial Cargo EV'],
-                            ['Propulsion / Fuel', bikeType || 'Electric Cargo EV'],
-                            ['Crate Carrying Capacity', bikeCratesCapacity || '4 Insulated Crates (48 Litres)'],
-                            ['Assigned Depot & Hub', `${boyArea || 'Madhapur'} Hub, Bay #4`],
-                            ['Driving License Number', profileLicense || 'TS-09-2023-0091'],
+                            ['Model & Make', bikeModel || 'Commercial Cargo EV'],
+                            ['Propulsion', bikeType || 'Electric Cargo EV'],
+                            ['Crate Capacity', bikeCratesCapacity || '4 Insulated Crates (48 Litres)'],
+                            ['Assigned Hub', `${boyArea || 'Madhapur'} Hub, Bay #4`],
+                            ['License Number', profileLicense || 'TS-09-2023-0091'],
                           ].map(([label, val], idx) => (
                             <div
                               key={label}
@@ -8903,58 +8812,60 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                padding: '10px 0',
+                                gap: '12px',
+                                padding: '9px 0',
                                 borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
                               }}
                             >
-                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</span>
-                              <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>{val}</strong>
+                              <span style={{ fontSize: '0.76rem', color: '#64748b', flexShrink: 0 }}>{label}</span>
+                              <strong style={{ fontSize: '0.8rem', color: '#0f172a', textAlign: 'right' }}>{val}</strong>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* Equipment Checklist Card */}
-                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                          SAFETY GEAR & EQUIPMENT CHECKLIST
+                      {/* Safety Gear Checklist */}
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: isMobile ? '13px' : '16px 18px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: '0.76rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Equipment Checklist
                         </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           {[
-                            { title: 'Insulated Milk Cold-Box', desc: 'Pre-cooled verified 3.8°C • 4-Crate Sealed' },
-                            { title: 'Reflective Safety Jacket', desc: 'High-visibility neon green • Issued & Active' },
-                            { title: 'ISI Approved Safety Helmet', desc: 'Personal safety gear • Compliant' },
-                            { title: 'Handlebar Phone Mount', desc: 'Vibration-damped waterproof mount installed' },
-                            { title: 'Thermal Crate Liners & Straps', desc: 'Heavy-duty cargo bungees • 4/4 Available' },
+                            { title: 'Insulated Milk Cold-Box', desc: 'Pre-cooled 3.8°C · 4-crate sealed' },
+                            { title: 'Reflective Safety Jacket', desc: 'Issued & active' },
+                            { title: 'ISI Safety Helmet', desc: 'Compliant gear' },
+                            { title: 'Handlebar Phone Mount', desc: 'Waterproof mount installed' },
+                            { title: 'Thermal Liners & Straps', desc: '4/4 cargo straps available' },
                           ].map((item) => (
                             <div
                               key={item.title}
                               style={{
                                 background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
+                                border: '1px solid #f1f5f9',
                                 borderRadius: '10px',
-                                padding: '10px 12px',
+                                padding: '9px 11px',
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
+                                gap: '10px',
                               }}
                             >
-                              <div>
-                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>{item.title}</div>
-                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{item.desc}</div>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f172a' }}>{item.title}</div>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{item.desc}</div>
                               </div>
                               <span
                                 style={{
-                                  fontSize: '0.68rem',
-                                  fontWeight: 800,
+                                  fontSize: '0.66rem',
+                                  fontWeight: 700,
                                   background: '#ecfdf5',
-                                  color: '#059669',
-                                  border: '1px solid #86efac',
+                                  color: '#047857',
                                   padding: '2px 8px',
-                                  borderRadius: '6px',
+                                  borderRadius: '999px',
+                                  flexShrink: 0,
                                 }}
                               >
-                                ✓ OK
+                                OK
                               </span>
                             </div>
                           ))}
@@ -8962,15 +8873,15 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                       </div>
 
                       {/* Documents & Compliance Card */}
-                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-                        <h4 style={{ margin: '0 0 12px 0', fontSize: '0.84rem', fontWeight: 800, color: '#0d5c3a', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                          DOCUMENTS & COMPLIANCE
+                      <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '14px', padding: isMobile ? '13px' : '16px 18px' }}>
+                        <h4 style={{ margin: '0 0 8px 0', fontSize: '0.76rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                          Documents & Compliance
                         </h4>
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           {[
-                            ['Commercial Vehicle Insurance', 'Valid (Expires 24 Nov 2027)'],
-                            ['Pollution Under Control (PUC)', 'Exempt (Green Zero-Emission EV)'],
-                            ['Road Tax & Depot Clearance', 'Up to date • Approved'],
+                            ['Commercial Insurance', 'Valid (Till 24 Nov 2027)'],
+                            ['PUC Status', 'Exempt (Zero-Emission EV)'],
+                            ['Depot Clearance', 'Approved'],
                           ].map(([label, val], idx) => (
                             <div
                               key={label}
@@ -8978,31 +8889,31 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                padding: '10px 0',
+                                gap: '12px',
+                                padding: '9px 0',
                                 borderTop: idx > 0 ? '1px solid #f1f5f9' : 'none',
                               }}
                             >
-                              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{label}</span>
-                              <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>{val}</strong>
+                              <span style={{ fontSize: '0.76rem', color: '#64748b', flexShrink: 0 }}>{label}</span>
+                              <strong style={{ fontSize: '0.8rem', color: '#0f172a', textAlign: 'right' }}>{val}</strong>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                      {/* Bottom Actions */}
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '8px' }}>
                         <button
                           type="button"
                           onClick={() => setIsEditingBike(true)}
                           style={{
-                            width: '100%',
-                            padding: '12px',
+                            padding: '11px',
                             borderRadius: '10px',
-                            background: '#0d5c3a',
+                            background: '#059669',
                             color: '#ffffff',
                             border: 'none',
                             fontWeight: 800,
-                            fontSize: '0.86rem',
+                            fontSize: '0.84rem',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
@@ -9010,19 +8921,18 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             gap: '6px',
                           }}
                         >
-                          <Edit2 size={15} />
+                          <Edit2 size={14} />
                           <span>Edit Vehicle Details</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => openProfileDetail('support')}
                           style={{
-                            width: '100%',
-                            padding: '12px',
+                            padding: '11px',
                             borderRadius: '10px',
-                            background: '#fef2f2',
+                            background: '#ffffff',
                             color: '#dc2626',
-                            border: '1px solid #fca5a5',
+                            border: '1px solid #fecaca',
                             fontWeight: 700,
                             fontSize: '0.84rem',
                             cursor: 'pointer',
@@ -9032,8 +8942,8 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                             gap: '6px',
                           }}
                         >
-                          <AlertCircle size={15} />
-                          <span>Report Breakdown / Vehicle Issue</span>
+                          <AlertCircle size={14} />
+                          <span>Report Breakdown</span>
                         </button>
                       </div>
                     </div>
@@ -10768,7 +10678,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                     >
                       {isUploadingPhoto ? (
                         <>
-                          <RefreshCw size={24} className="spin" color="#059669" />
+                          <Loader2 size={24} className="spin" color="#059669" />
                           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#059669' }}>
                             Uploading home proof photo...
                           </span>
@@ -11385,7 +11295,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               >
                 {isDeletingPartner ? (
                   <>
-                    <RefreshCw size={16} className="spin-animation" />
+                    <Loader2 size={16} className="spin-animation" />
                     <span>Deleting...</span>
                   </>
                 ) : (
@@ -12447,7 +12357,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                   >
                     {isSubmittingExtend ? (
                       <>
-                        <RefreshCw size={16} className="driver-spin" />
+                        <Loader2 size={16} className="driver-spin" />
                         <span>{hasActivePlan ? 'Extending...' : 'Activating...'}</span>
                       </>
                     ) : (
@@ -13834,7 +13744,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
                 >
                   {customerActionLoading ? (
                     <>
-                      <RefreshCw size={15} className="spin-animation" />
+                      <Loader2 size={15} className="spin-animation" />
                       <span>Saving...</span>
                     </>
                   ) : (
@@ -13939,7 +13849,7 @@ export default function DeliveryBoyApp({ setActiveTab }) {
               >
                 {customerActionLoading ? (
                   <>
-                    <RefreshCw size={15} className="spin-animation" />
+                    <Loader2 size={15} className="spin-animation" />
                     <span>Removing...</span>
                   </>
                 ) : (

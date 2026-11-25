@@ -490,7 +490,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                     TextButton.icon(
                       onPressed: _resendSeconds > 0 || _isLoading ? null : _handleResendOtp,
-                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      icon: const Icon(Icons.send_rounded, size: 16),
                       label: Text(
                         _resendSeconds > 0 ? 'Resend in ${_resendSeconds}s' : 'Resend Code',
                         style: TextStyle(

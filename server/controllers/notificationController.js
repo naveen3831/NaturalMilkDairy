@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const { recordAudit } = require('../services/auditService');
 const { broadcast } = require('../config/websocket');
 const { registerDeviceToken, unregisterDeviceToken, sendPushNotification } = require('../services/fcmService');
 
@@ -244,8 +246,12 @@ const getNotifications = async (req, res) => {
     try {
       if (!hasSeededDB) {
         hasSeededDB = true;
-        const count = await Notification.countDocuments();
-        if (count === 0) {
+        const [count, auditCount] = await Promise.all([
+          Notification.countDocuments(),
+          AuditLog.countDocuments(),
+        ]);
+        // Only seed on a truly brand-new empty DB (never re-seed after Clear All)
+        if (count === 0 && auditCount === 0) {
           await Notification.insertMany(defaultSeedNotifications);
         }
       }
@@ -308,9 +314,11 @@ const createNotification = async (req, res) => {
     };
 
     let savedItem;
+    let savedToDb = false;
     try {
       savedItem = await Notification.create(itemData);
       savedItem = savedItem.toObject();
+      savedToDb = true;
     } catch (dbErr) {
       try {
         const fallbackItem = {
@@ -323,10 +331,13 @@ const createNotification = async (req, res) => {
           ...createdFallback.toObject(),
           type: itemData.type,
         };
+        savedToDb = true;
       } catch (retryErr) {
         savedItem = { ...itemData, id: 'mem_' + Date.now() };
       }
-      memoryNotifications.unshift(savedItem);
+      if (!savedToDb) {
+        memoryNotifications.unshift(savedItem);
+      }
     }
 
     const finalId = savedItem._id ? savedItem._id.toString() : savedItem.id;
@@ -337,22 +348,22 @@ const createNotification = async (req, res) => {
       _id: finalId,
     };
 
-    // Realtime broadcast to all portals
-    broadcast('NOTIFICATION_CREATED', formattedNotification);
-    broadcast('NOTIFICATION_UPDATED', { action: 'created', notification: formattedNotification });
-
-    // Push notification to registered Android / Web FCM devices
-    sendPushNotification({
-      recipientRole: formattedNotification.recipientRole,
-      recipientId: formattedNotification.recipientId,
-      title: formattedNotification.title,
-      body: formattedNotification.message,
-      data: {
-        id: String(formattedNotification.id || formattedNotification._id),
-        type: String(formattedNotification.type || 'system'),
-        ...formattedNotification.data,
-      },
-    }).catch((pushErr) => console.error('FCM dispatch notice:', pushErr.message));
+    // Note: NotificationSchema post('save') already broadcasts & dispatches FCM when savedToDb is true.
+    // Only dispatch manually here if DB save failed and we used the in-memory fallback.
+    if (!savedToDb) {
+      broadcast('NOTIFICATION_CREATED', formattedNotification);
+      sendPushNotification({
+        recipientRole: formattedNotification.recipientRole,
+        recipientId: formattedNotification.recipientId,
+        title: formattedNotification.title,
+        body: formattedNotification.message,
+        data: {
+          id: String(formattedNotification.id || formattedNotification._id),
+          type: String(formattedNotification.type || 'system'),
+          ...formattedNotification.data,
+        },
+      }).catch((pushErr) => console.error('FCM dispatch notice:', pushErr.message));
+    }
 
     return res.status(201).json({
       success: true,
@@ -417,6 +428,7 @@ const clearAll = async (req, res) => {
   try {
     const ids = await resolveUserIdentifiers(req.user);
     const filter = await getUserNotificationScope(req.user);
+    hasSeededDB = true;
 
     try {
       await Notification.deleteMany(filter);
@@ -428,9 +440,15 @@ const clearAll = async (req, res) => {
       return !canAccessNotification(n, req.user, ids);
     });
 
+    await recordAudit(
+      'Notifications Cleared',
+      req.user?.name || req.user?.role || 'User',
+      `Cleared notifications (${req.user?.role || 'user'})`,
+      'system'
+    ).catch(() => {});
+
     // Realtime broadcast permanent clearing to all dashboards & mobile apps
-    broadcast('NOTIFICATIONS_CLEARED', { role: req.user.role, userId: req.user.id });
-    broadcast('NOTIFICATION_UPDATED', { action: 'clear_all', role: req.user.role });
+    broadcast('NOTIFICATIONS_CLEARED', { role: req.user?.role || 'user', userId: req.user?.id || '' });
 
     return res.json({ success: true, message: 'All notifications permanently deleted' });
   } catch (err) {

@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../models/user_model.dart';
 import '../models/product_model.dart';
+import 'realtime_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -55,15 +56,21 @@ class ApiService {
     }
   }
 
+  String _setActiveUrlAndSync(String url) {
+    _activeBaseUrl = url;
+    RealtimeService().ensureSyncedWithBaseUrl();
+    return url;
+  }
+
   /// Resolves the fastest responding backend URL without blocking startup
   Future<String> resolveActiveBaseUrl({bool forceRefresh = false}) async {
     if (!forceRefresh && _activeBaseUrl != null && _activeBaseUrl!.isNotEmpty) {
+      RealtimeService().ensureSyncedWithBaseUrl();
       return _activeBaseUrl!;
     }
 
     if (AppConfig.isLiveServerActive) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
-      return _activeBaseUrl!;
+      return _setActiveUrlAndSync(AppConfig.liveBaseUrl);
     }
 
     final prefs = await SharedPreferences.getInstance();
@@ -73,8 +80,7 @@ class ApiService {
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       final ok = await testConnection(_customBaseUrl, 600);
       if (ok) {
-        _activeBaseUrl = _customBaseUrl;
-        return _customBaseUrl!;
+        return _setActiveUrlAndSync(_customBaseUrl!);
       }
     }
 
@@ -87,9 +93,8 @@ class ApiService {
       final results = await Future.wait(futures);
       final workingLocal = results.firstWhere((u) => u != null, orElse: () => null);
       if (workingLocal != null) {
-        _activeBaseUrl = workingLocal;
         unawaited(prefs.setString('nmd_last_working_base_url', workingLocal));
-        return workingLocal;
+        return _setActiveUrlAndSync(workingLocal);
       }
     } catch (_) {}
 
@@ -97,22 +102,19 @@ class ApiService {
     if (cachedLastWorking != null && cachedLastWorking.isNotEmpty) {
       final ok = await testConnection(cachedLastWorking, 800);
       if (ok) {
-        _activeBaseUrl = cachedLastWorking;
-        return _activeBaseUrl!;
+        return _setActiveUrlAndSync(cachedLastWorking);
       }
     }
 
     // 4. Fallback to live cloud production server (3000ms for mobile data latency)
     final liveOk = await testConnection(AppConfig.liveBaseUrl, 3000);
     if (liveOk) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
       unawaited(prefs.setString('nmd_last_working_base_url', AppConfig.liveBaseUrl));
-      return _activeBaseUrl!;
+      return _setActiveUrlAndSync(AppConfig.liveBaseUrl);
     }
 
     // 5. Ultimate fallback is always the live cloud server
-    _activeBaseUrl = AppConfig.liveBaseUrl;
-    return _activeBaseUrl!;
+    return _setActiveUrlAndSync(AppConfig.liveBaseUrl);
   }
 
   Future<void> setCustomBaseUrl(String url) async {
@@ -124,6 +126,7 @@ class ApiService {
     } else {
       await prefs.remove(AppConstants.keyCustomBaseUrl);
     }
+    RealtimeService().ensureSyncedWithBaseUrl();
   }
 
   String? get token => _cachedToken;
@@ -269,14 +272,14 @@ class ApiService {
   Future<bool> _trySwitchToWorkingBackend() async {
     for (final candidate in AppConstants.candidateBaseUrls) {
       if (candidate != _activeBaseUrl && await testConnection(candidate, 450)) {
-        _activeBaseUrl = candidate;
+        _setActiveUrlAndSync(candidate);
         debugPrint('🌐 ApiService: Switched active backend to: $candidate');
         return true;
       }
     }
     // Also try live server if local candidates are not responding (2500ms for mobile latency)
     if (_activeBaseUrl != AppConfig.liveBaseUrl && await testConnection(AppConfig.liveBaseUrl, 2500)) {
-      _activeBaseUrl = AppConfig.liveBaseUrl;
+      _setActiveUrlAndSync(AppConfig.liveBaseUrl);
       debugPrint('🌐 ApiService: Switched active backend to live server: ${AppConfig.liveBaseUrl}');
       return true;
     }

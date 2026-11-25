@@ -14,6 +14,8 @@ class RealtimeService extends ChangeNotifier {
   Timer? _reconnectTimer;
   bool _isConnecting = false;
   bool _isConnected = false;
+  String? _connectedWsUrl;
+  int _connectionGen = 0;
   String? _lastEventType;
   DateTime? _lastEventTime;
 
@@ -25,26 +27,52 @@ class RealtimeService extends ChangeNotifier {
   String? get lastEventType => _lastEventType;
   DateTime? get lastEventTime => _lastEventTime;
 
+  String _resolveWsUrl() {
+    final rawBase = ApiService().baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    if (rawBase.startsWith('https://')) {
+      return '${rawBase.replaceFirst('https://', 'wss://')}/ws';
+    }
+    return '${rawBase.replaceFirst('http://', 'ws://')}/ws';
+  }
+
+  /// Ensures WebSocket is connected to the exact server resolved by ApiService
+  void ensureSyncedWithBaseUrl() {
+    if (kIsWeb) return;
+    final targetWsUrl = _resolveWsUrl();
+    if (_connectedWsUrl != targetWsUrl || (!_isConnected && !_isConnecting)) {
+      connect();
+    }
+  }
+
   void connect() {
     if (kIsWeb) {
       debugPrint('⚡ RealtimeService: Web platform detected, skipping dart:io WebSocket');
       return;
     }
-    if (_isConnected || _isConnecting) return;
-    _isConnecting = true;
-    notifyListeners();
 
-    final rawBase = ApiService().baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    final String wsUrl;
-    if (rawBase.startsWith('https://')) {
-      wsUrl = '${rawBase.replaceFirst('https://', 'wss://')}/ws';
-    } else {
-      wsUrl = '${rawBase.replaceFirst('http://', 'ws://')}/ws';
+    final wsUrl = _resolveWsUrl();
+    if (_isConnected || _isConnecting) {
+      if (_connectedWsUrl == wsUrl) return;
+      debugPrint('⚡ RealtimeService switching WS server: $_connectedWsUrl -> $wsUrl');
+      _reconnectTimer?.cancel();
+      _cleanup();
     }
+
+    final targetGen = ++_connectionGen;
+    _isConnecting = true;
+    _connectedWsUrl = wsUrl;
+    notifyListeners();
 
     debugPrint('⚡ RealtimeService connecting to $wsUrl');
 
     WebSocket.connect(wsUrl).then((ws) {
+      if (targetGen != _connectionGen) {
+        try {
+          ws.close();
+        } catch (_) {}
+        return;
+      }
+
       _socket = ws;
       _isConnected = true;
       _isConnecting = false;
@@ -64,6 +92,7 @@ class RealtimeService extends ChangeNotifier {
 
       ws.listen(
         (data) {
+          if (targetGen != _connectionGen) return;
           try {
             final parsed = jsonDecode(data.toString()) as Map<String, dynamic>;
             final type = parsed['type']?.toString() ?? '';
@@ -92,11 +121,13 @@ class RealtimeService extends ChangeNotifier {
           }
         },
         onDone: () {
+          if (targetGen != _connectionGen) return;
           debugPrint('⚡ RealtimeService WebSocket closed, scheduling reconnect');
           _cleanup();
           _scheduleReconnect();
         },
         onError: (err) {
+          if (targetGen != _connectionGen) return;
           debugPrint('⚡ RealtimeService WebSocket error: $err');
           _cleanup();
           _scheduleReconnect();
@@ -104,8 +135,10 @@ class RealtimeService extends ChangeNotifier {
         cancelOnError: true,
       );
     }).catchError((err) {
+      if (targetGen != _connectionGen) return;
       _isConnecting = false;
       _isConnected = false;
+      _connectedWsUrl = null;
       notifyListeners();
       debugPrint('⚡ RealtimeService connect error: $err');
       _scheduleReconnect();
@@ -113,13 +146,16 @@ class RealtimeService extends ChangeNotifier {
   }
 
   void _cleanup() {
+    _connectionGen++;
     _isConnected = false;
     _isConnecting = false;
+    _connectedWsUrl = null;
     _pingTimer?.cancel();
-    try {
-      _socket?.close();
-    } catch (_) {}
+    final oldSocket = _socket;
     _socket = null;
+    try {
+      oldSocket?.close();
+    } catch (_) {}
     notifyListeners();
   }
 
@@ -131,7 +167,8 @@ class RealtimeService extends ChangeNotifier {
   }
 
   void updateToken(String? token) {
-    if (_isConnected && _socket != null) {
+    final targetWsUrl = _resolveWsUrl();
+    if (_isConnected && _socket != null && _connectedWsUrl == targetWsUrl) {
       try {
         if (token != null && token.isNotEmpty && token != 'guest') {
           _socket!.add(jsonEncode({'type': 'AUTH', 'token': token}));

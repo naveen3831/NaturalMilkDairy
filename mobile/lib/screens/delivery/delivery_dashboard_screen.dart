@@ -1435,14 +1435,7 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               Expanded(
                 child: _isNotificationScreenOpen
                     ? _buildNotificationsScreen()
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await _loadData(silent: true);
-                          await _loadNotifications(silent: true);
-                        },
-                        color: const Color(0xFF059669),
-                        child: _buildCurrentTab(boyName, boyArea),
-                      ),
+                    : _buildCurrentTab(boyName, boyArea),
               ),
             ],
           ),
@@ -4575,12 +4568,10 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       return true;
     }).toList();
 
-    return RefreshIndicator(
-      onRefresh: () => _loadData(),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -5190,7 +5181,6 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
               ),
           ],
         ),
-      ),
     );
   }
 
@@ -7571,22 +7561,9 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _buildSubScreenHeader(
-                  'All Deliveries & Fulfillment',
-                  'Live doorstep drops, milk volumes, customer directions & collections.',
-                ),
-              ),
-              IconButton(
-                onPressed: () => _loadData(silent: false),
-                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0D5C3A), size: 22),
-                tooltip: 'Refresh Deliveries',
-              ),
-            ],
+          _buildSubScreenHeader(
+            'All Deliveries & Fulfillment',
+            'Live doorstep drops, milk volumes, customer directions & collections.',
           ),
           const SizedBox(height: 14),
 
@@ -8241,25 +8218,9 @@ class _DeliveryPartnerDashboardScreenState extends State<DeliveryPartnerDashboar
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _buildSubScreenHeader(
-                  'Subscriptions & Orders',
-                  'Manage active household plans, daily fulfillment history, and crate counts.',
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  _loadData(silent: false);
-                  _fetchSubscriptions();
-                },
-                icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0D5C3A), size: 22),
-                tooltip: 'Refresh Plans',
-              ),
-            ],
+          _buildSubScreenHeader(
+            'Subscriptions & Orders',
+            'Manage active household plans, daily fulfillment history, and crate counts.',
           ),
           const SizedBox(height: 14),
 
@@ -10739,7 +10700,7 @@ class _FullScreenMarkDeliveredPageState extends State<_FullScreenMarkDeliveredPa
                           ),
                           OutlinedButton.icon(
                             onPressed: _isCapturing ? null : _openCameraAndCapture,
-                            icon: const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF059669)),
+                            icon: const Icon(Icons.camera_alt_outlined, size: 16, color: Color(0xFF059669)),
                             label: const Text('Retake Photo', style: TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.w700, fontSize: 12)),
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Color(0xFF059669)),

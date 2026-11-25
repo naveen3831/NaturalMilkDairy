@@ -29,6 +29,7 @@ class _NotificationModalState extends State<NotificationModal> {
   String _activeTab = 'all'; // 'all', 'unread', 'deliveries'
 
   StreamSubscription? _realtimeSub;
+  Timer? _wsFetchDebounce;
 
   // Track marked-read notification IDs locally so server sync never reverts them
   final Set<String> _readIds = {};
@@ -36,22 +37,32 @@ class _NotificationModalState extends State<NotificationModal> {
   // Realtime notification list from server
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = false;
+  bool _isFetching = false;
+  bool _isClearing = false;
+  bool _hasClearedAll = false;
 
   @override
   void initState() {
     super.initState();
+    RealtimeService().ensureSyncedWithBaseUrl();
 
-    // Immediately hydrate with local customer deliveries & subscription so modal opens instantaneously
+    if (widget.isAdmin) {
+      _isLoading = true;
+    }
+
+    // Immediately hydrate with local customer deliveries & subscription so customer modal opens instantaneously
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final localInitial = _synthesizeCustomerNotifications();
-      if (mounted) {
-        setState(() {
-          if (localInitial.isNotEmpty) {
-            _notifications = localInitial;
-          }
-          _isLoading = false;
-        });
+      if (!widget.isAdmin) {
+        final localInitial = _synthesizeCustomerNotifications();
+        if (mounted) {
+          setState(() {
+            if (localInitial.isNotEmpty) {
+              _notifications = localInitial;
+            }
+            _isLoading = false;
+          });
+        }
       }
       _fetchServerNotifications();
     });
@@ -60,7 +71,10 @@ class _NotificationModalState extends State<NotificationModal> {
     _realtimeSub = RealtimeService().eventStream.listen((event) {
       final type = event['type']?.toString();
       if (type == 'NOTIFICATION_DELETED') {
-        final delId = event['id']?.toString() ?? event['payload']?['id']?.toString();
+        final payloadMap = event['payload'] is Map ? event['payload'] as Map : null;
+        final delId = event['id']?.toString() ??
+            payloadMap?['id']?.toString() ??
+            payloadMap?['_id']?.toString();
         if (delId != null && delId.isNotEmpty && mounted) {
           setState(() {
             _notifications.removeWhere((n) => n['id'] == delId || n['_id'] == delId);
@@ -68,25 +82,99 @@ class _NotificationModalState extends State<NotificationModal> {
           });
           widget.onNotificationChanged?.call();
         }
-        _fetchServerNotifications();
       } else if (type == 'NOTIFICATIONS_CLEARED') {
+        _wsFetchDebounce?.cancel();
         if (mounted) {
           setState(() {
+            _hasClearedAll = true;
             _notifications.clear();
             _readIds.clear();
+            _isLoading = false;
           });
           widget.onNotificationChanged?.call();
         }
-        _fetchServerNotifications();
-      } else if (type == 'NOTIFICATION_CREATED' ||
-          type == 'NOTIFICATION_UPDATED' ||
-          type == 'STATUS_CHANGED' ||
-          type == 'ORDER_UPDATED' ||
-          type == 'SUBSCRIPTION_UPDATED' ||
-          type == 'SUBSCRIPTION_ACTIVATED' ||
-          type == 'SUBSCRIPTION_EXTENDED') {
-        _fetchServerNotifications();
+      } else if (type == 'NOTIFICATION_CREATED') {
+        final rawPayload = event['payload'] is Map
+            ? Map<String, dynamic>.from(event['payload'] as Map)
+            : (event['notification'] is Map
+                ? Map<String, dynamic>.from(event['notification'] as Map)
+                : Map<String, dynamic>.from(event));
+        if ((rawPayload['title'] != null || rawPayload['message'] != null) &&
+            _isNotificationForCurrentCustomer(rawPayload)) {
+          _hasClearedAll = false;
+          _upsertNotification(rawPayload);
+        } else if (!_hasClearedAll) {
+          _scheduleBackgroundSync();
+        }
+      } else if (type == 'NOTIFICATION_UPDATED') {
+        final payload = event['payload'] is Map
+            ? Map<String, dynamic>.from(event['payload'] as Map)
+            : const <String, dynamic>{};
+        final action = payload['action']?.toString();
+        if (action == 'clear_all') {
+          _wsFetchDebounce?.cancel();
+          if (mounted) {
+            setState(() {
+              _hasClearedAll = true;
+              _notifications.clear();
+              _readIds.clear();
+              _isLoading = false;
+            });
+            widget.onNotificationChanged?.call();
+          }
+        } else if (action == 'delete') {
+          final delId = (payload['id'] ?? payload['_id'])?.toString();
+          if (delId != null && delId.isNotEmpty && mounted) {
+            setState(() {
+              _notifications.removeWhere((n) => n['id'] == delId || n['_id'] == delId);
+              _readIds.remove(delId);
+            });
+            widget.onNotificationChanged?.call();
+          }
+        } else if (action == 'read_all') {
+          if (mounted) {
+            setState(() {
+              for (final n in _notifications) {
+                n['isRead'] = true;
+                final nId = n['id']?.toString() ?? '';
+                if (nId.isNotEmpty) _readIds.add(nId);
+              }
+            });
+            widget.onNotificationChanged?.call();
+          }
+        } else if (action == 'read') {
+          final readId = (payload['id'] ?? payload['_id'])?.toString();
+          if (readId != null && readId.isNotEmpty && mounted) {
+            setState(() {
+              _readIds.add(readId);
+              for (final n in _notifications) {
+                if (n['id'] == readId || n['_id'] == readId) {
+                  n['isRead'] = true;
+                }
+              }
+            });
+            widget.onNotificationChanged?.call();
+          }
+        } else if (action == 'created') {
+          final notifMap = payload['notification'] is Map
+              ? Map<String, dynamic>.from(payload['notification'] as Map)
+              : null;
+          if (notifMap != null &&
+              (notifMap['title'] != null || notifMap['message'] != null) &&
+              _isNotificationForCurrentCustomer(notifMap)) {
+            _hasClearedAll = false;
+            _upsertNotification(notifMap);
+          }
+        } else if (!_hasClearedAll) {
+          _scheduleBackgroundSync();
+        }
       } else if (type == 'DELIVERY_COMPLETED' || type == 'DELIVERY_UPDATED') {
+        if (widget.isAdmin) {
+          if (type == 'DELIVERY_COMPLETED' && !_hasClearedAll) {
+            _scheduleBackgroundSync();
+          }
+          return;
+        }
         // Immediate local injection for zero-latency delivery notification
         final payload = event['payload'] is Map ? Map<String, dynamic>.from(event['payload'] as Map) : event;
         // Strictly ensure this delivery belongs to THIS logged-in customer only
@@ -102,6 +190,7 @@ class _NotificationModalState extends State<NotificationModal> {
 
         if (mounted) {
           setState(() {
+            _hasClearedAll = false;
             _notifications.removeWhere((n) => n['id'] == notifId || n['_id'] == notifId);
             _notifications.insert(0, {
               'id': notifId,
@@ -126,13 +215,34 @@ class _NotificationModalState extends State<NotificationModal> {
           });
           widget.onNotificationChanged?.call();
         }
-        _fetchServerNotifications();
+        if (!_hasClearedAll) {
+          _scheduleBackgroundSync();
+        }
+      } else if (widget.isAdmin &&
+          (type == 'CASH_HANDOVER_SUBMITTED' ||
+              type == 'PAYMENT_RECORDED' ||
+              type == 'SUPPORT_TICKET_CREATED' ||
+              type == 'DRIVER_DUTY_UPDATED' ||
+              type == 'ORDER_CREATED')) {
+        if (!_hasClearedAll) {
+          _scheduleBackgroundSync();
+        }
+      } else if (!widget.isAdmin &&
+          (type == 'STATUS_CHANGED' ||
+              type == 'ORDER_UPDATED' ||
+              type == 'SUBSCRIPTION_UPDATED' ||
+              type == 'SUBSCRIPTION_ACTIVATED' ||
+              type == 'SUBSCRIPTION_EXTENDED')) {
+        if (!_hasClearedAll) {
+          _scheduleBackgroundSync();
+        }
       }
     });
   }
 
   @override
   void dispose() {
+    _wsFetchDebounce?.cancel();
     _realtimeSub?.cancel();
     super.dispose();
   }
@@ -329,12 +439,143 @@ class _NotificationModalState extends State<NotificationModal> {
     return list;
   }
 
+  void _scheduleBackgroundSync({Duration delay = const Duration(milliseconds: 500)}) {
+    if (_isClearing || _hasClearedAll) return;
+    _wsFetchDebounce?.cancel();
+    _wsFetchDebounce = Timer(delay, () {
+      if (!mounted || _isClearing || _hasClearedAll) return;
+      _fetchServerNotifications();
+    });
+  }
+
+  Map<String, dynamic> _mapServerNotification(Map<String, dynamic> map) {
+    final type = map['type']?.toString().toLowerCase() ?? 'system';
+    final title = map['title']?.toString() ?? '';
+    final isDispatch = type == 'delivery_assigned';
+    final isDelivered = type == 'delivery_completed';
+    final isSubActivated = type == 'subscription_activated' ||
+        title.toLowerCase().contains('subscription successful') ||
+        title.toLowerCase().contains('subscription activated');
+    final isSubExtended = type == 'subscription_extended' ||
+        title.toLowerCase().contains('subscription extended');
+    final rawId = map['_id']?.toString() ?? map['id']?.toString() ?? '';
+    final notifId = rawId.isNotEmpty ? rawId : 'rt_${DateTime.now().millisecondsSinceEpoch}';
+    final isMarkedReadLocally = _readIds.contains(notifId);
+    final dataMap = map['data'] is Map
+        ? Map<String, dynamic>.from(map['data'] as Map)
+        : const <String, dynamic>{};
+
+    final String tag = isDispatch
+        ? 'DISPATCH'
+        : (isDelivered
+            ? 'DELIVERED'
+            : (isSubActivated
+                ? 'ACTIVE'
+                : (isSubExtended ? 'EXTENDED' : 'ALERT')));
+
+    final Color tagColor = isDispatch
+        ? const Color(0xFF1D4ED8)
+        : (isDelivered
+            ? const Color(0xFF047857)
+            : (isSubActivated
+                ? const Color(0xFF047857)
+                : (isSubExtended ? const Color(0xFFB45309) : const Color(0xFF065F46))));
+
+    final Color tagBg = isDispatch
+        ? const Color(0xFFDBEAFE)
+        : (isDelivered
+            ? const Color(0xFFD1FAE5)
+            : (isSubActivated
+                ? const Color(0xFFD1FAE5)
+                : (isSubExtended ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5))));
+
+    final IconData icon = isDispatch
+        ? Icons.local_shipping_outlined
+        : (isDelivered
+            ? Icons.check_circle_outline_rounded
+            : (isSubActivated
+                ? Icons.verified_rounded
+                : (isSubExtended
+                    ? Icons.more_time_rounded
+                    : Icons.notifications_active_rounded)));
+
+    final Color iconColor = isDispatch
+        ? const Color(0xFF2563EB)
+        : (isDelivered
+            ? const Color(0xFF059669)
+            : (isSubActivated
+                ? const Color(0xFF059669)
+                : (isSubExtended ? const Color(0xFFD97706) : const Color(0xFF0D5C3A))));
+
+    final Color iconBg = isDispatch
+        ? const Color(0xFFEFF6FF)
+        : (isDelivered
+            ? const Color(0xFFECFDF5)
+            : (isSubActivated
+                ? const Color(0xFFECFDF5)
+                : (isSubExtended ? const Color(0xFFFFFBEB) : const Color(0xFFE8F5EE))));
+
+    return {
+      'id': notifId,
+      '_id': notifId,
+      'recipientRole': map['recipientRole']?.toString() ?? 'customer',
+      'recipientId': map['recipientId']?.toString() ?? '',
+      'type': type,
+      'tag': tag,
+      'tagColor': tagColor,
+      'tagBg': tagBg,
+      'icon': icon,
+      'iconColor': iconColor,
+      'iconBg': iconBg,
+      'title': title.isNotEmpty
+          ? title
+          : (isDelivered
+              ? '🥛 Delivery Completed!'
+              : (isSubActivated
+                  ? '🎉 Subscription Successful'
+                  : 'Delivery Notification')),
+      'body': map['message']?.toString() ?? '',
+      'time': _formatRelativeTime(map['createdAt']?.toString()),
+      'isRead': isMarkedReadLocally || map['isRead'] == true,
+      'date': dataMap['date']?.toString() ?? 'Today',
+      'proofUrl': dataMap['proofUrl']?.toString() ??
+          dataMap['proofImage']?.toString() ??
+          map['proofUrl']?.toString(),
+      'driverName': dataMap['driverName']?.toString() ??
+          dataMap['deliveryBoyName']?.toString() ??
+          'Delivery Partner',
+    };
+  }
+
+  void _upsertNotification(Map<String, dynamic> raw) {
+    final mapped = _mapServerNotification(raw);
+    final id = mapped['id']?.toString() ?? '';
+    if (!mounted) return;
+    setState(() {
+      _hasClearedAll = false;
+      _isLoading = false;
+      if (id.isNotEmpty) {
+        final existingIdx = _notifications.indexWhere((n) => n['id'] == id || n['_id'] == id);
+        if (existingIdx >= 0) {
+          _notifications[existingIdx] = mapped;
+          return;
+        }
+      }
+      _notifications.insert(0, mapped);
+    });
+    widget.onNotificationChanged?.call();
+  }
+
   Future<void> _fetchServerNotifications() async {
+    if (_isClearing || _isFetching || _hasClearedAll) return;
+    _isFetching = true;
     try {
       final res = await _api.get('/api/notifications', false).timeout(
         const Duration(seconds: 4),
         onTimeout: () => {'success': false, 'message': 'Request timed out'},
       );
+      if (!mounted || _isClearing || _hasClearedAll) return;
+
       List<Map<String, dynamic>> parsedList = [];
 
       if (res['success'] == true && res['notifications'] is List) {
@@ -344,110 +585,26 @@ class _NotificationModalState extends State<NotificationModal> {
           return _isNotificationForCurrentCustomer(Map<String, dynamic>.from(raw));
         }).toList();
 
-        parsedList = serverList.map((item) {
-          final map = Map<String, dynamic>.from(item as Map);
-          final type = map['type']?.toString().toLowerCase() ?? 'system';
-          final title = map['title']?.toString() ?? '';
-          final isDispatch = type == 'delivery_assigned';
-          final isDelivered = type == 'delivery_completed';
-          final isSubActivated = type == 'subscription_activated' ||
-              title.toLowerCase().contains('subscription successful') ||
-              title.toLowerCase().contains('subscription activated');
-          final isSubExtended = type == 'subscription_extended' ||
-              title.toLowerCase().contains('subscription extended');
-          final notifId = map['_id']?.toString() ?? map['id']?.toString() ?? '';
-          final isMarkedReadLocally = _readIds.contains(notifId);
-
-          final String tag = isDispatch
-              ? 'DISPATCH'
-              : (isDelivered
-                  ? 'DELIVERED'
-                  : (isSubActivated
-                      ? 'ACTIVE'
-                      : (isSubExtended ? 'EXTENDED' : 'ALERT')));
-
-          final Color tagColor = isDispatch
-              ? const Color(0xFF1D4ED8)
-              : (isDelivered
-                  ? const Color(0xFF047857)
-                  : (isSubActivated
-                      ? const Color(0xFF047857)
-                      : (isSubExtended ? const Color(0xFFB45309) : const Color(0xFF065F46))));
-
-          final Color tagBg = isDispatch
-              ? const Color(0xFFDBEAFE)
-              : (isDelivered
-                  ? const Color(0xFFD1FAE5)
-                  : (isSubActivated
-                      ? const Color(0xFFD1FAE5)
-                      : (isSubExtended ? const Color(0xFFFEF3C7) : const Color(0xFFECFDF5))));
-
-          final IconData icon = isDispatch
-              ? Icons.local_shipping_outlined
-              : (isDelivered
-                  ? Icons.check_circle_outline_rounded
-                  : (isSubActivated
-                      ? Icons.verified_rounded
-                      : (isSubExtended
-                          ? Icons.more_time_rounded
-                          : Icons.notifications_active_rounded)));
-
-          final Color iconColor = isDispatch
-              ? const Color(0xFF2563EB)
-              : (isDelivered
-                  ? const Color(0xFF059669)
-                  : (isSubActivated
-                      ? const Color(0xFF059669)
-                      : (isSubExtended ? const Color(0xFFD97706) : const Color(0xFF0D5C3A))));
-
-          final Color iconBg = isDispatch
-              ? const Color(0xFFEFF6FF)
-              : (isDelivered
-                  ? const Color(0xFFECFDF5)
-                  : (isSubActivated
-                      ? const Color(0xFFECFDF5)
-                      : (isSubExtended ? const Color(0xFFFFFBEB) : const Color(0xFFE8F5EE))));
-
-          return {
-            'id': notifId,
-            '_id': notifId,
-            'recipientRole': map['recipientRole']?.toString() ?? 'customer',
-            'recipientId': map['recipientId']?.toString() ?? '',
-            'type': type,
-            'tag': tag,
-            'tagColor': tagColor,
-            'tagBg': tagBg,
-            'icon': icon,
-            'iconColor': iconColor,
-            'iconBg': iconBg,
-            'title': title.isNotEmpty
-                ? title
-                : (isDelivered
-                    ? '🥛 Delivery Completed!'
-                    : (isSubActivated
-                        ? '🎉 Subscription Successful'
-                        : 'Delivery Notification')),
-            'body': map['message']?.toString() ?? '',
-            'time': _formatRelativeTime(map['createdAt']?.toString()),
-            'isRead': isMarkedReadLocally || map['isRead'] == true,
-            'date': map['data']?['date']?.toString() ?? 'Today',
-            'proofUrl': map['data']?['proofUrl']?.toString() ?? map['data']?['proofImage']?.toString() ?? map['proofUrl']?.toString(),
-            'driverName': map['data']?['driverName']?.toString() ?? map['data']?['deliveryBoyName']?.toString() ?? 'Delivery Partner',
-          };
-        }).toList();
+        parsedList = serverList
+            .map((item) => _mapServerNotification(Map<String, dynamic>.from(item as Map)))
+            .toList();
       }
 
-      // If server returned no records or failed, synthesize from customer deliveries & plans
-      if (parsedList.isEmpty) {
-        parsedList = _synthesizeCustomerNotifications();
-      } else {
-        // Merge verified local doorstep deliveries so no photo proofs are ever missing
-        final localList = _synthesizeCustomerNotifications();
-        for (final loc in localList) {
-          final locId = loc['id']?.toString() ?? '';
-          final exists = parsedList.any((p) => p['id'] == locId || (p['title'] == loc['title'] && p['date'] == loc['date']));
-          if (!exists) {
-            parsedList.add(loc);
+      // Only synthesize local customer notifications for customer view when not cleared
+      if (!widget.isAdmin && !_hasClearedAll) {
+        if (parsedList.isEmpty) {
+          parsedList = _synthesizeCustomerNotifications();
+        } else {
+          // Merge verified local doorstep deliveries so no photo proofs are ever missing
+          final localList = _synthesizeCustomerNotifications();
+          for (final loc in localList) {
+            final locId = loc['id']?.toString() ?? '';
+            final exists = parsedList.any((p) =>
+                p['id'] == locId ||
+                (p['title'] == loc['title'] && p['date'] == loc['date']));
+            if (!exists) {
+              parsedList.add(loc);
+            }
           }
         }
       }
@@ -461,7 +618,7 @@ class _NotificationModalState extends State<NotificationModal> {
         }
       }
 
-      if (mounted) {
+      if (mounted && !_isClearing && !_hasClearedAll) {
         setState(() {
           _notifications = parsedList;
           _isLoading = false;
@@ -470,16 +627,17 @@ class _NotificationModalState extends State<NotificationModal> {
       }
     } catch (e) {
       debugPrint('Notification fetch error: $e');
-      if (mounted) {
+      if (mounted && !_isClearing) {
         setState(() {
-          if (_notifications.isEmpty) {
+          if (!widget.isAdmin && !_hasClearedAll && _notifications.isEmpty) {
             _notifications = _synthesizeCustomerNotifications();
           }
           _isLoading = false;
         });
       }
     } finally {
-      if (mounted) {
+      _isFetching = false;
+      if (mounted && _isLoading) {
         setState(() {
           _isLoading = false;
         });
@@ -511,15 +669,54 @@ class _NotificationModalState extends State<NotificationModal> {
     }).toList();
   }
 
-  void _clearAll() {
+  Future<void> _clearAll() async {
+    _wsFetchDebounce?.cancel();
+    final previousNotifications = List<Map<String, dynamic>>.from(_notifications);
+    final previousReadIds = Set<String>.from(_readIds);
+
     setState(() {
+      _isClearing = true;
+      _hasClearedAll = true;
       _notifications.clear();
       _readIds.clear();
+      _isLoading = false;
     });
     widget.onNotificationChanged?.call();
+
     try {
-      _api.delete('/api/notifications/clear-all');
-    } catch (_) {}
+      final res = await _api.delete('/api/notifications/clear-all');
+      if (res['success'] != true && mounted) {
+        setState(() {
+          _hasClearedAll = false;
+          _notifications = previousNotifications;
+          _readIds.addAll(previousReadIds);
+        });
+        widget.onNotificationChanged?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res['message']?.toString() ?? 'Failed to clear notifications'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _hasClearedAll = false;
+          _notifications = previousNotifications;
+          _readIds.addAll(previousReadIds);
+        });
+        widget.onNotificationChanged?.call();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to clear notifications'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      _isClearing = false;
+    }
   }
 
   void _markAllAsRead() {
@@ -1434,33 +1631,15 @@ class _NotificationModalState extends State<NotificationModal> {
                                         height: 1.4,
                                       ),
                                     ),
-                                    const SizedBox(height: 16),
-                                    ElevatedButton.icon(
-                                      onPressed: () {
-                                        setState(() => _isLoading = true);
-                                        _fetchServerNotifications();
-                                      },
-                                      icon: const Icon(Icons.refresh_rounded, size: 16, color: Colors.white),
-                                      label: const Text('Refresh Notifications', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13)),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF0D5C3A),
-                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        elevation: 0,
-                                      ),
-                                    ),
                                   ],
                                 ),
                               ),
                             )
-                          : RefreshIndicator(
-                              onRefresh: _fetchServerNotifications,
-                              color: const Color(0xFF0D5C3A),
-                              child: ListView.separated(
-                                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                                itemCount: list.length,
-                                separatorBuilder: (_, _) => const SizedBox(height: 12),
-                                itemBuilder: (ctx, i) {
+                          : ListView.separated(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                              itemCount: list.length,
+                              separatorBuilder: (_, _) => const SizedBox(height: 12),
+                              itemBuilder: (ctx, i) {
                                 final item = list[i];
                                 final notifId = item['id']?.toString() ?? 'notif-$i';
                                 return Dismissible(
@@ -1496,7 +1675,6 @@ class _NotificationModalState extends State<NotificationModal> {
                                 );
                               },
                             ),
-                          ),
                 ),
               ],
             ),

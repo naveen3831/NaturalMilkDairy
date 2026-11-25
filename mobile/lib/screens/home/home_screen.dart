@@ -2109,22 +2109,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // TAB 0: HOME FEED (Matching Image 1)
   Widget _buildHomeFeed(dynamic user) {
     final productProvider = context.watch<ProductProvider>();
-    final customerProvider = context.watch<CustomerProvider>();
-    final bool isGuest = user == null || user.isGuest == true;
 
     final rawProducts = productProvider.products.isNotEmpty
         ? productProvider.products
         : ProductModel.defaultCatalog;
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        await Future.wait<dynamic>([
-          productProvider.loadProducts(),
-          if (!isGuest) customerProvider.loadAllCustomerData(silent: true) as Future<dynamic>,
-        ]);
-      },
-      color: const Color(0xFF0D5C3A),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2150,7 +2140,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 70),
           ],
         ),
-      ),
     );
   }
 
@@ -2176,10 +2165,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {'id': 'ghee', 'label': 'Ghee & Butter', 'icon': Icons.local_dining_outlined},
     ];
 
-    return RefreshIndicator(
-      onRefresh: () => productProvider.loadProducts(),
-      color: const Color(0xFF0D5C3A),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
         child: Column(
@@ -2369,15 +2355,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 70),
           ],
         ),
-      ),
     );
   }
 
   // TAB 2: SUBSCRIPTION TAB (Matching Image 2 - Subscription Overview Screen)
   Widget _buildSubscriptionTab(dynamic user) {
     final dynamic customerProvider = context.watch<CustomerProvider>();
-    final productProvider = context.watch<ProductProvider>();
-    final isGuest = user == null || user.isGuest == true;
 
     List<Map<String, dynamic>> subHistory = [];
     try {
@@ -2422,15 +2405,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final String subFormattedExpiry = '${calcEndDate.day.toString().padLeft(2, '0')} ${monthNames[calcEndDate.month - 1]} ${calcEndDate.year}';
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        await Future.wait<dynamic>([
-          productProvider.loadProducts(),
-          if (!isGuest) customerProvider.loadAllCustomerData(silent: true) as Future<dynamic>,
-        ]);
-      },
-      color: const Color(0xFF0D5C3A),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 36),
         child: Column(
@@ -3079,7 +3054,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 40),
           ],
         ),
-      ),
     );
   }
 
@@ -3278,7 +3252,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // TAB 3: DELIVERIES TAB (Upcoming & Delivery History)
   Widget _buildDeliveriesTab(dynamic user) {
     final customerProvider = context.watch<CustomerProvider>();
-    final isGuest = user == null || user.isGuest == true;
     final serverDeliveries = customerProvider.deliveries;
 
     // Build unified delivery entries list
@@ -3350,12 +3323,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList()
       ..sort((a, b) => (b['dateKey']?.toString() ?? '').compareTo(a['dateKey']?.toString() ?? ''));
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (!isGuest) await customerProvider.loadAllCustomerData(silent: true);
-      },
-      color: const Color(0xFF0D5C3A),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Column(
@@ -4134,7 +4102,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ],
         ),
-      ),
     );
   }
 
@@ -4470,12 +4437,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final String customerId = isGuest ? 'GUEST-001' : (user?.customerId.isNotEmpty == true ? user!.customerId : customerProvider.customerId);
     final String mobile = isGuest ? '' : (user?.mobile.isNotEmpty == true ? user!.mobile : customerProvider.mobile);
 
-    return RefreshIndicator(
-      onRefresh: () async {
-        if (!isGuest) await customerProvider.loadAllCustomerData(silent: true);
-      },
-      color: const Color(0xFF0D5C3A),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Column(
@@ -4754,7 +4716,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 40),
           ],
         ),
-      ),
     );
   }
 

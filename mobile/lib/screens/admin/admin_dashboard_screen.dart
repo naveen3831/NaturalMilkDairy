@@ -38,6 +38,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   DateTime _customEndDate = IstDateTime.toIst(DateTime.now());
   StreamSubscription? _wsSub;
   Timer? _adminWsDebounce;
+  Timer? _unreadCountDebounce;
   bool _isAdminDataSyncing = false;
 
   int _unreadNotificationsCount = 0;
@@ -51,15 +52,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     FcmService().syncToken();
   }
 
+  void _scheduleUnreadCountRefresh() {
+    _unreadCountDebounce?.cancel();
+    _unreadCountDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) {
+        _fetchUnreadNotificationsCount();
+      }
+    });
+  }
+
   Future<void> _fetchUnreadNotificationsCount() async {
     try {
       final res = await _api.get('/api/notifications');
       if (res['success'] == true && res['notifications'] is List && mounted) {
         final list = res['notifications'] as List;
         final unread = list.where((n) => n is Map && n['isRead'] != true).length;
-        setState(() {
-          _unreadNotificationsCount = unread;
-        });
+        if (unread != _unreadNotificationsCount) {
+          setState(() {
+            _unreadNotificationsCount = unread;
+          });
+        }
       }
     } catch (e) {
       debugPrint('Error fetching unread notifs count: $e');
@@ -88,6 +100,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _initRealtime() {
+    _realtime.ensureSyncedWithBaseUrl();
     _wsSub = _realtime.eventStream.listen((event) {
       final type = event['type']?.toString();
       if ((type == 'DRIVER_DUTY_UPDATED' || type == 'DELIVERY_BOY_UPDATED') && event['payload'] is Map) {
@@ -168,11 +181,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           _loadAllData(silent: true);
         });
       }
-      if (type == 'NOTIFICATION_CREATED' ||
-          type == 'NOTIFICATION_UPDATED' ||
-          type == 'NOTIFICATION_DELETED' ||
-          type == 'NOTIFICATIONS_CLEARED') {
-        _fetchUnreadNotificationsCount();
+      if (type == 'NOTIFICATIONS_CLEARED') {
+        _unreadCountDebounce?.cancel();
+        if (mounted && _unreadNotificationsCount != 0) {
+          setState(() => _unreadNotificationsCount = 0);
+        }
+        return;
+      }
+      if (type == 'NOTIFICATION_DELETED') {
+        _scheduleUnreadCountRefresh();
+        return;
+      }
+      if (type == 'NOTIFICATION_UPDATED') {
+        final payload = event['payload'] is Map ? event['payload'] as Map : null;
+        final action = payload?['action']?.toString();
+        if (action == 'clear_all' || action == 'read_all') {
+          _unreadCountDebounce?.cancel();
+          if (mounted && _unreadNotificationsCount != 0) {
+            setState(() => _unreadNotificationsCount = 0);
+          }
+          return;
+        }
+        _scheduleUnreadCountRefresh();
+        if (action == 'read' || action == 'delete' || action == 'created') {
+          return;
+        }
+      } else if (type == 'NOTIFICATION_CREATED') {
+        _scheduleUnreadCountRefresh();
       }
       _adminWsDebounce?.cancel();
       _adminWsDebounce = Timer(const Duration(milliseconds: 2500), () {
@@ -190,6 +225,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _adminWsDebounce?.cancel();
+    _unreadCountDebounce?.cancel();
     _wsSub?.cancel();
     super.dispose();
   }
@@ -400,9 +436,493 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               lng: lng,
             );
           },
+          onMarkDelivered: (deliv) async {
+            final ok = await _showAdminMarkDeliveredModal(deliv);
+            return ok;
+          },
+          onMarkMissed: (deliv) async {
+            final ok = await _showAdminMarkMissedModal(deliv);
+            return ok;
+          },
         ),
       ),
     );
+  }
+
+  Future<bool> _showAdminMarkDeliveredModal(Map<String, dynamic> d) async {
+    final deliveryId = (d['_id'] ?? d['id'] ?? '').toString();
+    if (deliveryId.isEmpty) return false;
+
+    final milkPrice = num.tryParse((d['milkPrice'] ?? 60).toString())?.toDouble() ?? 60.0;
+    final curdPrice = num.tryParse((d['curdPrice'] ?? 30).toString())?.toDouble() ?? 30.0;
+    final initMilk = num.tryParse((d['actualMilk'] ?? d['plannedMilk'] ?? 1).toString())?.toDouble() ?? 1.0;
+    final initCurd = num.tryParse((d['actualCurd'] ?? d['plannedCurd'] ?? 0).toString())?.toDouble() ?? 0.0;
+
+    final milkCtrl = TextEditingController(text: initMilk.toString());
+    final curdCtrl = TextEditingController(text: initCurd.toInt().toString());
+    final collectedCtrl = TextEditingController(
+      text: (initMilk * milkPrice + (initCurd / 500.0) * curdPrice).toInt().toString(),
+    );
+    final customReasonCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+
+    String paymentMethod = (d['paymentMethod'] ?? 'credit').toString().toLowerCase();
+    if (!['credit', 'cash', 'upi'].contains(paymentMethod)) paymentMethod = 'credit';
+    String adminReason = 'Received the product in the dairy';
+    bool isSubmitting = false;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          void recalcAmount() {
+            final m = double.tryParse(milkCtrl.text.trim()) ?? 0.0;
+            final c = double.tryParse(curdCtrl.text.trim()) ?? 0.0;
+            collectedCtrl.text = (m * milkPrice + (c / 500.0) * curdPrice).round().toString();
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 14),
+                        decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Confirm Delivery (Admin)', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${d['customerName'] ?? 'Customer'} • ${d['customerAddress'] ?? d['area'] ?? ''}',
+                                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: isSubmitting ? null : () => Navigator.pop(sheetCtx, false),
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Milk (Litres)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                              const SizedBox(height: 5),
+                              TextField(
+                                controller: milkCtrl,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                onChanged: (_) => setModalState(recalcAmount),
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Curd (Grams)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                              const SizedBox(height: 5),
+                              TextField(
+                                controller: curdCtrl,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setModalState(recalcAmount),
+                                decoration: InputDecoration(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Payment Method', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                    const SizedBox(height: 5),
+                    DropdownButtonFormField<String>(
+                      initialValue: paymentMethod,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'credit', child: Text('Monthly Credit Account (Ledger)')),
+                        DropdownMenuItem(value: 'cash', child: Text('Cash on Delivery')),
+                        DropdownMenuItem(value: 'upi', child: Text('UPI / Instant QR')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setModalState(() => paymentMethod = v);
+                      },
+                    ),
+                    if (paymentMethod == 'cash' || paymentMethod == 'upi') ...[
+                      const SizedBox(height: 12),
+                      const Text('Amount Collected (₹)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                      const SizedBox(height: 5),
+                      TextField(
+                        controller: collectedCtrl,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          prefixText: '₹ ',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const Text('Delivery Reason / Mode', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                    const SizedBox(height: 5),
+                    DropdownButtonFormField<String>(
+                      initialValue: adminReason,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      items: const [
+                        DropdownMenuItem(value: 'Received the product in the dairy', child: Text('Received the product in the dairy')),
+                        DropdownMenuItem(value: 'Partner forgot delivery', child: Text('Partner forgot delivery')),
+                        DropdownMenuItem(value: 'Direct delivery by dairy staff', child: Text('Direct delivery by dairy staff')),
+                        DropdownMenuItem(value: 'Customer collected from depot', child: Text('Customer collected from depot')),
+                        DropdownMenuItem(value: 'Other', child: Text('Other (Custom Reason)')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setModalState(() => adminReason = v);
+                      },
+                    ),
+                    if (adminReason == 'Other') ...[
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: customReasonCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Enter custom delivery reason...',
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    const Text('Delivery Notes (Optional)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                    const SizedBox(height: 5),
+                    TextField(
+                      controller: notesCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'e.g. Left at doorstep / bottle returned',
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isSubmitting ? null : () => Navigator.pop(sheetCtx, false),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: isSubmitting
+                                ? null
+                                : () async {
+                                    setModalState(() => isSubmitting = true);
+                                    final finalReason = adminReason == 'Other'
+                                        ? (customReasonCtrl.text.trim().isNotEmpty ? customReasonCtrl.text.trim() : 'Direct delivery by Admin')
+                                        : adminReason;
+                                    final milk = double.tryParse(milkCtrl.text.trim()) ?? initMilk;
+                                    final curd = double.tryParse(curdCtrl.text.trim()) ?? initCurd;
+                                    final col = double.tryParse(collectedCtrl.text.trim()) ?? 0.0;
+                                    try {
+                                      final res = await _api.post('/api/deliveries/$deliveryId/delivered', {
+                                        'actualMilk': milk,
+                                        'actualCurd': curd,
+                                        'paymentMethod': paymentMethod,
+                                        'collectedAmount': (paymentMethod == 'cash' || paymentMethod == 'upi') ? col : 0,
+                                        'notes': notesCtrl.text.trim(),
+                                        'actor': 'Admin',
+                                        'reason': finalReason,
+                                        'deliveredReason': finalReason,
+                                        'markedBy': 'Admin',
+                                      });
+                                      if (!sheetCtx.mounted) return;
+                                      if (res['success'] == true) {
+                                        Navigator.pop(sheetCtx, true);
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('✓ Marked delivered for ${d['customerName'] ?? 'Customer'}'),
+                                              backgroundColor: const Color(0xFF059669),
+                                              behavior: SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                          _loadAllData(silent: true);
+                                        }
+                                      } else {
+                                        if (sheetCtx.mounted) {
+                                          setModalState(() => isSubmitting = false);
+                                        }
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(res['message']?.toString() ?? 'Could not complete delivery'),
+                                              backgroundColor: const Color(0xFFDC2626),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    } catch (e) {
+                                      if (sheetCtx.mounted) {
+                                        setModalState(() => isSubmitting = false);
+                                      }
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: $e'), backgroundColor: const Color(0xFFDC2626)),
+                                        );
+                                      }
+                                    }
+                                  },
+                            icon: isSubmitting
+                                ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Icon(Icons.check_circle_rounded, size: 17),
+                            label: Text(isSubmitting ? 'Saving...' : 'Confirm Delivered', style: const TextStyle(fontWeight: FontWeight.w800)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF059669),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    return result == true;
+  }
+
+  Future<bool> _showAdminMarkMissedModal(Map<String, dynamic> d) async {
+    final deliveryId = (d['_id'] ?? d['id'] ?? '').toString();
+    if (deliveryId.isEmpty) return false;
+
+    String missedReason = 'Customer Not Home';
+    final notesCtrl = TextEditingController();
+    bool isSubmitting = false;
+
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Mark Not Delivered', style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFFDC2626))),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${d['customerName'] ?? 'Customer'} • ${d['customerAddress'] ?? d['area'] ?? ''}',
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: isSubmitting ? null : () => Navigator.pop(sheetCtx, false),
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Text('Reason for Non-Delivery', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 5),
+                  DropdownButtonFormField<String>(
+                    initialValue: missedReason,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Customer Not Home', child: Text('Customer Not Home / Door Locked')),
+                      DropdownMenuItem(value: 'Customer Requested Skip', child: Text('Customer Requested Skip / Holiday')),
+                      DropdownMenuItem(value: 'Delivery Boy Shortage', child: Text('Out of Stock / Route Delay')),
+                      DropdownMenuItem(value: 'Severe Weather', child: Text('Inclement Weather / Road Block')),
+                      DropdownMenuItem(value: 'Other', child: Text('Other Specific Reason')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setModalState(() => missedReason = v);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Additional Notes', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF334155))),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: notesCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: 'Explain why delivery was not completed...',
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isSubmitting ? null : () => Navigator.pop(sheetCtx, false),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  setModalState(() => isSubmitting = true);
+                                  try {
+                                    final res = await _api.post('/api/deliveries/$deliveryId/not-delivered', {
+                                      'reason': missedReason,
+                                      'notes': notesCtrl.text.trim(),
+                                      'actor': 'Admin',
+                                    });
+                                    if (!sheetCtx.mounted) return;
+                                    if (res['success'] == true) {
+                                      Navigator.pop(sheetCtx, true);
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Marked missed for ${d['customerName'] ?? 'Customer'}'),
+                                            backgroundColor: const Color(0xFFEA580C),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                        _loadAllData(silent: true);
+                                      }
+                                    } else {
+                                      if (sheetCtx.mounted) {
+                                        setModalState(() => isSubmitting = false);
+                                      }
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(res['message']?.toString() ?? 'Could not update delivery'),
+                                            backgroundColor: const Color(0xFFDC2626),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    if (sheetCtx.mounted) {
+                                      setModalState(() => isSubmitting = false);
+                                    }
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error: $e'), backgroundColor: const Color(0xFFDC2626)),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: const Icon(Icons.cancel_rounded, size: 17),
+                          label: Text(isSubmitting ? 'Saving...' : 'Confirm Missed', style: const TextStyle(fontWeight: FontWeight.w800)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFDC2626),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return result == true;
   }
 
   void _showPartnerAndAssignedUsers(Map<String, dynamic> b) {
@@ -524,13 +1044,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(width: 12),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _loadAllData(),
-        color: const Color(0xFF059669),
-        child: _isLoading && _deliveries.isEmpty
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669)))
-            : _buildCurrentTab(),
-      ),
+      body: _isLoading && _deliveries.isEmpty
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669)))
+          : _buildCurrentTab(),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
@@ -1543,6 +2059,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       filtered = filtered.where((d) => d['status'] == 'delivered').toList();
     } else if (_deliveryFilter == 'pending') {
       filtered = filtered.where((d) => d['status'] == 'pending').toList();
+    } else if (_deliveryFilter == 'not_delivered') {
+      filtered = filtered.where((d) => d['status'] == 'not_delivered').toList();
     }
 
     final filterWidget = SingleChildScrollView(
@@ -1551,9 +2069,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         children: [
           _buildFilterChip('all', 'All Drops (${_deliveries.length})'),
           const SizedBox(width: 8),
+          _buildFilterChip('pending', 'Pending (${_deliveries.where((d) => d['status'] == 'pending').length})'),
+          const SizedBox(width: 8),
           _buildFilterChip('delivered', 'Delivered (${_deliveries.where((d) => d['status'] == 'delivered').length})'),
           const SizedBox(width: 8),
-          _buildFilterChip('pending', 'Pending (${_deliveries.where((d) => d['status'] == 'pending').length})'),
+          _buildFilterChip('not_delivered', 'Missed (${_deliveries.where((d) => d['status'] == 'not_delivered').length})'),
         ],
       ),
     );
@@ -1669,6 +2189,78 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               Icon(Icons.chevron_right, size: 16, color: Color(0xFF059669)),
                             ],
                           ),
+                        ),
+                      ],
+                      if (isDelivered && (d['deliveredReason'] ?? '').toString().trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFA7F3D0)),
+                          ),
+                          child: Text(
+                            '✓ ${d['deliveredReason']}${(d['markedBy'] ?? '').toString().isNotEmpty ? " (${d['markedBy']})" : ""}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF065F46)),
+                          ),
+                        ),
+                      ],
+                      if (!isDelivered && !isPending && (d['notDeliveredReason'] ?? '').toString().trim().isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFFECACA)),
+                          ),
+                          child: Text(
+                            'Reason: ${d['notDeliveredReason']}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFB91C1C)),
+                          ),
+                        ),
+                      ],
+                      if (!isDelivered) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _showAdminMarkDeliveredModal(d),
+                                icon: const Icon(Icons.check_circle_rounded, size: 15),
+                                label: Text(
+                                  isPending ? 'Mark Delivered' : 'Mark Delivery',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF059669),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 9),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                            if (isPending) ...[
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: () => _showAdminMarkMissedModal(d),
+                                icon: const Icon(Icons.cancel_outlined, size: 15),
+                                label: const Text('Missed', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFFDC2626),
+                                  side: const BorderSide(color: Color(0xFFFCA5A5)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                       const SizedBox(height: 10),
@@ -2632,12 +3224,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: _buildMetricMiniCard(
-                  title: 'Financial Ledger',
+                  title: 'Finance & Payments',
                   value: 'View Audit →',
-                  icon: Icons.analytics_outlined,
-                  color: const Color(0xFFD97706),
-                  bg: const Color(0xFFFEF3C7),
-                  onTap: () => _openFinancialLedgerScreen(),
+                  icon: Icons.account_balance_wallet_outlined,
+                  color: const Color(0xFF0D5C3A),
+                  bg: const Color(0xFFE2F1EA),
+                  onTap: () => _openPaymentsHistoryScreen(),
                 ),
               ),
             ],
@@ -2683,16 +3275,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ),
               _buildDivider(),
               _buildNavigationRow(
-                icon: Icons.analytics_outlined,
-                title: 'Financial & Ledger Performance',
-                subtitle: 'Tap to view live sales, cash/UPI audit & customer ledgers',
-                onTap: () => _openFinancialLedgerScreen(),
-              ),
-              _buildDivider(),
-              _buildNavigationRow(
-                icon: Icons.receipt_long_rounded,
-                title: 'Payments & History',
-                subtitle: 'Audit driver cash handovers, customer payments & live history',
+                icon: Icons.account_balance_wallet_rounded,
+                title: 'Finance, Payments & History',
+                subtitle: 'Earnings, date-range audit, partner cash & customer ledgers',
                 onTap: () => _openPaymentsHistoryScreen(),
               ),
               _buildDivider(),
@@ -2756,32 +3341,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           title: title,
           subtitle: subtitle,
           builder: (_) => builder(),
-          onRefresh: () async {
-            await _loadAllData();
-            if (mounted) setState(() {});
-          },
-        ),
-      ),
-    );
-  }
-
-  void _openFinancialLedgerScreen() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _AdminFinancialLedgerFullScreen(
-          api: _api,
-          initialSummary: _summary,
-          customers: _customers,
-          deliveries: _deliveries,
-          deliveryBoys: _deliveryBoys,
-          onReload: () => _loadAllData(silent: true),
-          onRecordPayment: (cust) => _showRecordPaymentModal(context, cust),
-          onSelectCustomer: (custName) {
-            setState(() {
-              _selectedTabIndex = 3;
-              _customerSearch = custName;
-            });
-          },
         ),
       ),
     );
@@ -2792,6 +3351,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       MaterialPageRoute(
         builder: (_) => _AdminPaymentsHistoryFullScreen(
           api: _api,
+          initialSummary: _summary,
           deliveryBoys: _deliveryBoys,
           customers: _customers,
           deliveries: _deliveries,
@@ -4747,7 +5307,7 @@ class _ContactSettingsFullScreenPageState extends State<_ContactSettingsFullScre
                     const SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: (_isLoading || _isSaving) ? null : _resetData,
-                      icon: const Icon(Icons.refresh_rounded, size: 15),
+                      icon: const Icon(Icons.restore_rounded, size: 15),
                       label: const Text('Reset', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFFB45309),
@@ -6130,6 +6690,8 @@ class AdminDeliveryDetailFullScreen extends StatelessWidget {
   final List<Map<String, dynamic>> deliveryBoys;
   final Function(String customerName)? onSelectCustomer;
   final Function(String proofUrl, String date, String driver, String custName, String addr, num? lat, num? lng)? onShowProof;
+  final Future<bool> Function(Map<String, dynamic> delivery)? onMarkDelivered;
+  final Future<bool> Function(Map<String, dynamic> delivery)? onMarkMissed;
 
   const AdminDeliveryDetailFullScreen({
     super.key,
@@ -6138,6 +6700,8 @@ class AdminDeliveryDetailFullScreen extends StatelessWidget {
     required this.deliveryBoys,
     this.onSelectCustomer,
     this.onShowProof,
+    this.onMarkDelivered,
+    this.onMarkMissed,
   });
 
   Map<String, dynamic>? _findCustomer() {
@@ -6502,6 +7066,56 @@ class AdminDeliveryDetailFullScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
+            if (!isDelivered && (onMarkDelivered != null || onMarkMissed != null)) ...[
+              Row(
+                children: [
+                  if (onMarkDelivered != null)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () async {
+                          final ok = await onMarkDelivered!(delivery);
+                          if (ok && context.mounted) {
+                            Navigator.pop(context);
+                          }
+                        },
+                        icon: const Icon(Icons.check_circle_rounded, size: 18),
+                        label: Text(
+                          isPending ? 'Mark Delivered' : 'Mark Delivery',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF059669),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  if (isPending && onMarkMissed != null) ...[
+                    const SizedBox(width: 10),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final ok = await onMarkMissed!(delivery);
+                        if (ok && context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                      label: const Text('Missed', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
+
             // Jump to Customer Directory Ledger
             SizedBox(
               width: double.infinity,
@@ -6515,7 +7129,7 @@ class AdminDeliveryDetailFullScreen extends StatelessWidget {
                 icon: const Icon(Icons.person_search_rounded, size: 18),
                 label: const Text('View Full Customer Ledger in Directory', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669),
+                  backgroundColor: isDelivered ? const Color(0xFF059669) : const Color(0xFF0F172A),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -7946,37 +8560,18 @@ class AdminCustomerDetailsFullScreen extends StatelessWidget {
 }
 
 // ============================================================================
-// ADMIN SUB-SCREEN WRAPPER WITH REALTIME REFRESH AND APPBAR
+// ADMIN SUB-SCREEN WRAPPER AND APPBAR
 // ============================================================================
-class _AdminSubScreenWrapper extends StatefulWidget {
+class _AdminSubScreenWrapper extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget Function(BuildContext context) builder;
-  final Future<void> Function() onRefresh;
 
   const _AdminSubScreenWrapper({
     required this.title,
     this.subtitle,
     required this.builder,
-    required this.onRefresh,
   });
-
-  @override
-  State<_AdminSubScreenWrapper> createState() => _AdminSubScreenWrapperState();
-}
-
-class _AdminSubScreenWrapperState extends State<_AdminSubScreenWrapper> {
-  bool _isRefreshing = false;
-
-  Future<void> _handleRefresh() async {
-    if (_isRefreshing) return;
-    setState(() => _isRefreshing = true);
-    try {
-      await widget.onRefresh();
-    } finally {
-      if (mounted) setState(() => _isRefreshing = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -7994,16 +8589,16 @@ class _AdminSubScreenWrapperState extends State<_AdminSubScreenWrapper> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              widget.title,
+              title,
               style: const TextStyle(
                 color: Color(0xFF0F172A),
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
             ),
-            if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
+            if (subtitle != null && subtitle!.isNotEmpty)
               Text(
-                widget.subtitle!,
+                subtitle!,
                 style: const TextStyle(
                   color: Color(0xFF64748B),
                   fontSize: 11,
@@ -8012,37 +8607,8 @@ class _AdminSubScreenWrapperState extends State<_AdminSubScreenWrapper> {
               ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669)),
-                  )
-                : const Icon(Icons.refresh_rounded, color: Color(0xFF059669)),
-            tooltip: 'Refresh Realtime Data',
-            onPressed: () async {
-              await _handleRefresh();
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('✓ Realtime data refreshed successfully'),
-                    backgroundColor: Color(0xFF059669),
-                    duration: Duration(seconds: 1),
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
-          ),
-        ],
       ),
-      body: RefreshIndicator(
-        color: const Color(0xFF059669),
-        onRefresh: _handleRefresh,
-        child: widget.builder(context),
-      ),
+      body: builder(context),
     );
   }
 }
@@ -8079,7 +8645,6 @@ class _AdminFinancialLedgerFullScreen extends StatefulWidget {
 class _AdminFinancialLedgerFullScreenState extends State<_AdminFinancialLedgerFullScreen> {
   late Map<String, dynamic> _summary;
   String _period = 'today'; // 'today', 'weekly', 'monthly', 'all'
-  bool _isLoadingPeriod = false;
   String _searchQuery = '';
   String _debtFilter = 'all'; // 'all', 'high', 'moderate', 'advance'
   final TextEditingController _searchController = TextEditingController();
@@ -8107,7 +8672,6 @@ class _AdminFinancialLedgerFullScreenState extends State<_AdminFinancialLedgerFu
   Future<void> _loadPeriodData(String period) async {
     setState(() {
       _period = period;
-      _isLoadingPeriod = true;
     });
 
     try {
@@ -8121,23 +8685,6 @@ class _AdminFinancialLedgerFullScreenState extends State<_AdminFinancialLedgerFu
       }
     } catch (e) {
       debugPrint('Error loading period summary: $e');
-    } finally {
-      if (mounted) setState(() => _isLoadingPeriod = false);
-    }
-  }
-
-  Future<void> _handleRefresh() async {
-    widget.onReload();
-    await _loadPeriodData(_period);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Realtime financial & ledger data refreshed'),
-          backgroundColor: Color(0xFF059669),
-          duration: Duration(seconds: 2),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     }
   }
 
@@ -9067,21 +9614,8 @@ class _AdminFinancialLedgerFullScreenState extends State<_AdminFinancialLedgerFu
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: _isLoadingPeriod
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF059669)))
-                : const Icon(Icons.refresh_rounded, color: Color(0xFF059669)),
-            tooltip: 'Refresh Ledger',
-            onPressed: _isLoadingPeriod ? null : _handleRefresh,
-          ),
-        ],
       ),
-      body: RefreshIndicator(
-        color: const Color(0xFF059669),
-        onRefresh: _handleRefresh,
-        child: content,
-      ),
+      body: content,
     );
   }
 
@@ -9175,6 +9709,7 @@ class _AdminFinancialLedgerFullScreenState extends State<_AdminFinancialLedgerFu
 // ============================================================================
 class _AdminPaymentsHistoryFullScreen extends StatefulWidget {
   final ApiService api;
+  final Map<String, dynamic> initialSummary;
   final List<Map<String, dynamic>> deliveryBoys;
   final List<Map<String, dynamic>> customers;
   final List<Map<String, dynamic>> deliveries;
@@ -9183,6 +9718,7 @@ class _AdminPaymentsHistoryFullScreen extends StatefulWidget {
 
   const _AdminPaymentsHistoryFullScreen({
     required this.api,
+    this.initialSummary = const {},
     required this.deliveryBoys,
     required this.customers,
     required this.deliveries,
@@ -9197,28 +9733,189 @@ class _AdminPaymentsHistoryFullScreen extends StatefulWidget {
 class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFullScreen> {
   String _activeTab = 'history'; // 'history' | 'partners' | 'customers'
   String _paymentMethodFilter = 'all'; // 'all' | 'cash' | 'upi'
+  String _debtFilter = 'all'; // 'all' | 'due' | 'high' | 'advance'
+  String _period = 'today'; // 'today' | 'weekly' | 'monthly' | 'all'
   String _searchQuery = '';
   bool _isLoading = true;
+  bool _isLoadingPeriod = false;
   String? _error;
+  DateTime? _fromDate;
+  DateTime? _toDate;
+  late Map<String, dynamic> _reportSummary;
   List<Map<String, dynamic>> _payments = [];
   List<Map<String, dynamic>> _handovers = [];
   List<Map<String, dynamic>> _deliveryBoys = [];
   List<Map<String, dynamic>> _customers = [];
+  List<Map<String, dynamic>> _allDeliveries = [];
 
   final TextEditingController _searchController = TextEditingController();
+  StreamSubscription<Map<String, dynamic>>? _wsSub;
 
   @override
   void initState() {
     super.initState();
+    _reportSummary = Map<String, dynamic>.from(widget.initialSummary);
     _deliveryBoys = List<Map<String, dynamic>>.from(widget.deliveryBoys);
     _customers = List<Map<String, dynamic>>.from(widget.customers);
+    _allDeliveries = List<Map<String, dynamic>>.from(widget.deliveries);
     _loadOverviewData();
+    _loadPeriodSummary(_period);
+    _wsSub = RealtimeService().eventStream.listen((event) {
+      final type = event['type']?.toString() ?? '';
+      if (type == 'PAYMENT_RECORDED' ||
+          type == 'PAYMENT_UPDATED' ||
+          type == 'CASH_HANDOVER_SUBMITTED' ||
+          type == 'CASH_HANDOVER_UPDATED' ||
+          type == 'DELIVERY_UPDATED' ||
+          type == 'DELIVERY_BOY_UPDATED' ||
+          type == 'DRIVER_DUTY_UPDATED' ||
+          type == 'CUSTOMER_UPDATED' ||
+          type == 'SUBSCRIPTION_UPDATED' ||
+          type == 'REPORT_UPDATED') {
+        _loadOverviewData(silent: true);
+        _loadPeriodSummary(_period);
+      }
+    });
+  }
+
+  Future<void> _loadPeriodSummary(String period) async {
+    setState(() {
+      _period = period;
+      _isLoadingPeriod = true;
+    });
+    try {
+      final dynamic res = await widget.api.get('/api/reports/dashboard?period=$period');
+      if (res is Map && res['success'] == true && res['summary'] is Map && mounted) {
+        setState(() {
+          _reportSummary = Map<String, dynamic>.from(res['summary'] as Map);
+          _isLoadingPeriod = false;
+        });
+        return;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isLoadingPeriod = false);
   }
 
   @override
   void dispose() {
+    _wsSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  String _formatShortDate(DateTime dt) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${dt.day.toString().padLeft(2, '0')} ${months[dt.month - 1]} ${dt.year}';
+  }
+
+  String _formatApiDate(DateTime dt) {
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _pickFromDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate ?? DateTime(now.year, now.month, 1),
+      firstDate: DateTime(2023),
+      lastDate: _toDate ?? now.add(const Duration(days: 1)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Color(0xFF0D5C3A), onPrimary: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _fromDate = picked;
+        _toDate ??= now;
+      });
+    }
+  }
+
+  Future<void> _pickToDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDate ?? now,
+      firstDate: _fromDate ?? DateTime(2023),
+      lastDate: now.add(const Duration(days: 30)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.light(primary: Color(0xFF0D5C3A), onPrimary: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _toDate = picked;
+        _fromDate ??= DateTime(picked.year, picked.month, 1);
+      });
+    }
+  }
+
+  void _clearDateRange() {
+    setState(() {
+      _fromDate = null;
+      _toDate = null;
+    });
+  }
+
+  List<Map<String, dynamic>> _mergeSubscriptionsIntoPayments(
+    List<Map<String, dynamic>> basePayments,
+    dynamic rawSubs,
+  ) {
+    if (rawSubs is! List || rawSubs.isEmpty) return basePayments;
+    final recordedSubIds = basePayments
+        .map((p) => (p['subscriptionId'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    final recordedGatewayIds = basePayments
+        .expand((p) => [p['gatewayPaymentId'], p['referenceNumber']])
+        .map((s) => (s ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+
+    final merged = List<Map<String, dynamic>>.from(basePayments);
+    for (final raw in rawSubs) {
+      if (raw is! Map) continue;
+      final status = (raw['status'] ?? '').toString().toLowerCase();
+      if (status != 'active' && status != 'paused' && status != 'expired') continue;
+      final subId = (raw['_id'] ?? raw['id'] ?? '').toString();
+      final provId = (raw['providerPaymentId'] ?? '').toString();
+      final rawAmt = num.tryParse(raw['amount']?.toString() ?? '0')?.toDouble() ?? 0.0;
+      final amtRupees = rawAmt >= 100 ? rawAmt / 100.0 : rawAmt;
+      if (amtRupees <= 0) continue;
+      if (recordedSubIds.contains(subId) || (provId.isNotEmpty && recordedGatewayIds.contains(provId))) continue;
+
+      final planMap = raw['plan'] is Map ? raw['plan'] as Map : const {};
+      final planName = (planMap['planName'] ?? '').toString();
+      merged.add({
+        '_id': subId,
+        'id': subId,
+        'customer': raw['customer'],
+        'customerId': (raw['customerId'] ?? '').toString(),
+        'customerName': (raw['customerName'] ?? 'Customer').toString(),
+        'amount': amtRupees,
+        'paymentMethod': 'razorpay',
+        'purpose': 'subscription',
+        'subscriptionId': subId,
+        'gatewayPaymentId': provId,
+        'referenceNumber': provId.isNotEmpty ? provId : (raw['providerOrderId'] ?? '').toString(),
+        'paymentDate': raw['paidAt'] ?? raw['startDate'] ?? raw['createdAt'],
+        'createdAt': raw['createdAt'],
+        'collectedBy': 'Razorpay / Plan',
+        'notes': planName.isNotEmpty ? '$planName subscription' : 'Prepaid subscription',
+      });
+    }
+    merged.sort((a, b) {
+      final da = DateTime.tryParse((a['paymentDate'] ?? a['createdAt'] ?? '').toString()) ?? DateTime(1970);
+      final db = DateTime.tryParse((b['paymentDate'] ?? b['createdAt'] ?? '').toString()) ?? DateTime(1970);
+      return db.compareTo(da);
+    });
+    return merged;
   }
 
   Future<void> _loadOverviewData({bool silent = false}) async {
@@ -9229,33 +9926,98 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
       });
     }
 
-    try {
-      final dynamic res = await widget.api.get('/payments/admin-overview');
-      if (res is Map && res['success'] == true) {
-        if (!mounted) return;
-        setState(() {
-          _payments = (res['payments'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
-          _handovers = (res['handovers'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
-          if (res['deliveryBoys'] is List) {
-            _deliveryBoys = (res['deliveryBoys'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          }
-          if (res['customers'] is List) {
-            _customers = (res['customers'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-          }
-          _isLoading = false;
-        });
-        return;
-      }
-    } catch (_) {}
+    String query = '';
+    if (_fromDate != null && _toDate != null) {
+      query = '?fromDate=${_formatApiDate(_fromDate!)}&toDate=${_formatApiDate(_toDate!)}';
+    }
+
+    // Fetch overview + subscriptions + all deliveries in parallel so all data is complete
+    final baseFutures = await Future.wait([
+      widget.api.get('/api/payments/admin-overview$query').catchError((_) => <String, dynamic>{}),
+      widget.api.get('/api/subscriptions').catchError((_) => <String, dynamic>{}),
+      widget.api.get('/api/deliveries?range=all').catchError((_) => <String, dynamic>{}),
+    ]);
+
+    final dynamic res = baseFutures[0];
+    final dynamic subRes = baseFutures[1];
+    final dynamic delRes = baseFutures[2];
+
+    final rawSubsList = subRes is List
+        ? subRes
+        : (subRes is Map ? (subRes['subscriptions'] ?? subRes['data'] ?? []) : []);
+    final rawDelList = delRes is List
+        ? delRes
+        : (delRes is Map ? (delRes['deliveries'] ?? delRes['data'] ?? []) : []);
+
+    if (res is Map && res['success'] == true) {
+      if (!mounted) return;
+      final rawPartners = res['partners'] ?? res['deliveryBoys'];
+      final basePayments = (res['payments'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+      final mergedPayments = _mergeSubscriptionsIntoPayments(basePayments, rawSubsList);
+
+      setState(() {
+        _payments = mergedPayments;
+        _handovers = (res['handovers'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+        if (rawPartners is List) {
+          _deliveryBoys = rawPartners.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        if (res['customers'] is List) {
+          _customers = (res['customers'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        if (rawDelList is List && rawDelList.isNotEmpty) {
+          _allDeliveries = rawDelList.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        _isLoading = false;
+      });
+      return;
+    }
 
     try {
-      final dynamic pRes = await widget.api.get('/payments');
-      final dynamic hRes = await widget.api.get('/payments/handovers');
+      final results = await Future.wait([
+        widget.api.get('/api/payments').catchError((_) => <String, dynamic>{}),
+        widget.api.get('/api/payments/handovers').catchError((_) => <String, dynamic>{}),
+        widget.api.get('/api/delivery-boys').catchError((_) => <String, dynamic>{}),
+        widget.api.get('/api/customers').catchError((_) => <String, dynamic>{}),
+      ]);
+
+      final dynamic pRes = results[0];
+      final dynamic hRes = results[1];
+      final dynamic bRes = results[2];
+      final dynamic cRes = results[3];
+
+      final rawPayments = pRes is List
+          ? pRes
+          : (pRes is Map ? (pRes['payments'] ?? pRes['data'] ?? []) : []);
+      final rawHandovers = hRes is List
+          ? hRes
+          : (hRes is Map ? (hRes['handovers'] ?? hRes['data'] ?? []) : []);
+      final rawBoys = bRes is List
+          ? bRes
+          : (bRes is Map ? (bRes['deliveryBoys'] ?? bRes['partners'] ?? bRes['data'] ?? []) : null);
+      final rawCusts = cRes is List
+          ? cRes
+          : (cRes is Map ? (cRes['customers'] ?? cRes['data'] ?? []) : null);
+
+      final basePayments = rawPayments is List
+          ? rawPayments.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          : <Map<String, dynamic>>[];
+      final mergedPayments = _mergeSubscriptionsIntoPayments(basePayments, rawSubsList);
 
       if (!mounted) return;
       setState(() {
-        _payments = pRes is List ? pRes.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
-        _handovers = hRes is List ? hRes.map((e) => Map<String, dynamic>.from(e as Map)).toList() : [];
+        _payments = mergedPayments;
+        _handovers = rawHandovers is List
+            ? rawHandovers.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+            : [];
+        if (rawBoys is List && rawBoys.isNotEmpty) {
+          _deliveryBoys = rawBoys.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        if (rawCusts is List && rawCusts.isNotEmpty) {
+          _customers = rawCusts.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+        if (rawDelList is List && rawDelList.isNotEmpty) {
+          _allDeliveries = rawDelList.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -9270,7 +10032,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
   Future<void> _acceptHandover(Map<String, dynamic> handover) async {
     final id = handover['_id'] ?? handover['id'];
     try {
-      await widget.api.put('/payments/handovers/$id/status', {'status': 'accepted'});
+      await widget.api.put('/api/payments/handovers/$id/status', {'status': 'accepted'});
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -9338,7 +10100,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
 
     if (confirmed == true) {
       try {
-        await widget.api.put('/payments/handovers/$id/status', {
+        await widget.api.put('/api/payments/handovers/$id/status', {
           'status': 'rejected',
           'rejectionReason': reasonController.text.trim().isNotEmpty ? reasonController.text.trim() : 'Rejected by admin at counter',
         });
@@ -9363,12 +10125,30 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
     }
   }
 
+  bool _isWithinSelectedRange(dynamic rawDate) {
+    if (_fromDate == null && _toDate == null) return true;
+    final dt = DateTime.tryParse(rawDate?.toString() ?? '')?.toLocal();
+    if (dt == null) return false;
+    final day = DateTime(dt.year, dt.month, dt.day);
+    if (_fromDate != null) {
+      final start = DateTime(_fromDate!.year, _fromDate!.month, _fromDate!.day);
+      if (day.isBefore(start)) return false;
+    }
+    if (_toDate != null) {
+      final end = DateTime(_toDate!.year, _toDate!.month, _toDate!.day);
+      if (day.isAfter(end)) return false;
+    }
+    return true;
+  }
+
   // Combined chronological history
   List<Map<String, dynamic>> _getFilteredHistory() {
     final List<Map<String, dynamic>> items = [];
 
     // Add Payments
     for (final p in _payments) {
+      final pDate = p['paymentDate'] ?? p['createdAt'] ?? p['date'];
+      if (!_isWithinSelectedRange(pDate)) continue;
       final method = (p['paymentMethod'] ?? 'cash').toString().toLowerCase();
       if (_paymentMethodFilter != 'all' && method != _paymentMethodFilter) continue;
 
@@ -9391,7 +10171,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
         'title': custName,
         'subtitle': 'Customer Payment • ${p['paymentType'] ?? 'subscription'}',
         'amount': num.tryParse(p['amount']?.toString() ?? '0') ?? 0,
-        'date': p['createdAt'] ?? p['date'] ?? p['paymentDate'],
+        'date': pDate,
         'method': method,
         'status': 'verified',
         'ref': ref,
@@ -9401,6 +10181,8 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
 
     // Add Handovers
     for (final h in _handovers) {
+      final hDate = h['createdAt'] ?? h['date'];
+      if (!_isWithinSelectedRange(hDate)) continue;
       final status = (h['status'] ?? 'pending').toString().toLowerCase();
       final driverName = (h['deliveryBoyName'] ?? 'Delivery Partner').toString();
       final area = (h['assignedArea'] ?? '').toString();
@@ -9423,7 +10205,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
         'title': driverName,
         'subtitle': 'Shift Cash Handover • $area',
         'amount': num.tryParse(h['amount']?.toString() ?? '0') ?? 0,
-        'date': h['createdAt'] ?? h['date'],
+        'date': hDate,
         'method': 'cash',
         'status': status,
         'ref': h['notes'] ?? '',
@@ -9456,6 +10238,10 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
   // Filtered Customers
   List<Map<String, dynamic>> _getFilteredCustomers() {
     return _customers.where((c) {
+      final double bal = num.tryParse(c['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
+      if (_debtFilter == 'due' && bal <= 0) return false;
+      if (_debtFilter == 'high' && bal < 500) return false;
+      if (_debtFilter == 'advance' && bal >= 0) return false;
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       final name = (c['name'] ?? '').toString().toLowerCase();
@@ -9463,15 +10249,69 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
       final area = (c['area'] ?? '').toString().toLowerCase();
       final id = (c['customerId'] ?? '').toString().toLowerCase();
       return name.contains(q) || mobile.contains(q) || area.contains(q) || id.contains(q);
-    }).toList();
+    }).toList()
+      ..sort((a, b) {
+        final ba = num.tryParse(a['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
+        final bb = num.tryParse(b['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
+        return bb.compareTo(ba);
+      });
   }
 
   @override
   Widget build(BuildContext context) {
-    final double totalPaymentsAmount = _payments.fold<double>(
-      0.0,
-      (sum, p) => sum + (num.tryParse(p['amount']?.toString() ?? '0')?.toDouble() ?? 0.0),
-    );
+    final now = DateTime.now();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final String currentMonthLabel = '${monthNames[now.month - 1]} ${now.year}';
+
+    double fullCash = 0.0;
+    double fullUpi = 0.0;
+    double monthlyEarnings = 0.0;
+    double monthlyCash = 0.0;
+    double monthlyUpi = 0.0;
+    int monthlyCount = 0;
+
+    double rangeEarnings = 0.0;
+    double rangeCash = 0.0;
+    double rangeUpi = 0.0;
+    int rangeCount = 0;
+
+    final double totalPaymentsAmount = _payments.fold<double>(0.0, (sum, p) {
+      final amt = num.tryParse(p['amount']?.toString() ?? '0')?.toDouble() ?? 0.0;
+      final method = (p['paymentMethod'] ?? 'cash').toString().toLowerCase();
+      final isUpi = method == 'upi' || method == 'razorpay' || method == 'online' || method == 'bank_transfer';
+
+      if (isUpi) {
+        fullUpi += amt;
+      } else {
+        fullCash += amt;
+      }
+
+      final rawDate = p['paymentDate'] ?? p['createdAt'] ?? p['date'];
+      final dt = DateTime.tryParse(rawDate?.toString() ?? '')?.toLocal();
+      if (dt != null && dt.year == now.year && dt.month == now.month) {
+        monthlyEarnings += amt;
+        monthlyCount++;
+        if (isUpi) {
+          monthlyUpi += amt;
+        } else {
+          monthlyCash += amt;
+        }
+      }
+
+      if (_isWithinSelectedRange(rawDate)) {
+        rangeEarnings += amt;
+        rangeCount++;
+        if (isUpi) {
+          rangeUpi += amt;
+        } else {
+          rangeCash += amt;
+        }
+      }
+
+      return sum + amt;
+    });
+
+    final bool hasCustomRange = _fromDate != null || _toDate != null;
 
     final double totalPartnerCash = _deliveryBoys.fold<double>(
       0.0,
@@ -9499,7 +10339,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
       body: SafeArea(
         child: Column(
           children: [
-            // ── Top Header ──
+            // ── Top Header (No Refresh Icon) ──
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: const BoxDecoration(
@@ -9538,16 +10378,11 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
                           style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), letterSpacing: -0.2),
                         ),
                         Text(
-                          'Live audit & shift settlements',
+                          'Admin earnings, partners & customer ledger',
                           style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => _loadOverviewData(),
-                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0D5C3A), size: 22),
-                    tooltip: 'Refresh',
                   ),
                 ],
               ),
@@ -9559,10 +10394,7 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
                   ? const Center(
                       child: CircularProgressIndicator(color: Color(0xFF0D5C3A)),
                     )
-                  : RefreshIndicator(
-                      color: const Color(0xFF0D5C3A),
-                      onRefresh: () => _loadOverviewData(silent: true),
-                      child: ListView(
+                  : ListView(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                         children: [
                           if (_error != null)
@@ -9580,52 +10412,334 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
                               ),
                             ),
 
-                          // 1. KPI Metric Cards
-                          SizedBox(
-                            height: 98,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
+                          // 1. Admin Full & Monthly Earnings Card
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF0D5C3A), Color(0xFF064E3B)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              boxShadow: const [
+                                BoxShadow(color: Color(0x220D5C3A), blurRadius: 12, offset: Offset(0, 4)),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildMetricCard(
-                                  title: 'CUSTOMER PAYMENTS',
-                                  value: '₹${totalPaymentsAmount.toInt()}',
-                                  subtitle: '${_payments.length} ledger receipts',
-                                  icon: Icons.wallet_rounded,
-                                  color: const Color(0xFF2563EB),
-                                  bg: const Color(0xFFEFF6FF),
-                                ),
-                                const SizedBox(width: 10),
-                                _buildMetricCard(
-                                  title: 'DRIVER CASH IN HAND',
-                                  value: '₹${totalPartnerCash.toInt()}',
-                                  subtitle: '${_deliveryBoys.where((b) => (num.tryParse(b['todayCashCollected']?.toString() ?? '0') ?? 0) > 0).length} drivers holding cash',
-                                  icon: Icons.two_wheeler_rounded,
-                                  color: const Color(0xFF0D5C3A),
-                                  bg: const Color(0xFFE2F1EA),
-                                ),
-                                const SizedBox(width: 10),
-                                _buildMetricCard(
-                                  title: 'PENDING HANDOVERS',
-                                  value: '₹${pendingHandoverAmount.toInt()}',
-                                  subtitle: '$pendingHandoverCount drivers awaiting approval',
-                                  icon: Icons.hourglass_top_rounded,
-                                  color: const Color(0xFFEA580C),
-                                  bg: const Color(0xFFFFEDD5),
-                                  isAlert: pendingHandoverCount > 0,
-                                ),
-                                const SizedBox(width: 10),
-                                _buildMetricCard(
-                                  title: 'VERIFIED SHIFT CASH',
-                                  value: '₹${totalVerifiedHandover.toInt()}',
-                                  subtitle: '${_handovers.where((h) => h['status']?.toString().toLowerCase() == 'accepted').length} settled deposits',
-                                  icon: Icons.verified_user_rounded,
-                                  color: const Color(0xFF059669),
-                                  bg: const Color(0xFFDCFCE7),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'FULL EARNINGS (ALL TIME)',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFA7F3D0), letterSpacing: 0.4),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '₹${totalPaymentsAmount.toInt()}',
+                                            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Cash ₹${fullCash.toInt()} • UPI ₹${fullUpi.toInt()}',
+                                            style: const TextStyle(fontSize: 10.5, color: Color(0xFFD1FAE5), fontWeight: FontWeight.w600),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Container(width: 1, height: 52, color: Colors.white24),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'MONTHLY (${currentMonthLabel.toUpperCase()})',
+                                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFFEF08A), letterSpacing: 0.4),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '₹${monthlyEarnings.toInt()}',
+                                            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Cash ₹${monthlyCash.toInt()} • UPI ₹${monthlyUpi.toInt()} ($monthlyCount)',
+                                            style: const TextStyle(fontSize: 10.5, color: Color(0xFFD1FAE5), fontWeight: FontWeight.w600),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 12),
+
+                          // 2. Date From & To Earnings Filter Card
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.date_range_rounded, size: 16, color: Color(0xFF0D5C3A)),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Earnings by Date Range',
+                                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                        ),
+                                      ],
+                                    ),
+                                    if (hasCustomRange)
+                                      GestureDetector(
+                                        onTap: _clearDateRange,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'Reset',
+                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: _pickFromDate,
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: _fromDate != null ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF0D5C3A)),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  _fromDate != null ? _formatShortDate(_fromDate!) : 'From Date',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: _fromDate != null ? FontWeight.w800 : FontWeight.w600,
+                                                    color: _fromDate != null ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 6),
+                                      child: Icon(Icons.arrow_forward_rounded, size: 15, color: Color(0xFF94A3B8)),
+                                    ),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: _pickToDate,
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: _toDate != null ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0)),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(Icons.calendar_today_rounded, size: 13, color: Color(0xFF0D5C3A)),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  _toDate != null ? _formatShortDate(_toDate!) : 'To Date',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: _toDate != null ? FontWeight.w800 : FontWeight.w600,
+                                                    color: _toDate != null ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (hasCustomRange) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFECFDF5),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'SELECTED RANGE EARNINGS',
+                                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF065F46)),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '$rangeCount payments • Cash ₹${rangeCash.toInt()} • UPI ₹${rangeUpi.toInt()}',
+                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF047857)),
+                                            ),
+                                          ],
+                                        ),
+                                        Text(
+                                          '₹${rangeEarnings.toInt()}',
+                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0D5C3A)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+
+                          // 3. Financial & Ledger Performance Strip (Period Switcher + KPI Cards)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Performance & Ledger',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                              ),
+                              Row(
+                                children: [
+                                  for (final p in const [
+                                    {'id': 'today', 'label': 'Today'},
+                                    {'id': 'weekly', 'label': '7D'},
+                                    {'id': 'monthly', 'label': 'Month'},
+                                    {'id': 'all', 'label': 'All'},
+                                  ])
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 5),
+                                      child: GestureDetector(
+                                        onTap: () => _loadPeriodSummary(p['id']!),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: _period == p['id'] ? const Color(0xFF0D5C3A) : Colors.white,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: _period == p['id'] ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            p['label']!,
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: _period == p['id'] ? Colors.white : const Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 98,
+                            child: _isLoadingPeriod
+                                ? const Center(child: CircularProgressIndicator(color: Color(0xFF0D5C3A), strokeWidth: 2))
+                                : ListView(
+                                    scrollDirection: Axis.horizontal,
+                                    children: [
+                                      _buildMetricCard(
+                                        title: 'PERIOD SALES (${_period.toUpperCase()})',
+                                        value: '₹${(num.tryParse((_reportSummary['todaySales'] ?? _reportSummary['sales'] ?? 0).toString()) ?? 0).toInt()}',
+                                        subtitle: 'Milk ${_reportSummary['todayMilkLitres'] ?? '0.0'}L • ${_reportSummary['completedDeliveries'] ?? widget.deliveries.where((d) => d['status'] == 'delivered').length} drops',
+                                        icon: Icons.trending_up_rounded,
+                                        color: const Color(0xFF2563EB),
+                                        bg: const Color(0xFFEFF6FF),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _buildMetricCard(
+                                        title: 'MARKET DUES',
+                                        value: '₹${(num.tryParse((_reportSummary['totalOutstanding'] ?? _reportSummary['totalCredit'] ?? _customers.fold<double>(0, (s, c) { final b = num.tryParse(c['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0; return s + (b > 0 ? b : 0); })).toString()) ?? 0).toInt()}',
+                                        subtitle: 'Adv: ₹${(num.tryParse((_reportSummary['totalAdvance'] ?? _customers.fold<double>(0, (s, c) { final b = num.tryParse(c['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0; return s + (b < 0 ? -b : 0); })).toString()) ?? 0).toInt()}',
+                                        icon: Icons.account_balance_wallet_rounded,
+                                        color: const Color(0xFFDC2626),
+                                        bg: const Color(0xFFFEE2E2),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _buildMetricCard(
+                                        title: 'DRIVER CASH IN HAND',
+                                        value: '₹${totalPartnerCash.toInt()}',
+                                        subtitle: '${_deliveryBoys.where((b) => (num.tryParse(b['todayCashCollected']?.toString() ?? '0') ?? 0) > 0).length} drivers holding cash',
+                                        icon: Icons.two_wheeler_rounded,
+                                        color: const Color(0xFF0D5C3A),
+                                        bg: const Color(0xFFE2F1EA),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _buildMetricCard(
+                                        title: 'PENDING HANDOVERS',
+                                        value: '₹${pendingHandoverAmount.toInt()}',
+                                        subtitle: '$pendingHandoverCount drivers awaiting approval',
+                                        icon: Icons.hourglass_top_rounded,
+                                        color: const Color(0xFFEA580C),
+                                        bg: const Color(0xFFFFEDD5),
+                                        isAlert: pendingHandoverCount > 0,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      _buildMetricCard(
+                                        title: 'VERIFIED SHIFT CASH',
+                                        value: '₹${totalVerifiedHandover.toInt()}',
+                                        subtitle: '${_handovers.where((h) => h['status']?.toString().toLowerCase() == 'accepted').length} settled deposits',
+                                        icon: Icons.verified_user_rounded,
+                                        color: const Color(0xFF059669),
+                                        bg: const Color(0xFFDCFCE7),
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                          const SizedBox(height: 16),
 
                           // 2. Segmented Pill Tab Bar
                           Container(
@@ -9730,7 +10844,6 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
                           if (_activeTab == 'customers') _buildCustomersList(),
                         ],
                       ),
-                    ),
             ),
           ],
         ),
@@ -10059,62 +11172,67 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
 
         final bool hasPending = pendingH.isNotEmpty;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: hasPending ? const Color(0xFFFDBA74) : const Color(0xFFE2E8F0),
+        return InkWell(
+          onTap: () => _openPartnerPaymentDetails(boy),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: hasPending ? const Color(0xFFFDBA74) : const Color(0xFFE2E8F0),
+              ),
+              boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 3, offset: Offset(0, 1))],
             ),
-            boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 3, offset: Offset(0, 1))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: const Color(0xFFE2F1EA),
-                    child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : 'D',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A), fontSize: 15),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
-                        const SizedBox(height: 2),
-                        Text('$mobile • $area', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: boy['status'] == 'active' || boy['isActive'] == true
-                          ? const Color(0xFFDCFCE7)
-                          : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      boy['status'] == 'active' || boy['isActive'] == true ? 'On Duty' : 'Off Duty',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        color: boy['status'] == 'active' || boy['isActive'] == true
-                            ? const Color(0xFF059669)
-                            : const Color(0xFF64748B),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: const Color(0xFFE2F1EA),
+                      child: Text(
+                        name.isNotEmpty ? name[0].toUpperCase() : 'D',
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0D5C3A), fontSize: 15),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A))),
+                          const SizedBox(height: 2),
+                          Text('$mobile • $area', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: boy['status']?.toString().toLowerCase() == 'active' || boy['isActive'] == true || boy['isOnline'] == true
+                            ? const Color(0xFFDCFCE7)
+                            : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        boy['status']?.toString().toLowerCase() == 'active' || boy['isActive'] == true || boy['isOnline'] == true ? 'On Duty' : 'Off Duty',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: boy['status']?.toString().toLowerCase() == 'active' || boy['isActive'] == true || boy['isOnline'] == true
+                              ? const Color(0xFF059669)
+                              : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
+                  ],
+                ),
               const SizedBox(height: 12),
 
               // Balances Breakdown
@@ -10200,8 +11318,36 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
               ],
             ],
           ),
+        ),
         );
       }).toList(),
+    );
+  }
+
+  void _openPartnerPaymentDetails(Map<String, dynamic> partner) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AdminPartnerPaymentDetailsScreen(
+          partner: partner,
+          handovers: _handovers,
+          deliveries: _allDeliveries,
+          onAcceptHandover: _acceptHandover,
+          onRejectHandover: _rejectHandover,
+        ),
+      ),
+    );
+  }
+
+  void _openCustomerPaymentDetails(Map<String, dynamic> customer) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AdminCustomerPaymentDetailsScreen(
+          customer: customer,
+          payments: _payments,
+          deliveries: _allDeliveries,
+          onRecordPayment: () => widget.onRecordPayment(customer),
+        ),
+      ),
     );
   }
 
@@ -10209,55 +11355,311 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
   Widget _buildCustomersList() {
     final customers = _getFilteredCustomers();
 
-    if (customers.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(36),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: const Column(
-          children: [
-            Icon(Icons.people_alt_rounded, size: 36, color: Color(0xFFCBD5E1)),
-            SizedBox(height: 10),
-            Text('No customers found', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-          ],
-        ),
-      );
-    }
-
     return Column(
-      children: customers.map((c) {
-        final name = (c['name'] ?? 'Customer').toString();
-        final mobile = (c['mobile'] ?? '—').toString();
-        final area = (c['area'] ?? '—').toString();
-        final custId = (c['customerId'] ?? '').toString();
-        final double balance = num.tryParse(c['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
-        final isDue = balance < 0;
-        final isAdvance = balance > 0;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 3, offset: Offset(0, 1))],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Debt/Advance Filter Chips
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
             children: [
-              Row(
+              for (final f in const [
+                {'id': 'all', 'label': 'All'},
+                {'id': 'due', 'label': 'With Dues'},
+                {'id': 'high', 'label': 'High Due (≥₹500)'},
+                {'id': 'advance', 'label': 'Advance'},
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6, bottom: 10),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _debtFilter = f['id']!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _debtFilter == f['id'] ? const Color(0xFF0D5C3A) : Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _debtFilter == f['id'] ? const Color(0xFF0D5C3A) : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Text(
+                        f['label']!,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _debtFilter == f['id'] ? Colors.white : const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (customers.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(36),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.people_alt_rounded, size: 36, color: Color(0xFFCBD5E1)),
+                SizedBox(height: 10),
+                Text('No customers found', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+              ],
+            ),
+          )
+        else
+          ...customers.map((c) {
+            final id = (c['_id'] ?? c['id'] ?? '').toString();
+            final name = (c['name'] ?? 'Customer').toString();
+            final mobile = (c['mobile'] ?? '—').toString();
+            final area = (c['area'] ?? '—').toString();
+            final custId = (c['customerId'] ?? '').toString();
+            final double balance = num.tryParse(c['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
+            final isDue = balance > 0;
+            final isAdvance = balance < 0;
+
+            final double paymentsSum = _payments.where((p) {
+              final pCust = (p['customer'] ?? p['customerId'] ?? '').toString();
+              final pName = (p['customerName'] ?? '').toString().toLowerCase();
+              return (id.isNotEmpty && pCust == id) ||
+                  (custId.isNotEmpty && pCust == custId) ||
+                  (name.isNotEmpty && pName == name.toLowerCase());
+            }).fold<double>(0.0, (s, p) => s + (num.tryParse(p['amount']?.toString() ?? '0')?.toDouble() ?? 0.0));
+            final double dbPaid = num.tryParse(c['totalPaid']?.toString() ?? '0')?.toDouble() ?? 0.0;
+            final double displayPaid = paymentsSum > dbPaid ? paymentsSum : dbPaid;
+
+            final subStatus = (c['subscription'] is Map
+                    ? c['subscription']['status']
+                    : c['subscriptionStatus'])
+                ?.toString()
+                .toLowerCase();
+
+            return InkWell(
+              onTap: () => _openCustomerPaymentDetails(c),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [BoxShadow(color: Color(0x04000000), blurRadius: 3, offset: Offset(0, 1))],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundColor: const Color(0xFFE0F2FE),
+                          child: Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                            style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0284C7), fontSize: 15),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                  if (custId.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
+                                      child: Text(custId, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text('$mobile • $area', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                            ],
+                          ),
+                        ),
+                        // Ledger Balance Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isDue
+                                ? const Color(0xFFFEE2E2)
+                                : (isAdvance ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isDue ? 'DUE: ₹${balance.toInt()}' : (isAdvance ? 'ADV: ₹${(-balance).toInt()}' : 'Settled'),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              color: isDue ? const Color(0xFFDC2626) : (isAdvance ? const Color(0xFF059669) : const Color(0xFF64748B)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8), size: 18),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Paid: ₹${displayPaid.toInt()}',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                            ),
+                            if (subStatus == 'active' || subStatus == 'paused') ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: subStatus == 'paused' ? const Color(0xFFFEF3C7) : const Color(0xFFE2F1EA),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  subStatus!.toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: subStatus == 'paused' ? const Color(0xFFD97706) : const Color(0xFF0D5C3A),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => widget.onRecordPayment(c),
+                          icon: const Icon(Icons.add_rounded, size: 14),
+                          label: const Text('Record Payment', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0D5C3A),
+                            side: const BorderSide(color: Color(0xFF0D5C3A)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// PARTNER EARNINGS & PAYMENT DETAILS FULL SCREEN
+// ============================================================================
+class _AdminPartnerPaymentDetailsScreen extends StatelessWidget {
+  final Map<String, dynamic> partner;
+  final List<Map<String, dynamic>> handovers;
+  final List<Map<String, dynamic>> deliveries;
+  final Future<void> Function(Map<String, dynamic> handover) onAcceptHandover;
+  final Future<void> Function(Map<String, dynamic> handover) onRejectHandover;
+
+  const _AdminPartnerPaymentDetailsScreen({
+    required this.partner,
+    required this.handovers,
+    required this.deliveries,
+    required this.onAcceptHandover,
+    required this.onRejectHandover,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String boyId = (partner['_id'] ?? partner['id'] ?? '').toString();
+    final String name = (partner['name'] ?? 'Delivery Partner').toString();
+    final String mobile = (partner['mobile'] ?? '—').toString();
+    final String area = (partner['assignedArea'] ?? 'All Hubs').toString();
+    final bool isOnline = partner['status']?.toString().toLowerCase() == 'active' ||
+        partner['isActive'] == true ||
+        partner['isOnline'] == true;
+
+    final double todayCash = num.tryParse(partner['todayCashCollected']?.toString() ?? '0')?.toDouble() ?? 0.0;
+    final double todayUpi = num.tryParse(partner['todayUpiCollected']?.toString() ?? '0')?.toDouble() ?? 0.0;
+
+    final partnerHandovers = handovers.where((h) {
+      final hId = (h['deliveryBoyId'] ?? '').toString();
+      final hMobile = (h['deliveryBoyMobile'] ?? '').toString();
+      final hName = (h['deliveryBoyName'] ?? '').toString().toLowerCase();
+      return (boyId.isNotEmpty && hId == boyId) ||
+          (mobile.isNotEmpty && hMobile == mobile) ||
+          (name.isNotEmpty && hName == name.toLowerCase());
+    }).toList();
+
+    final double verifiedHandoverTotal = partnerHandovers
+        .where((h) => h['status']?.toString().toLowerCase() == 'accepted')
+        .fold<double>(0.0, (s, h) => s + (num.tryParse(h['amount']?.toString() ?? '0')?.toDouble() ?? 0.0));
+
+    final double pendingHandoverTotal = partnerHandovers
+        .where((h) => h['status']?.toString().toLowerCase() == 'pending')
+        .fold<double>(0.0, (s, h) => s + (num.tryParse(h['amount']?.toString() ?? '0')?.toDouble() ?? 0.0));
+
+    final partnerDeliveries = deliveries.where((d) {
+      final dBoyId = (d['deliveryBoyId'] ?? '').toString();
+      final dBoyName = (d['deliveryBoyName'] ?? '').toString().toLowerCase();
+      return (boyId.isNotEmpty && dBoyId == boyId) ||
+          (name.isNotEmpty && dBoyName == name.toLowerCase());
+    }).toList();
+
+    final completedDeliveries = partnerDeliveries.where((d) => d['status']?.toString().toLowerCase() == 'delivered').toList();
+    final double totalDeliveryEarnings = completedDeliveries.fold<double>(
+      0.0,
+      (s, d) => s + (num.tryParse(d['totalAmount']?.toString() ?? '0')?.toDouble() ?? 0.0),
+    );
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: const Color(0xFFE0F2FE),
-                    child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : 'C',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0284C7), fontSize: 15),
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2EBE5), width: 1.2),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back_rounded, color: Color(0xFF0C2340), size: 16),
+                          SizedBox(width: 4),
+                          Text('Back', style: TextStyle(color: Color(0xFF0C2340), fontWeight: FontWeight.w800, fontSize: 12.5)),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -10265,74 +11667,534 @@ class _AdminPaymentsHistoryFullScreenState extends State<_AdminPaymentsHistoryFu
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text('$mobile • $area', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isOnline ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isOnline ? 'On Duty' : 'Off Duty',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        color: isOnline ? const Color(0xFF059669) : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Body
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Earnings & Collections Summary Card
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0D5C3A), Color(0xFF064E3B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('PARTNER COLLECTIONS & EARNINGS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFFA7F3D0), letterSpacing: 0.4)),
+                        const SizedBox(height: 10),
                         Row(
                           children: [
-                            Flexible(
-                              child: Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Delivery Revenue', style: TextStyle(fontSize: 11, color: Color(0xFFD1FAE5))),
+                                  const SizedBox(height: 2),
+                                  Text('₹${totalDeliveryEarnings.toInt()}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
+                                  Text('${completedDeliveries.length} drops completed', style: const TextStyle(fontSize: 10.5, color: Color(0xFFA7F3D0))),
+                                ],
+                              ),
                             ),
-                            if (custId.isNotEmpty) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(4)),
-                                child: Text(custId, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+                            Container(width: 1, height: 46, color: Colors.white24),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Verified Handovers', style: TextStyle(fontSize: 11, color: Color(0xFFD1FAE5))),
+                                  const SizedBox(height: 2),
+                                  Text('₹${verifiedHandoverTotal.toInt()}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)),
+                                  Text('${partnerHandovers.length} total shifts', style: const TextStyle(fontSize: 10.5, color: Color(0xFFA7F3D0))),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 3-stat strip
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMiniStat('Cash in Hand', '₹${todayCash.toInt()}', const Color(0xFF0D5C3A), const Color(0xFFE2F1EA)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMiniStat('Today UPI', '₹${todayUpi.toInt()}', const Color(0xFF2563EB), const Color(0xFFEFF6FF)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMiniStat('Pending', '₹${pendingHandoverTotal.toInt()}', const Color(0xFFEA580C), const Color(0xFFFFEDD5)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Shift Handover History
+                  const Text('Shift Cash Handover History', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 8),
+                  if (partnerHandovers.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No cash handover records yet.', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)))),
+                    )
+                  else
+                    ...partnerHandovers.map((h) {
+                      final st = (h['status'] ?? 'pending').toString().toLowerCase();
+                      final amt = num.tryParse(h['amount']?.toString() ?? '0')?.toInt() ?? 0;
+                      final dt = DateTime.tryParse((h['createdAt'] ?? h['date'] ?? '').toString());
+                      final dateStr = dt != null ? '${dt.day}/${dt.month}/${dt.year}' : 'Recent';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: st == 'pending' ? const Color(0xFFFDBA74) : const Color(0xFFE2E8F0)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('₹$amt', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: st == 'accepted' ? const Color(0xFFDCFCE7) : (st == 'rejected' ? const Color(0xFFFEE2E2) : const Color(0xFFFFEDD5)),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    st.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: st == 'accepted' ? const Color(0xFF059669) : (st == 'rejected' ? const Color(0xFFDC2626) : const Color(0xFFEA580C)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text('Date: $dateStr ${(h['notes'] ?? '').toString().isNotEmpty ? "• ${h['notes']}" : ""}', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                            if (st == 'pending') ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () async {
+                                      await onRejectHandover(h);
+                                      if (context.mounted) Navigator.pop(context);
+                                    },
+                                    child: const Text('Reject', style: TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.w700, fontSize: 12)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  ElevatedButton(
+                                    onPressed: () async {
+                                      await onAcceptHandover(h);
+                                      if (context.mounted) Navigator.pop(context);
+                                    },
+                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669), foregroundColor: Colors.white, elevation: 0),
+                                    child: const Text('Accept Cash', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                                  ),
+                                ],
                               ),
                             ],
                           ],
                         ),
-                        const SizedBox(height: 2),
-                        Text('$mobile • $area', style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                      );
+                    }),
+
+                  const SizedBox(height: 16),
+                  const Text('Recent Deliveries by Partner', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 8),
+                  if (partnerDeliveries.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No deliveries logged for this partner yet.', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)))),
+                    )
+                  else
+                    ...partnerDeliveries.take(20).map((d) {
+                      final cName = (d['customerName'] ?? 'Customer').toString();
+                      final amt = num.tryParse(d['totalAmount']?.toString() ?? '0')?.toInt() ?? 0;
+                      final st = (d['status'] ?? 'pending').toString();
+                      final date = (d['deliveryDate'] ?? '').toString();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(cName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  Text('$date • ${st.toUpperCase()}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                ],
+                              ),
+                            ),
+                            Text('₹$amt', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0D5C3A))),
+                          ],
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String val, Color fg, Color bg) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 3),
+          Text(val, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: fg)),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// CUSTOMER EARNINGS, LEDGER & PAYMENT DETAILS FULL SCREEN
+// ============================================================================
+class _AdminCustomerPaymentDetailsScreen extends StatelessWidget {
+  final Map<String, dynamic> customer;
+  final List<Map<String, dynamic>> payments;
+  final List<Map<String, dynamic>> deliveries;
+  final VoidCallback onRecordPayment;
+
+  const _AdminCustomerPaymentDetailsScreen({
+    required this.customer,
+    required this.payments,
+    required this.deliveries,
+    required this.onRecordPayment,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String id = (customer['_id'] ?? customer['id'] ?? '').toString();
+    final String custId = (customer['customerId'] ?? '').toString();
+    final String name = (customer['name'] ?? 'Customer').toString();
+    final String mobile = (customer['mobile'] ?? '—').toString();
+    final String area = (customer['area'] ?? '—').toString();
+    final String address = (customer['address'] ?? '—').toString();
+    final double balance = num.tryParse(customer['currentBalance']?.toString() ?? '0')?.toDouble() ?? 0.0;
+    final bool isDue = balance > 0;
+    final bool isAdvance = balance < 0;
+
+    final custPayments = payments.where((p) {
+      final pCust = (p['customer'] ?? p['customerId'] ?? '').toString();
+      final pName = (p['customerName'] ?? '').toString().toLowerCase();
+      return (id.isNotEmpty && pCust == id) ||
+          (custId.isNotEmpty && pCust == custId) ||
+          (name.isNotEmpty && pName == name.toLowerCase());
+    }).toList();
+
+    final double computedPaid = custPayments.fold<double>(
+      0.0,
+      (s, p) => s + (num.tryParse(p['amount']?.toString() ?? '0')?.toDouble() ?? 0.0),
+    );
+    final double totalPaid = computedPaid > 0
+        ? computedPaid
+        : (num.tryParse(customer['totalPaid']?.toString() ?? '0')?.toDouble() ?? 0.0);
+
+    final double cashPaid = custPayments
+        .where((p) => (p['paymentMethod'] ?? '').toString().toLowerCase() == 'cash')
+        .fold<double>(0.0, (s, p) => s + (num.tryParse(p['amount']?.toString() ?? '0')?.toDouble() ?? 0.0));
+    final double upiPaid = totalPaid - cashPaid;
+
+    final sub = customer['subscription'] is Map ? Map<String, dynamic>.from(customer['subscription'] as Map) : <String, dynamic>{};
+    final plan = customer['deliveryPlan'] is Map ? Map<String, dynamic>.from(customer['deliveryPlan'] as Map) : <String, dynamic>{};
+    final String subStatus = (sub['status'] ?? customer['subscriptionStatus'] ?? 'none').toString();
+    final String planName = (plan['planName'] ?? 'Daily Milk Plan').toString();
+
+    final custDeliveries = deliveries.where((d) {
+      final dCust = (d['customerId'] ?? '').toString();
+      final dName = (d['customerName'] ?? '').toString().toLowerCase();
+      return (id.isNotEmpty && dCust == id) ||
+          (custId.isNotEmpty && dCust == custId) ||
+          (name.isNotEmpty && dName == name.toLowerCase());
+    }).toList();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () => Navigator.pop(context),
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2EBE5), width: 1.2),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back_rounded, color: Color(0xFF0C2340), size: 16),
+                          SizedBox(width: 4),
+                          Text('Back', style: TextStyle(color: Color(0xFF0C2340), fontWeight: FontWeight.w800, fontSize: 12.5)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text('${custId.isNotEmpty ? "$custId • " : ""}$mobile', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
-                  // Ledger Balance Badge
+                  ElevatedButton.icon(
+                    onPressed: onRecordPayment,
+                    icon: const Icon(Icons.add_rounded, size: 15),
+                    label: const Text('Pay', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0D5C3A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      minimumSize: Size.zero,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Body
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // Account Financial Summary Card
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDue
-                          ? const Color(0xFFFEE2E2)
-                          : (isAdvance ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9)),
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          isDue ? 'DUE: ₹${(-balance).toInt()}' : (isAdvance ? 'ADV: ₹${balance.toInt()}' : 'Settled'),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: isDue ? const Color(0xFFDC2626) : (isAdvance ? const Color(0xFF059669) : const Color(0xFF64748B)),
-                          ),
+                        const Text('CUSTOMER PAYMENT & LEDGER SUMMARY', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF94A3B8), letterSpacing: 0.4)),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Total Paid', style: TextStyle(fontSize: 11, color: Color(0xFFCBD5E1))),
+                                  const SizedBox(height: 2),
+                                  Text('₹${totalPaid.toInt()}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: Colors.white)),
+                                  Text('Cash ₹${cashPaid.toInt()} • UPI ₹${upiPaid > 0 ? upiPaid.toInt() : 0}', style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                                ],
+                              ),
+                            ),
+                            Container(width: 1, height: 46, color: Colors.white24),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Current Balance', style: TextStyle(fontSize: 11, color: Color(0xFFCBD5E1))),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    isDue ? 'DUE ₹${balance.toInt()}' : (isAdvance ? 'ADV ₹${(-balance).toInt()}' : '₹0 (Settled)'),
+                                    style: TextStyle(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w900,
+                                      color: isDue ? const Color(0xFFFCA5A5) : (isAdvance ? const Color(0xFF6EE7B7) : Colors.white),
+                                    ),
+                                  ),
+                                  Text('${custPayments.length} payment records', style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => widget.onRecordPayment(c),
-                    icon: const Icon(Icons.add_rounded, size: 14),
-                    label: const Text('Record Payment', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0D5C3A),
-                      side: const BorderSide(color: Color(0xFF0D5C3A)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  const SizedBox(height: 12),
+
+                  // Profile & Subscription Details Card
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Account & Subscription Details', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                        const SizedBox(height: 10),
+                        _buildDetailLine('Area', area),
+                        _buildDetailLine('Address', address),
+                        _buildDetailLine('Subscription', subStatus.toUpperCase()),
+                        _buildDetailLine('Plan', planName),
+                        if ((plan['milkQty'] ?? 0) != 0)
+                          _buildDetailLine('Daily Milk', '${plan['milkQty']} ${plan['milkUnit'] ?? 'L'}'),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 16),
+
+                  // Payment History
+                  const Text('Payment History', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 8),
+                  if (custPayments.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No payment records found for this customer.', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)))),
+                    )
+                  else
+                    ...custPayments.map((p) {
+                      final amt = num.tryParse(p['amount']?.toString() ?? '0')?.toInt() ?? 0;
+                      final method = (p['paymentMethod'] ?? 'cash').toString().toUpperCase();
+                      final type = (p['paymentType'] ?? 'subscription').toString();
+                      final dt = DateTime.tryParse((p['paymentDate'] ?? p['createdAt'] ?? '').toString());
+                      final dateStr = dt != null ? '${dt.day}/${dt.month}/${dt.year}' : 'Recent';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('$method • $type', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                                  Text('$dateStr ${(p['notes'] ?? '').toString().isNotEmpty ? "• ${p['notes']}" : ""}', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ],
+                              ),
+                            ),
+                            Text('+₹$amt', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF059669))),
+                          ],
+                        ),
+                      );
+                    }),
+
+                  const SizedBox(height: 16),
+                  const Text('Recent Deliveries', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 8),
+                  if (custDeliveries.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE2E8F0))),
+                      child: const Center(child: Text('No deliveries found for this customer.', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)))),
+                    )
+                  else
+                    ...custDeliveries.take(15).map((d) {
+                      final amt = num.tryParse(d['totalAmount']?.toString() ?? '0')?.toInt() ?? 0;
+                      final st = (d['status'] ?? 'pending').toString();
+                      final date = (d['deliveryDate'] ?? '').toString();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('$date • ${st.toUpperCase()}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                            Text('₹$amt', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0D5C3A))),
+                          ],
+                        ),
+                      );
+                    }),
                 ],
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailLine(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 95,
+            child: Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
           ),
-        );
-      }).toList(),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -1,7 +1,8 @@
-  const Payment = require('../models/Payment');
+const Payment = require('../models/Payment');
 const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const CashHandover = require('../models/CashHandover');
+const Subscription = require('../models/Subscription');
 const Notification = require('../models/Notification');
 const { recordAudit } = require('../services/auditService');
 const { broadcast } = require('../config/websocket');
@@ -494,20 +495,102 @@ const deleteCashHandover = async (req, res) => {
  */
 const getAdminPaymentsOverview = async (req, res) => {
   try {
-    const [payments, handovers, partners, customers] = await Promise.all([
+    const { fromDate, toDate } = req.query;
+
+    const [rawPayments, handovers, partners, customers, paidSubs] = await Promise.all([
       Payment.find({}).sort({ paymentDate: -1, createdAt: -1 }).lean(),
       CashHandover.find({}).sort({ createdAt: -1 }).lean(),
       DeliveryBoy.find({}).sort({ name: 1 }).lean(),
-      Customer.find({}).select('name mobile customerId currentBalance totalPaid subscription deliveryPlan area').lean(),
+      Customer.find({})
+        .select('name mobile customerId currentBalance totalPaid subscription deliveryPlan area address status')
+        .lean(),
+      Subscription.find({ status: { $in: ['active', 'paused', 'expired'] } })
+        .sort({ createdAt: -1 })
+        .lean(),
     ]);
 
-    // Metrics calculation
+    // Merge paid subscriptions that do not already have a matching Payment document
+    const recordedSubIds = new Set(rawPayments.map((p) => String(p.subscriptionId || '')).filter(Boolean));
+    const recordedGatewayIds = new Set(
+      rawPayments.flatMap((p) => [p.gatewayPaymentId, p.referenceNumber].filter(Boolean).map(String))
+    );
+
+    const syntheticSubPayments = [];
+    for (const s of paidSubs) {
+      const subIdStr = String(s._id || '');
+      const provPayId = String(s.providerPaymentId || '');
+      const amtRupees = (Number(s.amount) || 0) / 100;
+      if (amtRupees <= 0) continue;
+      if (recordedSubIds.has(subIdStr) || (provPayId && recordedGatewayIds.has(provPayId))) continue;
+      syntheticSubPayments.push({
+        _id: s._id,
+        id: subIdStr,
+        customer: s.customer,
+        customerId: s.customerId || '',
+        customerName: s.customerName || 'Customer',
+        amount: amtRupees,
+        paymentMethod: 'razorpay',
+        purpose: 'subscription',
+        subscriptionId: subIdStr,
+        gatewayPaymentId: provPayId,
+        referenceNumber: provPayId || s.providerOrderId || '',
+        paymentDate: s.paidAt || s.startDate || s.createdAt,
+        createdAt: s.createdAt,
+        collectedBy: 'Razorpay / Plan',
+        notes: s.plan?.planName ? `${s.plan.planName} subscription` : 'Prepaid subscription',
+      });
+    }
+
+    const payments = [...rawPayments, ...syntheticSubPayments].sort(
+      (a, b) => new Date(b.paymentDate || b.createdAt || 0) - new Date(a.paymentDate || a.createdAt || 0)
+    );
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const parsedFrom = fromDate ? new Date(`${String(fromDate).slice(0, 10)}T00:00:00.000Z`) : null;
+    const parsedTo = toDate ? new Date(`${String(toDate).slice(0, 10)}T23:59:59.999Z`) : null;
+
+    const getPaymentDate = (p) => new Date(p.paymentDate || p.createdAt || 0);
+    const isUpiLike = (m) => ['upi', 'razorpay', 'bank_transfer', 'online'].includes((m || '').toLowerCase());
+    const isCashLike = (m) => (m || '').toLowerCase() === 'cash';
+
+    // All-time (Full) Earnings
     const totalPaymentsAmount = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const upiPaymentsAmount = payments
-      .filter((p) => ['upi', 'razorpay', 'bank_transfer'].includes((p.paymentMethod || '').toLowerCase()))
+      .filter((p) => isUpiLike(p.paymentMethod))
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
     const cashPaymentsAmount = payments
-      .filter((p) => (p.paymentMethod || '').toLowerCase() === 'cash')
+      .filter((p) => isCashLike(p.paymentMethod))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // Current Month Earnings
+    const monthlyPayments = payments.filter((p) => {
+      const d = getPaymentDate(p);
+      return d >= monthStart && d <= monthEnd;
+    });
+    const monthlyRevenue = monthlyPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const monthlyUpiRevenue = monthlyPayments
+      .filter((p) => isUpiLike(p.paymentMethod))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const monthlyCashRevenue = monthlyPayments
+      .filter((p) => isCashLike(p.paymentMethod))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+
+    // Custom Date Range Earnings
+    const rangePayments = (parsedFrom && parsedTo)
+      ? payments.filter((p) => {
+          const d = getPaymentDate(p);
+          return d >= parsedFrom && d <= parsedTo;
+        })
+      : monthlyPayments;
+    const rangeRevenue = rangePayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const rangeCashRevenue = rangePayments
+      .filter((p) => isCashLike(p.paymentMethod))
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const rangeUpiRevenue = rangePayments
+      .filter((p) => isUpiLike(p.paymentMethod))
       .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
     const totalHandoverPending = handovers
@@ -530,8 +613,17 @@ const getAdminPaymentsOverview = async (req, res) => {
       success: true,
       summary: {
         totalRevenue: totalPaymentsAmount,
+        fullEarnings: totalPaymentsAmount,
         upiRevenue: upiPaymentsAmount,
         cashRevenue: cashPaymentsAmount,
+        monthlyRevenue,
+        monthlyCashRevenue,
+        monthlyUpiRevenue,
+        monthlyTransactions: monthlyPayments.length,
+        rangeRevenue,
+        rangeCashRevenue,
+        rangeUpiRevenue,
+        rangeTransactions: rangePayments.length,
         partnerCashInHand: totalPartnerCashInHand,
         pendingHandoverAmount: totalHandoverPending,
         acceptedHandoverAmount: totalHandoverAccepted,
@@ -549,6 +641,7 @@ const getAdminPaymentsOverview = async (req, res) => {
       })),
       partners: partners.map((b) => ({
         id: b._id.toString(),
+        _id: b._id.toString(),
         name: b.name,
         mobile: b.mobile,
         assignedArea: b.assignedArea || '',
@@ -559,12 +652,17 @@ const getAdminPaymentsOverview = async (req, res) => {
       })),
       customers: customers.map((c) => ({
         id: c._id.toString(),
+        _id: c._id.toString(),
         customerId: c.customerId || '',
         name: c.name || 'Customer',
         mobile: c.mobile || '',
         currentBalance: Number(c.currentBalance) || 0,
         totalPaid: Number(c.totalPaid) || 0,
         area: c.area || '',
+        address: c.address || '',
+        status: c.status || 'active',
+        deliveryPlan: c.deliveryPlan || {},
+        subscription: c.subscription || {},
         subscriptionStatus: c.subscription?.status || 'none',
       })),
     });
