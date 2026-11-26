@@ -1,25 +1,35 @@
 ﻿const express = require('express');
 const http = require('http');
 
+// Prevent transient async errors (e.g., DB reconnects) from crashing the Node 22 container
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Promise Rejection:', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err?.message || err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.set('trust proxy', 1);
 
-// 1. INSTANT HEALTH PROBE (Available in <50ms for Docker / Jenkins / Nginx CI probes)
+// 1. INSTANT HEALTH PROBE (Zero heavy requires; responds in <5ms for Docker / Jenkins / Nginx CI probes)
 app.get('/api/health', (req, res) => {
   let mongoConnected = false;
   let dbName = 'natural_milk_dairy';
   try {
-    const mongoose = require('mongoose');
-    mongoConnected = mongoose.connection && mongoose.connection.readyState === 1;
-    if (mongoose.connection && mongoose.connection.name) {
-      dbName = mongoose.connection.name;
+    const mongoosePath = require.resolve('mongoose');
+    if (require.cache[mongoosePath]) {
+      const mongoose = require.cache[mongoosePath].exports;
+      mongoConnected = Boolean(mongoose.connection && mongoose.connection.readyState === 1);
+      if (mongoose.connection && mongoose.connection.name) {
+        dbName = mongoose.connection.name;
+      }
     }
   } catch (_) {}
-  res.json({
-    status: 'healthy',
+  res.status(200).json({
+    status: 'ok',
     app: 'Natural Milk Dairy API',
-    tagline: 'Natural • Pure • Healthy',
     mongodb: mongoConnected ? 'connected' : 'connecting',
     database: dbName,
     timestamp: new Date().toISOString(),

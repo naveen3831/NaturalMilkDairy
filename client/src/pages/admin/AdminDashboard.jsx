@@ -54,7 +54,7 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
   }, []);
 
   useEffect(() => {
-    fetchDashboard(undefined, reportPeriod, customDateRange);
+    fetchDashboard(undefined, reportPeriod, reportPeriod === 'custom' ? customDateRange : null);
     if (typeof fetchReportAnalytics === 'function') {
       fetchReportAnalytics(reportPeriod, reportPeriod === 'custom' ? customDateRange : {});
     }
@@ -65,21 +65,25 @@ export default function AdminDashboard({ setActiveTab, onOpenAddCustomer, onOpen
         fetchDeliveries(undefined, 'all', 'all', reportPeriod);
       }
     }
-    refreshAll();
-  }, [fetchDashboard, fetchReportAnalytics, reportPeriod, customDateRange, fetchDeliveries, refreshAll]);
+  }, [fetchDashboard, fetchReportAnalytics, reportPeriod, customDateRange, fetchDeliveries]);
 
+  // Use authoritative backend reportAnalytics.deliveries when available for the active period
   const customDeliveries = useMemo(() => {
-    if (!Array.isArray(deliveries)) return [];
-    return deliveries
+    const backendList = Array.isArray(reportAnalytics?.deliveries) && reportAnalytics.period === reportPeriod
+      ? reportAnalytics.deliveries
+      : (Array.isArray(deliveries) ? deliveries : []);
+    return backendList
       .filter((d) => {
         const key = (d.deliveryDate || d.date || '').slice(0, 10);
         if (!key) return false;
-        if (customDateRange?.startDate && key < customDateRange.startDate) return false;
-        if (customDateRange?.endDate && key > customDateRange.endDate) return false;
+        if (reportPeriod === 'custom') {
+          if (customDateRange?.startDate && key < customDateRange.startDate) return false;
+          if (customDateRange?.endDate && key > customDateRange.endDate) return false;
+        }
         return true;
       })
       .sort((a, b) => ((b.deliveryDate || b.date || '') > (a.deliveryDate || a.date || '') ? 1 : -1));
-  }, [deliveries, customDateRange]);
+  }, [reportAnalytics, deliveries, reportPeriod, customDateRange]);
 
   // Support period calculations: if reportAnalytics is loaded for the active period, prioritize it!
   const effectiveSummary = (reportAnalytics?.summary) || dashboardSummary || {};

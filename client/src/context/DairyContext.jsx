@@ -400,7 +400,7 @@ export const DairyProvider = ({ children }) => {
     }
 
     if (user?.role === 'admin' || user?.role === 'delivery_boy') {
-      fetchDeliveries();
+      fetchDeliveries(undefined, 'all', 'all', reportPeriod, customDateRange);
       fetchCustomers();
       fetchDeliveryBoys();
       fetchPayments();
@@ -408,6 +408,8 @@ export const DairyProvider = ({ children }) => {
   }, [
     token,
     user?.role,
+    reportPeriod,
+    customDateRange,
     fetchDashboard,
     fetchDeliveries,
     fetchCustomers,
@@ -424,15 +426,6 @@ export const DairyProvider = ({ children }) => {
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
-
-  // Background interval polling for guaranteed multi-device real-time sync
-  useEffect(() => {
-    if (!token || (user?.role !== 'admin' && user?.role !== 'delivery_boy')) return;
-    const interval = setInterval(() => {
-      fetchDeliveryBoys();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [fetchDeliveryBoys, token, user?.role]);
 
   // Listen for real-time updates from other tabs or windows (Customer, Driver, Admin)
   useEffect(() => {
@@ -463,7 +456,7 @@ export const DairyProvider = ({ children }) => {
   // Real-time WebSocket synchronization across the entire project
   useEffect(() => {
     const unsubDelivery = wsSubscribe('DELIVERY_UPDATED', () => {
-      fetchDeliveries();
+      fetchDeliveries(undefined, 'all', 'all', reportPeriod, customDateRange);
       fetchDashboard();
       fetchReportAnalytics();
       fetchPendingCredit();
@@ -479,7 +472,7 @@ export const DairyProvider = ({ children }) => {
     });
 
     const syncPaymentUpdate = () => {
-      fetchDeliveries();
+      fetchDeliveries(undefined, 'all', 'all', reportPeriod, customDateRange);
       fetchPendingCredit();
       fetchDashboard();
       fetchReportAnalytics();
