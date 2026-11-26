@@ -1,12 +1,13 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const Customer = require('../models/Customer');
 const { findCustomerForRequest } = require('../services/customerLookupService');
 const { logSecurityEvent } = require('../security/securityLogger');
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is required.');
-}
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.error('[SECURITY WARNING] JWT_SECRET environment variable is not set! Using ephemeral runtime key — set JWT_SECRET in .env.');
+  return crypto.randomBytes(32).toString('hex');
+})();
 const VALID_ROLES = new Set(['admin', 'delivery_boy', 'customer', 'user']);
 
 /**
