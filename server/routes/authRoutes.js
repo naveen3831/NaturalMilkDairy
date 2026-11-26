@@ -36,8 +36,8 @@ const otpLimiter = createRateLimiter({
 router.post('/login', loginLimiter, login);
 router.post('/register', registerLimiter, register);
 router.post('/google', loginLimiter, googleLogin);
-router.post('/check-email', checkEmail);
-router.get('/check-email', checkEmail);
+router.post('/check-email', otpLimiter, checkEmail);
+router.get('/check-email', otpLimiter, checkEmail);
 router.get('/delivery-areas', getDeliveryAreas);
 router.get('/me', verifyToken, getMe);
 router.get('/verify', verifyToken, verifyTokenStatus);

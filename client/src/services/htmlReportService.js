@@ -158,18 +158,18 @@ export function generateAllCustomersHtml({ customers = [], deliveries = [], paym
 
   const rowsHtml = customers.map((c) => {
     const cId = c.id || c._id || '';
-    const custCode = c.customerId || '';
-    const cMob = c.mobile || '';
-    const name = c.name || 'Customer';
-    const area = c.area || 'Hyderabad';
+    const custCode = escapeHtml(c.customerId || '');
+    const cMob = escapeHtml(c.mobile || '');
+    const name = escapeHtml(c.name || 'Customer');
+    const area = escapeHtml(c.area || 'Hyderabad');
     const balance = Number(c.currentBalance) || 0;
 
-    const keys = [cId, custCode, cMob].filter(Boolean).map(String);
+    const keys = [cId, c.customerId || '', c.mobile || ''].filter(Boolean).map(String);
 
     const cDeliveries = deliveries.filter((d) => {
       const dCustId = String(d.customerId || '');
       const dPhone = String(d.customerPhone || '');
-      return keys.includes(dCustId) || (cMob && dPhone.includes(cMob.replace(/\D/g, '')));
+      return keys.includes(dCustId) || (c.mobile && dPhone.includes(String(c.mobile).replace(/\D/g, '')));
     });
 
     const completed = cDeliveries.filter((d) => d.status === 'delivered');
@@ -386,7 +386,7 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
     const curd = Number(d.actualCurd || d.plannedCurd) || 0;
     const rate = Number(d.milkPrice) || 60;
     const amt = Number(d.totalAmount) || milk * rate;
-    const partner = d.deliveryBoyName || 'Assigned Partner';
+    const partner = escapeHtml(d.deliveryBoyName || 'Assigned Partner');
     const status = d.status || 'delivered';
 
     let statusBadge = '<span class="badge-pending">Pending</span>';
@@ -419,9 +419,9 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
         const rawDate = p.paymentDate || p.createdAt || '';
         const date = formatDateWithDay(rawDate ? String(rawDate).split('T')[0] : '');
         const amt = Number(p.amount) || 0;
-        const mode = String(p.paymentMethod || 'CASH').toUpperCase();
-        const ref = p.referenceNumber || '';
-        const by = p.collectedBy || 'Partner';
+        const mode = escapeHtml(String(p.paymentMethod || 'CASH').toUpperCase());
+        const ref = escapeHtml(p.referenceNumber || '');
+        const by = escapeHtml(p.collectedBy || 'Partner');
 
         return `
           <tr>
@@ -464,7 +464,7 @@ export function generateSingleCustomerHtml({ customer = {}, deliveries = [], pay
 
       <div class="title-box">
         <div class="report-title">CUSTOMER STATEMENT & DELIVERIES LEDGER</div>
-        <div class="report-period">Account: ${name} ${custCode ? `(${custCode})` : ''} | Period: ${periodLabel}</div>
+        <div class="report-period">Account: ${name} ${custCode ? `(${custCode})` : ''} | Period: ${escapeHtml(periodLabel)}</div>
       </div>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;">

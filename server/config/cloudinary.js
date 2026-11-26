@@ -3,18 +3,33 @@ const path = require('path');
 const cloudinary = require('cloudinary').v2;
 
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'ddgjubbbx',
-  api_key: process.env.CLOUDINARY_API_KEY || '867572734885922',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'hUire5Vytsvwzf7Ahb5K3NLTAjw',
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
   secure: true,
 });
 
-const PUBLIC_ASSET_DIR = path.join(__dirname, '../../client/public');
-const LEGACY_UPLOADS_DIR = path.join(__dirname, '../uploads');
+const PUBLIC_ASSET_DIR = path.resolve(__dirname, '../../client/public');
+const LEGACY_UPLOADS_DIR = path.resolve(__dirname, '../uploads');
+const ALLOWED_DATA_URI_RE = /^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/i;
+const ALLOWED_FOLDERS = new Set([
+  'natural-milk-dairy',
+  'products',
+  'deliveries',
+  'banners',
+  'profiles',
+  'uploads',
+]);
+
+const sanitizeCloudinaryFolder = (folder) => {
+  const clean = typeof folder === 'string' ? folder.trim().replace(/^\/+|\/+$/g, '') : '';
+  if (ALLOWED_FOLDERS.has(clean)) return clean;
+  return 'natural-milk-dairy';
+};
 
 const isCloudinaryUrl = (url) => {
   const clean = typeof url === 'string' ? url.trim() : '';
-  return /^https?:\/\/res\.cloudinary\.com\//i.test(clean);
+  return /^https:\/\/res\.cloudinary\.com\//i.test(clean);
 };
 
 /**
@@ -24,11 +39,12 @@ const isCloudinaryUrl = (url) => {
  * @returns {Promise<object>}
  */
 const uploadToCloudinary = (fileBuffer, folder = 'natural-milk-dairy') => {
+  const safeFolder = sanitizeCloudinaryFolder(folder);
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder,
-        resource_type: 'auto',
+        folder: safeFolder,
+        resource_type: 'image',
       },
       (error, result) => {
         if (error) return reject(error);
@@ -40,22 +56,22 @@ const uploadToCloudinary = (fileBuffer, folder = 'natural-milk-dairy') => {
 };
 
 /**
- * Upload from URL, local file path, or base64 string
- * @param {string} source - Public image URL, local file path, or dataURI
+ * Upload from validated dataURI or safe local asset path
+ * @param {string} source - dataURI or verified local asset path
  * @param {string} folder - Folder name
  * @returns {Promise<object>}
  */
 const uploadUrlOrBase64 = async (source, folder = 'natural-milk-dairy') => {
+  const safeFolder = sanitizeCloudinaryFolder(folder);
   return await cloudinary.uploader.upload(source, {
-    folder,
-    resource_type: 'auto',
+    folder: safeFolder,
+    resource_type: 'image',
   });
 };
 
 /**
  * Enforce Cloudinary storage for ANY image value before persisting to MongoDB.
- * Accepts existing Cloudinary URLs, data:image/* base64 strings, raw base64 strings,
- * local /public or /uploads paths, or external URLs and returns a guaranteed Cloudinary HTTPS URL.
+ * Blocks SSRF (arbitrary external HTTP URLs), SVGs, and path traversal.
  */
 const ensureCloudinaryUrl = async (
   source,
@@ -68,8 +84,13 @@ const ensureCloudinaryUrl = async (
   }
 
   // Already a Cloudinary URL -> normalize to HTTPS
-  if (isCloudinaryUrl(raw)) {
+  if (isCloudinaryUrl(raw) || /^http:\/\/res\.cloudinary\.com\//i.test(raw)) {
     return raw.replace(/^http:\/\//i, 'https://');
+  }
+
+  // Block arbitrary external URLs (SSRF prevention)
+  if (/^https?:\/\//i.test(raw)) {
+    throw new Error('External image URLs are not permitted. Please upload an image file directly.');
   }
 
   const runWithTimeout = async (promise) => {
@@ -88,37 +109,42 @@ const ensureCloudinaryUrl = async (
 
   let uploadTarget = raw;
 
-  // Handle raw base64 without data URI prefix
-  if (!raw.startsWith('data:') && !/^https?:\/\//i.test(raw) && !raw.startsWith('/')) {
-    if (raw.length > 100 && !raw.includes('.')) {
+  if (raw.startsWith('data:')) {
+    if (!ALLOWED_DATA_URI_RE.test(raw)) {
+      throw new Error('Unsupported or unsafe image format. Only JPEG, PNG, WEBP, and GIF are allowed.');
+    }
+    uploadTarget = raw;
+  } else if (!raw.startsWith('/')) {
+    if (raw.length > 100 && /^[A-Za-z0-9+/=]+$/.test(raw)) {
       uploadTarget = `data:image/jpeg;base64,${raw}`;
     } else {
-      const candidatePublic = path.join(PUBLIC_ASSET_DIR, raw.replace(/^\/+/, ''));
-      const candidateUpload = path.join(LEGACY_UPLOADS_DIR, path.basename(raw));
-      if (fs.existsSync(candidatePublic)) {
-        uploadTarget = candidatePublic;
-      } else if (fs.existsSync(candidateUpload)) {
-        uploadTarget = candidateUpload;
-      } else {
-        throw new Error(`Invalid local image path "${raw}" — image must be uploaded to Cloudinary.`);
-      }
+      throw new Error('Invalid image payload — must be a valid image upload or Cloudinary URL.');
     }
-  } else if (raw.startsWith('/')) {
+  } else {
     const cleanRel = raw.replace(/^\/+/, '');
-    const candidateUpload = path.join(LEGACY_UPLOADS_DIR, path.basename(cleanRel));
-    const candidatePublic = path.join(PUBLIC_ASSET_DIR, cleanRel);
-    if (cleanRel.startsWith('uploads/') && fs.existsSync(candidateUpload)) {
-      uploadTarget = candidateUpload;
-    } else if (fs.existsSync(candidatePublic)) {
+    if (cleanRel.includes('..') || cleanRel.includes('\0')) {
+      throw new Error('Invalid asset path.');
+    }
+    const candidatePublic = path.resolve(PUBLIC_ASSET_DIR, cleanRel);
+    const candidateUpload = path.resolve(LEGACY_UPLOADS_DIR, path.basename(cleanRel));
+    if (
+      cleanRel.startsWith('images/') &&
+      candidatePublic.startsWith(PUBLIC_ASSET_DIR + path.sep) &&
+      fs.existsSync(candidatePublic)
+    ) {
       uploadTarget = candidatePublic;
-    } else if (fs.existsSync(candidateUpload)) {
+    } else if (
+      cleanRel.startsWith('uploads/') &&
+      candidateUpload.startsWith(LEGACY_UPLOADS_DIR + path.sep) &&
+      fs.existsSync(candidateUpload)
+    ) {
       uploadTarget = candidateUpload;
     } else {
-      throw new Error(`Local asset "${raw}" could not be resolved for Cloudinary upload.`);
+      throw new Error('Local asset could not be resolved for Cloudinary upload.');
     }
   }
 
-  const res = await runWithTimeout(uploadUrlOrBase64(uploadTarget, folder));
+  const res = await runWithTimeout(uploadUrlOrBase64(uploadTarget, sanitizeCloudinaryFolder(folder)));
   if (!res || !res.secure_url) {
     throw new Error('Cloudinary did not return a secure image URL.');
   }
@@ -128,6 +154,7 @@ const ensureCloudinaryUrl = async (
 module.exports = {
   cloudinary,
   isCloudinaryUrl,
+  sanitizeCloudinaryFolder,
   uploadToCloudinary,
   uploadUrlOrBase64,
   ensureCloudinaryUrl,

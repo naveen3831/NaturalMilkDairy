@@ -68,15 +68,27 @@ const getCustomers = async (req, res) => {
       filter['deliveryPlan.deliveryBoyId'] = deliveryBoyId;
     }
 
-    if (req.user?.role === 'delivery_boy' || req.query.role === 'delivery_boy') {
+    if (req.user?.role === 'delivery_boy') {
       filter.status = 'active';
       filter.isTest = { $ne: true };
       filter.name = { $not: /^test\b/i };
       filter.mobile = { $nin: ['9876591835', '9999999999', '1234567890'] };
+      const driverOr = [];
+      const bId = req.user.boyId || req.user.id;
+      if (bId) {
+        driverOr.push({ 'deliveryPlan.deliveryBoyId': String(bId) });
+        driverOr.push({ createdByDriverId: String(bId) });
+      }
+      if (req.user.assignedArea) {
+        driverOr.push({ area: new RegExp(`^${escapeRegex(req.user.assignedArea.trim())}$`, 'i') });
+      }
+      if (driverOr.length > 0) {
+        filter.$and = [...(filter.$and || []), { $or: driverOr }];
+      }
     }
 
     if (search) {
-      const q = search.trim();
+      const q = escapeRegex(String(search).trim());
       filter.$or = [
         { name: { $regex: q, $options: 'i' } },
         { mobile: { $regex: q, $options: 'i' } },
@@ -1504,16 +1516,8 @@ const updateOwnCustomerProfile = async (req, res) => {
     }
 
     const oldMobile = customer.mobile;
-    if (req.body.deliveryPlan && typeof req.body.deliveryPlan === 'object') {
-      const dp = req.body.deliveryPlan;
-      customer.deliveryPlan = {
-        ...(customer.deliveryPlan || {}),
-        ...dp,
-        milkQty: dp.milkQty !== undefined ? Number(dp.milkQty) : customer.deliveryPlan?.milkQty ?? 1,
-        curdQty: dp.curdQty !== undefined ? Number(dp.curdQty) : customer.deliveryPlan?.curdQty ?? 0,
-        frequency: dp.frequency || customer.deliveryPlan?.frequency || 'daily',
-      };
-    }
+    // Security: Do not allow customers to directly overwrite deliveryPlan quantities/frequency via profile update.
+    // Plan changes must go through authenticated subscription/payment flows or admin/staff.
 
     // If area is provided or changed, link customer to the active serviceable location's assigned delivery partner
     if (profile.area) {
@@ -1627,14 +1631,14 @@ const updateOwnCustomerProfile = async (req, res) => {
 const deleteCustomer = async (req, res) => {
   try {
     const { id } = req.params;
-    const { actor, customerId: bodyCustomerId } = req.body || {};
+    const { actor } = req.body || {};
 
     let customer = await findCustomerForRequest(req);
     const targetUserId = req.user?.id;
     let userDoc = (targetUserId && targetUserId.length === 24) ? await User.findById(targetUserId).catch(() => null) : null;
 
     if (!customer) {
-      const targetId = (id === 'me' || id === 'account' || !id) ? (req.user?.id || bodyCustomerId) : (id || bodyCustomerId);
+      const targetId = (id === 'me' || id === 'account' || !id) ? req.user?.id : id;
       if (targetId && targetId.length === 24) {
         customer = await Customer.findById(targetId).catch(() => null);
       }
@@ -1666,7 +1670,6 @@ const deleteCustomer = async (req, res) => {
       customer?.customerId,
       userDoc?.customerId,
       req.user?.customerId,
-      bodyCustomerId,
       id !== 'me' && id !== 'account' ? id : null,
     ].filter(Boolean);
 
@@ -1882,8 +1885,15 @@ const assignPartner = async (req, res) => {
 // Customer-only deletion of their own history entries
 const deleteCustomerHistoryEntry = async (req, res) => {
   try {
+    const customerId = req.params.id;
     const { entryId } = req.params;
-    const delivery = await Delivery.findById(entryId);
+    const custQuery = customerId.length === 24 ? { _id: customerId } : { customerId };
+    const customer = await Customer.findOne(custQuery).lean();
+    const custIds = customer
+      ? [customer._id.toString(), customer.customerId, customer.mobile].filter(Boolean)
+      : [customerId];
+
+    const delivery = await Delivery.findOne({ _id: entryId, customerId: { $in: custIds } });
     if (delivery) {
       delivery.deletedForCustomer = true;
       await delivery.save();
@@ -1891,7 +1901,7 @@ const deleteCustomerHistoryEntry = async (req, res) => {
       return res.json({ success: true, message: 'History entry deleted.' });
     }
 
-    const payment = await Payment.findById(entryId);
+    const payment = await Payment.findOne({ _id: entryId, customerId: { $in: custIds } });
     if (payment) {
       payment.deletedForCustomer = true;
       await payment.save();
@@ -1901,7 +1911,7 @@ const deleteCustomerHistoryEntry = async (req, res) => {
 
     return res.status(404).json({ success: false, message: 'History entry not found.' });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: 'Failed to delete history entry.' });
   }
 };
 
@@ -2512,13 +2522,19 @@ const upgradePlan = async (req, res) => {
     } = req.body;
 
     let query;
+    if (!req.user || !['admin', 'delivery_boy'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Direct subscription extension requires staff verification or Razorpay checkout.',
+      });
+    }
+
     if (id === 'me') {
       const candidates = [
         ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
         ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
         ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
         ...(req.user?.email ? [{ email: req.user.email }] : []),
-        ...(req.body?.mobile ? [{ mobile: req.body.mobile }] : []),
       ];
       query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
     } else {
@@ -2675,13 +2691,19 @@ const extendSubscription = async (req, res) => {
     const { days = 30, actor, paymentMethod = 'prepaid', collectedAmount = 0, notes } = req.body;
 
     let query;
+    if (!req.user || !['admin', 'delivery_boy'].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Direct subscription extension requires staff verification or Razorpay checkout.',
+      });
+    }
+
     if (id === 'me') {
       const candidates = [
         ...(req.user?.id && req.user.id.length === 24 ? [{ _id: req.user.id }] : []),
         ...(req.user?.customerId ? [{ customerId: req.user.customerId }] : []),
         ...(req.user?.mobile ? [{ mobile: req.user.mobile }] : []),
         ...(req.user?.email ? [{ email: req.user.email }] : []),
-        ...(req.body?.mobile ? [{ mobile: req.body.mobile }] : []),
       ];
       query = candidates.length ? { $or: candidates } : { _id: req.user?.id };
     } else {

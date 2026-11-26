@@ -139,7 +139,14 @@ class MainActivity : FlutterActivity() {
                     val url = call.argument<String>("url")
                     if (url != null) {
                         try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            val uri = Uri.parse(url.trim())
+                            val scheme = uri.scheme?.lowercase() ?: ""
+                            val allowedSchemes = setOf("https", "http", "tel", "mailto", "whatsapp", "geo")
+                            if (!allowedSchemes.contains(scheme)) {
+                                result.error("UNSAFE_URL", "Unsupported URL scheme: $scheme", null)
+                                return@setMethodCallHandler
+                            }
+                            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                             startActivity(intent)
@@ -161,6 +168,12 @@ class MainActivity : FlutterActivity() {
                                 activePrintWebView = webView
                                 webView.settings.apply {
                                     javaScriptEnabled = false
+                                    allowFileAccess = false
+                                    allowContentAccess = false
+                                    @Suppress("DEPRECATION")
+                                    allowFileAccessFromFileURLs = false
+                                    @Suppress("DEPRECATION")
+                                    allowUniversalAccessFromFileURLs = false
                                     defaultTextEncodingName = "UTF-8"
                                     loadWithOverviewMode = true
                                     useWideViewPort = true

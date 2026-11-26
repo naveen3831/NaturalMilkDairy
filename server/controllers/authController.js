@@ -5,7 +5,8 @@ const Customer = require('../models/Customer');
 const DeliveryBoy = require('../models/DeliveryBoy');
 const DeliveryLocation = require('../models/DeliveryLocation');
 const PasswordResetOtp = require('../models/PasswordResetOtp');
-const { generateToken } = require('../middleware/authMiddleware');
+const { generateToken, JWT_SECRET } = require('../middleware/authMiddleware');
+const { logSecurityEvent, sha256 } = require('../middleware/securityMiddleware');
 const { recordAudit } = require('../services/auditService');
 const { hashPassword, verifyPassword } = require('../security/password');
 const { sendCustomerCredentialsEmail, sendPasswordResetOtpEmail, sendPasswordResetSuccessEmail } = require('../services/emailService');
@@ -607,12 +608,12 @@ const googleLogin = async (req, res) => {
       });
     }
 
-    // 1. Authoritatively verify Firebase ID token or in-page verified Google session
+    // 1. Authoritatively verify Firebase ID token or server-issued completion token
     let decoded = null;
 
     // A. Check if rawToken is a completion token issued by our server
     try {
-      const serverDecoded = jwt.verify(rawToken, process.env.JWT_SECRET || 'natural-milk-dairy-secret-key-2026');
+      const serverDecoded = jwt.verify(rawToken, JWT_SECRET, { algorithms: ['HS256'] });
       if (serverDecoded && (serverDecoded.isGoogleCompletion || serverDecoded.isGooglePending) && serverDecoded.email) {
         decoded = {
           uid: serverDecoded.firebaseUid || `google_${serverDecoded.email.replace(/[^a-z0-9]/g, '_')}`,
@@ -624,41 +625,16 @@ const googleLogin = async (req, res) => {
       }
     } catch (_) {}
 
-    // B. Check in-page verified Google session
+    // B. Cryptographically verify Google / Firebase ID token (no unverified bypasses)
     if (!decoded) {
-      if (
-        (rawToken === 'google_in_page_verified' || (typeof rawToken === 'string' && rawToken.startsWith('in_page_google_'))) &&
-        req.body?.email &&
-        typeof req.body.email === 'string'
-      ) {
-        const email = req.body.email.trim().toLowerCase();
-        decoded = {
-          uid: req.body.uid || `google_${email.replace(/[^a-z0-9]/g, '_')}`,
-          email,
-          name: req.body.name || email.split('@')[0],
-          picture: req.body.picture || '',
-        };
-      } else {
-        try {
-          decoded = await verifyFirebaseIdToken(rawToken);
-        } catch (verErr) {
-          // If token verification failed, but this is a profile completion with an email in body and pending session:
-          if (req.body?.email && req.body?.mobile && req.body?.password) {
-            const fallbackEmail = String(req.body.email).trim().toLowerCase();
-            decoded = {
-              uid: req.body.uid || `google_${fallbackEmail.replace(/[^a-z0-9]/g, '_')}`,
-              email: fallbackEmail,
-              name: req.body.name || fallbackEmail.split('@')[0],
-              picture: req.body.picture || '',
-              emailVerified: true,
-            };
-          } else {
-            return res.status(401).json({
-              success: false,
-              message: `Google authentication failed: ${verErr.message}`,
-            });
-          }
-        }
+      try {
+        decoded = await verifyFirebaseIdToken(rawToken);
+      } catch (verErr) {
+        logSecurityEvent('GOOGLE_AUTH_FAILED', req, { reason: verErr.message });
+        return res.status(401).json({
+          success: false,
+          message: 'Google authentication failed. Please sign in with Google again.',
+        });
       }
     }
 
@@ -1072,20 +1048,13 @@ const checkEmail = async (req, res) => {
     ]);
 
     const exists = !!(existingUser || existingCustomer);
-    const matched = existingUser || existingCustomer;
 
     return res.json({
       success: true,
       exists,
-      user: exists ? {
-        name: matched.name,
-        email: matched.email,
-        mobile: matched.mobile,
-        role: matched.role || (existingCustomer ? 'customer' : 'user'),
-      } : null,
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: 'Unable to check email availability.' });
   }
 };
 
@@ -1116,23 +1085,22 @@ const forgotPasswordSendOtp = async (req, res) => {
     const role = customer ? 'customer' : deliveryBoy ? 'delivery_boy' : (adminUser?.role || 'user');
     const accountName = account.name || 'User';
 
-    // Generate secure 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate cryptographically secure 6-digit OTP and store only its SHA-256 hash
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = sha256(otp);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Remove any previous active OTPs for this email
     await PasswordResetOtp.deleteMany({ email: rawEmail });
 
-    // Save new OTP
+    // Save hashed OTP
     await PasswordResetOtp.create({
       email: rawEmail,
-      otp,
+      otp: otpHash,
       role,
       accountName,
       expiresAt,
     });
-
-    console.log(`🔑 [PASSWORD_RESET_OTP] Generated OTP ${otp} for email ${rawEmail} (${role})`);
 
     // Dispatch OTP via Nodemailer
     const emailResult = await sendPasswordResetOtpEmail({
@@ -1143,15 +1111,10 @@ const forgotPasswordSendOtp = async (req, res) => {
     });
 
     if (!emailResult.success) {
-      console.error(`❌ [PASSWORD_RESET_OTP] Email delivery failed for ${rawEmail}:`, emailResult.error || emailResult.message);
-      const rawErr = emailResult.error || emailResult.message || '';
-      let errorResponse = `Failed to deliver verification email: ${rawErr}. Please check your email settings or try again.`;
-      if (rawErr.includes('535') || rawErr.includes('BadCredentials') || rawErr.includes('Invalid login')) {
-        errorResponse = 'Gmail SMTP authentication failed (535 BadCredentials): Google rejected the login credentials. Please ensure the 16-character App Password (ftvd aytu algc pjiz) is generated under naveenkumar970100@gmail.com with 2-Step Verification enabled.';
-      }
+      console.error(`❌ [PASSWORD_RESET_OTP] Email delivery failed for ${rawEmail}`);
       return res.status(500).json({
         success: false,
-        message: errorResponse,
+        message: 'Failed to deliver verification email. Please try again later.',
       });
     }
 
@@ -1200,7 +1163,7 @@ const forgotPasswordVerifyOtp = async (req, res) => {
       });
     }
 
-    if (record.otp !== rawOtp) {
+    if (record.otp !== sha256(rawOtp)) {
       record.attempts += 1;
       await record.save();
       const remaining = 5 - record.attempts;
@@ -1210,10 +1173,10 @@ const forgotPasswordVerifyOtp = async (req, res) => {
       });
     }
 
-    // OTP matched! Generate one-time resetToken
+    // OTP matched! Generate one-time resetToken and store only its hash
     const resetToken = crypto.randomBytes(32).toString('hex');
     record.verified = true;
-    record.resetToken = resetToken;
+    record.resetToken = sha256(resetToken);
     await record.save();
 
     return res.json({
@@ -1237,14 +1200,14 @@ const forgotPasswordResetPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email, reset token, and new password are required.' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long.' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters long.' });
     }
 
-    // Find verified session
+    // Find verified session using hashed resetToken
     const record = await PasswordResetOtp.findOne({
       email: rawEmail,
-      resetToken,
+      resetToken: sha256(resetToken),
       verified: true,
     });
 

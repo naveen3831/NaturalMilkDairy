@@ -104,22 +104,6 @@ async function verifyViaTokenInfo(token) {
     } catch (_) {}
   }
 
-  // 5. If still no data, check if token can be decoded as JWT with unverified payload containing email
-  if (!data?.email) {
-    try {
-      const decoded = jwt.decode(token);
-      if (decoded && decoded.email && (decoded.iss?.includes('google') || decoded.aud?.includes('google') || decoded.aud === GOOGLE_CLIENT_ID)) {
-        data = {
-          sub: decoded.sub || decoded.user_id,
-          email: decoded.email,
-          name: decoded.name || decoded.given_name,
-          picture: decoded.picture,
-          email_verified: decoded.email_verified,
-        };
-      }
-    } catch (_) {}
-  }
-
   if (!data || !data.email) {
     throw new Error('Invalid Google token: could not verify identity or retrieve email.');
   }
@@ -146,16 +130,6 @@ async function verifyFirebaseIdToken(idToken) {
   const cleanToken = idToken.trim().replace(/^Bearer\s+/i, '');
   if (!cleanToken) {
     throw new Error('Firebase ID token is empty.');
-  }
-
-  if (cleanToken === 'google_in_page_verified' || cleanToken.startsWith('in_page_google_')) {
-    return {
-      uid: 'google_in_page_user',
-      email: '',
-      name: 'Google User',
-      picture: '',
-      emailVerified: true,
-    };
   }
 
   // 1. Try cryptographic verification via Google's public certs

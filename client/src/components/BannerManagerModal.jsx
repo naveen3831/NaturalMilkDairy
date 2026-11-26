@@ -34,7 +34,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
   const fetchBanners = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('nmd_jwt_token') || localStorage.getItem('nmd_jwt_token');
       const res = await fetch('/api/banners/admin', {
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
@@ -85,7 +85,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
 
     setIsSaving(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('nmd_jwt_token') || localStorage.getItem('nmd_jwt_token');
       const isNew = !editingBanner._id;
       const url = isNew ? '/api/banners' : `/api/banners/${editingBanner._id}`;
       const method = isNew ? 'POST' : 'PUT';
@@ -116,7 +116,7 @@ export default function BannerManagerModal({ isOpen, onClose }) {
   const handleDeleteBanner = async (id) => {
     if (!window.confirm('Are you sure you want to delete this carousel banner?')) return;
     try {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('nmd_jwt_token') || localStorage.getItem('nmd_jwt_token');
       const res = await fetch(`/api/banners/${id}`, {
         method: 'DELETE',
         headers: {

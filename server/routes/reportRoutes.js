@@ -14,7 +14,6 @@ const {
 
 const {
   verifyToken,
-  optionalToken,
   requireAdmin,
   requireDeliveryStaff,
   authorizeCustomerAccess,
@@ -26,13 +25,12 @@ router.get('/pending-credit', verifyToken, requireAdmin, getPendingCreditReport)
 router.get('/statement', verifyToken, authorizeCustomerAccess, getCustomerStatement);
 router.get('/audit-logs', verifyToken, requireAdmin, getAuditLogs);
 
-// PDF Report Downloads (Weekly / Monthly / Entire History / Custom Range)
-// Uses optionalToken so direct browser download / links work with query parameters or session auth
-router.get('/customer/pdf', optionalToken, downloadCustomerPdf);
-router.get('/partner/pdf', optionalToken, downloadPartnerPdf);
-router.get('/admin/pdf', optionalToken, downloadAdminPdf);
-router.get('/all-customers/pdf', optionalToken, downloadAllCustomersPdf);
-router.get('/all/pdf', optionalToken, downloadAllCustomersPdf);
-router.get('/pdf', optionalToken, downloadAllCustomersPdf);
+// PDF Report Downloads — strictly authenticated and role-authorized
+router.get('/customer/pdf', verifyToken, downloadCustomerPdf);
+router.get('/partner/pdf', verifyToken, requireDeliveryStaff, downloadPartnerPdf);
+router.get('/admin/pdf', verifyToken, requireAdmin, downloadAdminPdf);
+router.get('/all-customers/pdf', verifyToken, requireAdmin, downloadAllCustomersPdf);
+router.get('/all/pdf', verifyToken, requireAdmin, downloadAllCustomersPdf);
+router.get('/pdf', verifyToken, requireAdmin, downloadAllCustomersPdf);
 
 module.exports = router;

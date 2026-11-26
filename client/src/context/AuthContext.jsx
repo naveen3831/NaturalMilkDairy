@@ -154,7 +154,8 @@ export const AuthProvider = ({ children }) => {
 
   const [pendingGoogleAuth, setPendingGoogleAuthState] = useState(() => {
     try {
-      const stored = sessionStorage.getItem('nmd_pending_google_auth') || localStorage.getItem('nmd_pending_google_auth');
+      const stored = sessionStorage.getItem('nmd_pending_google_auth');
+      try { localStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
       return stored ? JSON.parse(stored) : null;
     } catch (_) {
       return null;
@@ -165,11 +166,10 @@ export const AuthProvider = ({ children }) => {
     setPendingGoogleAuthState(data);
     if (data) {
       try { sessionStorage.setItem('nmd_pending_google_auth', JSON.stringify(data)); } catch (_) {}
-      try { localStorage.setItem('nmd_pending_google_auth', JSON.stringify(data)); } catch (_) {}
     } else {
       try { sessionStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
-      try { localStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
     }
+    try { localStorage.removeItem('nmd_pending_google_auth'); } catch (_) {}
   };
 
   const loginWithGoogle = async (portal = 'customer', profileData = null) => {

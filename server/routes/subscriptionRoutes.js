@@ -6,10 +6,10 @@ const {
   toggleSubscriptionStatus,
   failSubscription,
 } = require('../controllers/subscriptionController');
-const { verifyToken, optionalToken, requireAdmin, requireCustomer, requireDeliveryStaff } = require('../middleware/authMiddleware');
+const { verifyToken, requireAdmin, requireCustomer, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
-router.get('/my', optionalToken, getMySubscriptions);
-router.post('/fail', optionalToken, failSubscription);
+router.get('/my', verifyToken, getMySubscriptions);
+router.post('/fail', verifyToken, failSubscription);
 router.get('/', verifyToken, requireDeliveryStaff, getAdminSubscriptions);
 router.post('/:id/toggle-status', verifyToken, requireAdmin, toggleSubscriptionStatus);
 router.post('/:id/stop', verifyToken, requireCustomer, (req, res) => {

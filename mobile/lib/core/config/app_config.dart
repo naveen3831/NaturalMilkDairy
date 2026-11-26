@@ -23,9 +23,8 @@ class AppConfig {
   /// Set to `true` for Standalone Production Cloud Server
   static const bool useLiveServer = false;
 
-  /// If true, release APKs will always use liveBaseUrl.
-  /// Set to false to allow local IP / candidate discovery during release testing.
-  static const bool autoEnforceLiveInRelease = false;
+  /// Always enforce HTTPS/WSS liveBaseUrl in release builds (kReleaseMode == true).
+  static const bool autoEnforceLiveInRelease = true;
 
   /// Effective active server flag
   static bool get isLiveServerActive =>

@@ -40,11 +40,10 @@ const getCloudinaryLogoBuffer = async () => {
  * Configure Nodemailer transporter with dual-strategy fallback (Gmail service + Port 587)
  */
 const createTransporter = (useFallbackPort = false, explicitPass = null) => {
-  const user = (process.env.SMTP_USER || 'naveenkumar970100@gmail.com').trim();
+  const user = (process.env.SMTP_USER || '').trim();
   let pass = explicitPass;
   if (!pass) {
-    const envPass = (process.env.SMTP_PASS || '').toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
-    pass = envPass && envPass !== 'whflujkotaqkxtxe' ? envPass : 'ftvdaytualgcpjiz';
+    pass = (process.env.SMTP_PASS || '').toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
   } else {
     pass = pass.toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
   }
@@ -62,7 +61,6 @@ const createTransporter = (useFallbackPort = false, explicitPass = null) => {
       port: 587,
       secure: false, // STARTTLS
       auth: { user, pass },
-      tls: { rejectUnauthorized: false },
     });
   }
 
@@ -71,7 +69,6 @@ const createTransporter = (useFallbackPort = false, explicitPass = null) => {
     return nodemailer.createTransport({
       service: 'gmail',
       auth: { user, pass },
-      tls: { rejectUnauthorized: false },
     });
   }
 
@@ -80,7 +77,6 @@ const createTransporter = (useFallbackPort = false, explicitPass = null) => {
     port,
     secure: port === 465,
     auth: { user, pass },
-    tls: { rejectUnauthorized: false },
   });
 };
 
@@ -261,16 +257,11 @@ const sendCredentialsMail = async ({ to, subject, text, html, attachments = [] }
     attachments: finalAttachments,
   };
 
-  // Build ordered list of candidate credentials to try:
-  // 1. Explicit active App Password ftvdaytualgcpjiz
-  // 2. process.env.SMTP_PASS from server environment
-  // 3. whflujkotaqkxtxe (legacy fallback)
   const envPass = (process.env.SMTP_PASS || '').toString().replace(/['"]+/g, '').replace(/\s+/g, '').trim();
-  const passwordCandidates = [
-    'ftvdaytualgcpjiz',
-    ...(envPass && envPass !== 'ftvdaytualgcpjiz' && envPass !== 'whflujkotaqkxtxe' ? [envPass] : []),
-    'whflujkotaqkxtxe',
-  ];
+  if (!envPass) {
+    return { success: false, error: 'SMTP credentials not configured' };
+  }
+  const passwordCandidates = [envPass];
 
   let lastError = null;
 
@@ -284,7 +275,7 @@ const sendCredentialsMail = async ({ to, subject, text, html, attachments = [] }
         return { success: true, messageId: info.messageId };
       } catch (err) {
         lastError = err;
-        console.warn(`⚠️ SMTP attempt failed (port: ${useFallbackPort ? 587 : 'gmail'}, pass: ${candidatePass.slice(0, 3)}***):`, err.message);
+        console.warn(`⚠️ SMTP attempt failed (port: ${useFallbackPort ? 587 : 'gmail'}):`, err.message);
         if (!err.message.includes('535') && !err.message.includes('BadCredentials') && !err.message.includes('Invalid login')) {
           break;
         }

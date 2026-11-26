@@ -540,19 +540,30 @@ const markDelivered = async (req, res) => {
     const milkPrice = delivery.milkPrice || 60;
     const curdPrice = delivery.curdPrice || 30;
 
-    // Parse doorstep add-on products selected by the delivery partner
+    // Parse doorstep add-on products selected by the delivery partner and verify prices from Product catalog
     const rawAddons = Array.isArray(req.body.addons)
       ? req.body.addons
       : (Array.isArray(req.body.addonItems) ? req.body.addonItems : []);
+    const Product = require('../models/Product');
+    const catalogProducts = await Product.find({ status: 'active' }).lean();
+    const productById = new Map(catalogProducts.map((p) => [p._id.toString(), p]));
+    const productByName = new Map(catalogProducts.map((p) => [String(p.name || '').toLowerCase().trim(), p]));
+
     const sanitizedAddons = rawAddons
       .filter((a) => a && typeof a === 'object' && Number(a.quantity) > 0)
-      .map((a) => ({
-        productId: a.productId ? String(a.productId) : (a.id ? String(a.id) : (a._id ? String(a._id) : '')),
-        name: String(a.name || 'Dairy Add-on').trim(),
-        quantity: Number(a.quantity) || 1,
-        unit: String(a.unit || 'pack').trim(),
-        price: Math.max(0, Number(a.price) || 0),
-      }));
+      .map((a) => {
+        const pid = a.productId ? String(a.productId) : (a.id ? String(a.id) : (a._id ? String(a._id) : ''));
+        const pname = String(a.name || 'Dairy Add-on').trim();
+        const catalogMatch = (pid && productById.get(pid)) || productByName.get(pname.toLowerCase());
+        const unitPrice = catalogMatch ? Number(catalogMatch.price) : Math.max(0, Number(a.price) || 0);
+        return {
+          productId: catalogMatch ? catalogMatch._id.toString() : pid,
+          name: catalogMatch ? catalogMatch.name : pname,
+          quantity: Math.min(100, Math.max(1, Number(a.quantity) || 1)),
+          unit: catalogMatch ? (catalogMatch.unit || 'pack') : String(a.unit || 'pack').trim(),
+          price: unitPrice,
+        };
+      });
 
     const addonsTotal = sanitizedAddons.reduce((sum, a) => sum + (a.price * a.quantity), 0);
     const existingExtra = Array.isArray(delivery.extraItems) ? delivery.extraItems : [];

@@ -12,6 +12,11 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import GoogleCompleteProfilePage from './pages/GoogleCompleteProfilePage';
 import PublicSubscriptionPage from './pages/SubscriptionPage';
+import {
+  PrivacyPolicyPage,
+  TermsConditionsPage,
+  AccountDeletionPage,
+} from './pages/LegalPages';
 import FloatingContactButton from './components/FloatingContactButton';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -163,11 +168,21 @@ export default function App() {
 
       const knownTabs = [
         'home', 'products', 'subscription', 'story', 'faqs', 'contact', 'register', 'google-complete-profile',
+        'privacy-policy', 'terms-and-conditions', 'delete-account',
         'my-subscription', 'my-deliveries', 'my-address', 'pause-delivery',
         'dashboard', 'deliveries', 'customers', 'ledger', 'outstanding',
         'subscriptions', 'payments', 'pricing', 'delivery-boys', 'locations', 'audit-logs', 'supports', 'contact-settings', 'profile', 'add-delivery-boy',
         'edit-delivery-boy', 'add-product', 'edit-product',
       ];
+      if (pathParts.length === 1 && (directTab === 'privacy' || directTab === 'privacy-policy')) {
+        return 'privacy-policy';
+      }
+      if (pathParts.length === 1 && (directTab === 'terms' || directTab === 'terms-and-conditions')) {
+        return 'terms-and-conditions';
+      }
+      if (pathParts.length === 1 && (directTab === 'delete-account' || directTab === 'account-deletion')) {
+        return 'delete-account';
+      }
       if (pathParts.length === 1 && knownTabs.includes(directTab)) {
         if (!savedUser && internalTabs.includes(directTab)) {
           return 'home';
@@ -782,6 +797,18 @@ export default function App() {
               <ContactPage setActiveTab={navigateToTab} />
             )}
 
+            {activeTab === 'privacy-policy' && (
+              <PrivacyPolicyPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'terms-and-conditions' && (
+              <TermsConditionsPage setActiveTab={navigateToTab} />
+            )}
+
+            {activeTab === 'delete-account' && (
+              <AccountDeletionPage setActiveTab={navigateToTab} />
+            )}
+
             {activeTab === 'login' && (
               <LoginPage setActiveTab={navigateToTab} />
             )}
@@ -834,6 +861,9 @@ export default function App() {
               'story',
               'faqs',
               'contact',
+              'privacy-policy',
+              'terms-and-conditions',
+              'delete-account',
               'login',
               'register',
               'google-complete-profile',

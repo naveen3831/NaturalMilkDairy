@@ -696,9 +696,12 @@ const sendDeliveryBoyCredentials = async (req, res) => {
 const toggleDutyStatus = async (req, res) => {
   try {
     const { isOnline, note, area } = req.body;
-    let targetId = req.params.id || req.body.boyId || req.body.id || req.user?.boyId || req.user?.id;
-    let mobile = req.body.mobile || req.user?.mobile;
-    let name = req.body.name || req.body.driverName || req.user?.name;
+    const isAdmin = req.user?.role === 'admin';
+    let targetId = isAdmin
+      ? (req.params.id || req.body.boyId || req.body.id || req.user?.boyId || req.user?.id)
+      : (req.user?.boyId || req.user?.id);
+    let mobile = isAdmin ? (req.body.mobile || req.user?.mobile) : req.user?.mobile;
+    let name = isAdmin ? (req.body.name || req.body.driverName || req.user?.name) : req.user?.name;
 
     let cleanMobile = mobile ? String(mobile).replace(/[^0-9]/g, '') : '';
     if (cleanMobile.length === 12 && cleanMobile.startsWith('91')) cleanMobile = cleanMobile.slice(2);
@@ -755,18 +758,9 @@ const toggleDutyStatus = async (req, res) => {
       }
     }
 
-    if (!boy) {
-      // Fallback: match first active driver or the single registered driver
+    if (!boy && isAdmin) {
+      // Admin fallback: match first active driver
       boy = await DeliveryBoy.findOne({ status: 'active' }) || await DeliveryBoy.findOne({});
-    }
-
-    if (!boy && (req.user?.role === 'delivery_boy' || req.user?.role === 'admin' || !req.user)) {
-      boy = await DeliveryBoy.create({
-        name: name || 'naveen',
-        mobile: mobile || '9701878789',
-        assignedArea: area || req.user?.assignedArea || 'madhapur',
-        status: 'active',
-      });
     }
 
     if (!boy) {
@@ -950,10 +944,8 @@ const updateMyProfile = async (req, res) => {
     if (emergencyContact !== undefined) boy.emergencyContact = (emergencyContact || '').trim();
 
     if (password && password.trim().length >= 6) {
-      const bcrypt = require('bcryptjs');
-      const salt = await bcrypt.genSalt(10);
-      const hashed = await bcrypt.hash(password.trim(), salt);
-      boy.password = hashed;
+      const { hashPassword } = require('../security/password');
+      boy.password = await hashPassword(password.trim());
     }
 
     await boy.save();

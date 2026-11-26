@@ -340,9 +340,9 @@ const getReportAnalytics = async (req, res) => {
       deliveryQuery.deletedForDriver = { $ne: true };
     }
 
-    // Scope for Customer
+    // Scope for Customer (non-admins can only view their own analytics)
     if (isCustomer || (isAdmin && req.query.customerId)) {
-      const cId = req.query.customerId || req.user?.customerId || req.user?.id;
+      const cId = isAdmin ? (req.query.customerId || req.user?.customerId || req.user?.id) : (req.user?.customerId || req.user?.id);
       if (/^[a-f\d]{24}$/i.test(cId)) {
         targetCustomer = await Customer.findOne({ $or: [{ _id: cId }, { customerId: cId }] }).lean();
       } else if (cId) {
@@ -641,14 +641,16 @@ const getDateRange = (period = 'all', customStart = null, customEnd = null) => {
 // Download Customer PDF Report (Weekly / Monthly / Entire History / Custom Range)
 const downloadCustomerPdf = async (req, res) => {
   try {
+    const isAdminOrStaff = req.user && ['admin', 'delivery_boy'].includes(req.user.role);
     let customer = await findCustomerForRequest(req);
+    if (!customer && isAdminOrStaff && req.query.customerId) {
+      const cid = String(req.query.customerId).trim();
+      customer = await Customer.findOne(
+        /^[a-f\d]{24}$/i.test(cid) ? { $or: [{ _id: cid }, { customerId: cid }] } : { customerId: cid }
+      ).lean();
+    }
     if (!customer) {
-      const firstCust = await Customer.findOne({ status: 'active' }).sort({ createdAt: -1 }).lean();
-      if (firstCust) {
-        customer = firstCust;
-      } else {
-        return res.status(404).json({ success: false, message: 'Customer not found.' });
-      }
+      return res.status(404).json({ success: false, message: 'Customer not found or unauthorized.' });
     }
 
     await ensureDeliveriesForCustomer(customer);
@@ -726,7 +728,10 @@ const downloadCustomerPdf = async (req, res) => {
 // Download Delivery Partner PDF Report (Weekly / Monthly / Entire History / Custom Range)
 const downloadPartnerPdf = async (req, res) => {
   try {
-    let lookupId = req.query.partnerId || req.query.id || req.user?.boyId || req.user?.id;
+    const isAdmin = req.user?.role === 'admin';
+    let lookupId = isAdmin
+      ? (req.query.partnerId || req.query.id || req.user?.boyId || req.user?.id)
+      : (req.user?.boyId || req.user?.id);
 
     let partner = null;
     if (lookupId && /^[a-f\d]{24}$/i.test(lookupId)) {
@@ -738,10 +743,13 @@ const downloadPartnerPdf = async (req, res) => {
     if (!partner && req.user?.mobile) {
       partner = await DeliveryBoy.findOne({ mobile: req.user.mobile }).lean();
     }
-    if (!partner) {
+    if (!partner && isAdmin) {
       partner = await DeliveryBoy.findOne({}).sort({ createdAt: -1 }).lean();
     }
     if (!partner) {
+      if (!req.user) {
+        return res.status(404).json({ success: false, message: 'Delivery partner not found.' });
+      }
       partner = {
         _id: req.user?.id || 'partner_id',
         name: req.user?.name || 'Delivery Partner',

@@ -138,18 +138,20 @@ class HtmlReportService {
     // Build row stats per customer
     final rowsHtml = customers.map((c) {
       final cId = c['id']?.toString() ?? c['_id']?.toString() ?? '';
-      final custCode = c['customerId']?.toString() ?? '';
-      final cMob = c['mobile']?.toString() ?? '';
-      final name = c['name']?.toString() ?? 'Customer';
-      final area = c['area']?.toString() ?? 'Hyd';
+      final rawCustCode = c['customerId']?.toString() ?? '';
+      final rawCMob = c['mobile']?.toString() ?? '';
+      final custCode = _esc(rawCustCode);
+      final cMob = _esc(rawCMob);
+      final name = _esc(c['name']?.toString() ?? 'Customer');
+      final area = _esc(c['area']?.toString() ?? 'Hyd');
       final balance = num.tryParse(c['currentBalance']?.toString() ?? '0') ?? 0;
 
-      final keys = [cId, custCode, cMob].where((k) => k.isNotEmpty).toList();
+      final keys = [cId, rawCustCode, rawCMob].where((k) => k.isNotEmpty).toList();
 
       final cDeliveries = deliveries.where((d) {
         final dCustId = d['customerId']?.toString() ?? '';
         final dPhone = d['customerPhone']?.toString() ?? '';
-        return keys.contains(dCustId) || (cMob.isNotEmpty && dPhone.contains(cMob.replaceAll(RegExp(r'[^0-9]'), '')));
+        return keys.contains(dCustId) || (rawCMob.isNotEmpty && dPhone.contains(rawCMob.replaceAll(RegExp(r'[^0-9]'), '')));
       }).toList();
 
       final completedDeliveries = cDeliveries.where((d) => d['status'] == 'delivered').toList();
@@ -377,7 +379,7 @@ class HtmlReportService {
             final curd = num.tryParse(d['actualCurd']?.toString() ?? d['plannedCurd']?.toString() ?? '0') ?? 0;
             final rate = num.tryParse(d['milkPrice']?.toString() ?? '60') ?? 60;
             final amount = num.tryParse(d['totalAmount']?.toString() ?? '0') ?? (milk * rate);
-            final partner = d['deliveryBoyName']?.toString() ?? 'Assigned Partner';
+            final partner = _esc(d['deliveryBoyName']?.toString() ?? 'Assigned Partner');
             final status = d['status']?.toString() ?? 'delivered';
 
             String statusBadge = status == 'delivered'
@@ -416,9 +418,9 @@ class HtmlReportService {
             } catch (_) {}
 
             final amt = num.tryParse(p['amount']?.toString() ?? '0') ?? 0;
-            final mode = (p['paymentMethod']?.toString() ?? 'CASH').toUpperCase();
-            final ref = p['referenceNumber']?.toString() ?? '';
-            final by = p['collectedBy']?.toString() ?? 'Partner';
+            final mode = _esc((p['paymentMethod']?.toString() ?? 'CASH').toUpperCase());
+            final ref = _esc(p['referenceNumber']?.toString() ?? '');
+            final by = _esc(p['collectedBy']?.toString() ?? 'Partner');
 
             return '''
               <tr>
@@ -460,7 +462,7 @@ class HtmlReportService {
 
         <div class="title-box">
           <div class="report-title">CUSTOMER STATEMENT & DELIVERIES LEDGER</div>
-          <div class="report-period">Account: $name ${custCode.isNotEmpty ? '($custCode)' : ''} | Period: $periodLabel</div>
+          <div class="report-period">Account: $name ${custCode.isNotEmpty ? '($custCode)' : ''} | Period: ${_esc(periodLabel)}</div>
         </div>
 
         <!-- Customer Card -->

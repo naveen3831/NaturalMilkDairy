@@ -1,3 +1,5 @@
+const { logSecurityEvent } = require('./securityMiddleware');
+
 function createRateLimiter({ windowMs, maxRequests, message }) {
   const requests = new Map();
 
@@ -25,6 +27,7 @@ function createRateLimiter({ windowMs, maxRequests, message }) {
 
     if (entry.count > maxRequests) {
       res.setHeader('Retry-After', Math.max(1, Math.ceil((entry.resetAt - now) / 1000)));
+      logSecurityEvent('RATE_LIMIT_EXCEEDED', req, { maxRequests });
       return res.status(429).json({ success: false, message });
     }
     return next();

@@ -328,21 +328,32 @@ const updateSupportTicket = async (req, res) => {
 
 const sendChatMessage = async (req, res) => {
   try {
-    const { ticketId, text, message, senderName, senderPhone, senderArea, senderRole } = req.body;
+    const { ticketId, text, message, senderArea } = req.body;
     const cleanText = (text || message || '').trim();
     if (!cleanText) {
       return res.status(400).json({ success: false, message: 'Message text is required.' });
     }
 
-    const role = req.user?.role || senderRole || 'customer';
-    const name = req.user?.name || senderName || (role === 'admin' ? 'Naveen Kumar (Admin Desk)' : 'Customer');
-    const phone = req.user?.mobile || senderPhone || '';
+    // Derive role and identity strictly from authenticated req.user (never trust client-supplied senderRole)
+    const isAdmin = req.user?.role === 'admin';
+    const role = isAdmin ? 'admin' : (req.user?.role || 'customer');
+    const name = req.user?.name || (role === 'admin' ? 'Naveen Kumar (Admin Desk)' : 'Customer');
+    const phone = req.user?.mobile || '';
+    const userId = req.user?.id || req.user?.customerId || '';
 
     let ticket = null;
     if (ticketId) {
       ticket = await SupportTicket.findOne({
-        $or: [{ ticketId }, { _id: ticketId.length === 24 ? ticketId : null }],
+        $or: [{ ticketId: String(ticketId) }, { _id: String(ticketId).length === 24 ? ticketId : null }],
       });
+      if (ticket && !isAdmin) {
+        const ownsTicket =
+          (userId && ticket.senderId && String(ticket.senderId) === String(userId)) ||
+          (phone && ticket.senderPhone && String(ticket.senderPhone) === String(phone));
+        if (!ownsTicket) {
+          return res.status(403).json({ success: false, message: 'Forbidden. You do not have access to this support ticket.' });
+        }
+      }
     }
 
     if (!ticket && phone) {
@@ -424,16 +435,19 @@ const sendChatMessage = async (req, res) => {
 
 const getMyChats = async (req, res) => {
   try {
-    const phone = req.query.phone || req.user?.mobile || '';
+    const isAdmin = req.user?.role === 'admin';
+    const phone = isAdmin ? (req.query.phone || req.user?.mobile || '') : (req.user?.mobile || '');
     const userId = req.user?.id || req.user?.customerId || '';
 
     const query = {};
-    if (phone) {
+    if (phone && userId && !isAdmin) {
+      query.$or = [{ senderPhone: phone }, { senderId: userId }];
+    } else if (phone) {
       query.senderPhone = phone;
     } else if (userId) {
       query.senderId = userId;
     } else {
-      query.senderRole = 'customer';
+      return res.json({ success: true, tickets: [] });
     }
 
     let tickets = [];

@@ -274,16 +274,23 @@ export default function Footer({ setActiveTab }) {
               <button
                 type="button"
                 className="nmd-spesh-legal-btn"
-                onClick={() => setLegalModal('privacy')}
+                onClick={() => handleNavClick('privacy-policy')}
               >
                 Privacy Policy
               </button>
               <button
                 type="button"
                 className="nmd-spesh-legal-btn"
-                onClick={() => setLegalModal('terms')}
+                onClick={() => handleNavClick('terms-and-conditions')}
               >
-                Terms of Service
+                Terms &amp; Conditions
+              </button>
+              <button
+                type="button"
+                className="nmd-spesh-legal-btn"
+                onClick={() => handleNavClick('delete-account')}
+              >
+                Delete Account
               </button>
             </div>
           </div>
@@ -414,11 +421,11 @@ export default function Footer({ setActiveTab }) {
         </div>
 
         {/* Legal Links */}
-        <div className="nmd-mobile-footer-legal">
+        <div className="nmd-mobile-footer-legal" style={{ flexWrap: 'wrap', justifyContent: 'center' }}>
           <button
             type="button"
             className="nmd-mobile-footer-legal-btn"
-            onClick={() => setLegalModal('privacy')}
+            onClick={() => handleNavClick('privacy-policy')}
           >
             Privacy Policy
           </button>
@@ -426,9 +433,17 @@ export default function Footer({ setActiveTab }) {
           <button
             type="button"
             className="nmd-mobile-footer-legal-btn"
-            onClick={() => setLegalModal('terms')}
+            onClick={() => handleNavClick('terms-and-conditions')}
           >
-            Terms of Service
+            Terms &amp; Conditions
+          </button>
+          <span className="nmd-mobile-footer-dot">•</span>
+          <button
+            type="button"
+            className="nmd-mobile-footer-legal-btn"
+            onClick={() => handleNavClick('delete-account')}
+          >
+            Delete Account
           </button>
         </div>
 

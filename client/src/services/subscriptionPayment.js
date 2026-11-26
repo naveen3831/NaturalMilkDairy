@@ -178,7 +178,10 @@ export async function startSubscriptionPayment(params = {}) {
 
   let paymentResolved = false;
 
-  const keyId = order.keyId || order.key || 'rzp_test_TZpr4ebY4Qvo8k';
+  const keyId = order.keyId || order.key || import.meta.env.VITE_RAZORPAY_KEY_ID;
+  if (!keyId) {
+    throw new Error('Payment gateway key is missing from server order response.');
+  }
   const description =
     resolvedPurpose === 'upgrade'
       ? `Subscription Upgrade - ${bodyPayload.planName || `${bodyPayload.milkQty || 1}L Plan`}`

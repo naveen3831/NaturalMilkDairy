@@ -60,6 +60,12 @@ const cors = require('cors');
 const morgan = require('morgan');
 const { connectDB } = require('./config/db');
 const { initWebSocket } = require('./config/websocket');
+const {
+  securityHeadersMiddleware,
+  sanitizeNoSqlMiddleware,
+  logSecurityEvent,
+} = require('./middleware/securityMiddleware');
+const { createRateLimiter } = require('./middleware/rateLimitMiddleware');
 
 // Initialize WebSocket server
 initWebSocket(server);
@@ -67,11 +73,12 @@ initWebSocket(server);
 // 3. Connect to Database asynchronously in background
 connectDB();
 
-// 4. Allowed Origins for CORS
+// 4. Allowed Origins for CORS (Strict allowlist — no wildcard subdomain reflection)
 const staticAllowedOrigins = [
   'https://natural-milk-dairy-naveen3831s-projects.vercel.app',
   'https://natural-milk-dairy.vercel.app',
   'https://naturalmilkdairy.speshway.site',
+  'https://naturalmilkdiary.onrender.com',
   'http://localhost:3000',
   'http://localhost:5173',
   'http://127.0.0.1:3000',
@@ -86,26 +93,12 @@ const envOrigins = [
 const allowedOrigins = new Set([...staticAllowedOrigins, ...envOrigins]);
 
 const isOriginAllowed = (origin) => {
-  if (!origin) return true;
-  if (allowedOrigins.has(origin)) return true;
-  if (/^https:\/\/natural-milk-dairy.*\.vercel\.app$/i.test(origin)) return true;
-  if (/^https:\/\/.*\.speshway\.site$/i.test(origin)) return true;
-  return false;
+  if (!origin) return true; // Native mobile apps do not send an Origin header
+  return allowedOrigins.has(origin.trim());
 };
 
 app.disable('x-powered-by');
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
-  if (process.env.NODE_ENV === 'production') {
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  } else {
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  }
-  next();
-});
+app.use(securityHeadersMiddleware);
 
 app.use(cors({
   origin(origin, callback) {
@@ -118,8 +111,18 @@ app.use(cors({
   maxAge: 600,
 }));
 
-app.use(express.json({ limit: '15mb', strict: true }));
+app.use(express.json({ limit: '5mb', strict: true }));
+app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use(sanitizeNoSqlMiddleware);
 app.use(morgan('dev'));
+
+// Global API rate limiter (protects against floods/DoS while permitting normal real-time app usage)
+const globalApiLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 300,
+  message: 'Too many requests from this IP. Please slow down and try again shortly.',
+});
+app.use('/api', globalApiLimiter);
 
 // Static files (for manifest and fallback static web assets)
 app.use('/public', express.static(path.join(__dirname, '../client/public')));
@@ -154,40 +157,29 @@ app.all('/api/*', (req, res) => {
 // Static files for client build
 app.use(express.static(path.join(__dirname, '../client/dist')));
 
-// Error handling middleware
+// Centralized error handling middleware (never leak stack traces or internal details)
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   if (err.message === 'Origin is not allowed by CORS.') {
+    logSecurityEvent('CORS_REJECTED', req, { origin: req.headers.origin });
     return res.status(403).json({ success: false, message: 'Request origin is not allowed.' });
   }
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({ success: false, message: 'Invalid JSON payload received.' });
   }
   if (err.type === 'entity.too.large') {
+    logSecurityEvent('PAYLOAD_TOO_LARGE', req);
     return res.status(413).json({ success: false, message: 'Request body is too large.' });
   }
-  console.error('Server Error:', err.stack);
+  console.error('Server Error:', err.message);
   return res.status(500).json({ success: false, message: 'Internal Server Error' });
 });
 
-// SPA fallback
+// SPA fallback (never execute synchronous builds inside request handler)
 app.get('*', (req, res) => {
   const indexPath = path.join(__dirname, '../client/dist/index.html');
   if (fs.existsSync(indexPath)) {
     return res.sendFile(indexPath);
   }
-
-  // Attempt dynamic self-healing build if client/dist is missing
-  try {
-    const cp = require('child_process');
-    console.log('⚠️ client/dist/index.html missing! Initiating automatic client build...');
-    cp.execSync('npm --prefix client run build', { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
-    if (fs.existsSync(indexPath)) {
-      return res.sendFile(indexPath);
-    }
-  } catch (buildErr) {
-    console.error('Auto build client dist failed:', buildErr.message);
-  }
-
-  res.send('Natural Milk Dairy API is active. Please start client or build dist.');
+  return res.status(200).send('Natural Milk Dairy API is active.');
 });

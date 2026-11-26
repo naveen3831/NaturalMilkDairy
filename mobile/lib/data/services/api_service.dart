@@ -30,14 +30,14 @@ class ApiService {
   }
 
   String get baseUrl {
+    if (AppConfig.isLiveServerActive) {
+      return AppConfig.liveBaseUrl;
+    }
     if (_activeBaseUrl != null && _activeBaseUrl!.isNotEmpty) {
       return _activeBaseUrl!;
     }
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       return _customBaseUrl!;
-    }
-    if (AppConfig.isLiveServerActive) {
-      return AppConfig.liveBaseUrl;
     }
     return AppConstants.defaultBaseUrl;
   }
@@ -118,8 +118,12 @@ class ApiService {
   }
 
   Future<void> setCustomBaseUrl(String url) async {
-    _customBaseUrl = url.trim();
-    _activeBaseUrl = _customBaseUrl;
+    final trimmed = url.trim();
+    if (kReleaseMode && trimmed.isNotEmpty && !trimmed.startsWith('https://')) {
+      return; // Never allow cleartext HTTP URLs in release builds
+    }
+    _customBaseUrl = trimmed;
+    _activeBaseUrl = AppConfig.isLiveServerActive ? AppConfig.liveBaseUrl : _customBaseUrl;
     final prefs = await SharedPreferences.getInstance();
     if (_customBaseUrl != null && _customBaseUrl!.isNotEmpty) {
       await prefs.setString(AppConstants.keyCustomBaseUrl, _customBaseUrl!);

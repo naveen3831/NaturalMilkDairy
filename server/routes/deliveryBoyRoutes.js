@@ -10,12 +10,12 @@ const {
   toggleDutyStatus,
   updateMyProfile,
 } = require('../controllers/deliveryBoyController');
-const { verifyToken, optionalToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
+const { verifyToken, requireAdmin, requireDeliveryStaff } = require('../middleware/authMiddleware');
 
 router.put('/me', verifyToken, requireDeliveryStaff, updateMyProfile);
 router.put('/profile', verifyToken, requireDeliveryStaff, updateMyProfile);
-router.post('/duty-status', optionalToken, toggleDutyStatus);
-router.post('/:id/duty-status', optionalToken, toggleDutyStatus);
+router.post('/duty-status', verifyToken, requireDeliveryStaff, toggleDutyStatus);
+router.post('/:id/duty-status', verifyToken, requireDeliveryStaff, toggleDutyStatus);
 router.get('/', verifyToken, requireDeliveryStaff, getDeliveryBoys);
 router.post('/', verifyToken, requireAdmin, addDeliveryBoy);
 router.put('/:id', verifyToken, requireAdmin, updateDeliveryBoy);

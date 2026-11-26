@@ -4,8 +4,10 @@ const Payment = require('../models/Payment');
 const Subscription = require('../models/Subscription');
 const Delivery = require('../models/Delivery');
 const Notification = require('../models/Notification');
+const Product = require('../models/Product');
 const { ensureDeliveriesForDate, formatDate } = require('../services/deliveryService');
 const { broadcast } = require('../config/websocket');
+const { logSecurityEvent } = require('../middleware/securityMiddleware');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SUBSCRIPTION_DAYS = 30;
@@ -53,9 +55,9 @@ const normalizePlan = (body) => {
   const extraProducts = rawExtra.map((p) => ({
     productId: String(p.productId || p._id || p.id || ''),
     name: String(p.name || 'Add-on Product'),
-    quantity: Number(p.quantity) || 1,
+    quantity: Math.min(50, Math.max(1, Number(p.quantity) || 1)),
     unit: String(p.unit || 'pack'),
-    price: Number(p.price) || 0,
+    price: Math.max(0, Number(p.price) || 0),
   })).filter((p) => p.quantity > 0);
 
   const hasItems = (milkQty > 0 || curdQty > 0 || extraProducts.length > 0);
@@ -187,13 +189,11 @@ const createOrder = async (req, res) => {
           notes: { customerId: customer.customerId, purpose: 'extend', days: String(days) },
         });
       } catch (orderErr) {
-        console.warn('Razorpay extend order fallback:', orderErr.message);
-        order = {
-          id: `order_ext_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          amount,
-          currency: 'INR',
-          status: 'created',
-        };
+        console.error('Razorpay extend order creation failed:', orderErr.message);
+        return res.status(502).json({
+          success: false,
+          message: 'Payment gateway is temporarily unavailable. Please try again shortly.',
+        });
       }
 
       const subscription = await Subscription.create({
@@ -228,7 +228,7 @@ const createOrder = async (req, res) => {
           id: order.id,
           amount: order.amount,
           currency: order.currency,
-          keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_TZpr4ebY4Qvo8k',
+          keyId: process.env.RAZORPAY_KEY_ID,
         },
         subscription: {
           id: subscription._id.toString(),
@@ -247,11 +247,29 @@ const createOrder = async (req, res) => {
       const frequency = req.body.frequency || 'daily';
       const milkType = rawMilkType || 'Desi Cow Milk (A2)';
       const planName = rawPlanName || `${milkType} Upgraded Plan (${milkQty}L)`;
-      const extraProducts = Array.isArray(req.body.extraProducts) ? req.body.extraProducts : [];
+      const rawExtraProducts = Array.isArray(req.body.extraProducts) ? req.body.extraProducts : [];
+      const Product = require('../models/Product');
+      const catalogProducts = await Product.find({ status: 'active' }).lean();
+      const productById = new Map(catalogProducts.map((p) => [p._id.toString(), p]));
+      const productByName = new Map(catalogProducts.map((p) => [String(p.name || '').toLowerCase().trim(), p]));
+      const extraProducts = rawExtraProducts
+        .filter((prod) => prod && Number(prod.quantity) > 0)
+        .map((prod) => {
+          const pid = String(prod.productId || prod._id || prod.id || '');
+          const pname = String(prod.name || 'Add-on Product').trim();
+          const matched = (pid && productById.get(pid)) || productByName.get(pname.toLowerCase());
+          return {
+            productId: matched ? matched._id.toString() : pid,
+            name: matched ? matched.name : pname,
+            quantity: Math.min(50, Math.max(1, Number(prod.quantity) || 1)),
+            unit: matched ? (matched.unit || 'pack') : String(prod.unit || 'pack'),
+            price: matched ? Number(matched.price) : Math.max(0, Number(prod.price) || 0),
+          };
+        });
       const milkPrice = milkType.includes('A2') ? 60 : 54;
       let dailyCost = milkQty * milkPrice + (curdQty / 500) * 30;
       for (const prod of extraProducts) {
-        dailyCost += (Number(prod.price) || 0) * (Number(prod.quantity) || 1);
+        dailyCost += prod.price * prod.quantity;
       }
       const days = 30;
       const amount = Math.round(dailyCost * days * 100);
@@ -290,13 +308,11 @@ const createOrder = async (req, res) => {
           notes: { customerId: customer.customerId, purpose: 'upgrade', milkQty: String(milkQty) },
         });
       } catch (orderErr) {
-        console.warn('Razorpay upgrade order fallback:', orderErr.message);
-        order = {
-          id: `order_upg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          amount,
-          currency: 'INR',
-          status: 'created',
-        };
+        console.error('Razorpay upgrade order creation failed:', orderErr.message);
+        return res.status(502).json({
+          success: false,
+          message: 'Payment gateway is temporarily unavailable. Please try again shortly.',
+        });
       }
 
       const subscription = await Subscription.create({
@@ -332,7 +348,7 @@ const createOrder = async (req, res) => {
           id: order.id,
           amount: order.amount,
           currency: order.currency,
-          keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_TZpr4ebY4Qvo8k',
+          keyId: process.env.RAZORPAY_KEY_ID,
         },
         subscription: {
           id: subscription._id.toString(),
@@ -350,6 +366,16 @@ const createOrder = async (req, res) => {
     const plan = normalizePlan(req.body);
     if (!plan) {
       return res.status(400).json({ success: false, message: 'Choose a valid milk or curd quantity and delivery schedule.' });
+    }
+    if (plan.extraProducts && plan.extraProducts.length > 0) {
+      const Product = require('../models/Product');
+      const catalogProducts = await Product.find({ status: 'active' }).lean();
+      const productById = new Map(catalogProducts.map((p) => [p._id.toString(), p]));
+      const productByName = new Map(catalogProducts.map((p) => [String(p.name || '').toLowerCase().trim(), p]));
+      plan.extraProducts = plan.extraProducts.map((prod) => {
+        const matched = (prod.productId && productById.get(prod.productId)) || productByName.get(String(prod.name || '').toLowerCase().trim());
+        return matched ? { ...prod, productId: matched._id.toString(), name: matched.name, unit: matched.unit || prod.unit, price: Number(matched.price) } : prod;
+      });
     }
 
     if (!customer) {
@@ -409,14 +435,11 @@ const createOrder = async (req, res) => {
         notes: { customerId: customer.customerId, planDays: String(totalDays), orderType: isOneTime ? 'one_time' : 'subscription' },
       });
     } catch (orderErr) {
-      console.warn('Razorpay live order creation fallback:', orderErr.message);
-      const mockOrderId = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      order = {
-        id: mockOrderId,
-        amount,
-        currency: 'INR',
-        status: 'created',
-      };
+      console.error('Razorpay live order creation failed:', orderErr.message);
+      return res.status(502).json({
+        success: false,
+        message: 'Payment gateway is temporarily unavailable. Please try again shortly.',
+      });
     }
 
     const subscription = await Subscription.create({
@@ -449,7 +472,7 @@ const createOrder = async (req, res) => {
         id: order.id,
         amount: order.amount,
         currency: order.currency,
-        keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_TZpr4ebY4Qvo8k',
+        keyId: process.env.RAZORPAY_KEY_ID,
       },
       subscription: {
         id: subscription._id.toString(),
@@ -491,21 +514,28 @@ const verifyPayment = async (req, res) => {
       });
     }
 
-    if (signature && process.env.RAZORPAY_KEY_SECRET) {
-      try {
-        const expectedSignature = crypto
-          .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-          .update(`${orderId}|${paymentId}`)
-          .digest('hex');
-        const expectedBuffer = Buffer.from(expectedSignature);
-        const providedBuffer = Buffer.from(signature);
-        if (expectedBuffer.length === providedBuffer.length &&
-            !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
-          console.warn('HMAC signature mismatch note; processing with gateway check');
-        }
-      } catch (sigErr) {
-        console.warn('Signature verification check note:', sigErr.message);
-      }
+    if (!signature || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing payment verification signature or gateway configuration.',
+      });
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${orderId}|${paymentId}`)
+      .digest('hex');
+    const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+    const providedBuffer = Buffer.from(String(signature).trim(), 'utf8');
+    if (
+      expectedBuffer.length !== providedBuffer.length ||
+      !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+    ) {
+      console.warn('[SECURITY] Razorpay HMAC signature verification failed for order:', orderId);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment signature verification failed. Transaction could not be verified.',
+      });
     }
 
     let purposeLabel = 'subscription';

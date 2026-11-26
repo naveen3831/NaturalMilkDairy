@@ -15,7 +15,10 @@ const initialProducts = [
 
 const connectDB = async (retryCount = 0) => {
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb+srv://milkdairy:milkdairy123@cluster0.dj4zgry.mongodb.net/natural_milk_dairy?retryWrites=true&w=majority&appName=Cluster0';
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      throw new Error('MONGODB_URI environment variable is not configured.');
+    }
     const conn = await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 30000,
     });
@@ -39,6 +42,30 @@ const connectDB = async (retryCount = 0) => {
       }
     } catch (seedErr) {
       console.log(`ℹ️ Catalog check: ${seedErr.message}`);
+    }
+
+    // Seed verification user if not already present (preserves all existing users)
+    try {
+      const User = require('../models/User');
+      const { hashPassword } = require('../security/password');
+      const existingVerifyUser = await User.findOne({ email: 'verification@gmail.com' }).lean();
+      if (!existingVerifyUser) {
+        const hashedPassword = await hashPassword('verify@123');
+        await User.create({
+          name: 'Verification User',
+          mobile: '9900000001',
+          email: 'verification@gmail.com',
+          password: hashedPassword,
+          role: 'customer',
+          status: 'active',
+          assignedArea: 'Madhapur',
+          address: 'Madhapur, Hyderabad',
+          authProvider: 'local',
+        });
+        console.log('👤 Seeded verification user (verification@gmail.com).');
+      }
+    } catch (userSeedErr) {
+      console.log(`ℹ️ Verification user seed check: ${userSeedErr.message}`);
     }
 
     mongoose.connection.on('disconnected', () => {

@@ -18,8 +18,8 @@ const supportCreateLimiter = createRateLimiter({
 });
 
 router.get('/', verifyToken, requireAdmin, getSupportTickets);
-router.get('/my-chats', getMyChats);
-router.post('/chat', sendChatMessage);
+router.get('/my-chats', verifyToken, getMyChats);
+router.post('/chat', verifyToken, supportCreateLimiter, sendChatMessage);
 router.post('/', supportCreateLimiter, createSupportTicket);
 router.put('/:id', verifyToken, requireAdmin, updateSupportTicket);
 router.delete('/:id', verifyToken, requireAdmin, deleteSupportTicket);

@@ -381,9 +381,10 @@ const markAsRead = async (req, res) => {
 
     const isObjectId = mongoose.Types.ObjectId.isValid(id);
     const idFilter = isObjectId ? { $or: [{ _id: id }, { id }] } : { id };
+    const scopeFilter = await getUserNotificationScope(req.user);
 
     try {
-      await Notification.updateMany(idFilter, { isRead: true });
+      await Notification.updateMany({ $and: [idFilter, scopeFilter] }, { isRead: true });
     } catch (dbErr) {
       console.warn('markAsRead DB warning:', dbErr.message);
     }

@@ -1,8 +1,12 @@
 const jwt = require('jsonwebtoken');
 const Customer = require('../models/Customer');
 const { findCustomerForRequest } = require('../services/customerLookupService');
+const { logSecurityEvent } = require('../security/securityLogger');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'natural_milk_dairy_super_secret_jwt_key_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('FATAL: JWT_SECRET environment variable is required.');
+}
 const VALID_ROLES = new Set(['admin', 'delivery_boy', 'customer', 'user']);
 
 /**
@@ -63,6 +67,7 @@ const verifyToken = (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
     if (!decoded.id || !VALID_ROLES.has(decoded.role)) {
+      logSecurityEvent('AUTH_INVALID_TOKEN_CLAIMS', { ip: req.ip, method: req.method, path: req.originalUrl });
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired JWT token. Please sign in again.',
@@ -73,6 +78,12 @@ const verifyToken = (req, res, next) => {
     next();
   } catch (err) {
     const isExpired = err.name === 'TokenExpiredError';
+    logSecurityEvent(isExpired ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_TOKEN_REJECTED', {
+      ip: req.ip,
+      method: req.method,
+      path: req.originalUrl,
+      reason: err.name,
+    });
     return res.status(401).json({
       success: false,
       message: isExpired
@@ -122,6 +133,7 @@ const optionalToken = (req, res, next) => {
  */
 const requireAdmin = (req, res, next) => {
   if (!req.user || req.user.role !== 'admin') {
+    logSecurityEvent('RBAC_ADMIN_DENIED', req);
     return res.status(403).json({
       success: false,
       message: 'Forbidden. Administrator privileges required.',
@@ -132,6 +144,7 @@ const requireAdmin = (req, res, next) => {
 
 const requireCustomer = (req, res, next) => {
   if (!req.user || (req.user.role !== 'customer' && req.user.role !== 'user')) {
+    logSecurityEvent('RBAC_CUSTOMER_DENIED', req);
     return res.status(403).json({
       success: false,
       message: 'Forbidden. Customer account access is required.',
@@ -142,6 +155,7 @@ const requireCustomer = (req, res, next) => {
 
 const requireDeliveryStaff = (req, res, next) => {
   if (!req.user || !['admin', 'delivery_boy'].includes(req.user.role)) {
+    logSecurityEvent('RBAC_DELIVERY_DENIED', req);
     return res.status(403).json({
       success: false,
       message: 'Administrator or delivery partner access is required.',

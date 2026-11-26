@@ -835,6 +835,7 @@ export default function ReportDownloadModal({
               <iframe
                 title={previewData.titleDoc || 'Delivery Statement Report'}
                 srcDoc={previewData.html}
+                sandbox=""
                 style={{
                   width: '100%',
                   height: '52vh',

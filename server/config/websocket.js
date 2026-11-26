@@ -4,16 +4,25 @@ const { JWT_SECRET } = require('../middleware/authMiddleware');
 
 let wss = null;
 
+const WS_ALLOWED_ORIGINS = new Set([
+  'https://natural-milk-dairy-naveen3831s-projects.vercel.app',
+  'https://natural-milk-dairy.vercel.app',
+  'https://naturalmilkdairy.speshway.site',
+  'https://naturalmilkdiary.onrender.com',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173',
+  ...(process.env.CLIENT_URL ? [process.env.CLIENT_URL.trim()] : []),
+  ...(process.env.CORS_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+]);
+
 function initWebSocket(server) {
   const connectionCounts = new Map();
 
   const isOriginAllowed = (origin) => {
     if (!origin) return true; // Mobile apps and native clients have no Origin header
-    const lower = origin.toLowerCase().trim();
-    if (lower.includes('localhost') || lower.includes('127.0.0.1')) return true;
-    if (lower.includes('.speshway.site') || lower.includes('.vercel.app')) return true;
-    if (process.env.CLIENT_URL && lower === process.env.CLIENT_URL.toLowerCase().trim()) return true;
-    return true; // Permit WebSocket handshake; auth is strictly enforced by JWT token below
+    return WS_ALLOWED_ORIGINS.has(origin.trim());
   };
 
   wss = new WebSocketServer({
@@ -43,7 +52,7 @@ function initWebSocket(server) {
     ws.send(JSON.stringify({ type: 'AUTH_REQUIRED', timestamp: Date.now() }));
     const authTimeout = setTimeout(() => {
       if (!ws.user) {
-        // Fallback to guest instead of disconnecting, so client receives public broadcasts
+        // Guest connections only receive public catalog/location updates, never private user/payment data
         ws.user = { id: 'guest', role: 'guest' };
         ws.send(JSON.stringify({ type: 'AUTHENTICATED', role: 'guest', fallback: true, timestamp: Date.now() }));
       }
@@ -73,17 +82,18 @@ function initWebSocket(server) {
           return;
         }
         try {
-          ws.user = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
+          const verified = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
           if (
-            !ws.user.id ||
-            !['admin', 'delivery_boy', 'customer', 'user', 'guest'].includes(ws.user.role)
+            !verified.id ||
+            !['admin', 'delivery_boy', 'customer', 'user'].includes(verified.role)
           ) {
             ws.user = { id: 'guest', role: 'guest' };
+          } else {
+            ws.user = verified;
           }
           clearTimeout(authTimeout);
           ws.send(JSON.stringify({ type: 'AUTHENTICATED', role: ws.user.role, timestamp: Date.now() }));
         } catch {
-          // Token expired or invalid: downgrade to guest role so connection stays alive
           ws.user = { id: 'guest', role: 'guest' };
           clearTimeout(authTimeout);
           ws.send(JSON.stringify({ type: 'AUTHENTICATED', role: 'guest', fallback: true, timestamp: Date.now() }));
@@ -94,15 +104,19 @@ function initWebSocket(server) {
       if (data?.type === 'PING') {
         ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
       } else if (data?.type === 'AUTH' || data?.type === 'GUEST') {
-        // Dynamic re-auth on user login or token refresh
-        if (data?.token && data.token !== 'guest') {
+        if (data?.token && data.token !== 'guest' && typeof data.token === 'string') {
           try {
-            ws.user = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
-          } catch (_) {}
+            const verified = jwt.verify(data.token, JWT_SECRET, { algorithms: ['HS256'] });
+            if (verified.id && ['admin', 'delivery_boy', 'customer', 'user'].includes(verified.role)) {
+              ws.user = verified;
+            }
+          } catch (_) {
+            ws.user = { id: 'guest', role: 'guest' };
+          }
+        } else if (data?.type === 'GUEST') {
+          ws.user = { id: 'guest', role: 'guest' };
         }
         ws.send(JSON.stringify({ type: 'AUTHENTICATED', role: ws.user?.role || 'guest', timestamp: Date.now() }));
-      } else {
-        // Do not close connection on unhandled message; ignore safely
       }
     });
 
@@ -155,7 +169,18 @@ function broadcast(event, payload = {}) {
       client.close(1008, 'Authentication expired');
       return;
     }
-    const isAdmin = client.user.role === 'admin';
+
+    const role = client.user.role;
+    const isAdmin = role === 'admin';
+
+    // Guest connections ONLY receive public non-PII catalog/area updates
+    if (role === 'guest') {
+      if (['PRODUCT_UPDATED', 'LOCATION_UPDATED', 'BANNER_UPDATED'].includes(event)) {
+        client.send(message);
+      }
+      return;
+    }
+
     const isSafeForDelivery = [
       'DELIVERY_COMPLETED',
       'DELIVERY_UPDATED',
@@ -177,6 +202,7 @@ function broadcast(event, payload = {}) {
       'SUPPORT_TICKET_UPDATED',
       'SUPPORT_TICKET_CREATED',
     ].includes(event);
+
     const isSafeForCustomer = [
       'DELIVERY_COMPLETED',
       'PRODUCT_UPDATED',
@@ -186,8 +212,6 @@ function broadcast(event, payload = {}) {
       'NOTIFICATION_DELETED',
       'NOTIFICATIONS_CLEARED',
       'DELIVERY_UPDATED',
-      'DELIVERY_BOY_UPDATED',
-      'DRIVER_DUTY_UPDATED',
       'CUSTOMER_UPDATED',
       'SUBSCRIPTION_UPDATED',
       'PAYMENT_RECORDED',
@@ -195,35 +219,48 @@ function broadcast(event, payload = {}) {
       'REPORT_UPDATED',
       'ORDER_UPDATED',
       'ORDER_CREATED',
-      'INVENTORY_UPDATED',
-      'STOCK_UPDATED',
       'SUPPORT_CHAT_MESSAGE',
       'SUPPORT_TICKET_UPDATED',
-      'SUPPORT_TICKET_CREATED',
     ].includes(event);
-    // Strict user-level role isolation: never broadcast one user's private data to another user
+
     if (!isAdmin) {
-      if (['customer', 'user', 'guest'].includes(client.user.role)) {
+      if (['customer', 'user'].includes(role)) {
         if (!isSafeForCustomer) return;
 
-        // Delivery completed/updated events must only reach the targeted customer
-        if (event === 'DELIVERY_COMPLETED' || event === 'DELIVERY_UPDATED') {
+        // Scope customer-specific events strictly to the owning customer
+        const customerScopedEvents = new Set([
+          'DELIVERY_COMPLETED',
+          'DELIVERY_UPDATED',
+          'CUSTOMER_UPDATED',
+          'SUBSCRIPTION_UPDATED',
+          'PAYMENT_RECORDED',
+          'PAYMENT_UPDATED',
+          'ORDER_UPDATED',
+          'ORDER_CREATED',
+        ]);
+        if (customerScopedEvents.has(event)) {
           const clientCustId = (client.user.customerId || client.user.id || '').toString().toLowerCase().trim();
           const clientMobile = (client.user.mobile || '').toString().replace(/\D/g, '').slice(-10);
           const payloadCustId = (payload.customerId || payload.id || '').toString().toLowerCase().trim();
-          const payloadMobile = (payload.customerPhone || payload.customerMobile || '').toString().replace(/\D/g, '').slice(-10);
+          const payloadMobile = (payload.customerPhone || payload.customerMobile || payload.mobile || '').toString().replace(/\D/g, '').slice(-10);
 
           if (payloadCustId && clientCustId && payloadCustId !== clientCustId && (!clientMobile || !payloadMobile || clientMobile !== payloadMobile)) {
-            return; // Drop event: belongs to a different customer
+            return;
           }
         }
 
-        // Targeted notifications must only reach the addressed recipient
+        if (event === 'SUPPORT_CHAT_MESSAGE' || event === 'SUPPORT_TICKET_UPDATED') {
+          const clientMobile = (client.user.mobile || '').toString().replace(/\D/g, '').slice(-10);
+          const payloadMobile = (payload.phone || payload.mobile || payload.customerPhone || '').toString().replace(/\D/g, '').slice(-10);
+          const payloadUserId = (payload.userId || '').toString();
+          if ((payloadUserId && payloadUserId !== String(client.user.id)) && (!clientMobile || !payloadMobile || clientMobile !== payloadMobile)) {
+            return;
+          }
+        }
+
         if (event === 'NOTIFICATION_CREATED') {
           const recipRole = (payload.recipientRole || '').toLowerCase().trim();
-          if (recipRole && recipRole !== 'all' && recipRole !== 'customer') {
-            return; // Not addressed to customers
-          }
+          if (recipRole && recipRole !== 'all' && recipRole !== 'customer') return;
           const recipId = (payload.recipientId || '').toString().toLowerCase().trim();
           if (recipId) {
             const clientIds = [
@@ -232,20 +269,15 @@ function broadcast(event, payload = {}) {
               client.user.mobile,
               client.user.email,
             ].filter(Boolean).map((s) => s.toString().toLowerCase().trim());
-
-            if (!clientIds.includes(recipId)) {
-              return; // Drop event: notification is targeted to another customer
-            }
+            if (!clientIds.includes(recipId)) return;
           }
         }
-      } else if (client.user.role === 'delivery_boy') {
+      } else if (role === 'delivery_boy') {
         if (!isSafeForDelivery) return;
 
         if (event === 'NOTIFICATION_CREATED') {
           const recipRole = (payload.recipientRole || '').toLowerCase().trim();
-          if (recipRole && recipRole !== 'all' && recipRole !== 'delivery_boy') {
-            return; // Not addressed to delivery partners
-          }
+          if (recipRole && recipRole !== 'all' && recipRole !== 'delivery_boy') return;
           const recipId = (payload.recipientId || '').toString().toLowerCase().trim();
           if (recipId) {
             const boyIds = [
@@ -254,12 +286,11 @@ function broadcast(event, payload = {}) {
               client.user.mobile,
               client.user.email,
             ].filter(Boolean).map((s) => s.toString().toLowerCase().trim());
-
-            if (!boyIds.includes(recipId)) {
-              return; // Drop event: targeted to another delivery partner
-            }
+            if (!boyIds.includes(recipId)) return;
           }
         }
+      } else {
+        return;
       }
     }
 
@@ -267,7 +298,4 @@ function broadcast(event, payload = {}) {
   });
 }
 
-module.exports = {
-  initWebSocket,
-  broadcast,
-};
+module.exports = { initWebSocket, broadcast };
